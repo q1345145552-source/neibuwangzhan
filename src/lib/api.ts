@@ -2,6 +2,9 @@ export interface Order {
   id: string;
   customer_name: string;
   business_type_id: number;
+  sub_service_type: string;
+  address_type: string;
+  monthly_rent: number;
   status: string;
   responsible_person: string;
   description: string;
@@ -19,6 +22,11 @@ export interface OrderStep {
   status: string;
   assignee: string;
   notes: string;
+  approval_status: string;
+  submission_count: number;
+  deadline: string;
+  logistics_status: string;
+  step_data: string;
   completed_at: string | null;
   created_at: string;
 }
@@ -71,6 +79,20 @@ export interface StepDocument {
   created_at: string;
 }
 
+export interface Certificate {
+  id: number;
+  order_id: string;
+  certificate_number: string;
+  product_name: string;
+  issue_date: string;
+  expiry_date: string;
+  status: string;
+  nsw_registration: string;
+  nsw_download_status: string;
+  notes: string;
+  created_at: string;
+}
+
 export interface DashboardStats {
   total_orders: number;
   in_progress: number;
@@ -102,6 +124,9 @@ export async function createOrder(data: {
   description?: string;
   responsible_person?: string;
   total_amount?: number;
+  sub_service_type?: string;
+  address_type?: string;
+  monthly_rent?: number;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -124,7 +149,7 @@ export async function fetchEmployees() {
   return res.json() as Promise<Employee[]>;
 }
 
-export async function updateStep(orderId: string, stepId: number, data: { status: string; notes?: string; assignee?: string }) {
+export async function updateStep(orderId: string, stepId: number, data: { status: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number }) {
   const res = await fetch(`/api/orders/${orderId}/steps`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -202,6 +227,22 @@ export async function markStepDocumentUploaded(orderId: string, stepId: number, 
   });
   if (!res.ok) throw new Error("标记上传失败");
   return res.json() as Promise<StepDocument>;
+}
+
+export async function fetchCertificates(orderId: string) {
+  const res = await fetch(`/api/orders/${orderId}/certificates`);
+  if (!res.ok) throw new Error("获取证书失败");
+  return res.json() as Promise<Certificate[]>;
+}
+
+export async function addCertificate(orderId: string, data: { certificate_number: string; product_name?: string; issue_date?: string; expiry_date?: string; notes?: string }) {
+  const res = await fetch(`/api/orders/${orderId}/certificates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("添加证书失败");
+  return res.json() as Promise<Certificate>;
 }
 
 // ----- 前端状态映射 -----

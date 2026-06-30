@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { BusinessLinePage } from "@/components/dashboard/business-line-page";
-import { subServices } from "@/lib/constants";
+import { companySubServices } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const tabs = subServices;
+const tabs = companySubServices;
 
 export default function CompanyRegistrationPage() {
   const [activeTab, setActiveTab] = useState(tabs[0].key);
@@ -19,7 +19,6 @@ export default function CompanyRegistrationPage() {
         </p>
       </div>
 
-      {/* Sub-service tabs */}
       <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-1">
         {tabs.map((tab) => (
           <button
@@ -47,7 +46,7 @@ export default function CompanyRegistrationPage() {
       )}
       {activeTab !== "company-reg" && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-sm text-[var(--muted-foreground)]">{tabs.find(t => t.key === activeTab)?.label} 子服务开发中</p>
+          <p className="text-sm text-[var(--muted-foreground)]">{tabs.find(t => t.key === activeTab)?.label} 开发中</p>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">即将支持独立进度跟踪</p>
         </div>
       )}

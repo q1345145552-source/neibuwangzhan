@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, getBusinessSteps } from "@/lib/db";
+import { getDb, getBusinessSteps, getStepsWithAddressType } from "@/lib/db";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -33,24 +33,23 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const db = getDb();
   const body = await req.json();
-  const { customer_name, business_type_id, description, responsible_person, total_amount } = body;
+  const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent } = body;
 
   if (!customer_name || !business_type_id) {
     return NextResponse.json({ error: "请填写客户名和业务线" }, { status: 400 });
   }
 
-  // 生成订单号
   const count = db.prepare("SELECT COUNT(*) as c FROM orders").get() as { c: number };
   const id = `ORD-${String(count.c + 1).padStart(3, "0")}`;
   const now = new Date().toISOString();
+  const ssType = sub_service_type || "";
 
   const insertAll = db.transaction(() => {
     db.prepare(
-      `INSERT INTO orders (id, customer_name, business_type_id, status, responsible_person, description, total_amount, created_at, updated_at)
-       VALUES (?, ?, ?, '待处理', ?, ?, ?, ?, ?)`
-    ).run(id, customer_name, business_type_id, responsible_person || "", description || "", total_amount || 0, now, now);
+      "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?)"
+    ).run(id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, now, now);
 
-    const steps = getBusinessSteps(Number(business_type_id));
+    const steps = getStepsWithAddressType(Number(business_type_id), ssType, address_type);
     const insertStep = db.prepare(
       "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
     );
