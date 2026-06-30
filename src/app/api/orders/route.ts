@@ -1,0 +1,66 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getDb, getBusinessSteps } from "@/lib/db";
+
+// GET /api/orders?business_type_id=&status=
+export async function GET(req: NextRequest) {
+  const db = getDb();
+  const { searchParams } = new URL(req.url);
+  const businessTypeId = searchParams.get("business_type_id");
+  const status = searchParams.get("status");
+
+  let sql = "SELECT * FROM orders";
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (businessTypeId) {
+    conditions.push("business_type_id = ?");
+    params.push(Number(businessTypeId));
+  }
+  if (status) {
+    conditions.push("status = ?");
+    params.push(status);
+  }
+  if (conditions.length > 0) {
+    sql += " WHERE " + conditions.join(" AND ");
+  }
+  sql += " ORDER BY created_at DESC";
+
+  const rows = db.prepare(sql).all(...params);
+  return NextResponse.json(rows);
+}
+
+// POST /api/orders
+export async function POST(req: NextRequest) {
+  const db = getDb();
+  const body = await req.json();
+  const { customer_name, business_type_id, description, responsible_person, total_amount } = body;
+
+  if (!customer_name || !business_type_id) {
+    return NextResponse.json({ error: "请填写客户名和业务线" }, { status: 400 });
+  }
+
+  // 生成订单号
+  const count = db.prepare("SELECT COUNT(*) as c FROM orders").get() as { c: number };
+  const id = `ORD-${String(count.c + 1).padStart(3, "0")}`;
+  const now = new Date().toISOString();
+
+  const insertAll = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO orders (id, customer_name, business_type_id, status, responsible_person, description, total_amount, created_at, updated_at)
+       VALUES (?, ?, ?, '待处理', ?, ?, ?, ?, ?)`
+    ).run(id, customer_name, business_type_id, responsible_person || "", description || "", total_amount || 0, now, now);
+
+    const steps = getBusinessSteps(Number(business_type_id));
+    const insertStep = db.prepare(
+      "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
+    );
+    steps.forEach((step, i) => {
+      insertStep.run(id, step.name, i + 1, step.assignee);
+    });
+  });
+
+  insertAll();
+
+  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+  return NextResponse.json(order, { status: 201 });
+}
