@@ -196,6 +196,9 @@ function initTables(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS employees (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      email TEXT DEFAULT '',
+      role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client')),
+      password TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -297,6 +300,9 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE finances ADD COLUMN payment_method TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_number TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE documents ADD COLUMN direction TEXT DEFAULT 'client_to_us' CHECK(direction IN ('client_to_us', 'us_to_client'))"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN email TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client'))"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN password TEXT DEFAULT ''"); } catch {}
 }
 
 /* ── 种子数据 ── */
@@ -304,8 +310,10 @@ function initTables(database: Database.Database) {
 function seedData(database: Database.Database) {
   const empCount = database.prepare("SELECT COUNT(*) as c FROM employees").get() as { c: number };
   if (empCount.c === 0) {
-    const insert = database.prepare("INSERT INTO employees (name) VALUES (?)");
-    for (const name of ["Bam", "Fern", "Ing", "Pop", "Eve"]) insert.run(name);
+    const insert = database.prepare("INSERT INTO employees (name, email, role, password) VALUES (?, ?, ?, ?)");
+    for (const [name, email] of [["Bam","bam@xiangtai.com"], ["Fern","fern@xiangtai.com"], ["Ing","ing@xiangtai.com"], ["Pop","pop@xiangtai.com"], ["Eve","eve@xiangtai.com"]]) insert.run(name, email, "employee", "123456");
+    insert.run("张三", "zhangsan@xiangtai.com", "admin", "123456");
+    insert.run("李四", "lisi@client.com", "client", "123456");
   }
 
   const btCount = database.prepare("SELECT COUNT(*) as c FROM business_types").get() as { c: number };

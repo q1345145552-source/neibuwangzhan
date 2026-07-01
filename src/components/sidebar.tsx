@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -116,21 +117,29 @@ export function Sidebar() {
 
       <div className="border-t border-[var(--sidebar-border)] px-5 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">张</div>
+{(() => {
+            const { user, logout } = useAuth();
+            const router = useRouter();
+            const initial = user?.name?.charAt(0) || "?";
+            const roleLabel = user?.role === "admin" ? "管理员" : user?.role === "client" ? "客户" : "员工";
+            return (<>
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">{initial}</div>
           <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-sm font-medium">张三</span>
-            <span className="truncate text-xs text-[var(--sidebar-foreground)]/50">管理员</span>
+            <span className="truncate text-sm font-medium">{user?.name || "—"}</span>
+            <span className="truncate text-xs text-[var(--sidebar-foreground)]/50">{roleLabel}</span>
           </div>
           <ThemeToggle />
           <Button
             size="icon-xs"
             variant="ghost"
             aria-label="退出登录"
-            onClick={() => console.log("退出登录")}
+            onClick={() => { logout(); router.push("/login"); }}
             className="text-[var(--sidebar-foreground)]/50 hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-foreground)]"
           >
             <LogOut className="size-3" aria-hidden="true" />
           </Button>
+            </>);
+            })()}
         </div>
       </div>
     </>
