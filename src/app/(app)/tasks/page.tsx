@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { tasks, statusColumns, type TaskStatus } from "@/mock/tasks";
@@ -27,9 +26,16 @@ const columnBg: Record<TaskStatus, string> = {
 };
 
 export default function TasksPage() {
-  const searchParams = useSearchParams();
-  const businessFilter = searchParams.get("business");
   const [filter, setFilter] = useState<string>("all");
+  const [businessFilter, setBusinessFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("currentBusinessFilter");
+    if (stored) {
+      setBusinessFilter(stored);
+      localStorage.removeItem("currentBusinessFilter");
+    }
+  }, []);
   const [taskList, setTaskList] = useState<Task[]>(tasks);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");

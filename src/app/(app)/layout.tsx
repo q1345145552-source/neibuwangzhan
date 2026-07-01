@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, Suspense } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
@@ -39,7 +39,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Sidebar />
           <main id="main-content" className="flex-1 md:pl-16 lg:pl-60">
             <div className="mx-auto max-w-7xl px-4 pt-16 pb-8 sm:px-6 md:px-6 lg:px-8 lg:pt-8">
-              <Suspense fallback={null}>{children}</Suspense>
+              {children}
             </div>
           </main>
         </div>

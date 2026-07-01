@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, FileText, ClipboardList, Search } from "lucide-react";
 import { fetchOrders, fetchBusinessTypes } from "@/lib/api";
@@ -20,6 +21,7 @@ const accentStyles = (hue: number) => ({
 });
 
 export function BusinessLinePage({ businessKey, label, accentHue, description }: BusinessLinePageProps) {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,8 +141,8 @@ export function BusinessLinePage({ businessKey, label, accentHue, description }:
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Link href="/orders/new" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><Plus className="size-3.5" aria-hidden="true" />新建订单</Link>
-        <Link href={`/documents?business=${businessKey}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><FileText className="size-3.5" aria-hidden="true" />去看文档</Link>
-        <Link href={`/tasks?business=${businessKey}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><ClipboardList className="size-3.5" aria-hidden="true" />看看任务</Link>
+        <button onClick={() => { localStorage.setItem("currentBusinessFilter", businessKey); router.push("/documents"); }} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><FileText className="size-3.5" aria-hidden="true" />去看文档</button>
+        <button onClick={() => { localStorage.setItem("currentBusinessFilter", businessKey); router.push("/tasks"); }} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><ClipboardList className="size-3.5" aria-hidden="true" />看看任务</button>
       </div>
     </div>
   );

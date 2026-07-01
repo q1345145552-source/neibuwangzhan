@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Upload, Download, FileText } from "lucide-react";
@@ -21,9 +20,16 @@ const statusLabel: Record<string, string> = {
 };
 
 export default function DocumentsPage() {
-  const searchParams = useSearchParams();
-  const businessFilter = searchParams.get("business");
   const [search, setSearch] = useState("");
+  const [businessFilter, setBusinessFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("currentBusinessFilter");
+    if (stored) {
+      setBusinessFilter(stored);
+      localStorage.removeItem("currentBusinessFilter");
+    }
+  }, []);
 
   const filtered = useMemo(() => {
     let result = documents;
