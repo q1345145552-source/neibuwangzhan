@@ -15,6 +15,7 @@ import {
   Ship,
   MapPin,
   Store,
+  Radio,
   CheckSquare,
   FileText,
   DollarSign,
@@ -39,6 +40,7 @@ const businessLines = [
   { name: "清关", href: "/customs-clearance", icon: Ship },
   { name: "地址认证", href: "/address-certification", icon: MapPin },
   { name: "Mall开店", href: "/mall-store", icon: Store },
+  { name: "NBTC", href: "/nbtc", icon: Radio },
 ];
 
 const utilityNav = [

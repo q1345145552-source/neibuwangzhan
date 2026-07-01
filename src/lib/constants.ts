@@ -184,7 +184,6 @@ export const nbtcTimes: Record<number, string> = {
 
 export const tisiSubServices = [
   { key: "tisi-main", label: "TISI认证", businessTypeId: 4 },
-  { key: "nbtc", label: "NBTC认证", businessTypeId: 4 },
 ];
 
 /* ── 服务价格 ── */
@@ -339,6 +338,7 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
     if (subServiceType === "lazada") return mallLazadaDocs;
     return mallShopeeDocs;
   }
+  if (businessTypeId === 9) return nbtcDocs;
   if (businessTypeId === 2) return trademarkDocs;
   return companyRegDocs;
 }
@@ -358,20 +358,21 @@ export function getStepTimes(businessTypeId: number, subServiceType?: string): R
     if (subServiceType === "lazada") return mallLazadaTimes;
     return mallShopeeTimes;
   }
+  if (businessTypeId === 9) return nbtcTimes;
   if (businessTypeId === 2) return trademarkTimes;
   return companyRegTimes;
 }
 
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {
-  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs,
+  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs,
 };
 
 export const stepTimeEstimates: Record<number, Record<number, string>> = {
-  1: companyRegTimes, 2: trademarkTimes, 3: fdaCosmeticsTimes, 4: tisiTimes, 5: dldProductTimes, 6: customsTimes, 7: addressTimes, 8: mallShopeeTimes,
+  1: companyRegTimes, 2: trademarkTimes, 3: fdaCosmeticsTimes, 4: tisiTimes, 5: dldProductTimes, 6: customsTimes, 7: addressTimes, 8: mallShopeeTimes, 9: nbtcTimes,
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {
-  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [],
+  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 9: [],
 };
 
 

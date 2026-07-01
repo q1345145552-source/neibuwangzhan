@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 
 const tabs = [
   { key: "tisi-main", label: "TISI认证", href: "/tisi" },
-  { key: "nbtc", label: "NBTC认证", href: "/tisi/nbtc" },
 ];
 
 export default function TisiPage() {
