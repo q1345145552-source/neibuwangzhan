@@ -1,15 +1,73 @@
 /* ── 公司注册 ── */
+/* ── 公司注册 — 新公司注册 ── */
 export const companyRegDocs: Record<number, string[]> = {
-  1: ["公司名称（中文/英文）", "股东护照复印件", "注册地址", "营业范围"],
-  2: ["公司名称预审表", "股东信息表"],
-  3: ["公司注册证明", "公章样式确认"],
-  4: ["公司证书", "股东护照", "房屋租赁合同", "PP20表格"],
-  5: ["公司全套文件", "董事护照", "地址证明"],
-  6: ["全套公司文件交付"],
+  1: ["公司名称中英文", "股东护照", "注册地址", "营业范围"],
+  2: ["客户泰国邮箱", "泰国电话"],
+  3: [],
+  4: [],
+  5: [],
+  6: [],
 };
 
 export const companyRegTimes: Record<number, string> = {
-  1: "1-2天", 2: "2-3天", 3: "1天", 4: "1天（曼谷）/ 1天（清迈）", 5: "1-2周（需预约）", 6: "1天",
+  1: "1天", 2: "1天", 3: "1-2天", 4: "2-3天", 5: "2-3天", 6: "1天",
+};
+
+/* ── 公司注册 — VAT注册 ── */
+export const companyRegVatDocs: Record<number, string[]> = {
+  1: ["公司证书", "股东护照", "租赁合同", "PP20表格"],
+  2: [],
+  3: [],
+  4: [],
+};
+
+export const companyRegVatTimes: Record<number, string> = {
+  1: "1天", 2: "1天", 3: "1天", 4: "1天",
+};
+
+/* ── 公司注册 — 银行开户 ── */
+export const companyRegBankDocs: Record<number, string[]> = {
+  1: ["公司全套文件", "董事护照", "银行预审表"],
+  2: [],
+  3: ["客户本人到场"],
+  4: [],
+  5: [],
+};
+
+export const companyRegBankTimes: Record<number, string> = {
+  1: "1-2天", 2: "1-2周", 3: "1天", 4: "1天", 5: "—",
+};
+
+/* ── 公司注册 — 地址服务 ── */
+export const companyRegAddressDocs: Record<number, string[]> = {
+  1: ["地址信息", "房东联系方式"],
+  2: ["租赁合同", "房东证件", "付款凭证"],
+  3: [],
+};
+
+export const companyRegAddressTimes: Record<number, string> = {
+  1: "1天", 2: "2-3天", 3: "持续",
+};
+
+/* ── 公司注册 — 做账报税 ── */
+export const companyRegAccountingDocs: Record<number, string[]> = {
+  1: ["月度账目数据"],
+  2: [],
+};
+
+export const companyRegAccountingTimes: Record<number, string> = {
+  1: "每月", 2: "待安排",
+};
+
+/* ── 公司注册 — 公司变更 ── */
+export const companyRegChangeDocs: Record<number, string[]> = {
+  1: ["变更需求说明", "相关证件"],
+  2: [],
+  3: [],
+};
+
+export const companyRegChangeTimes: Record<number, string> = {
+  1: "1天", 2: "2-5天", 3: "1天",
 };
 
 export const companySubServices = [
@@ -324,6 +382,14 @@ export const dldSubServices = [
 
 /* ── 通用查询函数 ── */
 export function getStepDocs(businessTypeId: number, subServiceType?: string): Record<number, string[]> {
+  if (businessTypeId === 1) {
+    if (subServiceType === "vat") return companyRegVatDocs;
+    if (subServiceType === "bank") return companyRegBankDocs;
+    if (subServiceType === "address") return companyRegAddressDocs;
+    if (subServiceType === "accounting") return companyRegAccountingDocs;
+    if (subServiceType === "change") return companyRegChangeDocs;
+    return companyRegDocs;
+  }
   if (businessTypeId === 3) {
     if (subServiceType === "food") return fdaFoodDocs;
     if (subServiceType === "hazard") return fdaHazardDocs;
@@ -344,6 +410,14 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
 }
 
 export function getStepTimes(businessTypeId: number, subServiceType?: string): Record<number, string> {
+  if (businessTypeId === 1) {
+    if (subServiceType === "vat") return companyRegVatTimes;
+    if (subServiceType === "bank") return companyRegBankTimes;
+    if (subServiceType === "address") return companyRegAddressTimes;
+    if (subServiceType === "accounting") return companyRegAccountingTimes;
+    if (subServiceType === "change") return companyRegChangeTimes;
+    return companyRegTimes;
+  }
   if (businessTypeId === 3) {
     if (subServiceType === "food") return fdaFoodTimes;
     if (subServiceType === "hazard") return fdaHazardTimes;
