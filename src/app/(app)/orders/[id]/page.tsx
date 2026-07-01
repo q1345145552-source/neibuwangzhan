@@ -310,8 +310,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               </>
                             ) : (
                               <>
-                                <button onClick={() => setConfirmingStepId(step.id)} className="rounded px-2 py-0.5 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] transition-colors">标记完成</button>
-                                <button onClick={() => handleStepUpdate(step.id, "阻塞")} className="rounded px-2 py-0.5 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] transition-colors">标记阻塞</button>
+                                <button onClick={() => setConfirmingStepId(step.id)} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
+                                <button onClick={() => handleStepUpdate(step.id, "阻塞")} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
                                 {sd.length > 0 && (
                                   <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>
                                 )}
@@ -329,7 +329,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         )}
 
                         {/* Expand/collapse for notes + docs */}
-                        <button onClick={() => toggleExpand(step.id)} className="mt-1 flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
+                        <button onClick={() => toggleExpand(step.id)} className="mt-1 flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                           <MessageSquare className="size-3" />
                           {hasNotes && <span className="rounded-full bg-[var(--muted)] px-1.5 text-[0.65rem]">{notes.length}</span>}
                           {expanded ? "收起" : "备注 & 所需文件"}
