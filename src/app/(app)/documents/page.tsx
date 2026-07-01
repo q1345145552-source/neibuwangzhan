@@ -22,6 +22,7 @@ const statusLabel: Record<string, string> = {
 
 export default function DocumentsPage() {
   const [search, setSearch] = useState("");
+  const [businessFilter, setBusinessFilter] = useState<string | null>(null);
   const router = useRouter();
   const [allDocs, setAllDocs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,8 +72,8 @@ export default function DocumentsPage() {
             <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回"><ArrowLeft className="size-4" /></Button>
           )}
           <div>
-            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>
-              {businessFilter ? `${businessFilter} · 文档` : "文档管理"}
+            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">
+              {businessFilter ? businessFilter + " · 文档" : "文档管理"}
             </h1>
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">合同、资质、报告都在这儿，别弄丢了</p>
           </div>
