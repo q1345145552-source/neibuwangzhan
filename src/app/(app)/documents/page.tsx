@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Upload, Download, FileText } from "lucide-react";
@@ -20,25 +21,33 @@ const statusLabel: Record<string, string> = {
 };
 
 export default function DocumentsPage() {
+  const searchParams = useSearchParams();
+  const businessFilter = searchParams.get("business");
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
-    if (!search) return documents;
-    const s = search.toLowerCase();
-    return documents.filter(
-      (d) =>
-        d.name.toLowerCase().includes(s) ||
-        d.businessLine.toLowerCase().includes(s) ||
-        d.uploadBy.toLowerCase().includes(s)
-    );
-  }, [search]);
+    let result = documents;
+    if (businessFilter) {
+      result = result.filter((d) => d.businessLine === businessFilter);
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      result = result.filter(
+        (d) =>
+          d.name.toLowerCase().includes(s) ||
+          d.businessLine.toLowerCase().includes(s) ||
+          d.uploadBy.toLowerCase().includes(s)
+      );
+    }
+    return result;
+  }, [search, businessFilter]);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>
-            文档管理
+            {businessFilter ? `${businessFilter} · 文档` : "文档管理"}
           </h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">合同、资质、报告都在这儿，别弄丢了</p>
         </div>

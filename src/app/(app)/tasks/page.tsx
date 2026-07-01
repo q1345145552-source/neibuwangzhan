@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { tasks, statusColumns, type TaskStatus } from "@/mock/tasks";
@@ -26,16 +27,22 @@ const columnBg: Record<TaskStatus, string> = {
 };
 
 export default function TasksPage() {
+  const searchParams = useSearchParams();
+  const businessFilter = searchParams.get("business");
   const [filter, setFilter] = useState<string>("all");
 
   const grouped = useMemo(() => {
+    let taskList = tasks;
+    if (businessFilter) {
+      taskList = taskList.filter((t) => t.businessLine === businessFilter);
+    }
     const result: Record<TaskStatus, Task[]> = { pending: [], in_progress: [], completed: [] };
-    for (const task of tasks) {
+    for (const task of taskList) {
       if (filter !== "all" && task.assignee !== filter) continue;
       result[task.status].push(task);
     }
     return result;
-  }, [filter]);
+  }, [filter, businessFilter]);
 
   const assignees = useMemo(() => [...new Set(tasks.map((t) => t.assignee))], []);
 
@@ -44,7 +51,7 @@ export default function TasksPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>
-            任务看板
+            {businessFilter ? `${businessFilter} · 任务` : "任务看板"}
           </h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">张三手上有 {tasks.filter(t => t.assignee === "张三").length} 件，别堆太多</p>
         </div>
