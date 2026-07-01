@@ -45,6 +45,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [newFinSlip, setNewFinSlip] = useState("");
   const [finErrorMsg, setFinErrorMsg] = useState("");
   const [docErrorMsg, setDocErrorMsg] = useState("");
+  const [certErrorMsg, setCertErrorMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -475,9 +476,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 )}
                 <div className="mt-3 flex gap-2">
                   <input placeholder="文档名…" value={newDocName} onChange={(e) => { setNewDocName(e.target.value); setDocErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <button onClick={async () => { if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; } setDocErrorMsg(""); await uploadDocument(id, { name: newDocName, uploaded_by: "Bam", direction: "client_to_us" }); setNewDocName(""); load(); }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]"><Upload className="size-3" /></button>
-                  {docErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{docErrorMsg}</p>}
+                  <button onClick={async () => { if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; } setDocErrorMsg(""); await uploadDocument(id, { name: newDocName, uploaded_by: "Bam", direction: "client_to_us" }); setNewDocName(""); load(); }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">添加</button>
                 </div>
+                {docErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{docErrorMsg}</p>}
               </div>
               );})()}
 
@@ -535,9 +536,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </ul>
                 )}
                 <div className="mt-3 flex gap-2">
-                  <input placeholder="证书编号…" value={newCertNo} onChange={(e) => setNewCertNo(e.target.value)} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <button onClick={async () => { if (newCertNo.trim()) { await addCertificate(id, { certificate_number: newCertNo, issue_date: new Date().toISOString().slice(0, 10), expiry_date: new Date(Date.now() + 365*86400000).toISOString().slice(0, 10) }); setNewCertNo(""); load(); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]"><Plus className="size-3" /></button>
+                  <input placeholder="证书编号…" value={newCertNo} onChange={(e) => { setNewCertNo(e.target.value); setCertErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                  <button onClick={async () => { if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; } setCertErrorMsg(""); await addCertificate(id, { certificate_number: newCertNo, issue_date: new Date().toISOString().slice(0, 10), expiry_date: new Date(Date.now() + 365*86400000).toISOString().slice(0, 10) }); setNewCertNo(""); load(); }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]"><Plus className="size-3" /></button>
                 </div>
+                {certErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{certErrorMsg}</p>}
               </div>
             </div>
           )}
