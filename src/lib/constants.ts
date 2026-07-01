@@ -99,7 +99,7 @@ export const trademarkSubServices = [
 
 /* ── FDA — 化妆品认证 ── */
 export const fdaCosmeticsDocs: Record<number, string[]> = {
-  1: ["ISO/工厂文件", "产品配方", "产品图", "商标文件", "委托书"],
+  1: ["工厂文件/ISO", "产品配方", "产品图", "商标文件", "授权委托书"],
   2: [],
   3: [],
   4: [],
@@ -110,12 +110,12 @@ export const fdaCosmeticsDocs: Record<number, string[]> = {
 };
 
 export const fdaCosmeticsTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "1天", 4: "1天", 5: "1天", 6: "1天", 7: "5-7天", 8: "2天",
+  1: "1-2天", 2: "1天", 3: "1天", 4: "1天", 5: "2-3天", 6: "1天", 7: "3-5天", 8: "1天",
 };
 
 /* ── FDA — 食品认证 ── */
 export const fdaFoodDocs: Record<number, string[]> = {
-  1: ["工厂文件", "产品配方", "产品图+标签", "工序流程", "商标文件"],
+  1: ["工厂文件", "产品配方", "产品图+标签", "生产工艺流程", "商标文件"],
   2: [],
   3: [],
   4: [],
@@ -125,12 +125,12 @@ export const fdaFoodDocs: Record<number, string[]> = {
 };
 
 export const fdaFoodTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "30天", 4: "1天", 5: "2天", 6: "1天", 7: "5-7天",
+  1: "2天", 2: "1天", 3: "30个工作日", 4: "1-3天", 5: "2-3天", 6: "5-7天", 7: "1天",
 };
 
 /* ── FDA — 危险品认证 ── */
 export const fdaHazardDocs: Record<number, string[]> = {
-  1: ["工厂文件", "CFS", "MSDS", "产品图", "配方", "工序", "中英文标签"],
+  1: ["工厂文件", "CFS", "MSDS", "产品图", "配方", "生产工艺流程", "中英文标签"],
   2: [],
   3: [],
   4: [],
@@ -140,7 +140,7 @@ export const fdaHazardDocs: Record<number, string[]> = {
 };
 
 export const fdaHazardTimes: Record<number, string> = {
-  1: "2天", 2: "2天", 3: "1天", 4: "3天", 5: "1天", 6: "1天", 7: "5-7天",
+  1: "2天", 2: "2天", 3: "3-5天", 4: "2-3天", 5: "3-5天", 6: "1天", 7: "1天",
 };
 
 /* ── TISI ── */

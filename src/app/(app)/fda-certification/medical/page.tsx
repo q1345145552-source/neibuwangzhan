@@ -1,3 +1,4 @@
+// 医疗器械认证暂无负责人，暂不接单
 export default function MedicalPage() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">

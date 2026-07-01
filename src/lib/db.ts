@@ -133,32 +133,32 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
   ];
   // FDA sub-services
   if (subServiceType === "cosmetics") return [
-    { name: "收集资料（ISO/工厂文件+配方+产品图+商标文件）", assignee: "Ing" },
-    { name: "检查文件完整性", assignee: "Ing" },
-    { name: "收费开票", assignee: "Ing" },
-    { name: "提交FDA系统", assignee: "Ing" },
-    { name: "缴费100泰铢", assignee: "Pop" },
-    { name: "提交审批申请", assignee: "Ing" },
-    { name: "等审批（5-7工作日）", assignee: "Ing" },
-    { name: "下载收费单缴费拿证", assignee: "Pop" },
+    { name: "Ing协调客户准备资料+检查文件完整性+开票收款", assignee: "Ing" },
+    { name: "客户付款后，Ing在FDA系统提交注册", assignee: "Ing" },
+    { name: "下载申请费单据，上传飞书给Pop支付100泰铢", assignee: "Ing" },
+    { name: "Pop支付完成，Ing提交审批申请，等待官员审核", assignee: "Ing" },
+    { name: "审核不通过则协调客户修改文件并重新提交（1次修改机会）", assignee: "Ing" },
+    { name: "审核通过后下载缴费单，上传飞书给Pop支付认证费", assignee: "Ing" },
+    { name: "等待下发证书", assignee: "Ing" },
+    { name: "收到证书后发送给客户", assignee: "Ing" },
   ];
   if (subServiceType === "food") return [
-    { name: "收集资料（工厂文件+配方+标签+工序+商标）", assignee: "Ing" },
-    { name: "收费开票", assignee: "Ing" },
-    { name: "提交FDA咨询（30天）", assignee: "Ing" },
-    { name: "等审批结果", assignee: "Ing" },
-    { name: "按审批意见提交产品", assignee: "Ing" },
-    { name: "缴费", assignee: "Pop" },
-    { name: "拿证（5-7天）", assignee: "Ing" },
+    { name: "Ing协调客户准备资料（工厂文件+配方+标签+工序+商标），检查文件，开票收款", assignee: "Ing" },
+    { name: "客户付款后，提交FDA咨询（官员审查约30个工作日）", assignee: "Ing" },
+    { name: "官员审查完成后按指示提交产品注册", assignee: "Ing" },
+    { name: "等待官员审核，下载FDA缴费单，上传飞书给Pop支付", assignee: "Ing" },
+    { name: "文件有误则官员说明问题，Ing协调客户修改并重新提交", assignee: "Ing" },
+    { name: "修改提交后等待审核，文件完整则收到证书", assignee: "Ing" },
+    { name: "收到证书后发送给客户", assignee: "Ing" },
   ];
   if (subServiceType === "hazard") return [
-    { name: "收集资料（CFS+MSDS+配方+工序+中英文标签）", assignee: "Ing" },
-    { name: "检查/补充文件", assignee: "Ing" },
-    { name: "第一次提交FDA", assignee: "Ing" },
-    { name: "按审批意见修改", assignee: "Ing" },
-    { name: "第二次提交（最多2次，超次需重缴费）", assignee: "Ing" },
-    { name: "缴费", assignee: "Pop" },
-    { name: "拿证", assignee: "Ing" },
+    { name: "Ing检查Praew之前提交被退回的文件，联系客户补齐需修改的资料", assignee: "Ing" },
+    { name: "客户准备修改文件期间，Ing协助客户修改泰语标签", assignee: "Ing" },
+    { name: "客户文件齐备后提交给官员审核（第1次）", assignee: "Ing" },
+    { name: "官员审核不通过，Ing协调客户再次修改", assignee: "Ing" },
+    { name: "提交第2次审核（最多2次，超过需重新全额缴费）", assignee: "Ing" },
+    { name: "审核通过后下载缴费单，上传飞书给Pop支付", assignee: "Ing" },
+    { name: "收到证书后发送给客户", assignee: "Ing" },
   ];
   // DLD sub-services
   if (subServiceType === "site") return [
