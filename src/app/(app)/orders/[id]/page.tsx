@@ -181,6 +181,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <span className="text-xs font-medium shrink-0 text-[var(--muted-foreground)]">{steps.filter(s => s.status === "已完成").length === steps.length ? "全部完成" : `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%`}</span>
               </div>
             )}
+            {(() => {
+              const pendingCount = finances.filter(f => f.status === "pending").length;
+              const totalFinCount = finances.length;
+              if (totalFinCount === 0) return <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">付款：暂无记录</p>;
+              const allPaid = pendingCount === 0;
+              return <p className={cn("mt-1.5 text-xs", allPaid ? "text-[var(--success)]" : "text-[var(--warning)]")}>付款：已付 {totalFinCount - pendingCount}/{totalFinCount}，待付 {pendingCount} 项</p>;
+            })()}
             {steps.length === 0 ? (
               <p className="text-sm text-[var(--muted-foreground)]">暂无步骤</p>
             ) : (
@@ -188,6 +195,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {steps.map((step, i) => {
                   const notes = stepNotes[step.id] || [];
                   const sd = stepDocs[step.id] || [];
+                  const uploadedCount = sd.filter((d: any) => d.status === "uploaded").length;
                   const times = getStepTimes(order.business_type_id, order.sub_service_type);
                   const docs = getStepDocs(order.business_type_id, order.sub_service_type);
                   const est = times[step.step_order];
@@ -260,6 +268,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           )}
                           {step.assignee && <span className="text-xs text-[var(--muted-foreground)]">{step.assignee}</span>}
                           {est && <span className="text-xs text-[var(--muted-foreground)]">⏱ {est}</span>}
+                          {sd.length > 0 && (
+                            <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>
+                          )}
 
                           {step.submission_count > 0 && (
                             <span className="text-xs font-medium text-[var(--info)]">提交 {step.submission_count}/2 · 剩{2 - step.submission_count}次</span>
@@ -284,6 +295,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               <>
                                 <button onClick={() => setConfirmingStepId(step.id)} className="rounded px-2 py-0.5 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] transition-colors">标记完成</button>
                                 <button onClick={() => handleStepUpdate(step.id, "阻塞")} className="rounded px-2 py-0.5 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] transition-colors">标记阻塞</button>
+                                {sd.length > 0 && (
+                                  <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>
+                                )}
                               </>
                             )}
                             {isWaiting && (
