@@ -30,21 +30,48 @@ export default function TasksPage() {
   const searchParams = useSearchParams();
   const businessFilter = searchParams.get("business");
   const [filter, setFilter] = useState<string>("all");
+  const [taskList, setTaskList] = useState<Task[]>(tasks);
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<Task["priority"]>("medium");
+  const [newTaskBusinessLine, setNewTaskBusinessLine] = useState(businessFilter || "");
 
   const grouped = useMemo(() => {
-    let taskList = tasks;
+    let sourceList = taskList;
     if (businessFilter) {
-      taskList = taskList.filter((t) => t.businessLine === businessFilter);
+      sourceList = sourceList.filter((t) => t.businessLine === businessFilter);
     }
     const result: Record<TaskStatus, Task[]> = { pending: [], in_progress: [], completed: [] };
-    for (const task of taskList) {
+    for (const task of sourceList) {
       if (filter !== "all" && task.assignee !== filter) continue;
       result[task.status].push(task);
     }
     return result;
-  }, [filter, businessFilter]);
+  }, [filter, businessFilter, taskList]);
 
-  const assignees = useMemo(() => [...new Set(tasks.map((t) => t.assignee))], []);
+  const assignees = useMemo(() => [...new Set(taskList.map((t) => t.assignee))], [taskList]);
+  const businessLines = useMemo(() => [...new Set(tasks.map((t) => t.businessLine))], []);
+
+  const handleAddTask = () => {
+    if (!newTaskTitle.trim() || !newTaskAssignee) return;
+    const newTask: Task = {
+      id: `TASK-${String(Date.now()).slice(-6)}`,
+      title: newTaskTitle.trim(),
+      description: "",
+      assignee: newTaskAssignee,
+      priority: newTaskPriority,
+      status: "pending",
+      businessLine: businessFilter || newTaskBusinessLine,
+      deadline: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    };
+    setTaskList((prev) => [...prev, newTask]);
+    setShowNewForm(false);
+    setNewTaskTitle("");
+    setNewTaskAssignee("");
+    setNewTaskPriority("medium");
+    if (!businessFilter) setNewTaskBusinessLine("");
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,10 +80,57 @@ export default function TasksPage() {
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>
             {businessFilter ? `${businessFilter} · 任务` : "任务看板"}
           </h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">张三手上有 {tasks.filter(t => t.assignee === "张三").length} 件，别堆太多</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">张三手上有 {taskList.filter(t => t.assignee === "张三").length} 件，别堆太多</p>
         </div>
-        <Button size="sm" onClick={() => console.log("新建任务")}><Plus className="size-3.5" aria-hidden="true" />新建任务</Button>
+        <Button size="sm" onClick={() => setShowNewForm((v) => !v)}><Plus className="size-3.5" aria-hidden="true" />{showNewForm ? "取消" : "新建任务"}</Button>
       </div>
+
+      {showNewForm && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 space-y-3">
+          <h3 className="text-sm font-medium text-[var(--foreground)]">新建任务{businessFilter ? ` · ${businessFilter}` : ""}</h3>
+          <div className="flex flex-wrap gap-3">
+            <input
+              placeholder="任务标题"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              className="flex-1 min-w-[200px] rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-sm outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }}
+            />
+            <select
+              value={newTaskAssignee}
+              onChange={(e) => setNewTaskAssignee(e.target.value)}
+              className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+            >
+              <option value="">选择负责人</option>
+              {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <select
+              value={newTaskPriority}
+              onChange={(e) => setNewTaskPriority(e.target.value as Task["priority"])}
+              className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+            >
+              <option value="low">低优先级</option>
+              <option value="medium">中优先级</option>
+              <option value="high">高优先级</option>
+            </select>
+            {!businessFilter && (
+              <select
+                value={newTaskBusinessLine}
+                onChange={(e) => setNewTaskBusinessLine(e.target.value)}
+                className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+              >
+                <option value="">选择业务线</option>
+                {businessLines.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAddTask} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] transition-colors">添加</button>
+            <button onClick={() => { setShowNewForm(false); setNewTaskTitle(""); setNewTaskAssignee(""); setNewTaskPriority("medium"); if (!businessFilter) setNewTaskBusinessLine(""); }} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">取消</button>
+          </div>
+        </div>
+      )}
 
       {/* Filter */}
       <div className="flex items-center gap-2">
