@@ -7,15 +7,14 @@ export function cn(...inputs: ClassValue[]) {
 
 export function toThaiTime(utcStr: string | null | undefined): string {
   if (!utcStr) return "";
-  const d = new Date(utcStr);
-  const fmt = new Intl.DateTimeFormat("th-TH", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return fmt.format(d).replace(/\//g, "-").replace(", ", " ");
+  const str = utcStr.includes("Z") || utcStr.includes("+") || (utcStr.match(/-/g) || []).length > 2 ? utcStr : utcStr + "Z";
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return "";
+  const bangkok = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  const y = bangkok.getUTCFullYear();
+  const m = String(bangkok.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(bangkok.getUTCDate()).padStart(2, "0");
+  const h = String(bangkok.getUTCHours()).padStart(2, "0");
+  const min = String(bangkok.getUTCMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${h}:${min}`;
 }
