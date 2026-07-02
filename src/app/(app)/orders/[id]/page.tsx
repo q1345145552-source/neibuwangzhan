@@ -539,9 +539,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             )}
                           </div>
                         )}
-                        {step.status === "已完成" && step.completed_at && (
+                        {(step.status === "已完成" || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
-                            <p className="text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(step.completed_at)}</p>
+                            {step.status === "已完成" && step.completed_at && (
+                              <p className="text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(step.completed_at)}</p>
+                            )}
                             {!isClient && (
                               <button onClick={() => handleRollback(step.id)} className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                                 <Undo2 className="size-3" />撤回
