@@ -9,6 +9,12 @@ import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchAssigne
 import type { Task } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+
+const stepStatusColumns = [
+  { key: "待处理" as const, label: "待处理" },
+  { key: "进行中" as const, label: "进行中" },
+  { key: "已完成" as const, label: "已完成" },
+];
 const statusColumns = [
   { key: "pending" as const, label: "待处理" },
   { key: "in_progress" as const, label: "进行中" },
@@ -84,6 +90,15 @@ export default function TasksPage() {
     }
     return result;
   }, [filter, businessFilter, taskList]);
+
+  const groupedSteps = useMemo(() => {
+    const result: Record<string, typeof assignedSteps> = { "待处理": [], "进行中": [], "已完成": [] };
+    for (const step of assignedSteps) {
+      const status = step.status || "待处理";
+      if (result[status]) result[status].push(step);
+    }
+    return result;
+  }, [assignedSteps]);
 
   const assignees = useMemo(() => [...new Set(taskList.map((t) => t.assignee || ""))], [taskList]);
   const businessLines = useMemo(() => [...new Set(taskList.map((t) => t.business_line || ""))], [taskList]);
@@ -189,40 +204,60 @@ export default function TasksPage() {
       </div>
 
 
-      {/* 我的待办步骤 */}
-      {assignedSteps.length > 0 && (
-        <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_50%)] p-4">
-          <h3 className="mb-3 text-sm font-medium text-[var(--foreground)]">我的待办步骤</h3>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {assignedSteps.map((item, i) => (
-              <button
-                key={i}
-                onClick={() => router.push(`/orders/${item.orderId}`)}
-                className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3 text-left transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-[var(--primary)]">{item.orderId}</span>
-                  <span className={cn(
-                    "inline-flex rounded-full px-2 py-0.5 text-[0.625rem] font-medium",
-                    item.status === "进行中" ? "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[var(--info)]" :
-                    item.status === "阻塞" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]" :
-                    "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
-                  )}>{item.status}</span>
+      {/* 我的环节 */}
+      <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_50%)] p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-medium text-[var(--foreground)]">我的环节</h2>
+          <span className="text-xs text-[var(--muted-foreground)]">{assignedSteps.length} 个环节</span>
+        </div>
+        {assignedSteps.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-3">
+            {stepStatusColumns.map((col) => {
+              const colSteps = groupedSteps[col.key] || [];
+              return (
+                <div key={col.key} className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]">
+                  <div className={cn("flex items-center justify-between rounded-t-xl px-4 py-3", columnBg[col.key])}>
+                    <h3 className="text-sm font-medium text-[var(--foreground)]">{col.label}</h3>
+                    <span className="inline-flex size-5 items-center justify-center rounded-full bg-[var(--muted)] text-xs font-mono tabular-nums text-[var(--muted-foreground)]">{colSteps.length}</span>
+                  </div>
+                  <div className="flex flex-col gap-2 px-3 pb-3">
+                    {colSteps.map((item, i) => (
+                      <button
+                        key={i}
+                        onClick={() => router.push(`/orders/${item.orderId}`)}
+                        className="flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3 text-left transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-[var(--primary)]">{item.orderId}</span>
+                          <span className={cn(
+                            "inline-flex rounded-full px-2 py-0.5 text-[0.625rem] font-medium",
+                            item.status === "进行中" ? "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[var(--info)]" :
+                            item.status === "阻塞" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]" :
+                            item.status === "已完成" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" :
+                            "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
+                          )}>{item.status}</span>
+                        </div>
+                        <p className="text-sm text-[var(--foreground)] truncate">{item.stepName}</p>
+                        <span className="text-xs text-[var(--muted-foreground)]">{item.businessType}</span>
+                      </button>
+                    ))}
+                    {colSteps.length === 0 && (
+                      <div className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无环节</div>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm text-[var(--foreground)] truncate">{item.stepName}</p>
-                <span className="text-xs text-[var(--muted-foreground)]">{item.businessType}</span>
-              </button>
-            ))}
+              );
+            })}
           </div>
-        </div>
-      )}
-      {assignedSteps.length === 0 && (
-        <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_50%)] p-4">
-          <p className="text-sm text-[var(--muted-foreground)]">暂无待办步骤</p>
-        </div>
-      )}
+        ) : (
+          <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无分配的环节</p>
+        )}
+      </div>
 
-      {/* Kanban columns */}
+      {/* 看板分隔 */}
+      <div className="h-px bg-[var(--border)]" />
+
+      {/* 任务看板 */}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {statusColumns.map((col) => {
