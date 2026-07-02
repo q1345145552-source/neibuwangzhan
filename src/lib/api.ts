@@ -153,6 +153,25 @@ export async function createOrder(data: {
   return res.json() as Promise<Order>;
 }
 
+export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number }>) {
+  const res = await fetch(`/api/orders/${id}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("更新订单失败");
+  return res.json() as Promise<Order>;
+}
+
+export async function deleteOrder(id: string) {
+  const res = await fetch(`/api/orders/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("删除订单失败");
+  return res.json();
+}
+
 export async function fetchBusinessTypes() {
   const res = await fetch("/api/business-types", { headers: authHeaders() });
   if (!res.ok) throw new Error("获取业务线失败");

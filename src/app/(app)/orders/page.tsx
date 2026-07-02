@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, ArrowUpDown } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { fetchOrders, fetchBusinessTypes } from "@/lib/api";
+import { fetchOrders, fetchBusinessTypes, deleteOrder } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
@@ -18,6 +19,9 @@ export default function OrdersPage() {
   const [sortField, setSortField] = useState<"total_amount" | "created_at" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -38,6 +42,21 @@ export default function OrdersPage() {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => {});
     return () => { ignore = true; };
   }, [businessFilter, statusFilter]);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteOrder(deleteTarget.id);
+      setOrders(prev => prev.filter(o => o.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("删除订单失败:", err);
+      alert("删除失败，请重试");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const filtered = search
     ? orders.filter((o) =>
@@ -111,6 +130,7 @@ export default function OrdersPage() {
                 </button>
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">状态</th>
+              {user?.role !== "client" && <th className="py-3 px-4 text-center text-xs font-medium text-[var(--muted-foreground)] tracking-wide w-16">操作</th>}
             </tr>
           </thead>
           <tbody>
@@ -128,12 +148,41 @@ export default function OrdersPage() {
                 <td className="py-3 px-4">
                   <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
                 </td>
+                {user?.role !== "client" && (
+                  <td className="py-3 px-4 text-center">
+                    <button
+                      onClick={() => setDeleteTarget({ id: order.id, name: order.customer_name })}
+                      className="inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors"
+                      title="删除订单"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
         {!loading && sorted.length === 0 && <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">没有匹配的订单</div>}
       </div>
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              确定要删除订单 <span className="font-mono font-medium text-[var(--foreground)]">{deleteTarget.id}</span>（{deleteTarget.name}）吗？此操作会同时删除所有关联的步骤、文档、费用和证书，且不可恢复。
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleConfirmDelete} disabled={deleting} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deleting ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

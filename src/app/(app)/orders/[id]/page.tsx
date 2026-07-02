@@ -3,10 +3,11 @@
 import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil } from "lucide-react";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, fetchEmployees, type Employee } from "@/lib/api";
+import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
+import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepTimes, getStepDocs } from "@/lib/constants";
 import { cn, toThaiTime } from "@/lib/utils";
@@ -37,6 +38,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => {});
+    fetchBusinessTypes().then(setBusinessTypes).catch(() => {});
   }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -67,6 +69,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const { user } = useAuth();
   const isClient = user?.role === "client";
   const [nowMs] = useState(() => Date.now());
+  // 编辑模式
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [editFields, setEditFields] = useState<Partial<Order>>({});
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
+  const [deletingOrder, setDeletingOrder] = useState(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -160,6 +169,51 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch { setError("更新失败"); }
   };
 
+  // 编辑订单
+  const startEdit = () => {
+    if (!order) return;
+    setEditFields({
+      customer_name: order.customer_name,
+      business_type_id: order.business_type_id,
+      responsible_person: order.responsible_person,
+      description: order.description,
+      total_amount: order.total_amount,
+      sub_service_type: order.sub_service_type,
+      address_type: order.address_type,
+      monthly_rent: order.monthly_rent,
+    });
+    setEditingOrder(true);
+  };
+
+  const handleSaveOrder = async () => {
+    if (!order) return;
+    setSavingOrder(true);
+    try {
+      await updateOrder(id, editFields);
+      setEditingOrder(false);
+      reload();
+    } catch (err) {
+      console.error("保存订单失败:", err);
+      setError("保存失败");
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const handleConfirmDeleteOrder = async () => {
+    if (!deleteTarget) return;
+    setDeletingOrder(true);
+    try {
+      await deleteOrder(deleteTarget.id);
+      router.push("/orders");
+    } catch (err) {
+      console.error("删除订单失败:", err);
+      setError("删除失败");
+      setDeletingOrder(false);
+      setDeleteTarget(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
@@ -190,7 +244,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回订单列表"><ArrowLeft className="size-4" aria-hidden="true" /></Button>
-          <div>
+          <div className="flex-1">
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{order.id}</h1>
             <div className="mt-1 flex items-center gap-2">
               <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
@@ -200,6 +254,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
             </div>
           </div>
+          {!isClient && (
+            <div className="flex items-center gap-2 shrink-0">
+              {!editingOrder ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
+                  <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="default" size="sm" onClick={handleSaveOrder} disabled={savingOrder} className="gap-1.5"><Save className="size-3.5" />{savingOrder ? "保存中..." : "保存"}</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setEditingOrder(false)} disabled={savingOrder} className="gap-1.5"><X className="size-3.5" />取消</Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -210,13 +279,40 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           {/* Basic info */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
             <h3 className="mb-4 text-sm font-medium text-[var(--foreground)]">基本信息</h3>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div><dt className="text-xs text-[var(--muted-foreground)]">客户</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.customer_name}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">负责人</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.responsible_person || "—"}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">金额</dt><dd className="mt-1 text-sm font-mono text-[var(--foreground)]">¥{order.total_amount.toLocaleString()}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">创建日期</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{toThaiTime(order.created_at)}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs text-[var(--muted-foreground)]">描述</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.description || "—"}</dd></div>
-            </dl>
+            {editingOrder ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">客户名</label>
+                  <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">业务线</label>
+                  <select value={editFields.business_type_id || ""} onChange={(e) => setEditFields(prev => ({ ...prev, business_type_id: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                    {businessTypes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">负责人</label>
+                  <input type="text" value={editFields.responsible_person || ""} onChange={(e) => setEditFields(prev => ({ ...prev, responsible_person: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">金额</label>
+                  <input type="number" value={editFields.total_amount || 0} onChange={(e) => setEditFields(prev => ({ ...prev, total_amount: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-[var(--muted-foreground)]">描述</label>
+                  <textarea value={editFields.description || ""} onChange={(e) => setEditFields(prev => ({ ...prev, description: e.target.value }))} rows={2} className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] resize-none" />
+                </div>
+              </div>
+            ) : (
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div><dt className="text-xs text-[var(--muted-foreground)]">客户</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.customer_name}</dd></div>
+                <div><dt className="text-xs text-[var(--muted-foreground)]">负责人</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.responsible_person || "—"}</dd></div>
+                <div><dt className="text-xs text-[var(--muted-foreground)]">金额</dt><dd className="mt-1 text-sm font-mono text-[var(--foreground)]">¥{order.total_amount.toLocaleString()}</dd></div>
+                <div><dt className="text-xs text-[var(--muted-foreground)]">创建日期</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{toThaiTime(order.created_at)}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-[var(--muted-foreground)]">描述</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.description || "—"}</dd></div>
+              </dl>
+            )}
           </div>
 
           {/* Progress steps with notes + required docs */}
