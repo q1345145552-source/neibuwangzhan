@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, type Employee } from "@/lib/api";
+import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
@@ -84,6 +84,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 证书删除
   const [deleteCertTarget, setDeleteCertTarget] = useState<number | null>(null);
   const [deletingCert, setDeletingCert] = useState(false);
+  const [deleteDocTarget, setDeleteDocTarget] = useState<number | null>(null);
+  const [deletingDoc, setDeletingDoc] = useState(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -199,6 +201,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       setDeleteCertTarget(null);
       reload();
     } catch { setError("删除证书失败"); setDeletingCert(false); setDeleteCertTarget(null); }
+  };
+
+  // 文档删除
+  const handleDeleteDoc = async () => {
+    if (!deleteDocTarget) return;
+    setDeletingDoc(true);
+    try {
+      await deleteDocument(id, deleteDocTarget);
+      setDeleteDocTarget(null);
+      reload();
+    } catch { setError("删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
   };
 
   const handleSaveCert = async (certId: number) => {
@@ -751,6 +764,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           )
                         )}</p>
                           <span className={cn("text-xs", doc.status === "已审核" ? "text-[var(--success)]" : "text-[var(--warning)]")}>{doc.status}</span></div>
+                        {!isClient && (
+                          <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -855,6 +871,38 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       {previewUrl && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center cursor-pointer" onClick={() => setPreviewUrl(null)} onKeyDown={(e) => { if (e.key === "Escape") setPreviewUrl(null); }}>
           <img src={previewUrl} alt="预览" className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
+        </div>
+      )}
+
+      {/* 删除费用确认弹窗 */}
+      {deleteFinanceTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteFinanceTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除费用</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">确定要删除这笔费用记录吗？此操作不可恢复。</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteFinanceTarget(null)} disabled={deletingFinance} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleDeleteFinance} disabled={deletingFinance} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deletingFinance ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除证书确认弹窗 */}
+      {deleteCertTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteCertTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除证书</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">确定要删除这份证书吗？此操作不可恢复。</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteCertTarget(null)} disabled={deletingCert} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleDeleteCert} disabled={deletingCert} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deletingCert ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

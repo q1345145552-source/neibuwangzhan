@@ -226,6 +226,16 @@ export async function uploadDocument(orderId: string, data: { name: string; file
   return res.json() as Promise<Document>;
 }
 
+export async function deleteDocument(orderId: string, documentId: number) {
+  const res = await fetch(`/api/orders/${orderId}/documents`, {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId }),
+  });
+  if (!res.ok) throw new Error("删除文档失败");
+  return res.json();
+}
+
 export async function fetchFinances(orderId: string) {
   const res = await fetch(`/api/orders/${orderId}/finances`, { headers: authHeaders() });
   if (!res.ok) throw new Error("获取费用失败");

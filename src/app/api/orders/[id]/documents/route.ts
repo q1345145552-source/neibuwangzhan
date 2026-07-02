@@ -28,3 +28,21 @@ export async function POST(
   const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(doc, { status: 201 });
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const db = getDb();
+  const body = await req.json();
+  const { document_id } = body;
+
+  if (!document_id) return NextResponse.json({ error: "缺少 document_id" }, { status: 400 });
+
+  const existing = db.prepare("SELECT * FROM documents WHERE id = ? AND order_id = ?").get(document_id, id);
+  if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
+
+  db.prepare("DELETE FROM documents WHERE id = ?").run(document_id);
+  return NextResponse.json({ success: true });
+}
