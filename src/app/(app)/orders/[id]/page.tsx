@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate } from "@/lib/api";
+import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, fetchEmployees, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepTimes, getStepDocs } from "@/lib/constants";
@@ -32,6 +32,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
   const [newNotes, setNewNotes] = useState<Record<number, string>>({});
   const [noteErrorMsg, setNoteErrorMsg] = useState<Record<number, string>>({});
+  const [editingAssigneeStepId, setEditingAssigneeStepId] = useState<number | null>(null);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs">("finances");
@@ -310,7 +312,35 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
                             )}>{step.approval_status}</span>
                           )}
-                          {step.assignee && <span className="text-xs text-[var(--muted-foreground)]">{step.assignee}</span>}
+                          {step.assignee && !isClient && (
+                            <span className="text-xs cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors" onClick={() => setEditingAssigneeStepId(step.id)}>
+                              {step.assignee}
+                            </span>
+                          )}
+                          {step.assignee && isClient && (
+                            <span className="text-xs text-[var(--muted-foreground)]">{step.assignee}</span>
+                          )}
+                          {editingAssigneeStepId === step.id && (
+                            <select
+                              value={step.assignee}
+                              onChange={async (e) => {
+                                const newAssignee = e.target.value;
+                                if (newAssignee === step.assignee) { setEditingAssigneeStepId(null); return; }
+                                try {
+                                  await updateStep(id, step.id, { status: step.status, assignee: newAssignee });
+                                  setEditingAssigneeStepId(null);
+                                  reload();
+                                } catch { /* ignore */ }
+                              }}
+                              onBlur={() => setEditingAssigneeStepId(null)}
+                              autoFocus
+                              className="rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]"
+                            >
+                              {employees.map(emp => (
+                                <option key={emp.id} value={emp.name}>{emp.name}</option>
+                              ))}
+                            </select>
+                          )}
                           {est && <span className="text-xs text-[var(--muted-foreground)]">⏱ {est}</span>}
                           {sd.length > 0 && (
                             <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { Plus, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchTasks, createTask as apiCreateTask, updateTaskStatus } from "@/lib/api";
+import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchOrders } from "@/lib/api";
 import type { Task } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,7 @@ export default function TasksPage() {
   const [filter, setFilter] = useState<string>("all");
   const [taskList, setTaskList] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string }>>([]);
 
   useEffect(() => {
     async function load() {
@@ -176,7 +177,42 @@ export default function TasksPage() {
         </select>
       </div>
 
+
+      {/* 我的待办步骤 */}
+      {assignedSteps.length > 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_50%)] p-4">
+          <h3 className="mb-3 text-sm font-medium text-[var(--foreground)]">我的待办步骤</h3>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {assignedSteps.map((item, i) => (
+              <button
+                key={i}
+                onClick={() => router.push(`/orders/${item.orderId}`)}
+                className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3 text-left transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-[var(--primary)]">{item.orderId}</span>
+                  <span className={cn(
+                    "inline-flex rounded-full px-2 py-0.5 text-[0.625rem] font-medium",
+                    item.status === "进行中" ? "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[var(--info)]" :
+                    item.status === "阻塞" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]" :
+                    "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
+                  )}>{item.status}</span>
+                </div>
+                <p className="text-sm text-[var(--foreground)] truncate">{item.stepName}</p>
+                <span className="text-xs text-[var(--muted-foreground)]">{item.businessType}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {assignedSteps.length === 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_50%)] p-4">
+          <p className="text-sm text-[var(--muted-foreground)]">暂无待办步骤</p>
+        </div>
+      )}
+
       {/* Kanban columns */}
+
       <div className="grid gap-4 lg:grid-cols-3">
         {statusColumns.map((col) => {
           const colTasks = grouped[col.key];
