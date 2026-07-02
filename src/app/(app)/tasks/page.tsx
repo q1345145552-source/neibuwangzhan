@@ -3,9 +3,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchAssignedSteps } from "@/lib/api";
+import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchAssignedSteps, deleteTask } from "@/lib/api";
 import type { Task } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -41,10 +41,13 @@ const columnBg: Record<string, string> = {
 export default function TasksPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const isClient = user?.role === "client";
   const searchParams = useSearchParams();
   const businessFilter = searchParams.get("biz");
   const [filter, setFilter] = useState<string>("all");
   const [taskList, setTaskList] = useState<Task[]>([]);
+  const [deleteTaskTarget, setDeleteTaskTarget] = useState<{id:string,title:string}|null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
   const [loading, setLoading] = useState(true);
   const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string }>>([]);
 
@@ -72,6 +75,21 @@ export default function TasksPage() {
     }
     load();
   }, [businessFilter]);
+
+  const handleDeleteTask = async () => {
+    if (!deleteTaskTarget) return;
+    setDeletingTask(true);
+    try {
+      console.log("[删除任务]", deleteTaskTarget.id);
+      await deleteTask(deleteTaskTarget.id);
+      setTaskList(prev => prev.filter(t => t.id !== deleteTaskTarget.id));
+      setDeleteTaskTarget(null);
+    } catch (err) {
+      console.error("[删除任务] 失败:", err);
+    } finally {
+      setDeletingTask(false);
+    }
+  };
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState("");
@@ -290,8 +308,13 @@ export default function TasksPage() {
                       )}
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="flex size-6 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">
-                        {(task.assignee || "").slice(0, 1)}
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-6 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">
+                          {(task.assignee || "").slice(0, 1)}
+                        </div>
+                        {!isClient && (
+                          <button onClick={() => setDeleteTaskTarget({id: task.id, title: task.title})} className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除任务"><Trash2 className="size-3" /></button>
+                        )}
                       </div>
                       <span className="font-mono text-xs tabular-nums text-[var(--muted-foreground)]">{task.deadline}</span>
                     </div>
@@ -305,6 +328,24 @@ export default function TasksPage() {
           );
         })}
       </div>
+
+      {/* 删除任务确认弹窗 */}
+      {deleteTaskTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteTaskTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除任务</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              确定要删除任务「{deleteTaskTarget.title}」吗？此操作不可恢复。
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteTaskTarget(null)} disabled={deletingTask} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleDeleteTask} disabled={deletingTask} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deletingTask ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

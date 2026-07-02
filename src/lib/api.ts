@@ -407,6 +407,16 @@ export async function updateTaskStatus(id: string, status: string) {
   return res.json();
 }
 
+export async function deleteTask(id: string) {
+  const res = await fetch("/api/tasks", {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) throw new Error("删除任务失败");
+  return res.json();
+}
+
 export async function fetchAllDocuments(params?: { business?: string }) {
   const searchParams = new URLSearchParams();
   if (params?.business) searchParams.set("business", params.business);

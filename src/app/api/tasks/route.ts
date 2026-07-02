@@ -42,3 +42,16 @@ export async function PATCH(req: NextRequest) {
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
   return NextResponse.json(task);
 }
+
+export async function DELETE(req: NextRequest) {
+  const db = getDb();
+  const body = await req.json();
+  const { id } = body;
+  if (!id) return NextResponse.json({ error: "请提供任务ID" }, { status: 400 });
+
+  const existing = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
+  if (!existing) return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+
+  db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+  return NextResponse.json({ success: true });
+}
