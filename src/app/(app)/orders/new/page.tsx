@@ -13,6 +13,7 @@ export default function NewOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bizName = searchParams.get("biz");
+  const subServiceType = searchParams.get("sub");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
@@ -24,6 +25,7 @@ export default function NewOrderPage() {
     responsible_person: "",
     description: "",
     total_amount: "",
+    sub_service_type: "",
   });
 
   useEffect(() => {
@@ -36,7 +38,11 @@ export default function NewOrderPage() {
     const bt = businessTypes.find((t) => t.name === bizName);
     if (bt) {
       setAppliedBizName(bizName);
-      setForm((prev) => ({ ...prev, business_type_id: String(bt.id) }));
+      setForm((prev) => ({
+        ...prev,
+        business_type_id: String(bt.id),
+        sub_service_type: subServiceType || prev.sub_service_type,
+      }));
     }
   }
 
@@ -57,6 +63,7 @@ export default function NewOrderPage() {
         responsible_person: form.responsible_person,
         description: form.description,
         total_amount: Number(form.total_amount) || 0,
+        sub_service_type: form.sub_service_type,
       });
       router.push("/orders");
     } catch (err) {

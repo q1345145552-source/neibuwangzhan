@@ -112,7 +112,7 @@ export function FdaSubServicePage({ title, description, subServiceType }: Props)
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/orders/new?biz=FDA认证" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)]"><Plus className="size-3.5" aria-hidden="true" />新建{title}订单</Link>
+        <Link href={`/orders/new?biz=FDA认证&sub=${subServiceType}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)]"><Plus className="size-3.5" aria-hidden="true" />新建{title}订单</Link>
         <Link href="/documents?biz=FDA认证" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)]"><FileText className="size-3.5" aria-hidden="true" />去看文档</Link>
         <Link href="/tasks?biz=FDA认证" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)]"><ClipboardList className="size-3.5" aria-hidden="true" />看看任务</Link>
       </div>
