@@ -34,6 +34,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [noteErrorMsg, setNoteErrorMsg] = useState<Record<number, string>>({});
   const [editingAssigneeStepId, setEditingAssigneeStepId] = useState<number | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+
+  useEffect(() => {
+    fetchEmployees().then(setEmployees).catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs">("finances");
@@ -312,13 +316,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
                             )}>{step.approval_status}</span>
                           )}
-                          {step.assignee && !isClient && (
-                            <span className="text-xs cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors" onClick={() => setEditingAssigneeStepId(step.id)}>
-                              {step.assignee}
-                            </span>
-                          )}
-                          {step.assignee && isClient && (
-                            <span className="text-xs text-[var(--muted-foreground)]">{step.assignee}</span>
+                          {step.assignee && (
+                            isClient ? (
+                              <span className="text-xs text-[var(--muted-foreground)]">{step.assignee}</span>
+                            ) : editingAssigneeStepId !== step.id ? (
+                              <button onClick={() => setEditingAssigneeStepId(step.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:underline cursor-pointer">
+                                {step.assignee}
+                              </button>
+                            ) : null
                           )}
                           {editingAssigneeStepId === step.id && (
                             <select
