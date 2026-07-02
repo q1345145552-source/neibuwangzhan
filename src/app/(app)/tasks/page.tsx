@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { Plus, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchOrders } from "@/lib/api";
+import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchAssignedSteps } from "@/lib/api";
 import type { Task } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -50,23 +50,13 @@ export default function TasksPage() {
 
         // 加载当前用户的待办步骤
         if (user?.name) {
-          const btMap: Record<number, string> = { 1: "公司注册", 2: "商标", 3: "FDA认证", 4: "TISI", 5: "DLD", 6: "清关", 7: "地址认证", 8: "Mall开店", 9: "NBTC" };
-          const allOrders = await fetchOrders();
-          const steps: Array<{ orderId: string; stepName: string; status: string; businessType: string }> = [];
-          for (const order of allOrders) {
-            const orderSteps = order.steps || [];
-            for (const step of orderSteps) {
-              if (step.assignee === user.name && step.status !== "已完成") {
-                steps.push({
-                  orderId: order.id,
-                  stepName: step.step_name,
-                  status: step.status,
-                  businessType: btMap[order.business_type_id] || "",
-                });
-              }
-            }
-          }
-          setAssignedSteps(steps);
+          const steps = await fetchAssignedSteps(user.name);
+          setAssignedSteps(steps.map((s: { order_id: string; step_name: string; status: string; business_type_name: string }) => ({
+            orderId: s.order_id,
+            stepName: s.step_name,
+            status: s.status,
+            businessType: s.business_type_name,
+          })));
         }
       } catch (err) {
         console.error("Tasks load error:", err);

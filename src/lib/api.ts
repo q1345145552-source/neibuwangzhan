@@ -321,6 +321,13 @@ export async function fetchTasks(params?: { business?: string }) {
   return res.json();
 }
 
+
+export async function fetchAssignedSteps(userName: string) {
+  const res = await fetch(`/api/steps/assigned?user=${encodeURIComponent(userName)}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("加载失败");
+  return res.json();
+}
+
 export async function createTask(data: { title: string; assignee?: string; priority?: string; business_line?: string; deadline?: string }) {
   const res = await fetch("/api/tasks", {
     method: "POST",
