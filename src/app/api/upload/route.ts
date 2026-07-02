@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import os from "os";
 import { existsSync } from "fs";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
-// Magic number signatures
+const UPLOADS_DIR = path.join(os.tmpdir(), "xiangtai-uploads");
+
 const MAGIC_SIGNATURES: Record<string, number[]> = {
   "image/jpeg": [0xFF, 0xD8, 0xFF],
   "image/png": [0x89, 0x50, 0x4E, 0x47],
@@ -16,7 +18,7 @@ const MAGIC_SIGNATURES: Record<string, number[]> = {
 
 function verifyMagic(buffer: Buffer, mimeType: string): boolean {
   const sig = MAGIC_SIGNATURES[mimeType];
-  if (!sig) return true; // doc/xlsx magic check is unreliable, skip
+  if (!sig) return true;
   if (buffer.length < sig.length) return false;
   return sig.every((b, i) => buffer[i] === b);
 }
@@ -36,23 +38,19 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Magic number check
     if (!verifyMagic(buffer.subarray(0, 8), file.type)) {
       return NextResponse.json({ error: "文件内容与类型不匹配" }, { status: 400 });
     }
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    if (!existsSync(uploadsDir)) await mkdir(uploadsDir, { recursive: true });
+    if (!existsSync(UPLOADS_DIR)) await mkdir(UPLOADS_DIR, { recursive: true });
 
     const timestamp = Date.now();
     const safeName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const filePath = path.join(uploadsDir, safeName);
+    const filePath = path.join(UPLOADS_DIR, safeName);
 
-    console.log("[上传] 写入文件:", filePath);
     await writeFile(filePath, buffer);
-    console.log("[上传] 写入成功:", safeName);
 
-    return NextResponse.json({ url: `/uploads/${safeName}`, name: file.name });
+    return NextResponse.json({ url: `/api/files/${safeName}`, name: file.name });
   } catch (err) {
     console.error("[上传] 失败:", err);
     return NextResponse.json({ error: "上传失败" }, { status: 500 });
