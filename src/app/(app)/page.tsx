@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/components/auth-provider";
+import Link from "next/link";
 import dynamic from "next/dynamic";
+import { cn } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TodoList } from "@/components/dashboard/todo-list";
-import { fetchDashboardStats, fetchOrders } from "@/lib/api";
+import { fetchDashboardStats, fetchOrders, fetchAssignedSteps } from "@/lib/api";
 import type { Order } from "@/lib/api";
 
 const BusinessChart = dynamic(
@@ -27,6 +29,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({ total_orders: 0, in_progress: 0, completed: 0, today_todos: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
+  const [stepsLoaded, setStepsLoaded] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -37,6 +41,12 @@ export default function DashboardPage() {
         ]);
         setStats(s);
         setOrders(o);
+
+        if (user?.name) {
+          const steps = await fetchAssignedSteps(user.name);
+          setAssignedSteps(steps);
+          setStepsLoaded(true);
+        }
       } catch (err) {
         console.error("Dashboard load error:", err);
       } finally {
@@ -73,6 +83,38 @@ export default function DashboardPage() {
         <StatCard label="已完成" value={stats.completed} href="/orders?status=已完成" />
         <StatCard label="今日待办" value={stats.today_todos} href="/tasks" />
       </div>
+
+      {stepsLoaded && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-medium text-[var(--foreground)]">我的环节</h2>
+            <span className="text-xs text-[var(--muted-foreground)]">共 {assignedSteps.length} 个</span>
+          </div>
+          {assignedSteps.length > 0 ? (
+            <div className="divide-y divide-[var(--border)]">
+              {assignedSteps.map((step) => (
+                <div key={step.step_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <Link href={`/orders/${step.order_id}`} className="shrink-0 font-mono text-xs font-medium text-[var(--primary)] hover:underline">
+                    {step.order_id}
+                  </Link>
+                  <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{step.step_name}</span>
+                  <span className="shrink-0 rounded-md bg-[var(--secondary)] px-1.5 py-0.5 text-xs text-[var(--secondary-foreground)]">{step.business_type_name}</span>
+                  <span className={cn(
+                    "shrink-0 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    step.status === "进行中" ? "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[var(--info)]" :
+                    step.status === "阻塞" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]" :
+                    step.status === "已完成" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" :
+                    "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
+                  )}>{step.status}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无分配的环节</p>
+          )}
+        </div>
+      )}
+
 
       <BusinessChart data={businessCounts} />
 
