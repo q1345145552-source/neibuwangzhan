@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     if (!existsSync(uploadsDir)) await mkdir(uploadsDir, { recursive: true });
 
     const timestamp = Date.now();
-    const safeName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9._\u4e00-\u9fff-]/g, "_")}`;
+    const safeName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const filePath = path.join(uploadsDir, safeName);
 
     await writeFile(filePath, buffer);
