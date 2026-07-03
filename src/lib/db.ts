@@ -153,10 +153,9 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "审核通过，店铺上线", assignee: "" },
   ];
   if (subServiceType === "lazada") return [
-    { name: "确认客户为法人（必须）", assignee: "Bam" },
-    { name: "收集资料（公司证书+银行账户+PP20）", assignee: "Bam" },
-    { name: "提交Lazada系统", assignee: "" },
-    { name: "商品需有FDA/TISI认证（检查）", assignee: "" },
+    { name: "Bam收集客户资料（公司证书不超过6个月+PP20+公司银行账户+法人护照，全部文件法人蓝笔签名+盖章，电话号码+邮箱密码。电器类必须提供自有TISI认证，不能挂靠别人）", assignee: "Bam" },
+    { name: "提交公司资料和商标资料给平台审核（所有文件提交Lazada审核系统，5-7个工作日）", assignee: "" },
+    { name: "添加仓库地址（以DBD泰国商务发展厅登记信息为准）", assignee: "" },
     { name: "店铺上线", assignee: "" },
   ];
 

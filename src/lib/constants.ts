@@ -260,15 +260,14 @@ export const mallTiktokTimes: Record<number, string> = {
 };
 
 export const mallLazadaDocs: Record<number, string[]> = {
-  1: [],
-  2: ["公司证书", "泰国银行账户", "PP20"],
-  3: [],
-  4: ["FDA/TISI认证"],
-  5: [],
+  1: ["公司证书（不超过6个月）", "PP20", "公司银行账户", "法人护照", "电话号码", "邮箱密码", "电器类：自有TISI认证"],
+  2: ["全套公司文件", "商标资料"],
+  3: ["DBD登记仓库地址", "仓库现场照片"],
+  4: [],
 };
 
 export const mallLazadaTimes: Record<number, string> = {
-  1: "1天", 2: "2天", 3: "3-5天", 4: "1天", 5: "1天",
+  1: "1-2天", 2: "5-7个工作日", 3: "1-2天", 4: "1天",
 };
 
 export const mallSubServices = [
