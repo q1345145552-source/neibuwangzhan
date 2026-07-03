@@ -231,19 +231,18 @@ export const fdaSubServices = [
 
 /* ── Mall开店 ── */
 export const mallShopeeDocs: Record<number, string[]> = {
-  1: ["公司证书（3-6个月内）", "泰国银行账户", "PP20", "TikTok/Lazada Mall链接"],
-  2: [],
-  3: [],
+  1: ["公司证书（不超过6个月）", "法人护照", "商标文件", "PP20", "银行账号", "TK Mall链接", "LazMall链接", "所有文件蓝笔签名+盖章"],
+  2: ["产品图片", "产品视频"],
+  3: ["公司邮箱", "公司电话", "公司文件", "商标文件", "Mall店链接"],
   4: [],
-  5: [],
+  5: ["店铺账号密码", "PP20", "合同（泰文+英文各一份）", "E-Tax测试（80分以上）"],
   6: [],
-  7: [],
+  7: ["付款凭证截图"],
   8: [],
-  9: [],
 };
 
 export const mallShopeeTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "1-2天", 4: "1-2天", 5: "3天", 6: "15天", 7: "1天", 8: "1天", 9: "1天",
+  1: "1-2天", 2: "1天", 3: "1天", 4: "1-3天", 5: "5-7个工作日", 6: "15个工作日", 7: "1天", 8: "1天",
 };
 
 export const mallTiktokDocs: Record<number, string[]> = {
