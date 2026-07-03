@@ -207,6 +207,7 @@ function initTables(database: Database.Database) {
       description TEXT DEFAULT '',
       total_amount REAL DEFAULT 0,
       currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB')),
+      trademark_name TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -315,6 +316,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE certificates ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
+  try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
 }
 
 /* ── 种子数据 ── */

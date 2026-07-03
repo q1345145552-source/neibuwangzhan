@@ -27,6 +27,7 @@ export default function NewOrderPage() {
     total_amount: "",
     currency: "CNY",
     sub_service_type: "",
+    trademark_name: "",
   });
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function NewOrderPage() {
           total_amount: Number(form.total_amount) || 0,
           currency: form.currency,
           sub_service_type: form.sub_service_type,
+          trademark_name: form.business_type_id === "2" ? form.trademark_name : "",
         }),
       });
       const data = await res.json();
@@ -108,6 +110,12 @@ export default function NewOrderPage() {
             <Label htmlFor="customer_name" className="text-sm font-medium">客户名称</Label>
             <Input id="customer_name" name="customer_name" value={form.customer_name} onChange={handleChange} required className="h-10" placeholder="公司全称" />
           </div>
+          {form.business_type_id === "2" && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="trademark_name" className="text-sm font-medium">商标名称</Label>
+            <Input id="trademark_name" name="trademark_name" value={form.trademark_name} onChange={handleChange} className="h-10" placeholder="输入商标名称" />
+          </div>
+          )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="responsible_person" className="text-sm font-medium">负责人</Label>
             <select id="responsible_person" name="responsible_person" value={form.responsible_person} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">

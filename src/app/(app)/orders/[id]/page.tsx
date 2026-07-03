@@ -264,6 +264,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       address_type: order.address_type,
       monthly_rent: order.monthly_rent,
       currency: order.currency || "CNY",
+      trademark_name: order.trademark_name || "",
     });
     setEditingOrder(true);
   };
@@ -376,6 +377,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <label className="text-xs text-[var(--muted-foreground)]">客户名</label>
                   <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                 </div>
+                {order.business_type_id === 2 && (
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">商标名称</label>
+                  <input type="text" value={editFields.trademark_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, trademark_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                </div>
+                )}
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">业务线</label>
                   <select value={editFields.business_type_id || ""} onChange={(e) => setEditFields(prev => ({ ...prev, business_type_id: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
@@ -404,6 +411,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             ) : (
               <dl className="grid gap-4 sm:grid-cols-2">
                 <div><dt className="text-xs text-[var(--muted-foreground)]">客户</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.customer_name}</dd></div>
+                {order.business_type_id === 2 && order.trademark_name && <div><dt className="text-xs text-[var(--muted-foreground)]">商标名称</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.trademark_name}</dd></div>}
                 <div><dt className="text-xs text-[var(--muted-foreground)]">负责人</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.responsible_person || "—"}</dd></div>
                 <div><dt className="text-xs text-[var(--muted-foreground)]">金额</dt><dd className="mt-1 text-sm font-mono text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</dd></div>
                 <div><dt className="text-xs text-[var(--muted-foreground)]">创建日期</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{toThaiTime(order.created_at)}</dd></div>

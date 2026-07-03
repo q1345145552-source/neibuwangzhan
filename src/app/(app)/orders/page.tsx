@@ -63,7 +63,8 @@ export default function OrdersPage() {
   const filtered = search
     ? orders.filter((o) =>
         o.id.toLowerCase().includes(search.toLowerCase()) ||
-        o.customer_name.toLowerCase().includes(search.toLowerCase())
+        o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+        (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
       )
     : orders;
 
@@ -119,6 +120,7 @@ export default function OrdersPage() {
           <thead>
             <tr className="border-b border-[var(--border)]">
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">订单号</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">商标名称</th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">客户</th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">负责人</th>
               <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)] tracking-wide" aria-sort={sortField === "total_amount" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
@@ -141,6 +143,7 @@ export default function OrdersPage() {
                 <td className="py-3 px-4">
                   <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
                 </td>
+                <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>
                 <td className="py-3 px-4 max-md:hidden">
                   <div className="font-medium text-[var(--foreground)]">{order.customer_name}</div>
                 </td>

@@ -10,6 +10,7 @@ export interface Order {
   description: string;
   total_amount: number;
   currency?: string;
+  trademark_name?: string;
   created_at: string;
   updated_at: string;
   steps?: OrderStep[];
@@ -67,6 +68,7 @@ export interface Finance {
   slip_number?: string;
   slip_file?: string;
   currency?: string;
+  trademark_name?: string;
   created_at: string;
 }
 
@@ -146,6 +148,7 @@ export async function createOrder(data: {
   address_type?: string;
   monthly_rent?: number;
   currency?: string;
+  trademark_name?: string;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -156,7 +159,7 @@ export async function createOrder(data: {
   return res.json() as Promise<Order>;
 }
 
-export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string }>) {
+export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string }>) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

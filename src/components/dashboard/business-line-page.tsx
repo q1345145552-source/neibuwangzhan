@@ -58,7 +58,8 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
   const filteredOrders = search
     ? orders.filter((o) =>
         o.id.toLowerCase().includes(search.toLowerCase()) ||
-        o.customer_name.toLowerCase().includes(search.toLowerCase())
+        o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+        (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
       )
     : orders;
 
@@ -118,6 +119,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">订单号</th>
+                {businessKey === "商标" && <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">商标名称</th>}
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">客户</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">负责人</th>
                 <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)] tracking-wide">金额</th>
@@ -131,6 +133,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
                   <td className="py-3 px-4">
                     <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
                   </td>
+                  {businessKey === "商标" && <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>}
                   <td className="py-3 px-4 max-md:hidden"><div className="font-medium text-[var(--foreground)]">{order.customer_name}</div></td>
                   <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.responsible_person}</td>
                   <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>

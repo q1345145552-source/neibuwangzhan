@@ -51,6 +51,7 @@ export async function PATCH(
   if (body.address_type !== undefined) { fields.push("address_type = ?"); values.push(body.address_type); }
   if (body.monthly_rent !== undefined) { fields.push("monthly_rent = ?"); values.push(Number(body.monthly_rent)); }
   if (body.currency !== undefined) { fields.push("currency = ?"); values.push(body.currency || "CNY"); }
+  if (body.trademark_name !== undefined) { fields.push("trademark_name = ?"); values.push(body.trademark_name); }
 
   if (fields.length === 0) return NextResponse.json({ error: "没有要更新的字段" }, { status: 400 });
 
