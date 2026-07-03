@@ -247,15 +247,16 @@ export const mallShopeeTimes: Record<number, string> = {
 };
 
 export const mallTiktokDocs: Record<number, string[]> = {
-  1: [],
-  2: ["TM标证书 或 R标证书"],
-  3: ["Instagram账号（1万粉丝）", "产品图"],
+  1: ["企业店铺信息", "商标资料", "法人护照", "公司证书（不超过6个月）", "店铺账号密码", "其他平台店铺链接"],
+  2: ["WIPO商标信息", "TM标或R标证书"],
+  3: ["Instagram主页（粉丝>1万）", "产品图"],
   4: [],
   5: [],
+  6: [],
 };
 
 export const mallTiktokTimes: Record<number, string> = {
-  1: "1天", 2: "2天", 3: "3天", 4: "3-5天", 5: "1天",
+  1: "1-2天", 2: "1-2天", 3: "2-3天", 4: "1-2天", 5: "3-5天", 6: "1天",
 };
 
 export const mallLazadaDocs: Record<number, string[]> = {

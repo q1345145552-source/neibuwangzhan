@@ -145,9 +145,10 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
   ];
   // Mall sub-services
   if (subServiceType === "tiktok") return [
-    { name: "确认客户为法人（必须）", assignee: "Bam" },
-    { name: "品牌注册确认（TM标不可委托，R标可委托）", assignee: "Bam" },
-    { name: "准备Instagram账号（需1万粉丝+产品图）", assignee: "Pop" },
+    { name: "Bam收集客户资料（企业店铺信息+商标资料+法人护照+公司证书不超过6个月+店铺账号密码+其他平台店铺链接），如无企业店铺可代办收500元", assignee: "Bam" },
+    { name: "申请品牌认证（TikTok认WIPO商标信息，TM标只能品牌所有者提交不能授权，授权需等R标）", assignee: "Bam" },
+    { name: "准备其他平台店铺资料（Instagram主页改品牌信息+上传产品图，粉丝需超1万）", assignee: "Pop" },
+    { name: "商品添加品牌（审核通过后给商品打品牌标签，1-2个工作日）", assignee: "Bam" },
     { name: "提交TikTok审核", assignee: "" },
     { name: "审核通过，店铺上线", assignee: "" },
   ];
