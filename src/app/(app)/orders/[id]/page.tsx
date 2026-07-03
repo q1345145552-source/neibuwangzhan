@@ -268,13 +268,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const handleSaveOrder = async () => {
     if (!order) return;
     setSavingOrder(true);
+    setError("");
     try {
-      await updateOrder(id, editFields);
+      const res = await fetch(`/api/orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+        body: JSON.stringify(editFields),
+      });
+      const data = await res.json();
+      console.log("[保存订单] 响应:", res.status, data);
+      if (!res.ok) throw new Error(data.error || data.message || `服务器错误 ${res.status}`);
       setEditingOrder(false);
       reload();
-    } catch (err) {
+    } catch (err: any) {
       console.error("保存订单失败:", err);
-      setError("保存失败");
+      setError(err.message || "保存失败");
     } finally {
       setSavingOrder(false);
     }
