@@ -18,3 +18,8 @@ export function toThaiTime(utcStr: string | null | undefined): string {
   const min = String(bangkok.getUTCMinutes()).padStart(2, "0");
   return `${y}-${m}-${day} ${h}:${min}`;
 }
+
+export function formatCurrency(amount: number | undefined | null, currency?: string): string {
+  const sym = currency === "THB" ? "฿" : "¥";
+  return `${sym}${(amount ?? 0).toLocaleString()}`;
+}

@@ -206,6 +206,7 @@ function initTables(database: Database.Database) {
       responsible_person TEXT DEFAULT '',
       description TEXT DEFAULT '',
       total_amount REAL DEFAULT 0,
+      currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB')),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

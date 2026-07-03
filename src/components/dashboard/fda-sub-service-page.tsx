@@ -8,7 +8,7 @@ import { fetchOrders } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order } from "@/lib/api";
 import { servicePrices } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 interface Props {
   title: string;
@@ -70,7 +70,7 @@ export function FdaSubServicePage({ title, description, subServiceType }: Props)
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-5 py-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <span className="text-xs text-[var(--muted-foreground)]"><DollarSign className="inline size-3 text-[var(--warning)]" /> 总收入</span>
-              <p className="font-mono text-lg font-semibold text-[var(--foreground)]">¥{stats.totalAmount.toLocaleString()}</p>
+              <p className="font-mono text-lg font-semibold text-[var(--foreground)]">{formatCurrency(stats.totalAmount)}</p>
             </div>
           </div>
           <p className="text-xs text-[var(--muted-foreground)]">本月新增 <strong className="text-[var(--foreground)]">{stats.thisMonth}</strong> 单</p>
@@ -102,7 +102,7 @@ export function FdaSubServicePage({ title, description, subServiceType }: Props)
               <tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
                 <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link></td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td>
-                <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">¥{o.total_amount.toLocaleString()}</td>
+                <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">{formatCurrency(o.total_amount, o.currency)}</td>
                 <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span></td>
               </tr>
             ))}

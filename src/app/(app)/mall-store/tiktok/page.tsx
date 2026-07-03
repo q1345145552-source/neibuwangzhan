@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { fetchOrders } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export default function TikTokMallPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -37,7 +37,7 @@ export default function TikTokMallPage() {
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
-          <tbody>{orders.map(o => (<tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]"><td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link></td><td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td><td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">¥{o.total_amount.toLocaleString()}</td><td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span></td></tr>))}</tbody>
+          <tbody>{orders.map(o => (<tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]"><td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link></td><td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td><td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">{formatCurrency(o.total_amount, o.currency)}</td><td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span></td></tr>))}</tbody>
         </table>
         {orders.length === 0 && <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无TikTok Mall订单</div>}
       </div>

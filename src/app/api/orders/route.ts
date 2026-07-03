@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const db = getDb();
 
   const body = await req.json();
-  const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent } = body;
+  const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent, currency } = body;
 
   if (!customer_name || !business_type_id) {
     return NextResponse.json({ error: "请填写客户名和业务线" }, { status: 400 });
@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
 
   const insertAll = db.transaction(() => {
     db.prepare(
-      "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?)"
-    ).run(id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, now, now);
+      "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, currency, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?)"
+    ).run(id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, currency || "CNY", now, now);
 
     const steps = getStepsWithAddressType(Number(business_type_id), ssType, address_type);
     const insertStep = db.prepare(

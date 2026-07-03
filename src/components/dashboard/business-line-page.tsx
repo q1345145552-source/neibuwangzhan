@@ -6,7 +6,7 @@ import { Plus, FileText, ClipboardList, Search, ArrowLeft } from "lucide-react";
 import { fetchOrders, fetchBusinessTypes } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 
 interface BusinessLinePageProps {
   businessKey: string;
@@ -101,7 +101,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
             <span><span className="text-[var(--success)]">●</span> 已完成 <strong className="font-mono tabular-nums">{stats.completed}</strong></span>
             {stats.pending > 0 && <span><span className="text-[var(--warning)]">◉</span> 待处理 <strong className="font-mono tabular-nums">{stats.pending}</strong></span>}
           </div>
-          <span className="ml-auto text-sm text-[var(--muted-foreground)]">总额 <strong className="font-mono tabular-nums text-[var(--foreground)]">¥{stats.totalAmount.toLocaleString()}</strong></span>
+          <span className="ml-auto text-sm text-[var(--muted-foreground)]">总额 <strong className="font-mono tabular-nums text-[var(--foreground)]">{formatCurrency(stats.totalAmount)}</strong></span>
         </div>
       </div>
 
@@ -133,7 +133,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
                   </td>
                   <td className="py-3 px-4 max-md:hidden"><div className="font-medium text-[var(--foreground)]">{order.customer_name}</div></td>
                   <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.responsible_person}</td>
-                  <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">¥{order.total_amount.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>
                   <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
                   <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span></td>
                 </tr>

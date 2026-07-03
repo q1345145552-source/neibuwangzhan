@@ -25,6 +25,7 @@ export default function NewOrderPage() {
     responsible_person: "",
     description: "",
     total_amount: "",
+    currency: "CNY",
     sub_service_type: "",
   });
 
@@ -63,6 +64,7 @@ export default function NewOrderPage() {
         responsible_person: form.responsible_person,
         description: form.description,
         total_amount: Number(form.total_amount) || 0,
+        currency: form.currency,
         sub_service_type: form.sub_service_type,
       });
       router.push("/orders");
@@ -107,8 +109,14 @@ export default function NewOrderPage() {
             </select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="total_amount" className="text-sm font-medium">预估金额 (¥)</Label>
-            <Input id="total_amount" name="total_amount" type="number" value={form.total_amount} onChange={handleChange} className="h-10" placeholder="0" />
+            <Label htmlFor="total_amount" className="text-sm font-medium">预估金额</Label>
+            <div className="flex gap-2">
+              <Input id="total_amount" name="total_amount" type="number" value={form.total_amount} onChange={handleChange} className="h-10 flex-1" placeholder="0" />
+              <select name="currency" value={form.currency} onChange={handleChange} className="h-10 w-20 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                <option value="CNY">¥ 人民币</option>
+                <option value="THB">฿ 泰铢</option>
+              </select>
+            </div>
           </div>
         </div>
 

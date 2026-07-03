@@ -10,7 +10,7 @@ import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepTimes, getStepDocs } from "@/lib/constants";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -260,6 +260,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       sub_service_type: order.sub_service_type,
       address_type: order.address_type,
       monthly_rent: order.monthly_rent,
+      currency: order.currency,
     });
     setEditingOrder(true);
   };
@@ -329,7 +330,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
               {order.address_type === "xiangtai" && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]">湘泰地址</span>}
               {order.address_type === "client" && order.business_type_id === 7 && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]">客户地址</span>}
-              <span className="text-xs text-[var(--muted-foreground)]">¥{order.total_amount.toLocaleString()}</span>
+              <span className="text-xs text-[var(--muted-foreground)]">{formatCurrency(order.total_amount, order.currency)}</span>
               <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
             </div>
           </div>
@@ -376,7 +377,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">金额</label>
-                  <input type="number" value={editFields.total_amount || 0} onChange={(e) => setEditFields(prev => ({ ...prev, total_amount: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  <div className="mt-1 flex gap-2">
+                    <input type="number" value={editFields.total_amount || 0} onChange={(e) => setEditFields(prev => ({ ...prev, total_amount: Number(e.target.value) }))} className="flex-1 h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                    <select value={editFields.currency || "CNY"} onChange={(e) => setEditFields(prev => ({ ...prev, currency: e.target.value }))} className="h-9 w-20 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                      <option value="CNY">¥ 人民币</option>
+                      <option value="THB">฿ 泰铢</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-xs text-[var(--muted-foreground)]">描述</label>
@@ -387,7 +394,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <dl className="grid gap-4 sm:grid-cols-2">
                 <div><dt className="text-xs text-[var(--muted-foreground)]">客户</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.customer_name}</dd></div>
                 <div><dt className="text-xs text-[var(--muted-foreground)]">负责人</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.responsible_person || "—"}</dd></div>
-                <div><dt className="text-xs text-[var(--muted-foreground)]">金额</dt><dd className="mt-1 text-sm font-mono text-[var(--foreground)]">¥{order.total_amount.toLocaleString()}</dd></div>
+                <div><dt className="text-xs text-[var(--muted-foreground)]">金额</dt><dd className="mt-1 text-sm font-mono text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</dd></div>
                 <div><dt className="text-xs text-[var(--muted-foreground)]">创建日期</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{toThaiTime(order.created_at)}</dd></div>
                 <div className="sm:col-span-2"><dt className="text-xs text-[var(--muted-foreground)]">描述</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{order.description || "—"}</dd></div>
               </dl>

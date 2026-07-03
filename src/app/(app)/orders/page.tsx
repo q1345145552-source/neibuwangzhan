@@ -8,7 +8,7 @@ import { fetchOrders, fetchBusinessTypes, deleteOrder } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -145,7 +145,7 @@ export default function OrdersPage() {
                   <div className="font-medium text-[var(--foreground)]">{order.customer_name}</div>
                 </td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.responsible_person}</td>
-                <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">¥{order.total_amount.toLocaleString()}</td>
+                <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>
                 <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
                 <td className="py-3 px-4">
                   <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>

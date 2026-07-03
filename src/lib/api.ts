@@ -9,6 +9,7 @@ export interface Order {
   responsible_person: string;
   description: string;
   total_amount: number;
+  currency?: string;
   created_at: string;
   updated_at: string;
   steps?: OrderStep[];
@@ -143,6 +144,7 @@ export async function createOrder(data: {
   sub_service_type?: string;
   address_type?: string;
   monthly_rent?: number;
+  currency?: string;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -153,7 +155,7 @@ export async function createOrder(data: {
   return res.json() as Promise<Order>;
 }
 
-export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number }>) {
+export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string }>) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
