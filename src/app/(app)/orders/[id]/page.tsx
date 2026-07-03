@@ -54,6 +54,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [newFinAmount, setNewFinAmount] = useState("");
   const [newFinType, setNewFinType] = useState("income");
   const [newFinCurrency, setNewFinCurrency] = useState("CNY");
+  const [exchangeRate, setExchangeRate] = useState<number>(5);
   const [newFinMethod, setNewFinMethod] = useState("");
   const [newFinSlip, setNewFinSlip] = useState("");
   const [finErrorMsg, setFinErrorMsg] = useState("");
@@ -106,6 +107,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         ]);
         if (ignore) return;
         setOrder(data);
+        if (data.currency) setNewFinCurrency(data.currency);
         const sts = data.steps || [];
         setSteps(sts);
         setDocuments(docs);
@@ -677,24 +679,35 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {sidebarTab === "finances" && (() => {
-              const totalIncome = finances.filter(f => f.type === "income").reduce((s, f) => s + f.amount, 0);
-              const totalExpense = finances.filter(f => f.type === "expense").reduce((s, f) => s + f.amount, 0);
-              const pendingPay = finances.filter(f => f.status === "pending").reduce((s, f) => s + f.amount, 0);
+              const toTHB = (amount: number, cur?: string) => cur === "CNY" ? amount * (exchangeRate || 1) : amount;
+              const totalIncomeRaw = finances.filter(f => f.type === "income").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const totalExpenseRaw = finances.filter(f => f.type === "expense").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const pendingPayRaw = finances.filter(f => f.status === "pending").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const totalIncome = Math.round(totalIncomeRaw);
+              const totalExpense = Math.round(totalExpenseRaw);
+              const pendingPay = Math.round(pendingPayRaw);
               return (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+              {/* Exchange rate input */}
+              <div className="mb-3 flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1.5">
+                <span className="text-xs text-[var(--muted-foreground)] shrink-0">汇率 1¥ =</span>
+                <input type="number" step="0.01" min="0" value={exchangeRate} onChange={(e) => setExchangeRate(Number(e.target.value) || 0)} className="w-16 text-xs font-mono bg-transparent outline-none text-[var(--foreground)]" />
+                <span className="text-xs text-[var(--muted-foreground)]">฿</span>
+                <span className="text-[0.65rem] text-[var(--muted-foreground)] ml-auto">全部折合泰铢</span>
+              </div>
               {finances.length > 0 && (
                 <div className="mb-4 grid grid-cols-3 gap-2">
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--success)]">总收入</p>
-                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">{formatCurrency(totalIncome)}</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">฿{totalIncome.toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--destructive)]">总支出</p>
-                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--destructive)]">{formatCurrency(totalExpense)}</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--destructive)]">฿{totalExpense.toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--warning)]">待付余额</p>
-                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">{formatCurrency(pendingPay)}</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">฿{pendingPay.toLocaleString()}</p>
                   </div>
                 </div>
               )}
