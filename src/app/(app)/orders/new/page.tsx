@@ -94,8 +94,8 @@ export default function NewOrderPage() {
       console.log("[创建订单] 响应:", res.status, data);
       if (!res.ok) throw new Error(data.error || `服务器错误 ${res.status}`);
       router.push("/orders");
-    } catch (err: any) {
-      setError(err.message || "创建订单失败，稍后再试");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建订单失败，稍后再试");
     } finally {
       setLoading(false);
     }

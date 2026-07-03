@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // POST /api/orders/:id/steps/:stepId/documents/mark-uploaded
@@ -6,6 +7,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; stepId: string }> }
 ) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id, stepId } = await params;
   const db = getDb();
   const body = await req.json();

@@ -4,6 +4,9 @@ import { getDb, getStepsWithAddressType, logOperation } from "@/lib/db";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const businessTypeId = searchParams.get("business_type_id");
@@ -73,10 +76,11 @@ export async function POST(req: NextRequest) {
     console.log("[POST /api/orders] 事务提交成功");
       logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
 
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as any;
+    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
     return NextResponse.json(order, { status: 201 });
-  } catch (err: any) {
-    console.error("[POST /api/orders] 错误:", err.message, err);
-    return NextResponse.json({ error: err.message || "服务器内部错误" }, { status: 500 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "服务器内部错误";
+    console.error("[POST /api/orders] 错误:", msg, err);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

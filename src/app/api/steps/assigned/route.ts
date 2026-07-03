@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const user = searchParams.get("user");
   if (!user) return NextResponse.json({ error: "缺少 user 参数" }, { status: 400 });

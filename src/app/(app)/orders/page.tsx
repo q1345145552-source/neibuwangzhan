@@ -53,9 +53,9 @@ export default function OrdersPage() {
       await deleteOrder(deleteTarget.id);
       setOrders(prev => prev.filter(o => o.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error("删除订单失败:", err);
-      setErrorMsg(err.message || "删除失败，请重试");
+      setErrorMsg(err instanceof Error ? err.message : "删除失败，请重试");
     } finally {
       setDeleting(false);
     }

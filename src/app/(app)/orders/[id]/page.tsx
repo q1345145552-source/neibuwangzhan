@@ -37,6 +37,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [deletingNote, setDeletingNote] = useState(false);
   const [editingAssigneeStepId, setEditingAssigneeStepId] = useState<number | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
 
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => {});
@@ -76,7 +77,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 编辑模式
   const [editingOrder, setEditingOrder] = useState(false);
   const [editFields, setEditFields] = useState<Partial<Order>>({});
-  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [savingOrder, setSavingOrder] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
@@ -277,9 +277,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.log("[编辑] editFields 已设置完，准备切 editingOrder = true");
       setEditingOrder(true);
       console.log("[编辑] editingOrder 已设为 true");
-    } catch (err: any) {
-      console.error("[编辑] 切编辑态失败:", err.message, err);
-      setError(err.message || "切换编辑失败");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "切换编辑失败";
+      console.error("[编辑] 切编辑态失败:", msg, err);
+      setError(msg);
     }
   };
 
@@ -298,9 +299,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       if (!res.ok) throw new Error(data.error || data.message || `服务器错误 ${res.status}`);
       setEditingOrder(false);
       reload();
-    } catch (err: any) {
+    } catch (err) {
       console.error("保存订单失败:", err);
-      setError(err.message || "保存失败");
+      setError(err instanceof Error ? err.message : "保存失败");
     } finally {
       setSavingOrder(false);
     }
@@ -313,9 +314,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       await deleteOrder(deleteTarget.id);
       router.push("/orders");
-    } catch (err: any) {
+    } catch (err) {
       console.error("删除订单失败:", err);
-      setOrderDeleteError(err.message || "删除失败，请重试");
+      setOrderDeleteError(err instanceof Error ? err.message : "删除失败，请重试");
       setDeletingOrder(false);
     }
   };
