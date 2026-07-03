@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save } from "lucide-react";
-import { fetchBusinessTypes, fetchEmployees, createOrder } from "@/lib/api";
+import { fetchBusinessTypes, fetchEmployees } from "@/lib/api";
 import type { BusinessType, Employee } from "@/lib/api";
 
 export default function NewOrderPage() {
@@ -58,18 +58,25 @@ export default function NewOrderPage() {
     if (!form.business_type_id) { setError("请选择业务线"); return; }
     setLoading(true);
     try {
-      await createOrder({
-        customer_name: form.customer_name,
-        business_type_id: Number(form.business_type_id),
-        responsible_person: form.responsible_person,
-        description: form.description,
-        total_amount: Number(form.total_amount) || 0,
-        currency: form.currency,
-        sub_service_type: form.sub_service_type,
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+        body: JSON.stringify({
+          customer_name: form.customer_name,
+          business_type_id: Number(form.business_type_id),
+          responsible_person: form.responsible_person,
+          description: form.description,
+          total_amount: Number(form.total_amount) || 0,
+          currency: form.currency,
+          sub_service_type: form.sub_service_type,
+        }),
       });
+      const data = await res.json();
+      console.log("[创建订单] 响应:", res.status, data);
+      if (!res.ok) throw new Error(data.error || `服务器错误 ${res.status}`);
       router.push("/orders");
-    } catch (err) {
-      setError("创建订单失败，稍后再试");
+    } catch (err: any) {
+      setError(err.message || "创建订单失败，稍后再试");
     } finally {
       setLoading(false);
     }

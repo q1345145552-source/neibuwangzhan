@@ -312,6 +312,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_file TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE documents ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE certificates ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
 }
 
 /* ── 种子数据 ── */
