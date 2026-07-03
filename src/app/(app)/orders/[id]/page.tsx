@@ -251,22 +251,36 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch { setError("更新失败"); }
   };
 
+  // 调试：监控 editingOrder 变化
+  useEffect(() => {
+    console.log("[调试] editingOrder 状态变化:", editingOrder, "order 存在:", !!order);
+  }, [editingOrder]);
+
   // 编辑订单
   const startEdit = () => {
-    if (!order) return;
-    setEditFields({
-      customer_name: order.customer_name,
-      business_type_id: order.business_type_id,
-      responsible_person: order.responsible_person,
-      description: order.description,
-      total_amount: order.total_amount,
-      sub_service_type: order.sub_service_type,
-      address_type: order.address_type,
-      monthly_rent: order.monthly_rent,
-      currency: order.currency || "CNY",
-      trademark_name: order.trademark_name || "",
-    });
-    setEditingOrder(true);
+    try {
+      console.log("[编辑] startEdit 被调用, order:", order?.id);
+      if (!order) { console.log("[编辑] order 为空，退出"); return; }
+      console.log("[编辑] 设置 editFields, edingOrder 当前:", editingOrder);
+      setEditFields({
+        customer_name: order.customer_name,
+        business_type_id: order.business_type_id,
+        responsible_person: order.responsible_person,
+        description: order.description,
+        total_amount: order.total_amount,
+        sub_service_type: order.sub_service_type,
+        address_type: order.address_type,
+        monthly_rent: order.monthly_rent,
+        currency: order.currency || "CNY",
+        trademark_name: order.trademark_name || "",
+      });
+      console.log("[编辑] editFields 已设置完，准备切 editingOrder = true");
+      setEditingOrder(true);
+      console.log("[编辑] editingOrder 已设为 true");
+    } catch (err: any) {
+      console.error("[编辑] 切编辑态失败:", err.message, err);
+      setError(err.message || "切换编辑失败");
+    }
   };
 
   const handleSaveOrder = async () => {
@@ -350,7 +364,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <div className="flex items-center gap-2 shrink-0">
               {!editingOrder ? (
                 <>
-                  <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
+                  <Button variant="outline" size="sm" onClick={() => { console.log("[编辑按钮] 被点击"); startEdit(); }} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
                   <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>
                 </>
               ) : (
