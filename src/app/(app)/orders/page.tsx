@@ -14,6 +14,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [businessFilter, setBusinessFilter] = useState("all");
   const [sortField, setSortField] = useState<"total_amount" | "created_at" | null>(null);
@@ -95,9 +96,24 @@ export default function OrdersPage() {
       </div>
 
       {/* Row 2: Search bar — full width */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
-        <Input placeholder="输入订单号或客户名称快速搜索..." aria-label="搜索订单" value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 pl-9 text-sm focus-visible:ring-2 focus-visible:ring-[var(--ring)]" />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+          <input
+            placeholder="输入订单号或客户名称快速搜索..."
+            aria-label="搜索订单"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") setSearch(searchInput); }}
+            className="h-10 w-full pl-9 pr-3 text-sm rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          />
+        </div>
+        <button
+          onClick={() => setSearch(searchInput)}
+          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors"
+        >
+          <Search className="size-3.5" />搜索
+        </button>
       </div>
 
       {/* Row 3: Status + business filter + sort */}

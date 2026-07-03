@@ -25,6 +25,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -110,9 +111,23 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-[var(--foreground)]">{stats.total > 0 ? `共 ${stats.total} 条订单` : "还没有订单"}</h2>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-          <input placeholder="搜索订单号或客户名称..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20" />
+        <div className="flex gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-56">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+            <input
+              placeholder="搜索订单号或客户名称..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") setSearch(searchInput); }}
+              className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+            />
+          </div>
+          <button
+            onClick={() => setSearch(searchInput)}
+            className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors"
+          >
+            <Search className="size-3" />搜索
+          </button>
         </div>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
           <table className="w-full text-sm">
