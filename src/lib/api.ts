@@ -288,6 +288,16 @@ export async function addStepNote(orderId: string, stepId: number, content: stri
   return res.json() as Promise<StepNote>;
 }
 
+export async function deleteStepNote(orderId: string, stepId: number, noteId: number) {
+  const res = await fetch(`/api/orders/${orderId}/steps/${stepId}/notes`, {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ note_id: noteId }),
+  });
+  if (!res.ok) throw new Error("删除备注失败");
+  return res.json();
+}
+
 export async function fetchStepDocuments(orderId: string, stepId: number) {
   const res = await fetch(`/api/orders/${orderId}/steps/${stepId}/documents`, { headers: authHeaders() });
   if (!res.ok) throw new Error("获取文档清单失败");

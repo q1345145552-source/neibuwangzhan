@@ -29,3 +29,22 @@ export async function POST(
   const note = db.prepare("SELECT * FROM step_notes WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(note, { status: 201 });
 }
+
+// DELETE /api/orders/:id/steps/:stepId/notes
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; stepId: string }> }
+) {
+  const { id } = await params;
+  const db = getDb();
+  const body = await req.json();
+  const { note_id } = body;
+
+  if (!note_id) return NextResponse.json({ error: "缺少 note_id" }, { status: 400 });
+
+  const existing = db.prepare("SELECT * FROM step_notes WHERE id = ? AND order_id = ?").get(note_id, id);
+  if (!existing) return NextResponse.json({ error: "备注不存在" }, { status: 404 });
+
+  db.prepare("DELETE FROM step_notes WHERE id = ?").run(note_id);
+  return NextResponse.json({ success: true });
+}

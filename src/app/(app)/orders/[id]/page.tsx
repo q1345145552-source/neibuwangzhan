@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
+import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
@@ -33,6 +33,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
   const [newNotes, setNewNotes] = useState<Record<number, string>>({});
   const [noteErrorMsg, setNoteErrorMsg] = useState<Record<number, string>>({});
+  const [deleteNoteTarget, setDeleteNoteTarget] = useState<{stepId:number, noteId:number, content:string} | null>(null);
+  const [deletingNote, setDeletingNote] = useState(false);
   const [editingAssigneeStepId, setEditingAssigneeStepId] = useState<number | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
 
@@ -143,6 +145,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     setNewNotes((prev) => ({ ...prev, [stepId]: "" }));
     const notes = await fetchStepNotes(id, stepId);
     setStepNotes((prev) => ({ ...prev, [stepId]: notes }));
+  };
+
+  const handleDeleteNote = async () => {
+    if (!deleteNoteTarget) return;
+    setDeletingNote(true);
+    try {
+      await deleteStepNote(id, deleteNoteTarget.stepId, deleteNoteTarget.noteId);
+      const notes = await fetchStepNotes(id, deleteNoteTarget.stepId);
+      setStepNotes((prev) => ({ ...prev, [deleteNoteTarget.stepId]: notes }));
+      setDeleteNoteTarget(null);
+    } catch (err) {
+      console.error("删除备注失败:", err);
+    } finally {
+      setDeletingNote(false);
+    }
   };
 
   const handleMarkUploaded = async (stepId: number, docId: number) => {
@@ -584,7 +601,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 <ul className="space-y-1.5 mb-2">
                                   {notes.map((n) => (
                                     <li key={n.id} className="rounded bg-[var(--muted)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
-                                      <p>{n.content}</p>
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="flex-1">{n.content}</p>
+                                        {!isClient && (
+                                          <button onClick={() => setDeleteNoteTarget({stepId: step.id, noteId: n.id, content: n.content})} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除备注"><Trash2 className="size-3" /></button>
+                                        )}
+                                      </div>
                                       <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{n.created_by} · {toThaiTime(n.created_at)}</p>
                                     </li>
                                   ))}
@@ -867,6 +889,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
+
+      {/* 删除备注确认弹窗 */}
+      {deleteNoteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteNoteTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除备注</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">确定要删除这条备注吗？此操作不可恢复。</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteNoteTarget(null)} disabled={deletingNote} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleDeleteNote} disabled={deletingNote} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deletingNote ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image preview overlay */}
       {previewUrl && (
