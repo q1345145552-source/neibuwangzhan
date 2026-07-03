@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, ArrowLeft } from "lucide-react";
 import { fetchOrders } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 
 export default function TikTokMallPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,15 +27,20 @@ export default function TikTokMallPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>TikTok Mall</h1>
-        <p className="mt-1.5 text-sm text-[var(--muted-foreground)] leading-relaxed">TikTok Mall要求法人申请，TM标不可委托（只能商标所有人提交），R标可委托给店铺。Instagram账号需1万粉丝，不够的话Pop帮忙买粉。</p>
+      <div className="flex items-center gap-2">
+        <button onClick={() => router.back()} className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" aria-label="返回"><ArrowLeft className="size-4" /></button>
+        <div>
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>TikTok Mall</h1>
+          <p className="mt-1.5 text-sm text-[var(--muted-foreground)] leading-relaxed">TikTok Mall要求法人申请，TM标不可委托（只能商标所有人提交），R标可委托给店铺。Instagram账号需1万粉丝，不够的话Pop帮忙买粉。</p>
+        </div>
       </div>
+
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"><span className="text-xs text-[var(--muted-foreground)]">总订单</span><p className="font-mono text-2xl font-semibold text-[var(--foreground)]">{stats.total}</p></div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"><span className="text-xs text-[var(--muted-foreground)]">进行中</span><p className="font-mono text-2xl font-semibold text-[var(--info)]">{stats.inProgress}</p></div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"><span className="text-xs text-[var(--muted-foreground)]">已完成</span><p className="font-mono text-2xl font-semibold text-[var(--success)]">{stats.completed}</p></div>
       </div>
+
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
@@ -41,6 +48,7 @@ export default function TikTokMallPage() {
         </table>
         {orders.length === 0 && <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无TikTok Mall订单</div>}
       </div>
+
       <Link href="/orders/new" className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)]"><Plus className="size-3.5" />新建TikTok Mall订单</Link>
     </div>
   );

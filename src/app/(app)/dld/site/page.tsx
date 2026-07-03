@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, ArrowLeft } from "lucide-react";
 import { fetchOrders } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 
 export default function DldSitePage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,11 +27,14 @@ export default function DldSitePage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>场地确认</h1>
-        <p className="mt-1.5 text-sm text-[var(--muted-foreground)] leading-relaxed">
-          DLD场地确认——存储和进口位置要分开，得有货架和合规标识。官员会上门检查，30天内安排。暂无专人负责，可接单但不分配。
-        </p>
+      <div className="flex items-center gap-2">
+        <button onClick={() => router.back()} className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" aria-label="返回"><ArrowLeft className="size-4" /></button>
+        <div>
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>场地确认</h1>
+          <p className="mt-1.5 text-sm text-[var(--muted-foreground)] leading-relaxed">
+            DLD场地确认——存储和进口位置要分开，得有货架和合规标识。官员会上门检查，30天内安排。暂无专人负责，可接单但不分配。
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
