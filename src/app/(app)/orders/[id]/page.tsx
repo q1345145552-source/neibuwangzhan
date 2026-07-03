@@ -260,7 +260,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       sub_service_type: order.sub_service_type,
       address_type: order.address_type,
       monthly_rent: order.monthly_rent,
-      currency: order.currency,
+      currency: order.currency || "CNY",
     });
     setEditingOrder(true);
   };

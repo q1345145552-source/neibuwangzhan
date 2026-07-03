@@ -49,7 +49,7 @@ export async function PATCH(
   if (body.sub_service_type !== undefined) { fields.push("sub_service_type = ?"); values.push(body.sub_service_type); }
   if (body.address_type !== undefined) { fields.push("address_type = ?"); values.push(body.address_type); }
   if (body.monthly_rent !== undefined) { fields.push("monthly_rent = ?"); values.push(Number(body.monthly_rent)); }
-  if (body.currency !== undefined) { fields.push("currency = ?"); values.push(body.currency); }
+  if (body.currency !== undefined) { fields.push("currency = ?"); values.push(body.currency || "CNY"); }
 
   if (fields.length === 0) return NextResponse.json({ error: "没有要更新的字段" }, { status: 400 });
 
