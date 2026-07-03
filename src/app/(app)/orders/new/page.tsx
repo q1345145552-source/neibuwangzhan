@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save } from "lucide-react";
 import { fetchBusinessTypes, fetchEmployees } from "@/lib/api";
+import { subServices } from "@/lib/constants";
 import type { BusinessType, Employee } from "@/lib/api";
 
 export default function NewOrderPage() {
@@ -30,6 +31,8 @@ export default function NewOrderPage() {
     trademark_name: "",
   });
 
+  const availableSubServices = subServices[Number(form.business_type_id)] || [];
+
   useEffect(() => {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => setError("加载业务线失败"));
     fetchEmployees().then(setEmployees).catch(() => {});
@@ -49,7 +52,21 @@ export default function NewOrderPage() {
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      // 切换业务线时，清空子类型（除非从 URL 自动填充）
+      if (name === "business_type_id" && value !== prev.business_type_id) {
+        const urlSub = searchParams.get("sub");
+        const newSubs = subServices[Number(value)] || [];
+        if (urlSub && newSubs.some(s => s.key === urlSub)) {
+          next.sub_service_type = urlSub;
+        } else {
+          next.sub_service_type = "";
+        }
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,6 +123,15 @@ export default function NewOrderPage() {
               {businessTypes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
+          {availableSubServices.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="sub_service_type" className="text-sm font-medium">子类型</Label>
+            <select id="sub_service_type" name="sub_service_type" value={form.sub_service_type} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+              <option value="">请选择子类型</option>
+              {availableSubServices.map((s: { key: string; label: string }) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </div>
+          )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="customer_name" className="text-sm font-medium">客户名称</Label>
             <Input id="customer_name" name="customer_name" value={form.customer_name} onChange={handleChange} required className="h-10" placeholder="公司全称" />

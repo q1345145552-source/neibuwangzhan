@@ -380,7 +380,7 @@ export const stepTimeEstimates: Record<number, Record<number, string>> = {
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {
-  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 9: [],
+  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [],
 };
 
 
