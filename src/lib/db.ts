@@ -18,6 +18,13 @@ export function getDb(): Database.Database {
   return db;
 }
 
+export function logOperation(actor: string, action: string, targetType: string, targetId: string, detail?: string) {
+  try {
+    const d = getDb();
+    d.prepare("INSERT INTO audit_logs (actor, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)").run(actor, action, targetType, targetId, detail || "");
+  } catch {}
+}
+
 /* ── 业务线步骤模板 ── */
 
 const businessSteps: Record<number, StepTemplate[]> = {
@@ -303,6 +310,18 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor TEXT DEFAULT '',
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT DEFAULT '',
+      detail TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // Migrations for existing databases
   try { database.exec("ALTER TABLE finances ADD COLUMN payment_method TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_number TEXT DEFAULT ''"); } catch {}
@@ -316,6 +335,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
+  try { database.exec("CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT DEFAULT '', action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT DEFAULT '', detail TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
 }
 
 /* ── 种子数据 ── */

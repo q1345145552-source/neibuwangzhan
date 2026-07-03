@@ -43,3 +43,7 @@ data.db*
 !.gitkeep
 public/uploads/*
 !public/uploads/.gitkeep
+
+# backups
+backups/
+uploads/

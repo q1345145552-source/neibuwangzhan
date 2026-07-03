@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: Request,
@@ -24,7 +24,8 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO certificates (order_id, certificate_number, product_name, issue_date, expiry_date, status, notes, file_url) VALUES (?, ?, ?, ?, ?, 'valid', ?, ?)"
   ).run(id, certificate_number, product_name || "", issue_date || "", expiry_date || "", notes || "", file_url || "");
-  const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(result.lastInsertRowid);
+  const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(result.lastInsertRowid) as { id: number };
+  logOperation("系统", "添加证书", "certificate", String(cert.id), `订单:${id}`);
   return NextResponse.json(cert, { status: 201 });
 }
 
@@ -82,5 +83,6 @@ export async function DELETE(
   if (!existing) return NextResponse.json({ error: "证书不存在" }, { status: 404 });
 
   db.prepare("DELETE FROM certificates WHERE id = ?").run(cert_id);
+  logOperation("系统", "删除证书", "certificate", String(cert_id), `订单:${id}`);
   return NextResponse.json({ success: true });
 }

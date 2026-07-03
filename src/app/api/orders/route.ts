@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb, getStepsWithAddressType } from "@/lib/db";
+import { getDb, getStepsWithAddressType, logOperation } from "@/lib/db";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
 
     insertAll();
     console.log("[POST /api/orders] 事务提交成功");
+      logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as any;
     return NextResponse.json(order, { status: 201 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
   ).run(id, title, description || "", assignee || "", priority || "medium", business_line || "", deadline || "");
 
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
-  return NextResponse.json(task, { status: 201 });
+  logOperation(assignee || "系统", "创建任务", "task", id);
+    return NextResponse.json(task, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {

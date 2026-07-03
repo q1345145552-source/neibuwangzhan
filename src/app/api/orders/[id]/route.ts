@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/orders/:id
 export async function GET(
@@ -64,6 +64,7 @@ export async function PATCH(
   console.log("[PATCH /api/orders/" + id + "] values:", JSON.stringify(values));
   db.prepare(sql).run(...values);
   console.log("[PATCH /api/orders/" + id + "] 更新成功");
+  logOperation(auth.name, "修改订单", "order", id, `${fields.join(",")}`);
 
   const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
   return NextResponse.json(updated);
@@ -95,5 +96,6 @@ export async function DELETE(
     db.prepare("DELETE FROM orders WHERE id = ?").run(id);
   })();
 
+  logOperation(auth.name, "删除订单", "order", id);
   return NextResponse.json({ success: true });
 }

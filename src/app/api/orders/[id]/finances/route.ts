@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: Request,
@@ -28,7 +28,8 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO finances (order_id, type, amount, status, description, payment_method, slip_number, slip_file, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(id, type, amount, status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
-  const fin = db.prepare("SELECT * FROM finances WHERE id = ?").get(result.lastInsertRowid);
+  const fin = db.prepare("SELECT * FROM finances WHERE id = ?").get(result.lastInsertRowid) as { id: number };
+  logOperation(auth.name, "添加费用", "finance", String(fin.id), `订单:${id} 类型:${type}`);
   return NextResponse.json(fin, { status: 201 });
 }
 
@@ -86,5 +87,6 @@ export async function DELETE(
   if (!existing) return NextResponse.json({ error: "费用记录不存在" }, { status: 404 });
 
   db.prepare("DELETE FROM finances WHERE id = ?").run(finance_id);
+  logOperation(auth.name, "删除费用", "finance", String(finance_id), `订单:${id}`);
   return NextResponse.json({ success: true });
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: Request,
@@ -26,7 +26,8 @@ export async function POST(
     "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).run(id, name, file_type || "", docStatus, direction || "client_to_us", uploaded_by || "", file_url || "");
   const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
-  return NextResponse.json(doc, { status: 201 });
+  logOperation(uploaded_by || "系统", "添加文档", "document", id);
+    return NextResponse.json(doc, { status: 201 });
 }
 
 export async function DELETE(
@@ -44,5 +45,6 @@ export async function DELETE(
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
 
   db.prepare("DELETE FROM documents WHERE id = ?").run(document_id);
+  logOperation("系统", "删除文档", "document", String(document_id), `订单:${id}`);
   return NextResponse.json({ success: true });
 }

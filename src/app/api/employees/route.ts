@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET() {
   const db = getDb();
@@ -21,8 +21,9 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO employees (name, email, role, password) VALUES (?, ?, ?, ?)"
   ).run(name, email, role || "employee", password || "123456");
-  const emp = db.prepare("SELECT id, name, email, role FROM employees WHERE id = ?").get(result.lastInsertRowid);
-  return NextResponse.json(emp, { status: 201 });
+  const emp = db.prepare("SELECT id, name, email, role FROM employees WHERE id = ?").get(result.lastInsertRowid) as { id: number; name: string; email: string; role: string };
+  logOperation(auth.name, "添加员工", "employee", String(emp.id));
+    return NextResponse.json(emp, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {
