@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { Plus, FileText, ClipboardList, Search, ArrowLeft } from "lucide-react";
 import { fetchOrders, fetchBusinessTypes } from "@/lib/api";
@@ -25,7 +25,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [searchInput, setSearchInput] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -115,15 +115,14 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
           <div className="relative flex-1 sm:w-56">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
             <input
+              ref={searchInputRef}
               placeholder="搜索订单号或客户名称..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") setSearch(searchInput); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInputRef.current?.value || ""); } }}
               className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
             />
           </div>
           <button
-            onClick={() => setSearch(searchInput)}
+            onClick={() => setSearch(searchInputRef.current?.value || "")}
             className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors"
           >
             <Search className="size-3" />搜索
