@@ -22,12 +22,12 @@ export async function POST(
   const { id } = await params;
   const db = getDb();
   const body = await req.json();
-  const { type, amount, description, payment_method, slip_number, slip_file, status } = body;
+  const { type, amount, description, payment_method, slip_number, slip_file, status, currency } = body;
   if (!type || !amount) return NextResponse.json({ error: "请提供类型和金额" }, { status: 400 });
 
   const result = db.prepare(
-    "INSERT INTO finances (order_id, type, amount, status, description, payment_method, slip_number, slip_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, type, amount, status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "");
+    "INSERT INTO finances (order_id, type, amount, status, description, payment_method, slip_number, slip_file, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, type, amount, status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
   const fin = db.prepare("SELECT * FROM finances WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(fin, { status: 201 });
 }
@@ -42,7 +42,7 @@ export async function PATCH(
   const { id } = await params;
   const db = getDb();
   const body = await req.json();
-  const { finance_id, type, amount, description, payment_method, slip_number, slip_file, status } = body;
+  const { finance_id, type, amount, description, payment_method, slip_number, slip_file, status, currency } = body;
 
   if (!finance_id) return NextResponse.json({ error: "缺少 finance_id" }, { status: 400 });
 
@@ -58,6 +58,7 @@ export async function PATCH(
   if (slip_number !== undefined) { fields.push("slip_number = ?"); values.push(slip_number); }
   if (slip_file !== undefined) { fields.push("slip_file = ?"); values.push(slip_file); }
   if (status !== undefined) { fields.push("status = ?"); values.push(status); }
+  if (currency !== undefined) { fields.push("currency = ?"); values.push(currency || "CNY"); }
 
   if (fields.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
 

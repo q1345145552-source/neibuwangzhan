@@ -250,6 +250,7 @@ function initTables(database: Database.Database) {
       payment_method TEXT DEFAULT '',
       slip_number TEXT DEFAULT '',
       slip_file TEXT DEFAULT '',
+      currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB')),
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -313,6 +314,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE documents ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE certificates ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
+  try { database.exec("ALTER TABLE finances ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
 }
 
 /* ── 种子数据 ── */

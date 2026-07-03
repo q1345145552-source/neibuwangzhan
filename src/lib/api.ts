@@ -66,6 +66,7 @@ export interface Finance {
   payment_method?: string;
   slip_number?: string;
   slip_file?: string;
+  currency?: string;
   created_at: string;
 }
 
@@ -244,7 +245,7 @@ export async function fetchFinances(orderId: string) {
   return res.json() as Promise<Finance[]>;
 }
 
-export async function addFinance(orderId: string, data: { type: string; amount: number; description?: string; payment_method?: string; slip_number?: string; slip_file?: string; status?: string }) {
+export async function addFinance(orderId: string, data: { type: string; amount: number; description?: string; payment_method?: string; slip_number?: string; slip_file?: string; status?: string; currency?: string }) {
   const res = await fetch(`/api/orders/${orderId}/finances`, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -254,7 +255,7 @@ export async function addFinance(orderId: string, data: { type: string; amount: 
   return res.json() as Promise<Finance>;
 }
 
-export async function updateFinance(orderId: string, financeId: number, data: Partial<{ type: string; amount: number; description: string; payment_method: string; slip_number: string; slip_file: string; status: string }>) {
+export async function updateFinance(orderId: string, financeId: number, data: Partial<{ type: string; amount: number; description: string; payment_method: string; slip_number: string; slip_file: string; status: string; currency: string }>) {
   const res = await fetch(`/api/orders/${orderId}/finances`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

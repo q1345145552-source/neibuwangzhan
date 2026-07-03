@@ -53,6 +53,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [newFinDesc, setNewFinDesc] = useState("");
   const [newFinAmount, setNewFinAmount] = useState("");
   const [newFinType, setNewFinType] = useState("income");
+  const [newFinCurrency, setNewFinCurrency] = useState("CNY");
   const [newFinMethod, setNewFinMethod] = useState("");
   const [newFinSlip, setNewFinSlip] = useState("");
   const [finErrorMsg, setFinErrorMsg] = useState("");
@@ -685,15 +686,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <div className="mb-4 grid grid-cols-3 gap-2">
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--success)]">总收入</p>
-                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">¥{totalIncome.toLocaleString()}</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">{formatCurrency(totalIncome)}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--destructive)]">总支出</p>
-                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--destructive)]">¥{totalExpense.toLocaleString()}</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--destructive)]">{formatCurrency(totalExpense)}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--warning)]">待付余额</p>
-                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">¥{pendingPay.toLocaleString()}</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">{formatCurrency(pendingPay)}</p>
                   </div>
                 </div>
               )}
@@ -714,6 +715,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               <option value="pending">待付</option>
                               <option value="cancelled">已取消</option>
                             </select>
+                            <select value={editFinanceFields.currency || f.currency || "CNY"} onChange={(e) => setEditFinanceFields(p => ({ ...p, currency: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                              <option value="CNY">¥</option>
+                              <option value="THB">฿</option>
+                            </select>
                           </div>
                           <input value={editFinanceFields.description ?? f.description ?? ""} onChange={(e) => setEditFinanceFields(p => ({ ...p, description: e.target.value }))} placeholder="描述…" className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                           <div className="flex gap-1.5">
@@ -729,7 +734,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         <>
                           <div className="flex items-center gap-2">
                             <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[0.6rem] font-medium", f.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]")}>{f.type === "income" ? "收入" : "支出"}</span>
-                            <span className="text-xs font-mono font-medium text-[var(--foreground)]">{f.type === "income" ? "+" : "-"}¥{f.amount.toLocaleString()}</span>
+                            <span className="text-xs font-mono font-medium text-[var(--foreground)]">{f.type === "income" ? "+" : "-"}{formatCurrency(f.amount, f.currency)}</span>
                             <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium ml-auto", f.status === "paid" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : f.status === "pending" ? "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]" : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{f.status === "paid" ? "已付" : f.status === "pending" ? "待付" : "已取消"}</span>
                             {!isClient && (
                               <div className="flex items-center gap-0.5">
@@ -764,16 +769,20 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <option value="income">收入</option>
                     <option value="expense">支出</option>
                   </select>
+                  <select value={newFinCurrency} onChange={(e) => setNewFinCurrency(e.target.value)} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                    <option value="CNY">¥</option>
+                    <option value="THB">฿</option>
+                  </select>
                 </div>
                 <div className="flex gap-1.5">
                   <input placeholder="付款方式（可选）" value={newFinMethod} onChange={(e) => setNewFinMethod(e.target.value)} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                   <input placeholder="流水单号（可选）" value={newFinSlip} onChange={(e) => setNewFinSlip(e.target.value)} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                   <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="上传水单">
                     <Paperclip className="size-3" />
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingFin(true); setFinFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetch("/api/upload", { method: "POST", body: form, headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` } }); if (!res.ok) throw new Error(""); const data = await res.json(); setFinSlipFile(data.url); await addFinance(id, { type: newFinType, amount: Number(newFinAmount || "0"), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: data.url, status: newFinType === "income" ? "paid" : "pending" }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("水单上传失败:", err); setFinErrorMsg("上传失败"); setFinFileName(""); } finally { setUploadingFin(false); } }} disabled={uploadingFin} />
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingFin(true); setFinFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetch("/api/upload", { method: "POST", body: form, headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` } }); if (!res.ok) throw new Error(""); const data = await res.json(); setFinSlipFile(data.url); await addFinance(id, { type: newFinType, amount: Number(newFinAmount || "0"), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: data.url, status: newFinType === "income" ? "paid" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("水单上传失败:", err); setFinErrorMsg("上传失败"); setFinFileName(""); } finally { setUploadingFin(false); } }} disabled={uploadingFin} />
                   </label>
                   {(uploadingFin || finFileName) && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px] self-center">{uploadingFin ? "上传中..." : finFileName}</span>}
-                  <button onClick={async () => { if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; } setFinErrorMsg(""); try { await addFinance(id, { type: newFinType, amount: Number(newFinAmount), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: finSlipFile, status: newFinType === "income" ? "paid" : "pending" }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("添加费用失败:", err); } }} disabled={uploadingFin} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] disabled:opacity-50">{uploadingFin ? "上传中..." : "添加"}</button>
+                  <button onClick={async () => { if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; } setFinErrorMsg(""); try { await addFinance(id, { type: newFinType, amount: Number(newFinAmount), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: finSlipFile, status: newFinType === "income" ? "paid" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("添加费用失败:", err); } }} disabled={uploadingFin} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] disabled:opacity-50">{uploadingFin ? "上传中..." : "添加"}</button>
                 </div>
                 {finErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{finErrorMsg}</p>}
               </div>
