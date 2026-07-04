@@ -129,13 +129,18 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "拿证，发给客户", assignee: "Ing" },
   ];
   if (subServiceType === "food") return [
-    { name: "Ing协调客户准备资料（工厂文件+配方+标签+工序+商标），检查文件，开票收款", assignee: "Ing" },
-    { name: "客户付款后，提交FDA咨询（官员审查约30个工作日）", assignee: "Ing" },
-    { name: "官员审查完成后按指示提交产品注册", assignee: "Ing" },
-    { name: "等待官员审核，下载FDA缴费单，上传飞书给Pop支付", assignee: "Ing" },
-    { name: "文件有误则官员说明问题，Ing协调客户修改并重新提交", assignee: "Ing" },
-    { name: "修改提交后等待审核，文件完整则收到证书", assignee: "Ing" },
-    { name: "收到证书后发送给客户", assignee: "Ing" },
+    { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
+    { name: "Ing整理资料", assignee: "Ing" },
+    { name: "把所有资料提交E-consult给官方审查", assignee: "Ing" },
+    { name: "等待官方审核（约30个工作日）", assignee: "" },
+    { name: "Ing提交资料正式注册FDA", assignee: "Ing" },
+    { name: "Pop支付备案申请费", assignee: "Pop" },
+    { name: "等待官方审核", assignee: "" },
+    { name: "如需补资料、改资料或送测，Ing协调客户处理", assignee: "Ing" },
+    { name: "Ing提交补充资料", assignee: "Ing" },
+    { name: "再次等待官方审核", assignee: "" },
+    { name: "审核通过后支付备案证书费", assignee: "Pop" },
+    { name: "拿证，发给客户", assignee: "Ing" },
   ];
   if (subServiceType === "hazard") return [
     { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
