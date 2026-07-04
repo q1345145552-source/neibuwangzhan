@@ -115,14 +115,18 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
   ];
   // FDA sub-services
   if (subServiceType === "cosmetics") return [
-    { name: "Ing协调客户准备资料+检查文件完整性+开票收款", assignee: "Ing" },
-    { name: "客户付款后，Ing在FDA系统提交注册", assignee: "Ing" },
-    { name: "下载申请费单据，上传飞书给Pop支付100泰铢", assignee: "Ing" },
-    { name: "Pop支付完成，Ing提交审批申请，等待官员审核", assignee: "Ing" },
-    { name: "审核不通过则协调客户修改文件并重新提交（1次修改机会）", assignee: "Ing" },
-    { name: "审核通过后下载缴费单，上传飞书给Pop支付认证费", assignee: "Ing" },
-    { name: "等待下发证书", assignee: "Ing" },
-    { name: "收到证书后发送给客户", assignee: "Ing" },
+    { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
+    { name: "Ing整理资料", assignee: "Ing" },
+    { name: "Ing提交资料给FDA系统", assignee: "Ing" },
+    { name: "Pop支付备案申请费100泰铢", assignee: "Pop" },
+    { name: "等待官方审核", assignee: "" },
+    { name: "如需补资料或修改，Ing协调客户修改后重新提交", assignee: "Ing" },
+    { name: "再次等待官方审核", assignee: "" },
+    { name: "如果还未通过则重新注册", assignee: "Ing" },
+    { name: "Pop再次支付备案申请费", assignee: "Pop" },
+    { name: "再次等待官方审核", assignee: "" },
+    { name: "审核通过后支付备案证书费", assignee: "Pop" },
+    { name: "拿证，发给客户", assignee: "Ing" },
   ];
   if (subServiceType === "food") return [
     { name: "Ing协调客户准备资料（工厂文件+配方+标签+工序+商标），检查文件，开票收款", assignee: "Ing" },
