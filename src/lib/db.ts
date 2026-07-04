@@ -138,13 +138,20 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "收到证书后发送给客户", assignee: "Ing" },
   ];
   if (subServiceType === "hazard") return [
-    { name: "Ing检查Praew之前提交被退回的文件，联系客户补齐需修改的资料", assignee: "Ing" },
-    { name: "客户准备修改文件期间，Ing协助客户修改泰语标签", assignee: "Ing" },
-    { name: "客户文件齐备后提交给官员审核（第1次）", assignee: "Ing" },
-    { name: "官员审核不通过，Ing协调客户再次修改", assignee: "Ing" },
-    { name: "提交第2次审核（最多2次，超过需重新全额缴费）", assignee: "Ing" },
-    { name: "审核通过后下载缴费单，上传飞书给Pop支付", assignee: "Ing" },
-    { name: "收到证书后发送给客户", assignee: "Ing" },
+    { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
+    { name: "Ing整理资料", assignee: "Ing" },
+    { name: "把成分信息发给官方检查", assignee: "Ing" },
+    { name: "Ing提交资料给FDA", assignee: "Ing" },
+    { name: "Pop支付备案申请费", assignee: "Pop" },
+    { name: "等待官方审核", assignee: "" },
+    { name: "如需补资料、改资料或送测，Ing协调客户处理", assignee: "Ing" },
+    { name: "Ing提交补充资料", assignee: "Ing" },
+    { name: "再次等待官方审核", assignee: "" },
+    { name: "如果还需补资料、改资料或送测，继续处理", assignee: "Ing" },
+    { name: "如果还未通过则重新注册", assignee: "Ing" },
+    { name: "再次等待官方审核", assignee: "" },
+    { name: "审核通过后支付备案证书费", assignee: "Pop" },
+    { name: "拿证，发给客户", assignee: "Ing" },
   ];
   // DLD sub-services
   if (subServiceType === "site") return [
