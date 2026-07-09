@@ -18,7 +18,9 @@ export async function GET(req: NextRequest) {
   }
   sql += " ORDER BY d.created_at DESC";
   const rows = db.prepare(sql).all(...params);
-  return NextResponse.json(rows);
+  const res = NextResponse.json(rows);
+  res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  return res;
 }
 
 export async function POST(req: NextRequest) {

@@ -127,13 +127,13 @@ export async function fetchOrders(params?: { business_type_id?: number; status?:
   if (params?.business_type_id) searchParams.set("business_type_id", String(params.business_type_id));
   if (params?.status) searchParams.set("status", params.status);
   const query = searchParams.toString();
-  const res = await fetch(`/api/orders${query ? "?" + query : ""}`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders${query ? "?" + query : ""}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取订单失败");
   return res.json() as Promise<Order[]>;
 }
 
 export async function fetchOrder(id: string) {
-  const res = await fetch(`/api/orders/${id}`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/${id}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取订单详情失败");
   return res.json() as Promise<Order & { steps: OrderStep[] }>;
 }
@@ -179,13 +179,13 @@ export async function deleteOrder(id: string) {
 }
 
 export async function fetchBusinessTypes() {
-  const res = await fetch("/api/business-types", { headers: authHeaders() });
+  const res = await fetch("/api/business-types", { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取业务线失败");
   return res.json() as Promise<BusinessType[]>;
 }
 
 export async function fetchEmployees() {
-  const res = await fetch("/api/employees", { headers: authHeaders() });
+  const res = await fetch("/api/employees", { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取员工列表失败");
   return res.json() as Promise<Employee[]>;
 }
@@ -211,13 +211,13 @@ export async function updateStep(orderId: string, stepId: number, data: { status
 }
 
 export async function fetchDashboardStats() {
-  const res = await fetch("/api/dashboard/stats", { headers: authHeaders() });
+  const res = await fetch("/api/dashboard/stats", { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取仪表盘数据失败");
   return res.json() as Promise<DashboardStats>;
 }
 
 export async function fetchDocuments(orderId: string) {
-  const res = await fetch(`/api/orders/${orderId}/documents`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/${orderId}/documents`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取文档失败");
   return res.json() as Promise<Document[]>;
 }
@@ -243,7 +243,7 @@ export async function deleteDocument(orderId: string, documentId: number) {
 }
 
 export async function fetchFinances(orderId: string) {
-  const res = await fetch(`/api/orders/${orderId}/finances`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/${orderId}/finances`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取费用失败");
   return res.json() as Promise<Finance[]>;
 }
@@ -279,7 +279,7 @@ export async function deleteFinance(orderId: string, financeId: number) {
 }
 
 export async function fetchStepNotes(orderId: string, stepId: number) {
-  const res = await fetch(`/api/orders/${orderId}/steps/${stepId}/notes`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/${orderId}/steps/${stepId}/notes`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取备注失败");
   return res.json() as Promise<StepNote[]>;
 }
@@ -305,7 +305,7 @@ export async function deleteStepNote(orderId: string, stepId: number, noteId: nu
 }
 
 export async function fetchStepDocuments(orderId: string, stepId: number) {
-  const res = await fetch(`/api/orders/${orderId}/steps/${stepId}/documents`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/${orderId}/steps/${stepId}/documents`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取文档清单失败");
   return res.json() as Promise<StepDocument[]>;
 }
@@ -321,7 +321,7 @@ export async function markStepDocumentUploaded(orderId: string, stepId: number, 
 }
 
 export async function fetchCertificates(orderId: string) {
-  const res = await fetch(`/api/orders/${orderId}/certificates`, { headers: authHeaders() });
+  const res = await fetch(`/api/orders/${orderId}/certificates`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取证书失败");
   return res.json() as Promise<Certificate[]>;
 }
@@ -391,14 +391,14 @@ export async function fetchTasks(params?: { business?: string }) {
   const searchParams = new URLSearchParams();
   if (params?.business) searchParams.set("business", params.business);
   const query = searchParams.toString();
-  const res = await fetch(`/api/tasks${query ? "?" + query : ""}`, { headers: authHeaders() });
+  const res = await fetch(`/api/tasks${query ? "?" + query : ""}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取任务失败");
   return res.json();
 }
 
 
 export async function fetchAssignedSteps(userName: string) {
-  const res = await fetch(`/api/steps/assigned?user=${encodeURIComponent(userName)}`, { headers: authHeaders() });
+  const res = await fetch(`/api/steps/assigned?user=${encodeURIComponent(userName)}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("加载失败");
   return res.json();
 }
@@ -437,7 +437,7 @@ export async function fetchAllDocuments(params?: { business?: string }) {
   const searchParams = new URLSearchParams();
   if (params?.business) searchParams.set("business", params.business);
   const query = searchParams.toString();
-  const res = await fetch(`/api/documents${query ? "?" + query : ""}`, { headers: authHeaders() });
+  const res = await fetch(`/api/documents${query ? "?" + query : ""}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取文档失败");
   return res.json();
 }
@@ -457,7 +457,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
   if (params?.type) searchParams.set("type", params.type);
   if (params?.status) searchParams.set("status", params.status);
   const query = searchParams.toString();
-  const res = await fetch(`/api/finances${query ? "?" + query : ""}`, { headers: authHeaders() });
+  const res = await fetch(`/api/finances${query ? "?" + query : ""}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取费用失败");
   return res.json();
 }
