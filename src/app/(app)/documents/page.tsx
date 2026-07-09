@@ -149,7 +149,7 @@ export default function DocumentsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input ref={fileInputRef} type="file" className="hidden" onChange={() => setUploadError("")} />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} />
           <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
             <Upload className="size-3.5" aria-hidden="true" />
             {uploading ? "上传中..." : "上传文档"}
