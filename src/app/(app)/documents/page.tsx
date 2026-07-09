@@ -66,7 +66,11 @@ export default function DocumentsPage() {
   }, []);
 
   const reload = () => {
-    fetchAllDocuments().then(setAllDocs).catch((err) => console.error("Reload docs error:", err));
+    console.log("[文档列表] 刷新文档列表...");
+    fetchAllDocuments().then((data) => {
+      console.log("[文档列表] 刷新成功, 共", data.length, "条");
+      setAllDocs(data);
+    }).catch((err) => console.error("Reload docs error:", err));
   };
 
   const handleUpload = async () => {
@@ -122,7 +126,8 @@ export default function DocumentsPage() {
       result = result.filter(
         (d) =>
           (d.name || '').toLowerCase().includes(s) ||
-          d.business_line && d.business_line.toLowerCase().includes(s) ||
+          (d.customer_name || '').toLowerCase().includes(s) ||
+          (d.business_line || '').toLowerCase().includes(s) ||
           (d.uploaded_by || d.uploadBy || "").toLowerCase().includes(s)
       );
     }
@@ -188,7 +193,7 @@ export default function DocumentsPage() {
                   </div>
                 </td>
                 <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.file_type || doc.type || ""}</td>
-                <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.business_line || doc.business_line || ""}</td>
+                <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.business_line || ""}</td>
                 <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.uploaded_by || doc.uploadBy || ""}</td>
                 <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{doc.created_at?.slice(0, 10) || doc.uploadDate || ""}</td>
                 <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{doc.size || ""}</td>

@@ -10,14 +10,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const business = searchParams.get("business");
 
-  let sql = "SELECT d.*, o.customer_name, o.business_type_id FROM documents d JOIN orders o ON d.order_id = o.id";
+  let sql = "SELECT d.*, o.customer_name, bt.name AS business_line FROM documents d LEFT JOIN orders o ON d.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
   const params: string[] = [];
   if (business) {
-    const bt = db.prepare("SELECT id FROM business_types WHERE name = ?").get(business) as { id: number } | undefined;
-    if (bt) {
-      sql += " WHERE o.business_type_id = ?";
-      params.push(String(bt.id));
-    }
+    sql += " WHERE bt.name = ?";
+    params.push(business);
   }
   sql += " ORDER BY d.created_at DESC";
   const rows = db.prepare(sql).all(...params);
