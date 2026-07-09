@@ -265,7 +265,7 @@ function initTables(database: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_id TEXT NOT NULL REFERENCES orders(id),
+      order_id TEXT DEFAULT '',
       name TEXT NOT NULL,
       file_type TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT '待审核',
@@ -362,6 +362,32 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE certificates ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
+  // Migration: make documents.order_id nullable (drop FK constraint)
+  // Only runs once: checks if order_id still has NOT NULL (notnull=1 in PRAGMA table_info)
+  try {
+    const docsCols = database.prepare("PRAGMA table_info(documents)").all() as { name: string; notnull: number }[];
+    const orderIdCol = docsCols.find(c => c.name === "order_id");
+    if (orderIdCol && orderIdCol.notnull === 1) {
+      database.exec(`
+        PRAGMA foreign_keys = OFF;
+        CREATE TABLE documents_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          order_id TEXT DEFAULT '',
+          name TEXT NOT NULL,
+          file_type TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT '待审核',
+          direction TEXT DEFAULT 'client_to_us' CHECK(direction IN ('client_to_us','us_to_client')),
+          file_url TEXT DEFAULT '',
+          uploaded_by TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO documents_new SELECT * FROM documents;
+        DROP TABLE documents;
+        ALTER TABLE documents_new RENAME TO documents;
+        PRAGMA foreign_keys = ON;
+      `);
+    }
+  } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT DEFAULT '', action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT DEFAULT '', detail TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
 }

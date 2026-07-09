@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   const result = db.prepare(
     "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url) VALUES (?, ?, ?, '已审核', 'client_to_us', ?, ?)"
-  ).run(order_id || "", name, file_type || "", auth.name, file_url || "");
+  ).run(order_id || null, name, file_type || "", auth.name, file_url || "");
   const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(doc, { status: 201 });
 }
