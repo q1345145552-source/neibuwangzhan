@@ -452,6 +452,15 @@ export async function uploadGlobalDocument(data: { name: string; file_type?: str
   return res.json();
 }
 
+export async function deleteGlobalDocument(id: number) {
+  const res = await fetch('/api/documents?id=' + id, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('删除文档失败');
+  return res.json();
+}
+
 export async function fetchAllFinances(params?: { type?: string; status?: string }) {
   const searchParams = new URLSearchParams();
   if (params?.type) searchParams.set("type", params.type);

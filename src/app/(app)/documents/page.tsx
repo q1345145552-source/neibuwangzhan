@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Upload, Download, FileText, ArrowLeft } from "lucide-react";
-import { fetchAllDocuments, uploadGlobalDocument } from "@/lib/api";
+import { Search, Upload, Download, FileText, ArrowLeft, Trash2 } from "lucide-react";
+import { fetchAllDocuments, uploadGlobalDocument, deleteGlobalDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const statusClass: Record<string, string> = {
@@ -71,6 +71,17 @@ export default function DocumentsPage() {
       console.log("[文档列表] 刷新成功, 共", data.length, "条");
       setAllDocs(data);
     }).catch((err) => console.error("Reload docs error:", err));
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("确定删除这条文档吗？")) return;
+    try {
+      await deleteGlobalDocument(id);
+      reload();
+    } catch (err) {
+      console.error("[删除文档] 失败:", err);
+      setUploadError(err instanceof Error ? err.message : "删除失败");
+    }
   };
 
   const handleUpload = async () => {
@@ -203,9 +214,14 @@ export default function DocumentsPage() {
                   </span>
                 </td>
                 <td className="py-3 px-4">
-                  <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(doc.file_url, "_blank"); else setUploadError("该文档无可下载文件"); }}>
-                    <Download className="size-3.5" aria-hidden="true" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(doc.file_url, "_blank"); else setUploadError("该文档无可下载文件"); }}>
+                      <Download className="size-3.5" aria-hidden="true" />
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => handleDelete(doc.id!)}>
+                      <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}

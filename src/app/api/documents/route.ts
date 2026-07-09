@@ -39,4 +39,16 @@ export async function POST(req: NextRequest) {
   const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(doc, { status: 201 });
 }
+export async function DELETE(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "缺少文档ID" }, { status: 400 });
+
+  const db = getDb();
+  db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+  return NextResponse.json({ success: true });
+}
