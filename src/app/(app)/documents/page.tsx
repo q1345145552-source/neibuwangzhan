@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Upload, Download, FileText, ArrowLeft } from "lucide-react";
-import { fetchAllDocuments } from "@/lib/api";
+import { fetchAllDocuments, uploadGlobalDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const statusClass: Record<string, string> = {
@@ -47,6 +47,9 @@ export default function DocumentsPage() {
   const businessFilter = searchParams.get("biz");
   const [allDocs, setAllDocs] = useState<DocRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -61,6 +64,53 @@ export default function DocumentsPage() {
     }
     load();
   }, []);
+
+  const reload = () => {
+    fetchAllDocuments().then(setAllDocs).catch((err) => console.error("Reload docs error:", err));
+  };
+
+  const handleUpload = async () => {
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      setUploadError("请选择文件");
+      return;
+    }
+    setUploading(true);
+    setUploadError("");
+    try {
+      // 1. Upload file
+      const formData = new FormData();
+      formData.append("file", file);
+      console.log("[上传文档] 开始上传文件:", file.name);
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+      console.log("[上传文档] 上传结果:", uploadRes.status, uploadData);
+      if (!uploadRes.ok) throw new Error(uploadData.error || "文件上传失败");
+
+      // 2. Create document record
+      console.log("[上传文档] 创建文档记录");
+      await uploadGlobalDocument({
+        name: file.name,
+        file_type: file.type,
+        file_url: uploadData.url,
+      });
+      console.log("[上传文档] 文档记录创建成功");
+
+      // 3. Reset and reload
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      reload();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "上传失败，请重试";
+      console.error("[上传文档] 失败:", msg, err);
+      setUploadError(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     let result = allDocs;
@@ -93,8 +143,15 @@ export default function DocumentsPage() {
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">合同、资质、报告都在这儿，别弄丢了</p>
           </div>
         </div>
-        <Button size="sm" onClick={() => console.log("上传文档")}><Upload className="size-3.5" aria-hidden="true" />上传文档</Button>
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" className="hidden" onChange={() => setUploadError("")} />
+          <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            <Upload className="size-3.5" aria-hidden="true" />
+            {uploading ? "上传中..." : "上传文档"}
+          </Button>
+        </div>
       </div>
+      {uploadError && <div role="alert" className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{uploadError}</div>}
 
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -141,7 +198,7 @@ export default function DocumentsPage() {
                   </span>
                 </td>
                 <td className="py-3 px-4">
-                  <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => console.log("下载", doc.name)}>
+                  <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(doc.file_url, "_blank"); else setUploadError("该文档无可下载文件"); }}>
                     <Download className="size-3.5" aria-hidden="true" />
                   </Button>
                 </td>

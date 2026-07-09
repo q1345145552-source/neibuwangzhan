@@ -442,6 +442,16 @@ export async function fetchAllDocuments(params?: { business?: string }) {
   return res.json();
 }
 
+export async function uploadGlobalDocument(data: { name: string; file_type?: string; file_url?: string; order_id?: string }) {
+  const res = await fetch("/api/documents", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("上传文档失败");
+  return res.json();
+}
+
 export async function fetchAllFinances(params?: { type?: string; status?: string }) {
   const searchParams = new URLSearchParams();
   if (params?.type) searchParams.set("type", params.type);
