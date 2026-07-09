@@ -1,142 +1,162 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Upload, Download, FileText, Trash2, Loader2 } from "lucide-react";
-import { fetchAllDocuments, createGlobalDocument, uploadFile, deleteGlobalDocument } from "@/lib/api";
+import { Search, Upload, Download, FileText, ArrowLeft } from "lucide-react";
+import { fetchAllDocuments, uploadGlobalDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-interface DocItem {
-  id: number;
-  order_id: string;
-  name: string;
-  file_type: string;
-  status: string;
-  uploaded_by: string;
-  file_url: string;
-  created_at: string;
-  customer_name?: string;
-  business_line_name?: string;
-}
-
 const statusClass: Record<string, string> = {
-  "已审核": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
-  "待审核": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
-  "已驳回": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
+  approved: "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
+  pending: "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
+  rejected: "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
 };
+
+const statusLabel: Record<string, string> = {
+  approved: "已审核",
+  pending: "待审核",
+  rejected: "已驳回",
+};
+
+
+interface DocRecord {
+  id?: number;
+  document_name?: string;
+  name?: string;
+  status?: string;
+  created_at?: string;
+  order_id?: string;
+  customer_name?: string;
+  business_line?: string;
+  direction?: string;
+  file_type?: string;
+  type?: string;
+  uploaded_by?: string;
+  uploadBy?: string;
+  uploadDate?: string;
+  size?: string;
+  file_url?: string;
+}
 
 export default function DocumentsPage() {
   const [search, setSearch] = useState("");
-  const [documents, setDocuments] = useState<DocItem[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const businessFilter = searchParams.get("biz");
+  const [allDocs, setAllDocs] = useState<DocRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadDocuments = async () => {
-    try {
-      setLoading(true);
-      const data = await fetchAllDocuments();
-      setDocuments(data);
-    } catch (err) {
-      console.error("加载文档列表失败:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadDocuments();
+    async function load() {
+      try {
+        const data = await fetchAllDocuments();
+        setAllDocs(data);
+      } catch (err) {
+        console.error("Docs load error:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadError("");
-    setUploading(true);
-    try {
-      const result = await uploadFile(file);
-      await createGlobalDocument({
-        name: file.name,
-        file_type: file.type || "",
-        uploaded_by: "",
-        file_url: result.url,
-      });
-      await loadDocuments();
-      setUploadError("");
-    } catch (err) {
-      console.error("上传失败:", err);
-      setUploadError(err instanceof Error ? err.message : "上传失败，请重试");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+  const reload = () => {
+    console.log("[文档列表] 刷新文档列表...");
+    fetchAllDocuments().then((data) => {
+      console.log("[文档列表] 刷新成功, 共", data.length, "条");
+      setAllDocs(data);
+    }).catch((err) => console.error("Reload docs error:", err));
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("确定要删除此文档吗？")) return;
+  const handleUpload = async () => {
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      setUploadError("请选择文件");
+      return;
+    }
+    setUploading(true);
+    setUploadError("");
     try {
-      await deleteGlobalDocument(id);
-      await loadDocuments();
+      // 1. Upload file
+      const formData = new FormData();
+      formData.append("file", file);
+      console.log("[上传文档] 开始上传文件:", file.name);
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+      console.log("[上传文档] 上传结果:", uploadRes.status, uploadData);
+      if (!uploadRes.ok) throw new Error(uploadData.error || "文件上传失败");
+
+      // 2. Create document record
+      console.log("[上传文档] 创建文档记录");
+      await uploadGlobalDocument({
+        name: file.name,
+        file_type: file.type,
+        file_url: uploadData.url,
+      });
+      console.log("[上传文档] 文档记录创建成功");
+
+      // 3. Reset and reload
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      reload();
     } catch (err) {
-      console.error("删除失败:", err);
-      alert("删除失败，请重试");
+      const msg = err instanceof Error ? err.message : "上传失败，请重试";
+      console.error("[上传文档] 失败:", msg, err);
+      setUploadError(msg);
+    } finally {
+      setUploading(false);
     }
   };
 
   const filtered = useMemo(() => {
-    if (!search) return documents;
-    const s = search.toLowerCase();
-    return documents.filter(
-      (d) =>
-        d.name.toLowerCase().includes(s) ||
-        (d.business_line_name || "").toLowerCase().includes(s) ||
-        (d.uploaded_by || "").toLowerCase().includes(s)
-    );
-  }, [search, documents]);
-
-  const formatSize = (bytes?: number) => {
-    if (!bytes) return "-";
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  };
+    let result = allDocs;
+    if (businessFilter) {
+      result = result.filter((d) => d.business_line === businessFilter);
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      result = result.filter(
+        (d) =>
+          (d.name || '').toLowerCase().includes(s) ||
+          (d.customer_name || '').toLowerCase().includes(s) ||
+          (d.business_line || '').toLowerCase().includes(s) ||
+          (d.uploaded_by || d.uploadBy || "").toLowerCase().includes(s)
+      );
+    }
+    return result;
+  }, [search, businessFilter, allDocs]);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>
-            文档管理
-          </h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">合同、资质、报告都在这儿，别弄丢了</p>
+        <div className="flex items-center gap-2">
+          {businessFilter && (
+            <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回"><ArrowLeft className="size-4" /></Button>
+          )}
+          <div>
+            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">
+              {businessFilter ? businessFilter + " · 文档" : "文档管理"}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">合同、资质、报告都在这儿，别弄丢了</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleUpload}
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.gif,.zip"
-          />
-          <Button
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <><Loader2 className="size-3.5 animate-spin" aria-hidden="true" />上传中...</>
-            ) : (
-              <><Upload className="size-3.5" aria-hidden="true" />上传文档</>
-            )}
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} />
+          <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            <Upload className="size-3.5" aria-hidden="true" />
+            {uploading ? "上传中..." : "上传文档"}
           </Button>
         </div>
       </div>
-
-      {uploadError && (
-        <p className="text-sm text-[var(--destructive)]">{uploadError}</p>
-      )}
+      {uploadError && <div role="alert" className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{uploadError}</div>}
 
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -149,69 +169,52 @@ export default function DocumentsPage() {
         />
       </div>
 
-      {loading ? (
-        <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中...</div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)]">
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">文档名称</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">类型</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">业务线</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">上传人</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-sm:hidden">日期</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">状态</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide w-16"></th>
+      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border)]">
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">文档名称</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">类型</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">业务线</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">上传人</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-sm:hidden">日期</th>
+              <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-sm:hidden">大小</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">状态</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide w-16"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((doc) => (
+              <tr key={doc.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
+                <td className="py-3 px-4">
+                  <div className="flex items-center gap-2">
+                    <FileText className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                    <span className="truncate font-medium text-[var(--foreground)]">{doc.name}</span>
+                  </div>
+                </td>
+                <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.file_type || doc.type || ""}</td>
+                <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.business_line || ""}</td>
+                <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.uploaded_by || doc.uploadBy || ""}</td>
+                <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{doc.created_at?.slice(0, 10) || doc.uploadDate || ""}</td>
+                <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{doc.size || ""}</td>
+                <td className="py-3 px-4">
+                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[doc.status ?? ""])}>
+                    {statusLabel[doc.status ?? ""]}
+                  </span>
+                </td>
+                <td className="py-3 px-4">
+                  <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(doc.file_url, "_blank"); else setUploadError("该文档无可下载文件"); }}>
+                    <Download className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((doc) => (
-                <tr key={doc.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <FileText className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
-                      <span className="truncate font-medium text-[var(--foreground)]">{doc.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.file_type || "-"}</td>
-                  <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.business_line_name || "-"}</td>
-                  <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{doc.uploaded_by || "-"}</td>
-                  <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">
-                    {doc.created_at?.slice(0, 10) || "-"}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[doc.status] || statusClass["待审核"])}>
-                      {doc.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-1">
-                      {doc.file_url && (
-                        <a
-                          href={doc.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center rounded-md p-1 hover:bg-[var(--secondary)]"
-                          aria-label="下载文档"
-                        >
-                          <Download className="size-3.5" aria-hidden="true" />
-                        </a>
-                      )}
-                      <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => handleDelete(doc.id)}>
-                        <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filtered.length === 0 && !loading && (
-            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">没有匹配的文档</div>
-          )}
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">没有匹配的文档</div>
+        )}
+      </div>
     </div>
   );
 }

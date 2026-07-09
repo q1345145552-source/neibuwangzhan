@@ -1,15 +1,20 @@
 /* ── 公司注册 ── */
 export const companyRegDocs: Record<number, string[]> = {
-  1: ["公司名称（中文/英文）", "股东护照复印件", "注册地址", "营业范围"],
-  2: ["公司名称预审表", "股东信息表"],
-  3: ["公司注册证明", "公章样式确认"],
-  4: ["公司证书", "股东护照", "房屋租赁合同", "PP20表格"],
-  5: ["公司全套文件", "董事护照", "地址证明"],
-  6: ["全套公司文件交付"],
+  1: ["公司名称中英文", "股东护照", "注册地址", "营业范围"],
+  2: ["客户泰国邮箱", "泰国电话"],
+  3: [],
+  4: [],
+  5: [],
+  6: ["公司证书", "股东护照", "租赁合同", "PP20表格"],
+  7: ["公司全套文件", "董事护照", "银行预审表"],
+  8: ["地址信息", "房东联系方式"],
+  9: ["月度账目数据"],
+  10: ["变更需求说明", "相关证件"],
+  11: [],
 };
 
 export const companyRegTimes: Record<number, string> = {
-  1: "1-2天", 2: "2-3天", 3: "1天", 4: "1天（曼谷）/ 1天（清迈）", 5: "1-2周（需预约）", 6: "1天",
+  1: "1天", 2: "1天", 3: "1-2天", 4: "2-3天", 5: "2-3天", 6: "1天", 7: "1-2周", 8: "1天", 9: "每月", 10: "2-5天", 11: "1天",
 };
 
 export const companySubServices = [
@@ -99,7 +104,7 @@ export const trademarkSubServices = [
 
 /* ── FDA — 化妆品认证 ── */
 export const fdaCosmeticsDocs: Record<number, string[]> = {
-  1: ["ISO/工厂文件", "产品配方", "产品图", "商标文件", "委托书"],
+  1: ["工厂文件/ISO", "产品配方", "产品图", "商标文件", "授权委托书"],
   2: [],
   3: [],
   4: [],
@@ -107,40 +112,56 @@ export const fdaCosmeticsDocs: Record<number, string[]> = {
   6: [],
   7: [],
   8: [],
+  9: [],
+  10: [],
+  11: [],
+  12: [],
 };
 
 export const fdaCosmeticsTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "1天", 4: "1天", 5: "1天", 6: "1天", 7: "5-7天", 8: "2天",
+  1: "1-2天", 2: "1天", 3: "1天", 4: "1天", 5: "5-7个工作日", 6: "2-3天", 7: "5-7个工作日", 8: "1-2天", 9: "1天", 10: "5-7个工作日", 11: "1天", 12: "1天",
 };
 
 /* ── FDA — 食品认证 ── */
 export const fdaFoodDocs: Record<number, string[]> = {
-  1: ["工厂文件", "产品配方", "产品图+标签", "工序流程", "商标文件"],
+  1: ["工厂文件", "产品配方", "产品图+标签", "生产工艺流程", "商标文件"],
   2: [],
   3: [],
   4: [],
   5: [],
   6: [],
   7: [],
+  8: [],
+  9: [],
+  10: [],
+  11: [],
+  12: [],
 };
 
 export const fdaFoodTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "30天", 4: "1天", 5: "2天", 6: "1天", 7: "5-7天",
+  1: "1-2天", 2: "1天", 3: "1天", 4: "30个工作日", 5: "1天", 6: "1天", 7: "5-7个工作日", 8: "2-3天", 9: "1天", 10: "5-7个工作日", 11: "1天", 12: "1天",
 };
 
 /* ── FDA — 危险品认证 ── */
 export const fdaHazardDocs: Record<number, string[]> = {
-  1: ["工厂文件", "CFS", "MSDS", "产品图", "配方", "工序", "中英文标签"],
+  1: ["工厂文件", "CFS", "MSDS", "产品图", "配方", "生产工艺流程", "中英文标签"],
   2: [],
   3: [],
   4: [],
   5: [],
   6: [],
   7: [],
+  8: [],
+  9: [],
+  10: [],
+  11: [],
+  12: [],
+  13: [],
+  14: [],
 };
 
 export const fdaHazardTimes: Record<number, string> = {
-  1: "2天", 2: "2天", 3: "1天", 4: "3天", 5: "1天", 6: "1天", 7: "5-7天",
+  1: "1-2天", 2: "1天", 3: "3-5个工作日", 4: "1天", 5: "1天", 6: "5-7个工作日", 7: "2-3天", 8: "1天", 9: "5-7个工作日", 10: "2-3天", 11: "1-2天", 12: "5-7个工作日", 13: "1天", 14: "1天",
 };
 
 /* ── TISI ── */
@@ -163,9 +184,27 @@ export const tisiTimes: Record<number, string> = {
   1: "1天", 2: "1-2天", 3: "2-3天", 4: "1天", 5: "1天", 6: "7-14天", 7: "2-3天", 8: "1-2天", 9: "5-7天", 10: "1-2天", 11: "30-60天", 12: "1天",
 };
 
+export const nbtcDocs: Record<number, string[]> = {
+  1: ["产品图", "产品规格书"],
+  2: [],
+  3: ["ISO证书", "CB证书", "中国工厂全部文件", "泰国公司证书", "PP20", "法人护照/身份证"],
+  4: [],
+  5: ["授权委托书"],
+  6: [],
+  7: ["HS码"],
+  8: [],
+  9: ["报关文件", "NSW进口单据"],
+  10: [],
+  11: [],
+  12: [],
+};
+
+export const nbtcTimes: Record<number, string> = {
+  1: "1天", 2: "1-2天", 3: "2-3天", 4: "1天", 5: "1天", 6: "7-14天", 7: "2-3天", 8: "1-2天", 9: "5-7天", 10: "1-2天", 11: "30-60天", 12: "1天",
+};
+
 export const tisiSubServices = [
   { key: "tisi-main", label: "TISI认证", businessTypeId: 4 },
-  { key: "nbtc", label: "NBTC认证", businessTypeId: 4 },
 ];
 
 /* ── 服务价格 ── */
@@ -208,43 +247,42 @@ export const fdaSubServices = [
 
 /* ── Mall开店 ── */
 export const mallShopeeDocs: Record<number, string[]> = {
-  1: ["公司证书（3-6个月内）", "泰国银行账户", "PP20", "TikTok/Lazada Mall链接"],
-  2: [],
-  3: [],
+  1: ["公司证书（不超过6个月）", "法人护照", "商标文件", "PP20", "银行账号", "TK Mall链接", "LazMall链接", "所有文件蓝笔签名+盖章"],
+  2: ["产品图片", "产品视频"],
+  3: ["公司邮箱", "公司电话", "公司文件", "商标文件", "Mall店链接"],
   4: [],
-  5: [],
+  5: ["店铺账号密码", "PP20", "合同（泰文+英文各一份）", "E-Tax测试（80分以上）"],
   6: [],
-  7: [],
+  7: ["付款凭证截图"],
   8: [],
-  9: [],
 };
 
 export const mallShopeeTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "1-2天", 4: "1-2天", 5: "3天", 6: "15天", 7: "1天", 8: "1天", 9: "1天",
+  1: "1-2天", 2: "1天", 3: "1天", 4: "1-3天", 5: "5-7个工作日", 6: "15个工作日", 7: "1天", 8: "1天",
 };
 
 export const mallTiktokDocs: Record<number, string[]> = {
-  1: [],
-  2: ["TM标证书 或 R标证书"],
-  3: ["Instagram账号（1万粉丝）", "产品图"],
+  1: ["企业店铺信息", "商标资料", "法人护照", "公司证书（不超过6个月）", "店铺账号密码", "其他平台店铺链接"],
+  2: ["WIPO商标信息", "TM标或R标证书"],
+  3: ["Instagram主页（粉丝>1万）", "产品图"],
   4: [],
   5: [],
+  6: [],
 };
 
 export const mallTiktokTimes: Record<number, string> = {
-  1: "1天", 2: "2天", 3: "3天", 4: "3-5天", 5: "1天",
+  1: "1-2天", 2: "1-2天", 3: "2-3天", 4: "1-2天", 5: "3-5天", 6: "1天",
 };
 
 export const mallLazadaDocs: Record<number, string[]> = {
-  1: [],
-  2: ["公司证书", "泰国银行账户", "PP20"],
-  3: [],
-  4: ["FDA/TISI认证"],
-  5: [],
+  1: ["公司证书（不超过6个月）", "PP20", "公司银行账户", "法人护照", "电话号码", "邮箱密码", "电器类：自有TISI认证"],
+  2: ["全套公司文件", "商标资料"],
+  3: ["DBD登记仓库地址", "仓库现场照片"],
+  4: [],
 };
 
 export const mallLazadaTimes: Record<number, string> = {
-  1: "1天", 2: "2天", 3: "3-5天", 4: "1天", 5: "1天",
+  1: "1-2天", 2: "5-7个工作日", 3: "1-2天", 4: "1天",
 };
 
 export const mallSubServices = [
@@ -253,14 +291,26 @@ export const mallSubServices = [
   { key: "lazada", label: "Lazada Mall", businessTypeId: 8 },
 ];
 export const addressDocs: Record<number, string[]> = {
-  1: ["地契", "租赁合同（名字须一致，否则需授权书）"],
-  2: [],
+  1: ["地契", "租赁合同"],
+  2: ["FDA系统开通申请表", "公司证书", "法人护照", "PP20"],
   3: [],
-  4: [],
+  4: ["授权书", "同意书"],
+  5: [],
+  6: ["平面图", "建筑图", "地图"],
+  7: [],
+  8: [],
+  9: [],
+  10: [],
+  11: [],
+  12: [],
+  13: [],
+  14: [],
+  15: [],
+  16: [],
 };
 
 export const addressTimes: Record<number, string> = {
-  1: "1天", 2: "1天", 3: "1-2天", 4: "2-3天",
+  1: "1天", 2: "1天", 3: "1天", 4: "1-2天", 5: "3-5个工作日", 6: "1-2天", 7: "1天", 8: "1天", 9: "1天", 10: "5-7个工作日", 11: "2-3天", 12: "1天", 13: "5-7个工作日", 14: "1天", 15: "1天", 16: "1天",
 };
 export const customsDocs: Record<number, string[]> = {
   1: ["产品图+规格", "公司证书", "PP20", "法人护照/身份证", "泰国收货地址", "Invoice", "Packing List"],
@@ -306,6 +356,7 @@ export const dldSubServices = [
 
 /* ── 通用查询函数 ── */
 export function getStepDocs(businessTypeId: number, subServiceType?: string): Record<number, string[]> {
+  if (businessTypeId === 1) return companyRegDocs;
   if (businessTypeId === 3) {
     if (subServiceType === "food") return fdaFoodDocs;
     if (subServiceType === "hazard") return fdaHazardDocs;
@@ -320,11 +371,13 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
     if (subServiceType === "lazada") return mallLazadaDocs;
     return mallShopeeDocs;
   }
+  if (businessTypeId === 9) return nbtcDocs;
   if (businessTypeId === 2) return trademarkDocs;
   return companyRegDocs;
 }
 
 export function getStepTimes(businessTypeId: number, subServiceType?: string): Record<number, string> {
+  if (businessTypeId === 1) return companyRegTimes;
   if (businessTypeId === 3) {
     if (subServiceType === "food") return fdaFoodTimes;
     if (subServiceType === "hazard") return fdaHazardTimes;
@@ -339,20 +392,21 @@ export function getStepTimes(businessTypeId: number, subServiceType?: string): R
     if (subServiceType === "lazada") return mallLazadaTimes;
     return mallShopeeTimes;
   }
+  if (businessTypeId === 9) return nbtcTimes;
   if (businessTypeId === 2) return trademarkTimes;
   return companyRegTimes;
 }
 
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {
-  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs,
+  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs,
 };
 
 export const stepTimeEstimates: Record<number, Record<number, string>> = {
-  1: companyRegTimes, 2: trademarkTimes, 3: fdaCosmeticsTimes, 4: tisiTimes, 5: dldProductTimes, 6: customsTimes, 7: addressTimes, 8: mallShopeeTimes,
+  1: companyRegTimes, 2: trademarkTimes, 3: fdaCosmeticsTimes, 4: tisiTimes, 5: dldProductTimes, 6: customsTimes, 7: addressTimes, 8: mallShopeeTimes, 9: nbtcTimes,
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {
-  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [],
+  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [],
 };
 
 

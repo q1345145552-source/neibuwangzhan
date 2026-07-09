@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    const stored = localStorage.getItem("authToken");
+    if (stored) router.push("/");
+  }, [router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -25,11 +30,27 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    // Simulate auth delay
-    await new Promise((r) => setTimeout(r, 800));
-    setLoading(false);
-
-    router.push("/");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "登录失败");
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("currentUser", JSON.stringify(data.user));
+      setLoading(false);
+      router.push("/");
+    } catch {
+      setError("网络错误，请重试");
+      setLoading(false);
+    }
   }
 
   return (

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -14,6 +15,7 @@ import {
   Ship,
   MapPin,
   Store,
+  Radio,
   CheckSquare,
   FileText,
   DollarSign,
@@ -38,6 +40,7 @@ const businessLines = [
   { name: "清关", href: "/customs-clearance", icon: Ship },
   { name: "地址认证", href: "/address-certification", icon: MapPin },
   { name: "Mall开店", href: "/mall-store", icon: Store },
+  { name: "NBTC", href: "/nbtc", icon: Radio },
 ];
 
 const utilityNav = [
@@ -83,10 +86,15 @@ export function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  const { user, logout } = useAuth();
+  const router = useRouter();
 
-  useEffect(() => {
+  // 路由变化时关闭移动端菜单：渲染期间派生状态，避免在 effect 中直接 setState
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     setOpen(false);
-  }, [pathname]);
+  }
 
   const sidebarContent = (
     <>
@@ -116,21 +124,27 @@ export function Sidebar() {
 
       <div className="border-t border-[var(--sidebar-border)] px-5 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">张</div>
+{(() => {
+            const initial = user?.name?.charAt(0) || "?";
+            const roleLabel = user?.role === "admin" ? "管理员" : user?.role === "client" ? "客户" : "员工";
+            return (<>
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">{initial}</div>
           <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-sm font-medium">张三</span>
-            <span className="truncate text-xs text-[var(--sidebar-foreground)]/50">管理员</span>
+            <span className="truncate text-sm font-medium">{user?.name || "—"}</span>
+            <span className="truncate text-xs text-[var(--sidebar-foreground)]/50">{roleLabel}</span>
           </div>
           <ThemeToggle />
           <Button
             size="icon-xs"
             variant="ghost"
             aria-label="退出登录"
-            onClick={() => console.log("退出登录")}
+            onClick={() => { logout(); router.push("/login"); }}
             className="text-[var(--sidebar-foreground)]/50 hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-foreground)]"
           >
             <LogOut className="size-3" aria-hidden="true" />
           </Button>
+            </>);
+            })()}
         </div>
       </div>
     </>

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import type { Order } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 
@@ -26,7 +27,7 @@ export function TodoList({ orders }: Props) {
               const label = statusLabels[order.status] || order.status;
               return (
                 <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
-                  <td className="py-3 pr-4 font-mono text-xs font-medium text-[var(--accent-foreground)] tabular-nums">{order.id}</td>
+                  <td className="py-3 pr-4 font-mono text-xs font-medium tabular-nums"><Link href={`/orders/${order.id}`} className="text-[var(--accent-foreground)] hover:underline">{order.id}</Link></td>
                   <td className="py-3 pr-4 max-sm:hidden">
                     <span className="font-medium text-[var(--foreground)]">{order.customer_name}</span>
                   </td>

@@ -1,14 +1,16 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, ArrowLeft } from "lucide-react";
 import { fetchOrders } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export default function InternationalTrademarkPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,9 +33,14 @@ export default function InternationalTrademarkPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>国际商标</h1>
-        <p className="mt-1.5 text-sm text-[var(--muted-foreground)] leading-relaxed">查重各国商标库，提交国际注册申请。覆盖马德里体系主要成员国，Ing全程跟进。</p>
+      <div className="flex items-center gap-2">
+        <button onClick={() => router.back()} className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" aria-label="返回"><ArrowLeft className="size-4" /></button>
+        <div>
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>国际商标</h1>
+          <p className="mt-1.5 text-sm text-[var(--muted-foreground)] leading-relaxed">
+            查重各国商标库，提交国际注册申请。覆盖马德里体系主要成员国，Ing全程跟进。
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -44,13 +51,15 @@ export default function InternationalTrademarkPage() {
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
+          <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">商标名称</th>
+          <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
           <tbody>
             {orders.map(o => (
               <tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
                 <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link></td>
+                <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.trademark_name || "—"}</td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td>
-                <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">¥{o.total_amount.toLocaleString()}</td>
+                <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">{formatCurrency(o.total_amount, o.currency)}</td>
                 <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span></td>
               </tr>
             ))}

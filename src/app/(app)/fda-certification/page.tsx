@@ -44,7 +44,7 @@ export default function FdaCertificationPage() {
 
       {!isSubPage && (
         <BusinessLinePage
-          businessKey="FDA产品认证"
+          businessKey="FDA认证"
           label="化妆品认证"
           accentHue={155}
           description="化妆品FDA认证，从收集工厂文件到拿证，全程跟。文件齐全的话最快7天出证。"

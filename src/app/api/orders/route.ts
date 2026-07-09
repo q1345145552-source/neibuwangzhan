@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, getBusinessSteps, getStepsWithAddressType } from "@/lib/db";
+import { verifyAuth } from "@/lib/auth";
+import { getDb, getStepsWithAddressType, logOperation } from "@/lib/db";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const businessTypeId = searchParams.get("business_type_id");
@@ -31,35 +35,52 @@ export async function GET(req: NextRequest) {
 
 // POST /api/orders
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
+
   const body = await req.json();
-  const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent } = body;
+  const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent, currency, trademark_name } = body;
 
   if (!customer_name || !business_type_id) {
     return NextResponse.json({ error: "请填写客户名和业务线" }, { status: 400 });
   }
 
-  const count = db.prepare("SELECT COUNT(*) as c FROM orders").get() as { c: number };
-  const id = `ORD-${String(count.c + 1).padStart(3, "0")}`;
+  const id = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const now = new Date().toISOString();
   const ssType = sub_service_type || "";
 
-  const insertAll = db.transaction(() => {
-    db.prepare(
-      "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?)"
-    ).run(id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, now, now);
+  try {
+    const insertAll = db.transaction(() => {
+      console.log("[POST /api/orders] 开始事务, id=" + id);
+      const insParams = [id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, currency || "CNY", trademark_name || "", now, now];
+      console.log("[POST /api/orders] INSERT params:", JSON.stringify(insParams));
+      db.prepare(
+        "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, currency, trademark_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
+      ).run(...insParams);
+      console.log("[POST /api/orders] orders 插入成功");
 
-    const steps = getStepsWithAddressType(Number(business_type_id), ssType, address_type);
-    const insertStep = db.prepare(
-      "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
-    );
-    steps.forEach((step, i) => {
-      insertStep.run(id, step.name, i + 1, step.assignee);
+      const steps = getStepsWithAddressType(Number(business_type_id), ssType, address_type);
+      console.log("[POST /api/orders] 步骤数:", steps.length);
+      const insertStep = db.prepare(
+        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
+      );
+      steps.forEach((step, i) => {
+        insertStep.run(id, step.name, i + 1, step.assignee);
+      });
+      console.log("[POST /api/orders] 步骤全部插入");
     });
-  });
 
-  insertAll();
+    insertAll();
+    console.log("[POST /api/orders] 事务提交成功");
+      logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
 
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
-  return NextResponse.json(order, { status: 201 });
+    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+    return NextResponse.json(order, { status: 201 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "服务器内部错误";
+    console.error("[POST /api/orders] 错误:", msg, err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
