@@ -132,7 +132,7 @@ export default function DocumentsPage() {
       );
     }
     return result;
-  }, [search, businessFilter]);
+  }, [search, businessFilter, allDocs]);
 
   return (
     <div className="flex flex-col gap-6">
