@@ -48,6 +48,7 @@ export interface Document {
   file_type: string;
   status: string;
   uploaded_by: string;
+  file_url: string;
   created_at: string;
 }
 
@@ -260,3 +261,39 @@ export const statusClass: Record<string, string> = {
   "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
   "已逾期": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
 };
+export async function uploadFile(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch('/api/upload', { method: 'POST', body: formData });
+  if (!res.ok) throw new Error('文件上传失败');
+  return res.json() as Promise<{ url: string; name: string; size: number }>;
+}
+
+export async function fetchAllDocuments(businessLine?: string) {
+  const query = businessLine ? '?business=' + encodeURIComponent(businessLine) : '';
+  const res = await fetch('/api/documents' + query);
+  if (!res.ok) throw new Error('获取文档列表失败');
+  return res.json() as Promise<(Document & { customer_name?: string; business_line_name?: string })[]>;
+}
+
+export async function createGlobalDocument(data: {
+  name: string;
+  file_type?: string;
+  uploaded_by?: string;
+  file_url?: string;
+  order_id?: string;
+}) {
+  const res = await fetch('/api/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('创建文档失败');
+  return res.json() as Promise<Document>;
+}
+
+export async function deleteGlobalDocument(id: number) {
+  const res = await fetch('/api/documents?id=' + id, { method: 'DELETE' });
+  if (!res.ok) throw new Error('删除文档失败');
+  return res.json();
+}

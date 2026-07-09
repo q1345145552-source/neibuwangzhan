@@ -195,7 +195,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         {isOverdue && <p className="mb-1 text-xs font-medium text-[var(--destructive)]">⚠ 逾期 — 截止 {step.deadline?.slice(0, 10)}</p>}
                         {over14Days && <p className="mb-1 text-xs font-medium text-[var(--warning)]">⚠ 已等 {elapsedDays} 天，建议 Fern 主动跟进</p>}
                         {over30Days && <p className="mb-1 text-xs font-medium text-[var(--warning)]">⚠ 检测已 {elapsedDays} 天，建议跟进进度</p>}
-                        {step.step_order === 7 && logistics && logistics.length > 0 && (
+                        {step.step_order === 9 && logistics && logistics.length > 0 && (
                           <div className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2">
                             <p className="mb-1 text-xs font-medium text-[var(--foreground)]">样品物流追踪</p>
                             <div className="flex flex-col gap-0.5">

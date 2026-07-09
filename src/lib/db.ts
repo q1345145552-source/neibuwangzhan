@@ -232,7 +232,7 @@ function initTables(database: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_id TEXT NOT NULL REFERENCES orders(id),
+      order_id TEXT DEFAULT '',
       name TEXT NOT NULL,
       file_type TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT '待审核',
@@ -282,6 +282,29 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Migration: make documents.order_id nullable (for global uploads)
+  const docCols = database.pragma('table_info(documents)') as Array<{ name: string; notnull: number }>;
+  const orderIdCol = docCols.find(c => c.name === 'order_id');
+  if (orderIdCol && orderIdCol.notnull === 1) {
+    database.pragma('foreign_keys = OFF');
+    database.exec(`
+      CREATE TABLE documents_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id TEXT DEFAULT '',
+        name TEXT NOT NULL,
+        file_type TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT '待审核',
+        uploaded_by TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      INSERT INTO documents_new SELECT * FROM documents;
+      DROP TABLE documents;
+      ALTER TABLE documents_new RENAME TO documents;
+    `);
+    database.pragma('foreign_keys = ON');
+    console.log('Migrated documents table: order_id is now nullable');
+  }
 }
 
 /* ── 种子数据 ── */
