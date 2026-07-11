@@ -120,7 +120,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers/tasks")}>
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")}>
             <ArrowLeft className="size-4" />
           </Button>
           <div>

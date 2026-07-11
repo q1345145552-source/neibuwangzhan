@@ -51,7 +51,7 @@ export default function NewInfluencerPage() {
   return (
     <div className="flex flex-col gap-6 max-w-xl">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")}>
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">添加达人</h1>
@@ -142,7 +142,7 @@ export default function NewInfluencerPage() {
           <Button type="submit" disabled={saving}>
             {saving ? <><Loader2 className="size-3.5 animate-spin" />创建中...</> : "创建达人"}
           </Button>
-          <Button type="button" variant="ghost" onClick={() => router.back()}>取消</Button>
+          <Button type="button" variant="ghost" onClick={() => router.push("/agency/influencers")}>取消</Button>
         </div>
       </form>
     </div>

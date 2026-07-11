@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 
@@ -45,6 +46,7 @@ interface Influencer {
 }
 
 export default function InfluencersPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [search, setSearch] = useState("");
@@ -181,11 +183,16 @@ export default function InfluencersPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">达人发现</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            共 {influencers.length} 位达人
-          </p>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency")}>
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div>
+            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">达人发现</h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              共 {influencers.length} 位达人
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/agency/influencers/tasks">
