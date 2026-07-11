@@ -200,7 +200,7 @@ export default function DiscoveryTasksPage() {
           <Input placeholder="搜索任务编号、品类、创建人..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-8 text-sm" />
         </div>
         <div className="flex rounded-lg bg-[var(--secondary)] p-0.5">
-          {[{ key: "all", label: "全部" }, { key: "active", label: "进行中" }, { key: "completed", label: "已完成" }].map(s => (
+          {[{ key: "all", label: "全部" }, { key: "active", label: "进行中" }, { key: "completed", label: "已提交" }].map(s => (
             <button key={s.key} onClick={() => setStatusFilter(s.key)}
               className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors",
                 statusFilter === s.key ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
@@ -230,7 +230,7 @@ export default function DiscoveryTasksPage() {
                     ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
                     : "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
                 )}>
-                  {task.status === "completed" ? "已完成" : "进行中"}
+                  {task.status === "completed" ? "已提交评估" : "进行中"}
                 </span>
               </div>
               <div className="mt-2 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">

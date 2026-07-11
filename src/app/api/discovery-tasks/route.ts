@@ -83,7 +83,7 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少任务ID" }, { status: 400 });
 
   // Remove task association from influencers (don't delete them)
-  db.prepare("UPDATE influencers SET discovery_task_id = NULL WHERE discovery_task_id = ?").run(id);
+  
   db.prepare("DELETE FROM discovery_tasks WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
 }

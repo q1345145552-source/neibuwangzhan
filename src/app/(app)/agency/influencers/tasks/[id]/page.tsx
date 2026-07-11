@@ -8,26 +8,28 @@ import { ArrowLeft, Plus, Send, ExternalLink, Trash2, Users } from "lucide-react
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 
+const statusClass: Record<string, string> = {
+  "待评估": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  "评估中": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+  "已评估": "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+  "已推荐给老板": "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+  "已联系": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+  "签约中": "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+  "已签约": "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
+  "品牌孵化中": "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",
+  "已入池": "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
+  "已停止": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  "已完成": "bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200",
+};
+
 interface DiscoveryTask {
-  id: number;
-  task_number: string;
-  category: string;
-  creator: string;
-  status: string;
-  created_at: string;
-  completed_at: string | null;
+  id: number; task_number: string; category: string; creator: string;
+  status: string; inf_count: number; created_at: string; completed_at: string | null;
 }
 
 interface Influencer {
-  id: number;
-  name: string;
-  tiktok_link: string;
-  category: string;
-  contact_phone: string;
-  line_id: string;
-  followers: string;
-  status: string;
-  created_at: string;
+  id: number; name: string; tiktok_link: string; category: string;
+  followers: string; status: string; created_at: string;
 }
 
 const categories = ["美妆", "服饰", "食品", "家居", "3C数码", "母婴", "运动", "宠物", "其他"];
@@ -47,21 +49,19 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
   const [form, setForm] = useState({
     name: "", tiktok_link: "", category: "", followers: "",
-    contact_phone: "", line_id: "",
   });
 
   const load = async () => {
+    setLoading(true);
     try {
-      const [tr, ir] = await Promise.all([
-        fetch(`/api/discovery-tasks?creator=&status=`, { cache: "no-store" }),
+      const [taskRes, infsRes] = await Promise.all([
+        fetch(`/api/discovery-tasks/${id}`, { cache: "no-store" }),
         fetch(`/api/discovery-tasks/${id}/influencers`, { cache: "no-store" }),
       ]);
-      // Get task from tasks list
-      const allTasks = await fetch("/api/discovery-tasks", { cache: "no-store" }).then(r => r.json());
-      const t = allTasks.find((t: DiscoveryTask) => t.id === Number(id));
-      setTask(t || null);
-      setInfList(await ir.json());
-    } catch (err) { console.error(err); }
+      const [taskData, infsData] = await Promise.all([taskRes.json(), infsRes.json()]);
+      setTask(taskData.error ? null : taskData);
+      setInfList(Array.isArray(infsData) ? infsData : []);
+    } catch (err) { console.error("加载失败:", err); }
     finally { setLoading(false); }
   };
 
@@ -80,7 +80,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "添加失败");
-      setForm({ name: "", tiktok_link: "", category: "", followers: "", contact_phone: "", line_id: "" });
+      setForm({ name: "", tiktok_link: "", category: "", followers: "" });
       setShowAdd(false);
       load();
     } catch (err) {
@@ -107,7 +107,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: Number(id), status: "completed" }),
       });
-      router.push("/agency/influencers/tasks");
+      load(); // 刷新页面，不跳走
     } catch (err) { console.error(err); }
     finally { setSubmitting(false); }
   };
@@ -134,28 +134,34 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <span>·</span>
               <span>{task.creator}</span>
               <span>·</span>
-              <span>{new Date(task.created_at).toLocaleDateString("th-TH")}</span>
+              <span>{new Date(task.created_at + "Z").toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}</span>
             </div>
           </div>
         </div>
         {task.status === "active" && (
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="size-3.5" />添加达人</Button>
-            <Button size="sm" variant="default" className="gap-1" onClick={handleSubmitForEval} disabled={submitting || infList.length === 0}>
+            <Button size="sm" className="gap-1" onClick={handleSubmitForEval} disabled={submitting || infList.length === 0}>
               <Send className="size-3.5" />
               {submitting ? "提交中..." : "提交评估"}
             </Button>
           </div>
         )}
         {task.status === "completed" && (
-          <span className="inline-flex rounded-full px-3 py-1 text-sm font-medium bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-            已提交评估 · {task.completed_at ? new Date(task.completed_at).toLocaleDateString("th-TH") : ""}
+          <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium",
+            "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300")}>
+            ✅ 已提交评估
+            {task.completed_at && (
+              <span className="text-xs opacity-70">
+                {new Date(task.completed_at + "Z").toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
+              </span>
+            )}
           </span>
         )}
       </div>
 
       {/* Add influencer form */}
-      {showAdd && (
+      {showAdd && task.status === "active" && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
           <h2 className="text-sm font-medium mb-3">添加达人</h2>
           {error && <div className="mb-3 text-sm text-[var(--destructive)]">{error}</div>}
@@ -194,10 +200,10 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Influencer list */}
+      {/* Influencer list — always visible */}
       {infList.length === 0 ? (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)] rounded-xl border border-dashed border-[var(--border)]">
-          暂无达人，点击"添加达人"开始
+          {task.status === "active" ? <>暂无达人，点击"添加达人"开始</> : "此任务下暂无达人记录"}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
@@ -207,7 +213,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">达人名称</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">品类</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">粉丝量</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">评估状态</th>
                 {task.status === "active" && <th className="py-3 px-4 w-10"></th>}
               </tr>
             </thead>
@@ -230,8 +236,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   <td className="py-3 px-4">
                     <span className={cn(
                       "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium",
-                      inf.status === "评估中" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                      : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      statusClass[inf.status] || statusClass["待评估"]
                     )}>{inf.status}</span>
                   </td>
                   {task.status === "active" && (
