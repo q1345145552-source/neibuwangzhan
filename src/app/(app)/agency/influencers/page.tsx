@@ -97,12 +97,12 @@ export default function InfluencersPage() {
                   <td className="py-3 px-4">
                     <Link href={`/agency/influencers/${inf.id}`} className="flex items-center gap-2 hover:underline">
                       <span className="font-medium text-[var(--foreground)]">{inf.name}</span>
-                      {inf.tiktok_link && (
-                        <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="text-[var(--muted-foreground)] hover:text-[var(--primary)]">
-                          <ExternalLink className="size-3" />
-                        </a>
-                      )}
                     </Link>
+                    {inf.tiktok_link && (
+                      <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="inline-flex text-[var(--muted-foreground)] hover:text-[var(--primary)] ml-1" onClick={e => e.stopPropagation()}>
+                        <ExternalLink className="size-3" />
+                      </a>
+                    )}
                   </td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.category || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
