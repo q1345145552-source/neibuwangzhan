@@ -1,23 +1,20 @@
 "use client";
 
-import { useState, useEffect, use, useRef } from "react";
+import { useState, useEffect, use, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ArrowLeft, Check, AlertTriangle, FileText, Paperclip, Loader2, Upload as UploadIcon, Building } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Upload as UploadIcon, Building, ExternalLink, Search } from "lucide-react";
+import { useAuth } from "@/components/auth-provider";
+import { fetchEmployees, type Employee } from "@/lib/api";
+import { cn, toThaiTime } from "@/lib/utils";
 
-const statusClass: Record<string, string> = {
-  "待处理": "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
-  "进行中": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  "已完成": "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  "已停止": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-};
-
-const phaseLabels: Record<string, string> = {
-  discovery: "达人发现",
-  contract: "签约跟进",
-  incubation: "品牌孵化",
+// ── Status styles ──
+const stepStatusClass: Record<string, string> = {
+  "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
+  "进行中": "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[oklch(0.38_0.10_240)]",
+  "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
+  "阻塞": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
+  "已停止": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
 };
 
 const phaseColors: Record<string, string> = {
@@ -25,445 +22,455 @@ const phaseColors: Record<string, string> = {
   contract: "border-blue-300 dark:border-blue-700",
   incubation: "border-amber-300 dark:border-amber-700",
 };
-
 const phaseBgs: Record<string, string> = {
-  discovery: "bg-pink-50 dark:bg-pink-950/30",
-  contract: "bg-blue-50 dark:bg-blue-950/30",
-  incubation: "bg-amber-50 dark:bg-amber-950/30",
+  discovery: "bg-pink-50/30 dark:bg-pink-950/20",
+  contract: "bg-blue-50/30 dark:bg-blue-950/20",
+  incubation: "bg-amber-50/30 dark:bg-amber-950/20",
+};
+const phaseLabels: Record<string, string> = {
+  discovery: "达人发现",
+  contract: "签约跟进",
+  incubation: "品牌孵化",
 };
 
-interface InfluencerStep {
-  id: number;
-  step_name: string;
-  step_order: number;
-  phase: string;
-  status: string;
-  assignee: string;
-  notes: string;
-  stop_reason: string;
-  completed_at: string | null;
+// ── Types ──
+interface Influencer {
+  id: number; name: string; status: string; category: string; tiktok_link: string;
+  line_id: string; contact_phone: string; monthly_gmv: string; live_stream_ratio: string;
+  contact_time: string; reply_status: string; followers: string; avg_views: string;
+  gmv_range: string; notes: string; created_at: string; updated_at: string;
+  steps: InfStep[]; evaluations: any[]; contracts: any[];
 }
 
-interface Influencer {
-  id: number;
-  name: string;
-  status: string;
-  category: string;
-  tiktok_link: string;
-  followers: string;
-  notes: string;
-  steps: InfluencerStep[];
+interface InfStep {
+  id: number; influencer_id: number; step_name: string; step_order: number;
+  phase: string; status: string; assignee: string; notes: string;
+  stop_reason: string; completed_at: string | null; created_at: string;
+}
+
+interface InfStepNote {
+  id: number; step_id: number; influencer_id: number;
+  content: string; created_by: string; created_at: string;
+}
+
+interface InfDocument { id: number; name: string; file_url: string; file_type: string; status: string; uploaded_by: string; created_at: string; }
+interface InfFinance { id: number; type: string; amount: number; status: string; description: string; payment_method: string; slip_number: string; slip_file: string; currency: string; created_at: string; }
+interface InfCertificate { id: number; certificate_number: string; product_name: string; issue_date: string; expiry_date: string; status: string; notes: string; file_url: string; created_at: string; }
+
+function isImageUrl(url: string | undefined | null): boolean {
+  return /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(url || "");
 }
 
 export default function InfluencerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [influencer, setInfluencer] = useState<Influencer | null>(null);
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
+
+  const [inf, setInf] = useState<Influencer | null>(null);
+  const [steps, setSteps] = useState<InfStep[]>([]);
+  const [docs, setDocs] = useState<InfDocument[]>([]);
+  const [finances, setFinances] = useState<InfFinance[]>([]);
+  const [certs, setCerts] = useState<InfCertificate[]>([]);
+  const [stepNotes, setStepNotes] = useState<Record<number, InfStepNote[]>>({});
+  const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
+  const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
+  const [confirmNote, setConfirmNote] = useState("");
+  const [newNotes, setNewNotes] = useState<Record<number, string>>({});
+  const [noteErrorMsg, setNoteErrorMsg] = useState<Record<number, string>>({});
+  const [deleteNoteTarget, setDeleteNoteTarget] = useState<{ stepId: number; noteId: number; content: string } | null>(null);
+  const [editingAssigneeStepId, setEditingAssigneeStepId] = useState<number | null>(null);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sidebarTab, setSidebarTab] = useState<"finances" | "docs" | "certs">("finances");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // ── CSV ──
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult] = useState<{ imported: number; skipped: string[]; total: number } | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Factory association ──
+  const [factoryModal, setFactoryModal] = useState(false);
+  const [factories, setFactories] = useState<any[]>([]);
+  const [linkedFactories, setLinkedFactories] = useState<any[]>([]);
+
+  // ── Finance form ──
+  const [newFinDesc, setNewFinDesc] = useState("");
+  const [newFinAmount, setNewFinAmount] = useState("");
+  const [newFinType, setNewFinType] = useState("income");
+  const [newFinCurrency, setNewFinCurrency] = useState("CNY");
+  const [newFinMethod, setNewFinMethod] = useState("");
+  const [newFinSlip, setNewFinSlip] = useState("");
+  const [finErrorMsg, setFinErrorMsg] = useState("");
+  const [finFileName, setFinFileName] = useState("");
+  const [uploadingFin, setUploadingFin] = useState(false);
+  const [finSlipFile, setFinSlipFile] = useState("");
+
+  // ── Document form ──
+  const [newDocName, setNewDocName] = useState("");
+  const [docFileName, setDocFileName] = useState("");
+  const [docFileUrl, setDocFileUrl] = useState("");
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docErrorMsg, setDocErrorMsg] = useState("");
+
+  // ── Certificate form ──
+  const [newCertNo, setNewCertNo] = useState("");
+  const [certFileName, setCertFileName] = useState("");
+  const [certFileUrl, setCertFileUrl] = useState("");
+  const [uploadingCert, setUploadingCert] = useState(false);
+  const [certErrorMsg, setCertErrorMsg] = useState("");
+  const [editingCertId, setEditingCertId] = useState<number | null>(null);
+  const [editCertFields, setEditCertFields] = useState<Partial<InfCertificate>>({});
+
+  // ── Upload states per step ──
+  const [stepUploading, setStepUploading] = useState<Record<number, boolean>>({});
+  const [stepFileNames, setStepFileNames] = useState<Record<number, string>>({});
+
+  useEffect(() => { fetchEmployees().then(setEmployees).catch(() => {}); }, []);
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  const reload = useCallback(() => setRefreshKey(k => k + 1), []);
+
+  // ── Load influencer data ──
+  useEffect(() => {
+    let ignore = false;
+    async function run() {
+      try {
+        const res = await fetch(`/api/influencers/${id}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("加载失败");
+        const data = await res.json();
+        if (ignore) return;
+        setInf(data);
+        setSteps(data.steps || []);
+        const ns: Record<number, InfStepNote[]> = {};
+        for (const s of data.steps || []) {
+          try {
+            const nr = await fetch(`/api/influencers/${id}/steps/${s.id}/notes`, { cache: "no-store" });
+            ns[s.id] = nr.ok ? await nr.json() : [];
+          } catch { ns[s.id] = []; }
+        }
+        setStepNotes(ns);
+        // Load documents, finances, certificates
+        try { const dr = await fetch(`/api/influencers/${id}/documents`, { cache: "no-store" }); if (dr.ok) setDocs(await dr.json()); } catch {}
+        try { const fr = await fetch(`/api/influencers/${id}/finances`, { cache: "no-store" }); if (fr.ok) setFinances(await fr.json()); } catch {}
+        try { const cr = await fetch(`/api/influencers/${id}/certificates`, { cache: "no-store" }); if (cr.ok) setCerts(await cr.json()); } catch {}
+        // Factories
+        try { const lfr = await fetch(`/api/influencers/${id}/factories`, { cache: "no-store" }); if (lfr.ok) setLinkedFactories(await lfr.json()); } catch {}
+        const fr2 = await fetch("/api/factories", { cache: "no-store" });
+        if (fr2.ok) setFactories(await fr2.json());
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    run();
+    return () => { ignore = true; };
+  }, [id, refreshKey]);
+
+  const canComplete = (step: InfStep): boolean => {
+    if (step.status === "已完成" || step.status === "阻塞" || step.status === "已停止") return false;
+    if (step.step_order === 1) return true;
+    const prev = steps.find(s => s.step_order === step.step_order - 1);
+    return !prev || prev.status === "已完成";
+  };
+
+  const handleConfirmComplete = async (stepId: number) => {
+    try {
+      await fetch(`/api/influencers/${id}/steps`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId, status: "已完成", notes: confirmNote }),
+      });
+      setConfirmingStepId(null);
+      setConfirmNote("");
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const handleStepUpdate = async (stepId: number, status: string) => {
+    try {
+      await fetch(`/api/influencers/${id}/steps`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId, status }),
+      });
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const handleRollback = async (stepId: number) => {
+    try {
+      await fetch(`/api/influencers/${id}/steps`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId, status: "进行中" }),
+      });
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "撤回失败");
+    }
+  };
+
+  // ── Stop ──
   const [stopModal, setStopModal] = useState<{ stepId: number; stepName: string } | null>(null);
   const [stopReason, setStopReason] = useState("");
   const [stopReasonErr, setStopReasonErr] = useState("");
   const [stopping, setStopping] = useState(false);
-  const [completingId, setCompletingId] = useState<number | null>(null);
-  const [fileUploading, setFileUploading] = useState<Record<number, boolean>>({});
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [csvResult, setCsvResult] = useState<{ imported: number; skipped: string[]; total: number } | null>(null);
-  const csvInputRef = useRef<HTMLInputElement>(null);
-  const [factoryModal, setFactoryModal] = useState(false);
-  const [factories, setFactories] = useState<any[]>([]);
-  const [linkedFactories, setLinkedFactories] = useState<any[]>([]);
-  const [linkingFactory, setLinkingFactory] = useState(false);
-
-  const loadFactories = async () => {
-    const res = await fetch("/api/factories", { cache: "no-store" });
-    const data = await res.json();
-    setFactories(data);
-  };
-
-  const loadLinkedFactories = async () => {
-    if (!influencer?.id) return;
-    const res = await fetch(`/api/influencers/${influencer.id}/factories`, { cache: "no-store" });
-    const data = await res.json();
-    setLinkedFactories(data);
-  };
-
-  const handleLinkFactory = async (factoryId: number) => {
-    if (!influencer) return;
-    setLinkingFactory(true);
-    try {
-      await fetch(`/api/influencers/${influencer.id}/factories`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ factory_id: factoryId, relationship: "合作" }),
-      });
-      await loadLinkedFactories();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "关联失败");
-    } finally {
-      setLinkingFactory(false);
-    }
-  };
-
-  const handleUnlinkFactory = async (linkId: number) => {
-    await fetch(`/api/influencers/${influencer?.id}/factories?id=` + linkId, { method: "DELETE" });
-    loadLinkedFactories();
-  };
-
-  const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCsvImporting(true);
-    setCsvResult(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/influencers/evaluations/import", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "导入失败");
-      setCsvResult(data);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "CSV导入失败");
-    } finally {
-      setCsvImporting(false);
-      if (e.target) e.target.value = "";
-    }
-  };
-
-  const load = async () => {
-    try {
-      const res = await fetch(`/api/influencers/${id}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("加载失败");
-      const data = await res.json();
-      setInfluencer(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); loadFactories(); }, [id]);
-  useEffect(() => { if (influencer) loadLinkedFactories(); }, [influencer?.id]);
-
-  const canComplete = (step: InfluencerStep, allSteps: InfluencerStep[]): boolean => {
-    if (step.status === "已完成" || step.status === "已停止") return false;
-    if (step.step_order === 1) return true; // First step always completable
-    const prev = allSteps.find(s => s.step_order === step.step_order - 1);
-    if (!prev) return true;
-    return prev.status === "已完成";
-  };
-
-  const handleComplete = async (step: InfluencerStep) => {
-    setCompletingId(step.id);
-    try {
-      const res = await fetch(`/api/influencers/${id}/steps`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step_id: step.id, status: "已完成" }),
-      });
-      if (!res.ok) throw new Error("操作失败");
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失败");
-    } finally {
-      setCompletingId(null);
-    }
-  };
-
-  const handleStop = (step: InfluencerStep) => {
-    setStopModal({ stepId: step.id, stepName: step.step_name });
-    setStopReason("");
-    setStopReasonErr("");
-  };
 
   const confirmStop = async () => {
-    if (!stopReason.trim()) {
-      setStopReasonErr("请填写停止原因");
-      return;
-    }
+    if (!stopReason.trim()) { setStopReasonErr("请填写停止原因"); return; }
     if (!stopModal) return;
     setStopping(true);
     try {
-      // Update influencer status to 已停止
       await fetch(`/api/influencers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "已停止" }),
       });
-      // Update step with stop reason
       await fetch(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stopModal.stepId, status: "已停止", stop_reason: stopReason }),
       });
       setStopModal(null);
-      load();
+      reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "操作失败");
-    } finally {
-      setStopping(false);
-    }
+    } finally { setStopping(false); }
   };
 
-  const handleUpload = async (stepId: number, file: File) => {
-    setFileUploading(prev => ({ ...prev, [stepId]: true }));
+  // ── Notes ──
+  const handleAddNote = async (stepId: number) => {
+    const content = newNotes[stepId];
+    if (!content?.trim()) { setNoteErrorMsg(p => ({ ...p, [stepId]: "请填写备注内容" })); return; }
+    setNoteErrorMsg(p => ({ ...p, [stepId]: "" }));
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!uploadRes.ok) throw new Error("上传失败");
-      const { url } = await uploadRes.json();
-      
-      // Save to documents table
-      await fetch("/api/documents", {
+      await fetch(`/api/influencers/${id}/steps/${stepId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, file_type: file.type, file_url: url, order_id: "" }),
+        body: JSON.stringify({ content, created_by: user?.name || "系统" }),
       });
-      
-      // Add note about file upload
+      setNewNotes(p => ({ ...p, [stepId]: "" }));
+      const nr = await fetch(`/api/influencers/${id}/steps/${stepId}/notes`, { cache: "no-store" });
+      const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [stepId]: notes }));
+    } catch {}
+  };
+
+  const handleDeleteNote = async () => {
+    if (!deleteNoteTarget) return;
+    await fetch(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes?id=${deleteNoteTarget.noteId}`, { method: "DELETE" });
+    setDeleteNoteTarget(null);
+    const nr = await fetch(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes`, { cache: "no-store" });
+    const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [deleteNoteTarget.stepId]: notes }));
+  };
+
+  // ── Step file upload ──
+  const handleStepUpload = async (stepId: number, file: File) => {
+    setStepUploading(p => ({ ...p, [stepId]: true }));
+    setStepFileNames(p => ({ ...p, [stepId]: file.name }));
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const ur = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!ur.ok) throw new Error("上传失败");
+      const { url } = await ur.json();
       const note = `📎 上传文件: ${file.name} (${url})`;
-      const currentStep = influencer?.steps.find(s => s.id === stepId);
-      const updatedNotes = currentStep?.notes ? currentStep.notes + "\n" + note : note;
-      
+      const current = steps.find(s => s.id === stepId);
+      const updated = current?.notes ? current.notes + "\n" + note : note;
       await fetch(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step_id: stepId, notes: updatedNotes }),
+        body: JSON.stringify({ step_id: stepId, notes: updated }),
       });
-      load();
+      reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传失败");
     } finally {
-      setFileUploading(prev => ({ ...prev, [stepId]: false }));
+      setStepUploading(p => ({ ...p, [stepId]: false }));
+      setStepFileNames(p => ({ ...p, [stepId]: "" }));
     }
   };
 
-  if (loading) return <div className="py-20 text-center text-sm text-[var(--muted-foreground)]">加载中...</div>;
-  if (error && !influencer) return <div className="py-20 text-center text-sm text-[var(--destructive)]">{error}</div>;
-  if (!influencer) return null;
+  // ── CSV import ──
+  const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setCsvImporting(true); setCsvResult(null);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const res = await fetch("/api/influencers/evaluations/import", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "导入失败");
+      setCsvResult(data); reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "CSV导入失败");
+    } finally { setCsvImporting(false); e.target.value = ""; }
+  };
 
-  const steps = influencer.steps || [];
+  // ── Factory association ──
+  const handleLinkFactory = async (factoryId: number) => {
+    try {
+      await fetch(`/api/influencers/${id}/factories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factory_id: factoryId, relationship: "合作" }),
+      });
+      const lfr = await fetch(`/api/influencers/${id}/factories`, { cache: "no-store" });
+      if (lfr.ok) setLinkedFactories(await lfr.json());
+    } catch (err) { setError(err instanceof Error ? err.message : "关联失败"); }
+  };
+  const handleUnlinkFactory = async (linkId: number) => {
+    await fetch(`/api/influencers/${id}/factories?id=${linkId}`, { method: "DELETE" });
+    const lfr = await fetch(`/api/influencers/${id}/factories`, { cache: "no-store" });
+    if (lfr.ok) setLinkedFactories(await lfr.json());
+  };
+
+  // ── Finance ──
+  const handleAddFinance = async () => {
+    if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; }
+    setFinErrorMsg("");
+    try {
+      await fetch(`/api/influencers/${id}/finances`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: newFinType, amount: Number(newFinAmount),
+          description: newFinDesc, payment_method: newFinMethod,
+          slip_number: newFinSlip, slip_file: finSlipFile,
+          status: newFinType === "income" ? "paid" : "pending",
+          currency: newFinCurrency,
+        }),
+      });
+      setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName("");
+      reload();
+    } catch (err) { setFinErrorMsg("添加失败"); }
+  };
+
+  // ── Document ──
+  const handleAddDocument = async () => {
+    if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; }
+    setDocErrorMsg("");
+    try {
+      await fetch(`/api/influencers/${id}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newDocName, file_url: docFileUrl, uploaded_by: user?.name || "" }),
+      });
+      setNewDocName(""); setDocFileUrl(""); setDocFileName(""); reload();
+    } catch (err) { setDocErrorMsg("添加失败"); }
+  };
+
+  const handleDeleteDocument = async (docId: number) => {
+    if (!confirm("确认删除此文档？")) return;
+    await fetch(`/api/influencers/${id}/documents?id=${docId}`, { method: "DELETE" });
+    reload();
+  };
+
+  // ── Certificate ──
+  const handleAddCertificate = async () => {
+    if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; }
+    setCertErrorMsg("");
+    try {
+      await fetch(`/api/influencers/${id}/certificates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ certificate_number: newCertNo, issue_date: new Date().toISOString().slice(0, 10), file_url: certFileUrl }),
+      });
+      setNewCertNo(""); setCertFileUrl(""); setCertFileName(""); reload();
+    } catch (err) { setCertErrorMsg("添加失败"); }
+  };
+
+  const handleSaveCertificate = async (certId: number) => {
+    try {
+      await fetch(`/api/influencers/${id}/certificates/${certId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editCertFields),
+      });
+      setEditingCertId(null); reload();
+    } catch (err) { setError("保存失败"); }
+  };
+
+  const handleDeleteCertificate = async (certId: number) => {
+    if (!confirm("确认删除此证书？")) return;
+    await fetch(`/api/influencers/${id}/certificates/${certId}`, { method: "DELETE" });
+    reload();
+  };
+
+  // ── Render ──
+  if (loading) return <div className="py-20 text-center text-sm text-[var(--muted-foreground)]">加载中...</div>;
+  if (error && !inf) return <div className="py-20 text-center text-sm text-[var(--destructive)]">{error}</div>;
+  if (!inf) return null;
+
+  const completedCount = steps.filter(s => s.status === "已完成").length;
+  const totalSteps = steps.length;
+  const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
   const phases = ["discovery", "contract", "incubation"] as const;
+
+  const totalIncome = finances.filter(f => f.type === "income").reduce((sum, f) => {
+    const amt = f.currency === "THB" ? f.amount : f.amount * 5;
+    return sum + amt;
+  }, 0);
+  const totalExpense = finances.filter(f => f.type === "expense").reduce((sum, f) => {
+    const amt = f.currency === "THB" ? f.amount : f.amount * 5;
+    return sum + amt;
+  }, 0);
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")}>
-          <ArrowLeft className="size-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">
-            {influencer.name}
-          </h1>
-          <div className="mt-1 flex items-center gap-3">
-            <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[influencer.status] || "bg-gray-100")}>
-              {influencer.status}
-            </span>
-            {influencer.category && <span className="text-xs text-[var(--muted-foreground)]">{influencer.category}</span>}
-            {influencer.followers && <span className="text-xs text-[var(--muted-foreground)]">{influencer.followers} 粉丝</span>}
-          </div>
-          {influencer.tiktok_link && (
-            <a href={influencer.tiktok_link} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-[var(--primary)] hover:underline break-all">
-              {influencer.tiktok_link}
-            </a>
-          )}
-        </div>
-        <div className="text-right shrink-0">
-          <span className="text-xs text-[var(--muted-foreground)]">
-            完成 {steps.filter(s => s.status === "已完成").length}/{steps.length}
-          </span>
-        </div>
-      </div>
-
-      {error && <div className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
-      {csvResult && (
-        <div className="rounded-md bg-green-50 dark:bg-green-950/30 px-4 py-3 text-sm border border-green-200 dark:border-green-800">
-          <p className="font-medium text-green-700 dark:text-green-300">✅ CSV 导入成功: {csvResult.imported}/{csvResult.total} 条</p>
-          {csvResult.skipped.length > 0 && (
-            <details className="mt-1">
-              <summary className="text-xs text-green-600 dark:text-green-400 cursor-pointer">跳过 {csvResult.skipped.length} 条（点击展开）</summary>
-              <ul className="mt-1 text-xs text-[var(--muted-foreground)] space-y-0.5">
-                {csvResult.skipped.map((s, i) => <li key={i}>{s}</li>)}
-              </ul>
-            </details>
-          )}
+      {/* Preview overlay */}
+      {previewUrl && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center cursor-pointer" onClick={() => setPreviewUrl(null)}
+          onKeyDown={(e) => { if (e.key === "Escape") setPreviewUrl(null); }}>
+          <img src={previewUrl} className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
         </div>
       )}
 
-      {/* 19-step timeline by phase */}
-      {phases.map(phase => {
-        const phaseSteps = steps.filter(s => s.phase === phase);
-        if (phaseSteps.length === 0) return null;
-        return (
-          <div key={phase} className={cn("rounded-xl border", phaseColors[phase], phaseBgs[phase])}>
-            <div className="px-5 py-3 border-b border-[var(--border)]/50 flex items-center justify-between">
-              <h3 className="text-sm font-medium">{phaseLabels[phase]}</h3>
-              <span className="text-xs text-[var(--muted-foreground)]">
-                {phaseSteps.filter(s => s.status === "已完成").length}/{phaseSteps.length} 完成
-              </span>
-            </div>
-            <div className="p-4">
-              <div className="relative">
-                {phaseSteps.map((step) => {
-                  const isComplete = step.status === "已完成";
-                  const isStopped = step.status === "已停止";
-                  const completable = canComplete(step, steps);
-                  return (
-                    <div key={step.id} className="relative flex gap-4 pb-5 last:pb-0">
-                      {/* Timeline line & dot */}
-                      <div className="flex flex-col items-center shrink-0">
-                        <div className={cn(
-                          "flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold",
-                          isComplete ? "border-green-500 bg-green-500 text-white" :
-                          isStopped ? "border-red-400 bg-red-100 text-red-500 dark:bg-red-900" :
-                          completable ? "border-[var(--primary)] bg-[var(--background)] text-[var(--primary)]" :
-                          "border-gray-300 bg-gray-100 text-gray-400 dark:border-gray-600 dark:bg-gray-800"
-                        )}>
-                          {isComplete ? <Check className="size-3" /> :
-                           isStopped ? <AlertTriangle className="size-3" /> :
-                           step.step_order}
-                        </div>
-                        {step.step_order < steps.length && (
-                          <div className={cn(
-                            "w-px flex-1 min-h-4",
-                            isComplete ? "bg-green-300 dark:bg-green-700" :
-                            isStopped ? "bg-red-200 dark:bg-red-800" :
-                            "bg-gray-200 dark:bg-gray-700"
-                          )} />
-                        )}
-                      </div>
-                      {/* Step content */}
-                      <div className="flex-1 min-w-0 pb-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={cn(
-                            "text-sm",
-                            isComplete ? "text-[var(--foreground)] line-through decoration-green-400" :
-                            isStopped ? "text-[var(--muted-foreground)] line-through decoration-red-400" :
-                            "text-[var(--foreground)]"
-                          )}>
-                            {step.step_name}
-                          </p>
-                          <span className={cn("inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs", statusClass[step.status])}>
-                            {step.status}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
-                          <span>负责人: {step.assignee || "—"}</span>
-                          {step.completed_at && <span>完成于 {step.completed_at.slice(0, 10)}</span>}
-                        </div>
-
-                        {/* Notes */}
-                        {step.notes && (
-                          <div className="mt-2 rounded-md bg-[var(--background)]/60 px-3 py-2 text-xs text-[var(--muted-foreground)] whitespace-pre-wrap border border-[var(--border)]/50">
-                            {step.notes}
-                          </div>
-                        )}
-
-                        {/* Stop reason */}
-                        {isStopped && step.stop_reason && (
-                          <div className="mt-2 rounded-md bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
-                            🛑 停止原因: {step.stop_reason}
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        {!isComplete && !isStopped && (
-                          <div className="mt-2 flex items-center gap-2 flex-wrap">
-                            {completable ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-300"
-                                onClick={() => handleComplete(step)}
-                                disabled={completingId === step.id}
-                              >
-                                {completingId === step.id ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
-                                标记完成
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-[var(--muted-foreground)]">⏳ 请先完成上一步</span>
-                            )}
-                            
-                            {/* Stop button */}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs gap-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950"
-                              onClick={() => handleStop(step)}
-                            >
-                              <AlertTriangle className="size-3" />
-                              停止合作
-                            </Button>
-
-{/* Factory association for step 17 */}
-                            {step.step_order === 17 && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1"
-                                onClick={() => setFactoryModal(true)}
-                              >
-                                <Building className="size-3" />
-                                关联工厂 ({linkedFactories.length})
-                              </Button>
-                            )}
-
-                            {/* CSV import for step 3 (Ploy evaluation) */}
-                            {step.step_order === 3 && (
-                              <>
-                                <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvImport} />
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs gap-1"
-                                  onClick={() => csvInputRef.current?.click()}
-                                  disabled={csvImporting}
-                                >
-                                  {csvImporting ? <Loader2 className="size-3 animate-spin" /> : <UploadIcon className="size-3" />}
-                                  {csvImporting ? "导入中..." : "导入 CSV"}
-                                </Button>
-                              </>
-                            )}
-
-                            {/* File upload */}
-                            <label className={cn(
-                              "cursor-pointer inline-flex items-center gap-1 h-7 px-2 text-xs rounded-md border border-[var(--border)] hover:bg-[var(--secondary)]",
-                              fileUploading[step.id] && "opacity-50 pointer-events-none"
-                            )}>
-                              {fileUploading[step.id] ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
-                              {fileUploading[step.id] ? "上传中" : "附件"}
-                              <input type="file" className="hidden" onChange={e => {
-                                const f = e.target.files?.[0];
-                                if (f) handleUpload(step.id, f);
-                                e.target.value = "";
-                              }} />
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+      {/* Delete note modal */}
+      {deleteNoteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeleteNoteTarget(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-[var(--foreground)]">确认删除此备注？</p>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)] line-clamp-2">{deleteNoteTarget.content}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setDeleteNoteTarget(null)}>取消</Button>
+              <Button variant="destructive" size="sm" onClick={handleDeleteNote}>确认删除</Button>
             </div>
           </div>
-        );
-      })}
+        </div>
+      )}
 
-      {/* Factory association modal */}
+      {/* Stop modal */}
+      {stopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setStopModal(null)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-medium text-[var(--foreground)]">停止合作</h3>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">当前步骤: {stopModal.stepName}</p>
+            <div className="mt-4">
+              <label className="text-sm font-medium">停止原因 <span className="text-red-500">*</span></label>
+              <textarea value={stopReason} onChange={e => { setStopReason(e.target.value); setStopReasonErr(""); }}
+                placeholder="请填写停止合作的具体原因..." rows={3}
+                className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none" autoFocus />
+              {stopReasonErr && <p className="mt-1 text-xs text-[var(--destructive)]">{stopReasonErr}</p>}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setStopModal(null)} disabled={stopping}>取消</Button>
+              <Button variant="destructive" size="sm" onClick={confirmStop} disabled={stopping}>{stopping ? "处理中..." : "确认停止"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Factory modal */}
       {factoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setFactoryModal(false)}>
           <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-medium text-[var(--foreground)] flex items-center gap-2">
-              <Building className="size-5" />
-              关联工厂
-            </h3>
-            
-            {/* Already linked */}
+            <h3 className="text-lg font-medium text-[var(--foreground)] flex items-center gap-2"><Building className="size-5" />关联工厂</h3>
             {linkedFactories.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">已关联 ({linkedFactories.length})</p>
@@ -477,69 +484,484 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                 </div>
               </div>
             )}
-
-            {/* Available factories */}
             <div className="mt-3">
               <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">可选工厂</p>
               <div className="space-y-1 max-h-60 overflow-y-auto">
-                {factories.filter(f => !linkedFactories.some((lf: any) => lf.factory_id === f.id)).map(f => (
+                {factories.filter((f: any) => !linkedFactories.some((lf: any) => lf.factory_id === f.id)).map((f: any) => (
                   <div key={f.id} className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm">
-                    <div>
-                      <span className="font-medium">{f.name}</span>
-                      {f.category && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{f.category}</span>}
-                    </div>
-                    <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleLinkFactory(f.id)} disabled={linkingFactory}>
-                      关联
-                    </Button>
+                    <div><span className="font-medium">{f.name}</span>{f.category && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{f.category}</span>}</div>
+                    <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleLinkFactory(f.id)}>关联</Button>
                   </div>
                 ))}
-                {factories.filter(f => !linkedFactories.some((lf: any) => lf.factory_id === f.id)).length === 0 && (
-                  <p className="text-xs text-[var(--muted-foreground)]">没有更多工厂可选</p>
-                )}
               </div>
             </div>
-
-            <div className="mt-4 flex justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setFactoryModal(false)}>关闭</Button>
-            </div>
+            <div className="mt-4 flex justify-end"><Button variant="ghost" size="sm" onClick={() => setFactoryModal(false)}>关闭</Button></div>
           </div>
         </div>
       )}
 
-      {/* Stop reason modal */}
-      {stopModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setStopModal(null)}>
-          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-medium text-[var(--foreground)] flex items-center gap-2">
-              <AlertTriangle className="size-5 text-red-500" />
-              停止合作
-            </h3>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              当前步骤: {stopModal.stepName}
-            </p>
-            <div className="mt-4">
-              <label className="text-sm font-medium text-[var(--foreground)]">
-                停止原因 <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={stopReason}
-                onChange={e => { setStopReason(e.target.value); setStopReasonErr(""); }}
-                placeholder="请填写停止合作的具体原因..."
-                rows={3}
-                className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none"
-                autoFocus
-              />
-              {stopReasonErr && <p className="mt-1 text-xs text-[var(--destructive)]">{stopReasonErr}</p>}
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStopModal(null)} disabled={stopping}>取消</Button>
-              <Button variant="destructive" size="sm" onClick={confirmStop} disabled={stopping}>
-                {stopping ? "处理中..." : "确认停止"}
-              </Button>
-            </div>
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")} aria-label="返回达人列表">
+          <ArrowLeft className="size-4" />
+        </Button>
+        <div className="flex-1">
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{inf.name}</h1>
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
+            <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", stepStatusClass[inf.status] || "bg-gray-100")}>{inf.status}</span>
+            {inf.category && <span className="text-xs text-[var(--muted-foreground)]">{inf.category}</span>}
+            {inf.followers && <span className="text-xs text-[var(--muted-foreground)]">{inf.followers} 粉丝</span>}
+            <span className="text-xs text-[var(--muted-foreground)]">· 已完成 {completedCount}/{totalSteps}</span>
           </div>
+          {inf.tiktok_link && (
+            <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--primary)] hover:underline break-all">
+              <ExternalLink className="size-3" />{inf.tiktok_link}
+            </a>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
+      {csvResult && (
+        <div className="rounded-md bg-green-50 dark:bg-green-950/30 px-4 py-3 text-sm border border-green-200 dark:border-green-800">
+          <p className="font-medium text-green-700 dark:text-green-300">✅ CSV 导入成功: {csvResult.imported}/{csvResult.total} 条</p>
+          {csvResult.skipped.length > 0 && (
+            <details className="mt-1"><summary className="text-xs text-green-600 dark:text-green-400 cursor-pointer">跳过 {csvResult.skipped.length} 条</summary>
+              <ul className="mt-1 text-xs text-[var(--muted-foreground)] space-y-0.5">{csvResult.skipped.map((s, i) => <li key={i}>{s}</li>)}</ul>
+            </details>
+          )}
         </div>
       )}
+
+      {/* Two-column layout: steps + sidebar */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left: Steps */}
+        <div className="lg:col-span-2 flex flex-col gap-6">
+          {/* Progress bar */}
+          {totalSteps > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[var(--muted-foreground)] shrink-0">已完成 {completedCount}/{totalSteps}</span>
+              <div className="flex-1 h-2 rounded-full bg-[var(--muted)] overflow-hidden">
+                <div className={cn("h-full rounded-full transition-all duration-300", completedCount === totalSteps ? "bg-[var(--success)]" : "bg-[var(--success)]")}
+                  style={{ width: `${progressPct}%` }} />
+              </div>
+              <span className="text-xs font-medium shrink-0">{completedCount === totalSteps ? "全部完成" : `${progressPct}%`}</span>
+            </div>
+          )}
+
+          {/* Steps by phase */}
+          {phases.map(phase => {
+            const phaseSteps = steps.filter(s => s.phase === phase);
+            if (phaseSteps.length === 0) return null;
+            return (
+              <div key={phase} className={cn("rounded-xl border p-5", phaseColors[phase], phaseBgs[phase])}>
+                <h3 className="text-sm font-medium mb-3">{phaseLabels[phase]}</h3>
+                <div className="flex flex-col gap-0">
+                  {phaseSteps.map((step, i) => {
+                    const notes = stepNotes[step.id] || [];
+                    const expanded = expandedSteps[step.id] || false;
+                    const hasNotes = notes.length > 0;
+                    const completable = canComplete(step);
+                    const isOverdue = step.status === "阻塞";
+
+                    return (
+                      <div key={step.id} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+                            step.status === "已完成" && "bg-[var(--success)] text-[var(--success-foreground)]",
+                            step.status === "进行中" && "bg-[var(--primary)] text-[var(--primary-foreground)] ring-2 ring-[var(--ring)]/30",
+                            step.status === "阻塞" && "bg-[var(--destructive)] text-[var(--destructive-foreground)]",
+                            step.status === "已停止" && "bg-[var(--destructive)] text-[var(--destructive-foreground)]",
+                            step.status === "待处理" && "bg-[var(--muted)] text-[var(--muted-foreground)]",
+                          )}>{step.status === "已完成" ? "✓" : step.step_order}</div>
+                          {i < phaseSteps.length - 1 && (
+                            <div className={cn("w-px flex-1 min-h-[20px]", step.status === "已完成" ? "bg-[var(--success)]" : "bg-[var(--border)]")} />
+                          )}
+                        </div>
+                        <div className="pb-5 flex-1 min-w-0">
+                          {/* Step name + status tag */}
+                          <div className="flex items-start gap-2 justify-between">
+                            <p className={cn("text-sm", step.status === "已完成" && "line-through decoration-green-400", step.status === "已停止" && "line-through decoration-red-400")}>
+                              {step.step_name}
+                            </p>
+                            <span className={cn("inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs", stepStatusClass[step.status])}>{step.status}</span>
+                          </div>
+
+                          {/* Assignee */}
+                          <div className="mt-0.5 flex items-center gap-1">
+                            <span className="text-xs text-[var(--muted-foreground)]">负责人:</span>
+                            {step.assignee && step.status !== "已完成" && step.status !== "已停止" && !isClient ? (
+                              editingAssigneeStepId === step.id ? (
+                                <select
+                                  value={step.assignee}
+                                  onChange={async (e) => {
+                                    const newV = e.target.value;
+                                    try {
+                                      await fetch(`/api/influencers/${id}/steps`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ step_id: step.id, assignee: newV }),
+                                      });
+                                      reload();
+                                    } catch {}
+                                    setEditingAssigneeStepId(null);
+                                  }}
+                                  onBlur={() => setEditingAssigneeStepId(null)}
+                                  className="rounded border border-[var(--border)] bg-[var(--background)] px-1 py-0.5 text-xs outline-none"
+                                  autoFocus
+                                >
+                                  {employees.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+                                </select>
+                              ) : (
+                                <button onClick={() => setEditingAssigneeStepId(step.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:underline cursor-pointer">
+                                  {step.assignee}
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-xs text-[var(--muted-foreground)]">{step.assignee || "—"}</span>
+                            )}
+                          </div>
+
+                          {/* Complete time */}
+                          {step.status === "已完成" && step.completed_at && (
+                            <p className="text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(step.completed_at)}</p>
+                          )}
+                          {isOverdue && step.stop_reason && (
+                            <p className="text-xs text-[var(--destructive)]">🛑 {step.stop_reason}</p>
+                          )}
+
+                          {/* Action buttons */}
+                          {step.status !== "已完成" && step.status !== "阻塞" && step.status !== "已停止" && !isClient && (
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              {confirmingStepId === step.id ? (
+                                <>
+                                  <input
+                                    value={confirmNote}
+                                    onChange={e => setConfirmNote(e.target.value)}
+                                    onKeyDown={e => { if (e.key === "Enter") handleConfirmComplete(step.id); if (e.key === "Escape") setConfirmingStepId(null); }}
+                                    placeholder="完成备注（可选）..."
+                                    className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)] w-36"
+                                    autoFocus
+                                  />
+                                  <button onClick={() => handleConfirmComplete(step.id)} className="rounded px-2 py-0.5 text-xs bg-[var(--success)] text-[var(--success-foreground)] transition-colors">确认完成</button>
+                                  <button onClick={() => { setConfirmingStepId(null); setConfirmNote(""); }} className="rounded px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">取消</button>
+                                </>
+                              ) : (
+                                <>
+                                  {completable ? (
+                                    <button onClick={() => { setConfirmingStepId(step.id); setConfirmNote(""); }} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
+                                  ) : (
+                                    <span className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] opacity-50 cursor-not-allowed select-none">需先完成前一步</span>
+                                  )}
+                                  <button onClick={() => handleStepUpdate(step.id, "阻塞")} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
+
+                                  {/* CSV import at step 3 */}
+                                  {step.step_order === 3 && (
+                                    <>
+                                      <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvImport} />
+                                      <button onClick={() => csvInputRef.current?.click()} disabled={csvImporting}
+                                        className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors flex items-center gap-1">
+                                        {csvImporting ? "导入中..." : <><UploadIcon className="size-3" />导入CSV</>}
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Factory at step 17 */}
+                                  {step.step_order === 17 && (
+                                    <button onClick={() => setFactoryModal(true)}
+                                      className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors flex items-center gap-1">
+                                      <Building className="size-3" />关联工厂 ({linkedFactories.length})
+                                    </button>
+                                  )}
+
+                                  {/* Stop */}
+                                  <button onClick={() => { setStopModal({ stepId: step.id, stepName: step.step_name }); setStopReason(""); setStopReasonErr(""); }}
+                                    className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] transition-colors">停止</button>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Revert button */}
+                          {(step.status === "已完成" || step.status === "阻塞") && !isClient && (
+                            <div className="mt-1 flex items-center gap-2">
+                              {step.status === "已完成" && step.completed_at && (
+                                <p className="text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(step.completed_at)}</p>
+                              )}
+                              <button onClick={() => handleRollback(step.id)}
+                                className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
+                                <Undo2 className="size-3" />撤回
+                              </button>
+                            </div>
+                          )}
+
+                          {/* File upload per step */}
+                          <div className="mt-1 flex items-center gap-2">
+                            <label className="cursor-pointer inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
+                              <Upload className="size-3" />
+                              {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
+                              <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleStepUpload(step.id, f); e.target.value = ""; }}
+                                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx" />
+                            </label>
+                          </div>
+
+                          {/* Expand notes */}
+                          <button onClick={() => setExpandedSteps(p => ({ ...p, [step.id]: !expanded }))}
+                            className="mt-1 flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
+                            <MessageSquare className="size-3" />
+                            {hasNotes && <span className="rounded-full bg-[var(--muted)] px-1.5 text-[0.65rem]">{notes.length}</span>}
+                            {expanded ? "收起" : "备注"}
+                          </button>
+
+                          {expanded && (
+                            <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                              {notes.length > 0 && (
+                                <ul className="space-y-1.5 mb-2">
+                                  {notes.map(n => (
+                                    <li key={n.id} className="rounded bg-[var(--muted)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="flex-1 whitespace-pre-wrap break-all">{n.content}</p>
+                                        {!isClient && (
+                                          <button onClick={() => setDeleteNoteTarget({ stepId: step.id, noteId: n.id, content: n.content })}
+                                            className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除备注">
+                                            <Trash2 className="size-3" />
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{n.created_by} · {toThaiTime(n.created_at)}</p>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              <div className="flex gap-1.5">
+                                <input value={newNotes[step.id] || ""}
+                                  onChange={e => { setNewNotes(p => ({ ...p, [step.id]: e.target.value })); setNoteErrorMsg(prev => ({ ...prev, [step.id]: "" })); }}
+                                  onKeyDown={e => e.key === "Enter" && handleAddNote(step.id)}
+                                  placeholder="写备注..." className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                                <button onClick={() => handleAddNote(step.id)} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]">添加</button>
+                              </div>
+                              {noteErrorMsg[step.id] && <p className="text-xs text-[var(--destructive)]">{noteErrorMsg[step.id]}</p>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right: Sidebar panels */}
+        <div className="flex flex-col gap-4">
+          {/* Info card */}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
+            <h3 className="text-sm font-medium text-[var(--foreground)]">达人信息</h3>
+            <dl className="mt-3 space-y-2 text-xs">
+              {inf.line_id && <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">LINE ID</dt><dd>{inf.line_id}</dd></div>}
+              {inf.contact_phone && <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">电话</dt><dd>{inf.contact_phone}</dd></div>}
+              {inf.monthly_gmv && <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">月度 GMV</dt><dd>{inf.monthly_gmv}</dd></div>}
+              {inf.live_stream_ratio && <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">直播占比</dt><dd>{inf.live_stream_ratio}</dd></div>}
+              {inf.contact_time && <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">联系时间</dt><dd>{inf.contact_time}</dd></div>}
+              {inf.reply_status && <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">回复状态</dt><dd>{inf.reply_status}</dd></div>}
+              <div className="flex justify-between"><dt className="text-[var(--muted-foreground)]">创建日期</dt><dd>{toThaiTime(inf.created_at)}</dd></div>
+            </dl>
+            {inf.notes && <p className="mt-2 text-xs text-[var(--muted-foreground)]">{inf.notes}</p>}
+          </div>
+
+          {/* Tabs: Finances / Docs / Certs */}
+          <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_60%)] p-1 flex gap-1">
+            {(["finances", "docs", "certs"] as const).map(tab => (
+              <button key={tab} onClick={() => setSidebarTab(tab)}
+                className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  sidebarTab === tab ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}>
+                {tab === "finances" && <><DollarSign className="mr-1 inline size-3" />费用</>}
+                {tab === "docs" && <><Paperclip className="mr-1 inline size-3" />文档</>}
+                {tab === "certs" && <><FileText className="mr-1 inline size-3" />证书</>}
+              </button>
+            ))}
+          </div>
+
+          {/* Finances panel */}
+          {sidebarTab === "finances" && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium">费用记录</h3>
+                <span className="text-xs text-[var(--muted-foreground)]">
+                  入 ฿{totalIncome.toLocaleString()} / 出 ฿{totalExpense.toLocaleString()}
+                </span>
+              </div>
+              {finances.length > 0 ? (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {finances.map(f => (
+                    <div key={f.id} className="rounded border border-[var(--border)] p-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className={cn("font-medium", f.type === "income" ? "text-[var(--success)]" : "text-[var(--destructive)]")}>
+                          {f.type === "income" ? "收入" : "支出"} {f.currency === "THB" ? "฿" : "¥"}{f.amount.toLocaleString()}
+                        </span>
+                        <span className={cn("rounded-full px-1.5 py-0.5 text-[0.65rem]", f.status === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700")}>
+                          {f.status === "paid" ? "已付" : "待付"}
+                        </span>
+                      </div>
+                      {f.description && <p className="mt-0.5 text-[var(--muted-foreground)]">{f.description}</p>}
+                      {f.slip_file && isImageUrl(f.slip_file) && (
+                        <img src={f.slip_file} alt="水单" className="mt-1 max-h-12 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(f.slip_file)} />
+                      )}
+                      {f.slip_file && !isImageUrl(f.slip_file) && (
+                        <a href={f.slip_file} target="_blank" className="text-[var(--primary)] hover:underline text-xs">查看水单</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-xs text-[var(--muted-foreground)]">暂无费用记录</p>}
+
+              {/* Add finance form */}
+              <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+                <div className="flex gap-2">
+                  <select value={newFinType} onChange={e => setNewFinType(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
+                    <option value="income">收入</option>
+                    <option value="expense">支出</option>
+                  </select>
+                  <select value={newFinCurrency} onChange={e => setNewFinCurrency(e.target.value)} className="h-7 w-16 rounded border border-[var(--border)] bg-[var(--background)] px-1 text-xs">
+                    <option value="CNY">¥</option>
+                    <option value="THB">฿</option>
+                  </select>
+                  <input value={newFinAmount} onChange={e => setNewFinAmount(e.target.value)} placeholder="金额" type="number" className="flex-1 h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]" />
+                </div>
+                <input value={newFinDesc} onChange={e => setNewFinDesc(e.target.value)} placeholder="描述" className="w-full h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]" />
+                <div className="flex gap-1.5 items-center">
+                  <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]">
+                    {uploadingFin ? "上传中..." : finFileName || "选择水单"}
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf" className="hidden" onChange={async e => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      setUploadingFin(true); setFinFileName(file.name);
+                      try {
+                        const fd = new FormData(); fd.append("file", file);
+                        const ur = await fetch("/api/upload", { method: "POST", body: fd });
+                        if (!ur.ok) throw new Error("");
+                        const data = await ur.json(); setFinSlipFile(data.url);
+                      } catch { setFinErrorMsg("上传失败"); setFinFileName(""); }
+                      finally { setUploadingFin(false); }
+                    }} disabled={uploadingFin} />
+                  </label>
+                  <button onClick={handleAddFinance} disabled={uploadingFin} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] disabled:opacity-50">添加</button>
+                </div>
+                {finErrorMsg && <p className="text-xs text-[var(--destructive)]">{finErrorMsg}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Documents panel */}
+          {sidebarTab === "docs" && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
+              <h3 className="text-sm font-medium mb-3">文档管理</h3>
+              {docs.length > 0 ? (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {docs.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between rounded border border-[var(--border)] p-2 text-xs">
+                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                        {doc.file_url && isImageUrl(doc.file_url) && (
+                          <img src={doc.file_url} alt={doc.name} className="max-h-10 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(doc.file_url)} />
+                        )}
+                        <p className="truncate">{doc.name}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {doc.file_url && !isImageUrl(doc.file_url) && (
+                          <a href={doc.file_url} target="_blank" className="text-[var(--primary)] hover:underline">查看</a>
+                        )}
+                        <button onClick={() => handleDeleteDocument(doc.id)} className="text-[var(--destructive)] hover:bg-[var(--destructive)]/10 rounded p-0.5"><Trash2 className="size-3" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-xs text-[var(--muted-foreground)]">暂无文档</p>}
+
+              <div className="mt-3 flex gap-1.5 border-t border-[var(--border)] pt-3">
+                <input value={newDocName} onChange={e => setNewDocName(e.target.value)} placeholder="文档名" className="flex-1 h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]" />
+                <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] flex items-center">
+                  {uploadingDoc ? "..." : docFileName || "文件"}
+                  <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx" onChange={async e => {
+                    const file = e.target.files?.[0]; if (!file) return;
+                    setUploadingDoc(true); setDocFileName(file.name);
+                    try {
+                      const fd = new FormData(); fd.append("file", file);
+                      const ur = await fetch("/api/upload", { method: "POST", body: fd });
+                      if (!ur.ok) throw new Error("");
+                      const data = await ur.json(); setDocFileUrl(data.url);
+                    } catch { setDocErrorMsg("上传失败"); setDocFileName(""); }
+                    finally { setUploadingDoc(false); }
+                  }} disabled={uploadingDoc} />
+                </label>
+                <button onClick={handleAddDocument} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]">添加</button>
+              </div>
+              {docErrorMsg && <p className="text-xs text-[var(--destructive)]">{docErrorMsg}</p>}
+            </div>
+          )}
+
+          {/* Certificates panel */}
+          {sidebarTab === "certs" && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
+              <h3 className="text-sm font-medium mb-3">证书管理</h3>
+              {certs.length > 0 ? (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {certs.map(cert => (
+                    editingCertId === cert.id ? (
+                      <div key={cert.id} className="space-y-1.5 rounded border border-[var(--ring)] p-2 text-xs">
+                        <input value={editCertFields.certificate_number || ""} onChange={e => setEditCertFields(p => ({ ...p, certificate_number: e.target.value }))}
+                          placeholder="证书编号" className="w-full h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none" />
+                        <input value={editCertFields.product_name || ""} onChange={e => setEditCertFields(p => ({ ...p, product_name: e.target.value }))}
+                          placeholder="产品名称" className="w-full h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none" />
+                        <div className="flex gap-2">
+                          <button onClick={() => handleSaveCertificate(cert.id)} className="rounded bg-[var(--primary)] px-2 py-0.5 text-xs text-[var(--primary-foreground)]">保存</button>
+                          <button onClick={() => setEditingCertId(null)} className="rounded border px-2 py-0.5 text-xs text-[var(--muted-foreground)]">取消</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={cert.id} className="flex items-center justify-between rounded border border-[var(--border)] p-2 text-xs">
+                        <div className="min-w-0">
+                          <p className="font-medium">{cert.certificate_number}</p>
+                          {cert.product_name && <p className="text-[var(--muted-foreground)]">{cert.product_name}</p>}
+                          {cert.issue_date && <p className="text-[var(--muted-foreground)]">{cert.issue_date} ~ {cert.expiry_date || "—"}</p>}
+                          {cert.file_url && isImageUrl(cert.file_url) && (
+                            <img src={cert.file_url} alt="证书" className="mt-1 max-h-12 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(cert.file_url)} />
+                          )}
+                          {cert.file_url && !isImageUrl(cert.file_url) && (
+                            <a href={cert.file_url} target="_blank" className="text-[var(--primary)] hover:underline">查看证书文件</a>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!isClient && <button onClick={() => { setEditingCertId(cert.id); setEditCertFields({ certificate_number: cert.certificate_number, product_name: cert.product_name, issue_date: cert.issue_date, expiry_date: cert.expiry_date, notes: cert.notes, file_url: cert.file_url }); }} className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]" title="编辑"><Pencil className="size-3" /></button>}
+                          {!isClient && <button onClick={() => handleDeleteCertificate(cert.id)} className="rounded p-0.5 text-[var(--destructive)] hover:bg-[var(--destructive)]/10" title="删除"><Trash2 className="size-3" /></button>}
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              ) : <p className="text-xs text-[var(--muted-foreground)]">暂无证书</p>}
+              <div className="mt-3 flex gap-1.5 border-t border-[var(--border)] pt-3">
+                <input value={newCertNo} onChange={e => setNewCertNo(e.target.value)} placeholder="证书编号" className="flex-1 h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]" />
+                <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] flex items-center">
+                  {uploadingCert ? "..." : certFileName || "文件"}
+                  <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.pdf" onChange={async e => {
+                    const file = e.target.files?.[0]; if (!file) return;
+                    setUploadingCert(true); setCertFileName(file.name);
+                    try {
+                      const fd = new FormData(); fd.append("file", file);
+                      const ur = await fetch("/api/upload", { method: "POST", body: fd });
+                      if (!ur.ok) throw new Error("");
+                      const data = await ur.json(); setCertFileUrl(data.url);
+                    } catch { setCertErrorMsg("上传失败"); setCertFileName(""); }
+                    finally { setUploadingCert(false); }
+                  }} disabled={uploadingCert} />
+                </label>
+                <button onClick={handleAddCertificate} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] flex items-center gap-1"><Plus className="size-3" /></button>
+              </div>
+              {certErrorMsg && <p className="text-xs text-[var(--destructive)]">{certErrorMsg}</p>}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
