@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,7 @@ function getOverdueRowClass(createdAt: string, paymentStatus: string): string {
 }
 
 export default function ContractsPage() {
+  const router = useRouter();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [poolInfs, setPoolInfs] = useState<Influencer[]>([]);
   const [activeInfs, setActiveInfs] = useState<Influencer[]>([]);
@@ -121,7 +122,7 @@ export default function ContractsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => window.history.back()}>
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency")}>
             <ArrowLeft className="size-4" />
           </Button>
           <div>

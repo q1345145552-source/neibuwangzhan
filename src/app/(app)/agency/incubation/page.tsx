@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ interface Influencer {
 }
 
 export default function IncubationPage() {
+  const router = useRouter();
   const [pool, setPool] = useState<Influencer[]>([]);
   const [active, setActive] = useState<Influencer[]>([]);
   const [completed, setCompleted] = useState<Influencer[]>([]);
@@ -69,7 +72,7 @@ export default function IncubationPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => window.history.back()}>
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency")}>
             <ArrowLeft className="size-4" />
           </Button>
           <div>
