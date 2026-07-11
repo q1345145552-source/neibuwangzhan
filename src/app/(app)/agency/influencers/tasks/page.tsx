@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, Search, Send, Clock, CheckCircle2, Users, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Search, Send, Clock, CheckCircle2, Users, Trash2, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 
@@ -34,7 +34,7 @@ export default function DiscoveryTasksPage() {
   const [newTask, setNewTask] = useState({ task_number: "", category: "" });
   const [error, setError] = useState("");
   const [confirmSubmitId, setConfirmSubmitId] = useState<number | null>(null);
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<{ today: { today_tasks: number; today_creators: number; today_infs: number }; byCreator: any[] } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -115,7 +115,7 @@ export default function DiscoveryTasksPage() {
             </p>
           </div>
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="size-3.5" />新建任务</Button>
+        <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="size-3.5" />添加任务</Button>
       </div>
 
       {/* Create task panel */}
@@ -146,25 +146,50 @@ export default function DiscoveryTasksPage() {
         </div>
       )}
 
-      {/* Workload stats */}
-      {stats && stats.byCreator && stats.byCreator.length > 0 && (
+      {/* Stats */}
+      {stats && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
-          <h2 className="text-sm font-medium text-[var(--foreground)] mb-3">工作量统计</h2>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {stats.byCreator.map((s: any) => (
-              <div key={s.creator} className="flex items-center justify-between rounded-lg bg-[var(--secondary)] px-3 py-2">
-                <div>
-                  <span className="font-medium text-sm">{s.creator}</span>
-                  <div className="text-xs text-[var(--muted-foreground)]">
-                    {s.completed_tasks}/{s.total_tasks} 已完成 · {s.total_infs} 位达人
-                  </div>
-                </div>
-                <div className={s.active_tasks > 0 ? "text-blue-600 text-xs font-medium" : "text-green-600 text-xs font-medium"}>
-                  {s.active_tasks > 0 ? `${s.active_tasks} 进行中` : "全部完成"}
-                </div>
-              </div>
-            ))}
+          {/* Today overview */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/30">
+              <TrendingUp className="size-4 text-blue-500" />
+              <span className="text-sm font-medium">今日</span>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-[var(--muted-foreground)]">
+                发起 <span className="font-medium text-[var(--foreground)]">{stats.today?.today_tasks || 0}</span> 个任务
+              </span>
+              <span className="text-[var(--muted-foreground)]">
+                <span className="font-medium text-[var(--foreground)]">{stats.today?.today_creators || 0}</span> 人在工作中
+              </span>
+              <span className="text-[var(--muted-foreground)]">
+                找到 <span className="font-medium text-[var(--foreground)]">{stats.today?.today_infs || 0}</span> 位达人
+              </span>
+            </div>
           </div>
+
+          {/* Per-creator */}
+          {stats.byCreator && stats.byCreator.length > 0 && (
+            <>
+              <h2 className="text-sm font-medium text-[var(--foreground)] mb-3">成员统计</h2>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {stats.byCreator.map((s: any) => (
+                  <div key={s.creator} className="flex items-center justify-between rounded-lg bg-[var(--secondary)] px-3 py-2">
+                    <div>
+                      <span className="font-medium text-sm">{s.creator}</span>
+                      <div className="text-xs text-[var(--muted-foreground)]">
+                        累计 {s.total_tasks} 个任务 · {s.total_infs} 位达人
+                        {s.today_tasks > 0 && <span className="ml-1 text-blue-500">+{s.today_tasks}今日</span>}
+                      </div>
+                    </div>
+                    <div className={s.active_tasks > 0 ? "text-blue-600 text-xs font-medium" : "text-green-600 text-xs font-medium"}>
+                      {s.active_tasks > 0 ? `${s.active_tasks} 进行中` : "全部完成"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -240,7 +265,7 @@ export default function DiscoveryTasksPage() {
         </div>
       )}
       {!loading && filtered.length === 0 && (
-        <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无发现任务，点击"新建任务"开始</div>
+        <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无发现任务，点击"添加任务"开始</div>
       )}
 
       {/* Submit confirmation modal */}

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, ExternalLink, ListTodo } from "lucide-react";
+import { Search, ExternalLink, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 
@@ -97,10 +97,7 @@ export default function InfluencersPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link href="/agency/influencers/tasks">
-            <Button size="sm" variant="outline"><ListTodo className="size-3.5" />发现任务</Button>
-          </Link>
-          <Link href="/agency/influencers/new">
-            <Button size="sm"><Plus className="size-3.5" />添加达人</Button>
+            <Button size="sm"><ListTodo className="size-3.5" />添加任务</Button>
           </Link>
         </div>
       </div>
