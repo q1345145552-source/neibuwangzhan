@@ -32,8 +32,30 @@ export async function PATCH(req: NextRequest) {
 
   db.prepare(`UPDATE influencer_steps SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
 
-  // When stopping (status = '已停止'), update the parent influencer status too
   const step = db.prepare("SELECT * FROM influencer_steps WHERE id = ?").get(step_id) as any;
+
+  // Phase transition: when all steps in current phase complete, auto-transition
+  if (step && status === "已完成") {
+    const inf = db.prepare("SELECT * FROM influencers WHERE id = ?").get(step.influencer_id) as any;
+    if (inf) {
+      const phaseSteps = db.prepare(
+        "SELECT COUNT(*) as total, SUM(CASE WHEN status = '已完成' THEN 1 ELSE 0 END) as done FROM influencer_steps WHERE influencer_id = ? AND phase = ?"
+      ).get(step.influencer_id, step.phase) as any;
+      if (phaseSteps && phaseSteps.total > 0 && phaseSteps.total === phaseSteps.done) {
+        const phaseMap: Record<string, string> = {
+          discovery: "completed_discovery",
+          contract: "completed_contract",
+          incubation: "completed_incubation",
+        };
+        const nextPhase = phaseMap[step.phase];
+        if (nextPhase) {
+          db.prepare("UPDATE influencers SET phase = ?, status = '已入池', updated_at = datetime('now') WHERE id = ?").run(nextPhase, step.influencer_id);
+        }
+      }
+    }
+  }
+
+  // When stopping
   if (step && status === "已停止") {
     db.prepare("UPDATE influencers SET status = '已停止', updated_at = datetime('now') WHERE id = ?").run(step.influencer_id);
   }

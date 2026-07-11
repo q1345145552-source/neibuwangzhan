@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, ExternalLink } from "lucide-react";
+import { Search, Plus, ExternalLink, Sparkles, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { startPhase } from "@/lib/api";
 
 const statusClass: Record<string, string> = {
   "待评估": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
@@ -18,7 +19,19 @@ const statusClass: Record<string, string> = {
   "品牌孵化中": "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",
   "已完成": "bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200",
   "已停止": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  "已入池": "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
 };
+
+const phaseLabelMap: Record<string, string> = {
+  "completed_discovery": "已入池，待签约",
+  "completed_contract": "签约已完成",
+  "completed_incubation": "孵化已完成",
+};
+
+const tabs = [
+  { key: "discovery", label: "达人发现" },
+  { key: "incubation", label: "品牌孵化" },
+];
 
 interface Influencer {
   id: number;
@@ -32,6 +45,7 @@ interface Influencer {
   gmv_range: string;
   notes: string;
   status: string;
+  phase: string;
   created_at: string;
 }
 
@@ -39,23 +53,52 @@ export default function InfluencersPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("discovery");
+  const [startingPhases, setStartingPhases] = useState<Record<number, boolean>>({});
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/influencers", { cache: "no-store" });
+      const url = `/api/influencers?phase=${activeTab}`;
+      const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
       setInfluencers(data);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  };
+  }, [activeTab]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const handleStartPhase = async (influencerId: number, phase: string) => {
+    setStartingPhases(p => ({ ...p, [influencerId]: true }));
+    try {
+      await startPhase(influencerId, phase);
+      load();
+    } catch (err) {
+      console.error(err);
+    }
+    setStartingPhases(p => ({ ...p, [influencerId]: false }));
+  };
 
   const filtered = influencers.filter((i) => {
     if (!search) return true;
     const s = search.toLowerCase();
     return i.name.toLowerCase().includes(s) || i.category.toLowerCase().includes(s) || i.contact.toLowerCase().includes(s);
   });
+
+  const getDisplayStatus = (inf: Influencer) => {
+    if (inf.phase === "completed_discovery") return "已入池";
+    if (inf.phase === "completed_contract") return "签约已完成";
+    if (inf.phase === "completed_incubation") return "孵化已完成";
+    return inf.status;
+  };
+
+  const getDisplayLabel = (inf: Influencer) => {
+    if (activeTab === "incubation" && inf.phase === "completed_discovery") return "已入池，可孵化";
+    if (activeTab === "incubation" && inf.phase === "completed_contract") return "已入池，可孵化";
+    if (activeTab === "incubation" && (inf.phase === "incubation" || inf.phase === "completed_incubation")) return phaseLabelMap[inf.phase] || "";
+    return "";
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -69,6 +112,24 @@ export default function InfluencersPage() {
         <Link href="/agency/influencers/new">
           <Button size="sm"><Plus className="size-3.5" />添加达人</Button>
         </Link>
+      </div>
+
+      {/* Phase tabs */}
+      <div className="flex gap-1 rounded-lg bg-[var(--secondary)] p-1 w-fit">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setActiveTab(tab.key); setSearch(""); }}
+            className={cn(
+              "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+              activeTab === tab.key
+                ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
+                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div className="relative max-w-sm">
@@ -89,11 +150,14 @@ export default function InfluencersPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">联系方式</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
+                {(activeTab === "incubation") && (
+                  <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
+                )}
               </tr>
             </thead>
             <tbody>
               {filtered.map((inf) => (
-                <tr key={inf.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors cursor-pointer" onClick={() => { /* handled by Link in name cell */ }}>
+                <tr key={inf.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors">
                   <td className="py-3 px-4">
                     <Link href={`/agency/influencers/${inf.id}`} className="flex items-center gap-2 hover:underline">
                       <span className="font-medium text-[var(--foreground)]">{inf.name}</span>
@@ -111,16 +175,37 @@ export default function InfluencersPage() {
                     {inf.contact ? `${inf.contact}${inf.contact_phone ? ` / ${inf.contact_phone}` : ""}` : "-"}
                   </td>
                   <td className="py-3 px-4">
-                    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[inf.status] || statusClass["待评估"])}>
-                      {inf.status}
+                    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[getDisplayStatus(inf)] || statusClass["待评估"])}>
+                      {getDisplayStatus(inf)}
                     </span>
+                    {getDisplayLabel(inf) && (
+                      <span className="ml-2 text-xs text-[var(--muted-foreground)]">{getDisplayLabel(inf)}</span>
+                    )}
                   </td>
+                  {activeTab === "incubation" && (
+                    <td className="py-3 px-4">
+                      {(inf.phase === "completed_discovery" || inf.phase === "completed_contract") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => handleStartPhase(inf.id, "incubation")}
+                          disabled={startingPhases[inf.id]}
+                        >
+                          <Sparkles className="size-3" />
+                          {startingPhases[inf.id] ? "启动中..." : "开始孵化"}
+                        </Button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
           {filtered.length === 0 && (
-            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无达人数据</div>
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
+              {activeTab === "discovery" ? "暂无发现阶段的达人" : "暂无可孵化的达人"}
+            </div>
           )}
         </div>
       )}

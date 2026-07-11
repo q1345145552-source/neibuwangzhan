@@ -37,6 +37,11 @@ export async function GET(_req: NextRequest) {
   // Signed count
   const signed = (db.prepare("SELECT COUNT(*) as c FROM influencers WHERE status = '已签约'").get() as any).c;
 
+  // Phase breakdown
+  const phaseStats = db.prepare(
+    "SELECT phase, COUNT(*) as c FROM influencers GROUP BY phase ORDER BY phase"
+  ).all() as { phase: string; c: number }[];
+
   const res = NextResponse.json({
     total,
     aRated,
@@ -46,6 +51,7 @@ export async function GET(_req: NextRequest) {
     overdue2d,
     overdue5d,
     categories,
+    phaseStats,
   });
   res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   return res;

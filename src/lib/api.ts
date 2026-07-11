@@ -490,3 +490,14 @@ export async function deleteEmployee(id: number) {
   if (!res.ok) throw new Error("删除员工失败");
   return res.json();
 }
+
+// ── Influencer phase ──
+export async function startPhase(influencerId: number, phase: string) {
+  const res = await fetch(`/api/influencers/${influencerId}/start-phase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phase }),
+  });
+  if (!res.ok) throw new Error("启动阶段失败");
+  return res.json();
+}

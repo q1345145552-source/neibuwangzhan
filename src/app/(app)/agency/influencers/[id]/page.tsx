@@ -3,9 +3,9 @@
 import { useState, useEffect, use, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Upload as UploadIcon, Building, ExternalLink, Search } from "lucide-react";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Upload as UploadIcon, Building, ExternalLink, Search, Play, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { fetchEmployees, type Employee } from "@/lib/api";
+import { fetchEmployees, type Employee, startPhase } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
 
 // ── Status styles ──
@@ -35,6 +35,7 @@ const phaseLabels: Record<string, string> = {
 
 // ── Types ──
 interface Influencer {
+  phase: string;
   id: number; name: string; status: string; category: string; tiktok_link: string;
   line_id: string; contact_phone: string; monthly_gmv: string; live_stream_ratio: string;
   contact_time: string; reply_status: string; followers: string; avg_views: string;
@@ -402,13 +403,28 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     reload();
   };
 
+  const handleStartPhase = async (phase: string) => {
+    if (!inf) return;
+    try {
+      setLoading(true);
+      await startPhase(inf.id, phase);
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "启动阶段失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ── Render ──
   if (loading) return <div className="py-20 text-center text-sm text-[var(--muted-foreground)]">加载中...</div>;
   if (error && !inf) return <div className="py-20 text-center text-sm text-[var(--destructive)]">{error}</div>;
   if (!inf) return null;
 
-  const completedCount = steps.filter(s => s.status === "已完成").length;
-  const totalSteps = steps.length;
+  const currentPhaseSteps = steps.filter(s => s.phase === inf.phase || (!inf.phase || inf.phase === "discovery"));
+  const displaySteps = currentPhaseSteps.length > 0 ? currentPhaseSteps : steps;
+  const completedCount = displaySteps.filter(s => s.status === "已完成").length;
+  const totalSteps = displaySteps.length;
   const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
   const phases = ["discovery", "contract", "incubation"] as const;
 
@@ -511,12 +527,20 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
             <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", stepStatusClass[inf.status] || "bg-gray-100")}>{inf.status}</span>
             {inf.category && <span className="text-xs text-[var(--muted-foreground)]">{inf.category}</span>}
             {inf.followers && <span className="text-xs text-[var(--muted-foreground)]">{inf.followers} 粉丝</span>}
-            <span className="text-xs text-[var(--muted-foreground)]">· 已完成 {completedCount}/{totalSteps}</span>
+            <span className="text-xs text-[var(--muted-foreground)]">· 阶段: {inf.phase?.replace("completed_", "").replace("_", " ")} · 已完成 {completedCount}/{totalSteps}</span>
           </div>
           {inf.tiktok_link && (
             <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--primary)] hover:underline break-all">
               <ExternalLink className="size-3" />{inf.tiktok_link}
             </a>
+          )}
+          {/* Phase action buttons */}
+          {inf.phase === "completed_discovery" && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">已入池</span>
+              <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleStartPhase("contract")}><Play className="size-3" />开始签约</Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleStartPhase("incubation")}><Sparkles className="size-3" />开始孵化</Button>
+            </div>
           )}
         </div>
       </div>

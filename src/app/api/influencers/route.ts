@@ -5,9 +5,21 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  const phase = searchParams.get("phase");
   let sql = "SELECT * FROM influencers";
+  const conditions: string[] = [];
   const params: string[] = [];
-  if (status) { sql += " WHERE status = ?"; params.push(status); }
+  if (status) { conditions.push("status = ?"); params.push(status); }
+  if (phase) {
+    if (phase === "contract") {
+      conditions.push("phase IN ('completed_discovery','contract','completed_contract')");
+    } else if (phase === "incubation") {
+      conditions.push("phase IN ('completed_discovery','contract','completed_contract','incubation','completed_incubation')");
+    } else {
+      conditions.push("phase = ?"); params.push(phase);
+    }
+  }
+  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
   sql += " ORDER BY created_at DESC";
   const rows = db.prepare(sql).all(...params);
   const res = NextResponse.json(rows);
@@ -23,8 +35,8 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO influencers (name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(name, tiktok_link || "", category || "", contact || "", contact_phone || "", line_id || "", monthly_gmv || "", live_stream_ratio || "", contact_time || "", reply_status || "待联系", followers || "", avg_views || "", gmv_range || "", notes || "", status || "待评估");
-  // Auto-generate 19-step workflow
-  seedInfluencerSteps(db, Number(result.lastInsertRowid));
+  // Auto-generate discovery phase steps only (5 steps)
+  seedInfluencerSteps(db, Number(result.lastInsertRowid), "discovery");
   const row = db.prepare("SELECT * FROM influencers WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }

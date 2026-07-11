@@ -243,8 +243,9 @@ export function getInfluencerSteps(): InfluencerStepTemplate[] {
   ];
 }
 
-export function seedInfluencerSteps(db: any, influencerId: number) {
-  const steps = getInfluencerSteps();
+export function seedInfluencerSteps(db: any, influencerId: number, phase?: string) {
+  const allSteps = getInfluencerSteps();
+  const steps = phase ? allSteps.filter(s => s.phase === phase) : allSteps;
   const insert = db.prepare(
     "INSERT INTO influencer_steps (influencer_id, step_name, step_order, phase, status, assignee) VALUES (?, ?, ?, ?, '待处理', ?)"
   );
@@ -289,7 +290,8 @@ function initTables(database: Database.Database) {
       currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB')),
       trademark_name TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TEXT DEFAULT (datetime('now')),
+      phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
     );
 
     CREATE TABLE IF NOT EXISTS order_steps (
@@ -413,7 +415,8 @@ function initTables(database: Database.Database) {
       status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','评估中','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止')),
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TEXT DEFAULT (datetime('now')),
+      phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
     );
 
     CREATE TABLE IF NOT EXISTS influencer_evaluations (
@@ -439,7 +442,8 @@ function initTables(database: Database.Database) {
       address TEXT DEFAULT '',
       notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TEXT DEFAULT (datetime('now')),
+      phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
     );
 
     CREATE TABLE IF NOT EXISTS contracts (
@@ -456,7 +460,8 @@ function initTables(database: Database.Database) {
       end_date TEXT DEFAULT '',
       notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TEXT DEFAULT (datetime('now')),
+      phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
     );
 
     CREATE TABLE IF NOT EXISTS influencer_factories (
@@ -541,6 +546,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE influencers ADD COLUMN live_stream_ratio TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN contact_time TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复'))"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN phase TEXT DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation'))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), name TEXT NOT NULL, file_type TEXT DEFAULT '', file_url TEXT DEFAULT '', status TEXT DEFAULT '已审核', uploaded_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_finances (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), type TEXT NOT NULL CHECK(type IN ('income','expense')), amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', description TEXT DEFAULT '', payment_method TEXT DEFAULT '', slip_number TEXT DEFAULT '', slip_file TEXT DEFAULT '', currency TEXT DEFAULT 'CNY', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_certificates (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), certificate_number TEXT DEFAULT '', product_name TEXT DEFAULT '', issue_date TEXT DEFAULT '', expiry_date TEXT DEFAULT '', status TEXT DEFAULT 'valid', notes TEXT DEFAULT '', file_url TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}

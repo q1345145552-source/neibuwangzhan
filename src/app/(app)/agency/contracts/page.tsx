@@ -2,15 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, FileText, Clock, AlertCircle } from "lucide-react";
+import { Search, FileText, Clock, AlertCircle, Play, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { startPhase } from "@/lib/api";
 
 const payClass: Record<string, string> = {
   "未付": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
   "部分付": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
   "已付": "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+};
+
+const statusClass: Record<string, string> = {
+  "签约中": "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+  "已入池": "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
+  "已完成": "bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200",
 };
 
 interface Contract {
@@ -28,6 +36,12 @@ interface Contract {
   end_date: string;
   notes: string;
   created_at: string;
+}
+
+interface Influencer {
+  id: number; name: string; phase: string; status: string; category: string;
+  tiktok_link: string; contact: string; contact_phone: string;
+  followers: string; gmv_range: string; created_at: string;
 }
 
 function getOverdueLabel(createdAt: string): { label: string; cls: string } | null {
@@ -50,24 +64,40 @@ function getOverdueRowClass(createdAt: string, paymentStatus: string): string {
 
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [contractPhaseInfs, setContractPhaseInfs] = useState<Influencer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [startingPhases, setStartingPhases] = useState<Record<number, boolean>>({});
   const searchParams = useSearchParams();
   const overdueFilter = searchParams.get("overdue");
 
   const load = async () => {
     try {
-      const res = await fetch("/api/contracts", { cache: "no-store" });
-      const data = await res.json();
-      setContracts(data);
+      const [cr, ir] = await Promise.all([
+        fetch("/api/contracts", { cache: "no-store" }),
+        fetch("/api/influencers?phase=contract", { cache: "no-store" }),
+      ]);
+      const [cd, id] = await Promise.all([cr.json(), ir.json()]);
+      setContracts(Array.isArray(cd) ? cd : []);
+      setContractPhaseInfs(Array.isArray(id) ? id : []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
+  const handleStartContract = async (influencerId: number) => {
+    setStartingPhases(p => ({ ...p, [influencerId]: true }));
+    try {
+      await startPhase(influencerId, "contract");
+      load();
+    } catch (err) {
+      console.error(err);
+    }
+    setStartingPhases(p => ({ ...p, [influencerId]: false }));
+  };
+
   const filtered = contracts.filter((c) => {
-    // Overdue filter from URL
     if (overdueFilter) {
       const overdue = getOverdueLabel(c.created_at);
       if (!overdue) return false;
@@ -89,13 +119,15 @@ export default function ContractsPage() {
     return o && o.label === "已超时";
   }).length;
 
+  const pendingContract = contractPhaseInfs.filter(i => i.phase === "completed_discovery");
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">签约跟进</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            共 {contracts.length} 份签约
+            共 {contracts.length} 份签约 · {pendingContract.length} 位待签约
             {(overdue2d > 0 || overdue5d > 0) && (
               <span className="ml-2">
                 {overdue5d > 0 && <span className="text-red-500 font-medium">{overdue5d} 个已超时</span>}
@@ -106,6 +138,36 @@ export default function ContractsPage() {
           </p>
         </div>
       </div>
+
+      {/* Pending contract influencers (completed_discovery) */}
+      {pendingContract.length > 0 && (
+        <div className="rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50/30 dark:bg-teal-950/10 p-4">
+          <h2 className="text-sm font-medium text-teal-700 dark:text-teal-400 mb-3 flex items-center gap-2">
+            <Play className="size-3.5" />已入池，可签约 ({pendingContract.length})
+          </h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {pendingContract.map(inf => (
+              <div key={inf.id} className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2">
+                <div>
+                  <Link href={`/agency/influencers/${inf.id}`} className="font-medium text-sm hover:underline">
+                    {inf.name}
+                  </Link>
+                  <div className="text-xs text-[var(--muted-foreground)]">{inf.category || "-"}</div>
+                </div>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => handleStartContract(inf.id)}
+                  disabled={startingPhases[inf.id]}
+                >
+                  <Play className="size-3" />
+                  {startingPhases[inf.id] ? "启动中..." : "开始签约"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -135,7 +197,11 @@ export default function ContractsPage() {
                 const rowClass = getOverdueRowClass(c.created_at, c.payment_status);
                 return (
                 <tr key={c.id} className={cn("border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors", rowClass)}>
-                  <td className="py-3 px-4 font-medium text-[var(--foreground)]">{c.influencer_name || "-"}</td>
+                  <td className="py-3 px-4">
+                    <Link href={`/agency/influencers/${c.influencer_id}`} className="font-medium text-[var(--foreground)] hover:underline">
+                      {c.influencer_name || "-"}
+                    </Link>
+                  </td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.base_salary || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.commission || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">
