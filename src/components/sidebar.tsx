@@ -16,6 +16,7 @@ import {
   MapPin,
   Store,
   Radio,
+  UsersRound,
   CheckSquare,
   FileText,
   DollarSign,
@@ -41,6 +42,10 @@ const businessLines = [
   { name: "地址认证", href: "/address-certification", icon: MapPin },
   { name: "Mall开店", href: "/mall-store", icon: Store },
   { name: "NBTC", href: "/nbtc", icon: Radio },
+];
+
+const agencyNav = [
+  { name: "机构管理", href: "/agency", icon: UsersRound },
 ];
 
 const utilityNav = [
@@ -115,6 +120,11 @@ export function Sidebar() {
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">业务线</span>
         </div>
         <NavSection items={businessLines} pathname={pathname} onClose={close} />
+
+        <div className="mt-4 mb-2 px-3">
+          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
+        </div>
+        <NavSection items={agencyNav} pathname={pathname} onClose={close} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">工具</span>

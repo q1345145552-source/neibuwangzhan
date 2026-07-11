@@ -348,6 +348,74 @@ function initTables(database: Database.Database) {
       detail TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS influencers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      tiktok_link TEXT DEFAULT '',
+      category TEXT DEFAULT '',
+      contact TEXT DEFAULT '',
+      contact_phone TEXT DEFAULT '',
+      followers TEXT DEFAULT '',
+      avg_views TEXT DEFAULT '',
+      gmv_range TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','评估中','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止')),
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS influencer_evaluations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      influencer_id INTEGER NOT NULL REFERENCES influencers(id),
+      gmv TEXT DEFAULT '',
+      live_stream_ratio TEXT DEFAULT '',
+      rating TEXT DEFAULT '' CHECK(rating IN ('','A','B','C','D')),
+      content_quality TEXT DEFAULT '',
+      brand_fit TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      evaluated_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS factories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT '',
+      moq TEXT DEFAULT '',
+      contact TEXT DEFAULT '',
+      contact_phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS contracts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      influencer_id INTEGER REFERENCES influencers(id),
+      base_salary TEXT DEFAULT '',
+      commission TEXT DEFAULT '',
+      live_sessions TEXT DEFAULT '',
+      live_duration TEXT DEFAULT '',
+      video_count TEXT DEFAULT '',
+      contract_url TEXT DEFAULT '',
+      payment_status TEXT DEFAULT '未付' CHECK(payment_status IN ('未付','部分付','已付')),
+      start_date TEXT DEFAULT '',
+      end_date TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS influencer_factories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      influencer_id INTEGER NOT NULL REFERENCES influencers(id),
+      factory_id INTEGER NOT NULL REFERENCES factories(id),
+      relationship TEXT DEFAULT '合作' CHECK(relationship IN ('合作','考察','已终止')),
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations for existing databases
