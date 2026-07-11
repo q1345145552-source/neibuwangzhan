@@ -18,11 +18,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const db = getDb();
   const body = await req.json();
-  const { name, tiktok_link, category, contact, contact_phone, followers, avg_views, gmv_range, notes, status } = body;
+  const { name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status } = body;
   if (!name) return NextResponse.json({ error: "请填写达人名称" }, { status: 400 });
   const result = db.prepare(
-    "INSERT INTO influencers (name, tiktok_link, category, contact, contact_phone, followers, avg_views, gmv_range, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(name, tiktok_link || "", category || "", contact || "", contact_phone || "", followers || "", avg_views || "", gmv_range || "", notes || "", status || "待评估");
+    "INSERT INTO influencers (name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(name, tiktok_link || "", category || "", contact || "", contact_phone || "", line_id || "", monthly_gmv || "", live_stream_ratio || "", contact_time || "", reply_status || "待联系", followers || "", avg_views || "", gmv_range || "", notes || "", status || "待评估");
   // Auto-generate 19-step workflow
   seedInfluencerSteps(db, Number(result.lastInsertRowid));
   const row = db.prepare("SELECT * FROM influencers WHERE id = ?").get(result.lastInsertRowid);

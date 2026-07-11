@@ -401,6 +401,11 @@ function initTables(database: Database.Database) {
       category TEXT DEFAULT '',
       contact TEXT DEFAULT '',
       contact_phone TEXT DEFAULT '',
+      line_id TEXT DEFAULT '',
+      monthly_gmv TEXT DEFAULT '',
+      live_stream_ratio TEXT DEFAULT '',
+      contact_time TEXT DEFAULT '',
+      reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复')),
       followers TEXT DEFAULT '',
       avg_views TEXT DEFAULT '',
       gmv_range TEXT DEFAULT '',
@@ -531,6 +536,11 @@ function initTables(database: Database.Database) {
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), step_name TEXT NOT NULL, step_order INTEGER NOT NULL, phase TEXT DEFAULT 'discovery' CHECK(phase IN ('discovery','contract','incubation')), status TEXT NOT NULL DEFAULT '待处理', assignee TEXT DEFAULT '', notes TEXT DEFAULT '', stop_reason TEXT DEFAULT '', completed_at TEXT, created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_step_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, step_id INTEGER NOT NULL REFERENCES influencer_steps(id), influencer_id INTEGER NOT NULL REFERENCES influencers(id), content TEXT NOT NULL, created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("ALTER TABLE influencer_steps ADD COLUMN stop_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN line_id TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN monthly_gmv TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN live_stream_ratio TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN contact_time TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复'))"); } catch {}
 }
 
 /* ── 种子数据 ── */

@@ -14,9 +14,11 @@ export default function NewInfluencerPage() {
   const [form, setForm] = useState({
     name: "",
     tiktok_link: "",
-    category: "",
-    contact: "",
     contact_phone: "",
+    line_id: "",
+    category: "",
+    monthly_gmv: "",
+    live_stream_ratio: "",
     followers: "",
     avg_views: "",
     gmv_range: "",
@@ -47,7 +49,7 @@ export default function NewInfluencerPage() {
   const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
   return (
-    <div className="flex flex-col gap-6 max-w-lg">
+    <div className="flex flex-col gap-6 max-w-xl">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
           <ArrowLeft className="size-4" />
@@ -59,52 +61,77 @@ export default function NewInfluencerPage() {
         <div className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div>
-          <label className="text-sm font-medium text-[var(--foreground)]">达人名称 <span className="text-red-500">*</span></label>
-          <input value={form.name} onChange={e => update("name", e.target.value)} placeholder="例如: @beauty_thai" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" autoFocus />
-        </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        {/* 基本信息 */}
+        <fieldset className="rounded-xl border border-[var(--border)] p-5">
+          <legend className="text-sm font-medium text-[var(--foreground)] px-1">基本信息</legend>
+          <div className="mt-2 flex flex-col gap-4">
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">达人姓名 / 昵称 <span className="text-red-500">*</span></label>
+              <input value={form.name} onChange={e => update("name", e.target.value)} placeholder="例如: @beauty_thai" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" autoFocus />
+            </div>
 
-        <div>
-          <label className="text-sm font-medium text-[var(--foreground)]">TikTok 链接</label>
-          <input value={form.tiktok_link} onChange={e => update("tiktok_link", e.target.value)} placeholder="https://tiktok.com/@username" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-        </div>
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">TikTok 主页链接</label>
+              <input value={form.tiktok_link} onChange={e => update("tiktok_link", e.target.value)} placeholder="https://tiktok.com/@username" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-[var(--foreground)]">品类</label>
-            <select value={form.category} onChange={e => update("category", e.target.value)} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
-              <option value="">请选择</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-[var(--foreground)]">粉丝量</label>
-            <input value={form.followers} onChange={e => update("followers", e.target.value)} placeholder="例如: 10万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-[var(--foreground)]">电话号码</label>
+                <input value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)} placeholder="电话 / WhatsApp" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-[var(--foreground)]">LINE ID</label>
+                <input value={form.line_id} onChange={e => update("line_id", e.target.value)} placeholder="Line ID" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-[var(--foreground)]">联系人</label>
-            <input value={form.contact} onChange={e => update("contact", e.target.value)} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-[var(--foreground)]">联系方式</label>
-            <input value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)} placeholder="电话/WhatsApp)" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-[var(--foreground)]">产品品类</label>
+                <select value={form.category} onChange={e => update("category", e.target.value)} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="">请选择</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-[var(--foreground)]">粉丝量</label>
+                <input value={form.followers} onChange={e => update("followers", e.target.value)} placeholder="例如: 10万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-[var(--foreground)]">平均观看</label>
-            <input value={form.avg_views} onChange={e => update("avg_views", e.target.value)} placeholder="例如: 50万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">平均观看</label>
+              <input value={form.avg_views} onChange={e => update("avg_views", e.target.value)} placeholder="例如: 50万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
           </div>
-          <div>
-            <label className="text-sm font-medium text-[var(--foreground)]">GMV区间</label>
-            <input value={form.gmv_range} onChange={e => update("gmv_range", e.target.value)} placeholder="例如: ฿5-10万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+        </fieldset>
+
+        {/* 评估数据（可选） */}
+        <fieldset className="rounded-xl border border-[var(--border)] p-5">
+          <legend className="text-sm font-medium text-[var(--foreground)] px-1">评估数据 <span className="text-xs text-[var(--muted-foreground)]">（选填，第三步可再补充）</span></legend>
+          <div className="mt-2 grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">月度 GMV</label>
+              <input value={form.monthly_gmv} onChange={e => update("monthly_gmv", e.target.value)} placeholder="例如: ฿10-20万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">直播间 GMV 占比</label>
+              <input value={form.live_stream_ratio} onChange={e => update("live_stream_ratio", e.target.value)} placeholder="例如: 70%" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">GMV区间</label>
+              <input value={form.gmv_range} onChange={e => update("gmv_range", e.target.value)} placeholder="例如: ฿5-10万" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
           </div>
-        </div>
+        </fieldset>
+
+        {/* 联系信息（创建时默认待联系，后续更新） */}
+        <fieldset className="rounded-xl border border-[var(--border)] p-5">
+          <legend className="text-sm font-medium text-[var(--foreground)] px-1">联系信息 <span className="text-xs text-[var(--muted-foreground)]">（创建后默认待联系）</span></legend>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">联系时间和回复状态由 Prae / Namcha 在第六步联系达人后更新</p>
+        </fieldset>
 
         <div>
           <label className="text-sm font-medium text-[var(--foreground)]">备注</label>
