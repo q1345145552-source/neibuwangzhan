@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Sparkles, Play, ExternalLink, ArrowLeft } from "lucide-react";
+import { Search, Sparkles, Play, ExternalLink, ArrowLeft, Building } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startPhase } from "@/lib/api";
 
@@ -26,6 +26,7 @@ export default function IncubationPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [startingPhases, setStartingPhases] = useState<Record<number, boolean>>({});
+  const [factories, setFactories] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,6 +42,11 @@ export default function IncubationPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch("/api/factories", { cache: "no-store" })
+      .then(r => r.json()).then(d => setFactories(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
 
   const handleStartIncubation = async (influencerId: number) => {
     setStartingPhases(p => ({ ...p, [influencerId]: true }));
@@ -198,6 +204,43 @@ export default function IncubationPage() {
           </div>
         </div>
       )}
+
+      {/* Factory Management */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+          <h2 className="text-sm font-medium flex items-center gap-2">
+            <Building className="size-4 text-amber-500" />工厂管理
+          </h2>
+          <Link href="/agency/factories">
+            <Button variant="outline" size="sm" className="h-7 text-xs">管理工厂</Button>
+          </Link>
+        </div>
+        {factories.length === 0 ? (
+          <div className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+            暂无工厂数据。<br/>
+            <span className="text-xs">工厂可在达人详情页中关联到具体达人。</span>
+          </div>
+        ) : (
+          <div className="px-4 py-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {factories.slice(0, 6).map((f: any) => (
+              <div key={f.id} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-sm">
+                <div>
+                  <span className="font-medium">{f.name}</span>
+                  {f.category && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{f.category}</span>}
+                </div>
+                <Link href={`/agency/factories/${f.id}`}>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs">查看</Button>
+                </Link>
+              </div>
+            ))}
+            {factories.length > 6 && (
+              <div className="flex items-center justify-center text-xs text-[var(--muted-foreground)]">
+                <Link href="/agency/factories" className="hover:underline">+{factories.length - 6} 家工厂</Link>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {pool.length === 0 && active.length === 0 && completed.length === 0 && (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)] rounded-xl border border-dashed border-[var(--border)]">

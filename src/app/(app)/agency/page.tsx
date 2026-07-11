@@ -2,33 +2,25 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Users, FileSignature, Factory, TrendingUp, AlertCircle, Clock } from "lucide-react";
+import { Users, FileSignature, Sparkles, TrendingUp, AlertCircle, Clock, Search, FlaskConical, PackageCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Stats {
-  total: number;
-  aRated: number;
-  contracting: number;
-  signed: number;
-  newThisMonth: number;
-  overdue2d: number;
-  overdue5d: number;
+  total: number; aRated: number; newThisMonth: number;
+  discoveryCount: number; poolCount: number; contractingCount: number;
+  incubatingCount: number; completedCount: number;
+  overdue2d: number; overdue5d: number;
   categories: { category: string; c: number }[];
 }
 
-const cards = [
-  { title: "达人发现", desc: "创建发现任务、收录达人、提交Ploy评估池", href: "/agency/influencers", icon: Users, color: "from-pink-500 to-rose-500" },
-  { title: "签约跟进", desc: "已入池达人签约九步流程，合同佣金付款管理", href: "/agency/contracts", icon: FileSignature, color: "from-blue-500 to-indigo-500" },
-  { title: "品牌孵化", desc: "达人品牌孵化五步流程，工厂对接生产跟踪", href: "/agency/incubation", icon: Factory, color: "from-amber-500 to-orange-500" },
-];
-
-const statCards = [
-  { key: "total", label: "达人总数", href: "/agency/influencers", color: "text-pink-600 dark:text-pink-400", bg: "bg-pink-50 dark:bg-pink-950/30" },
-  { key: "aRated", label: "A级达人", href: "/agency/influencers", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
-  { key: "contracting", label: "签约中", href: "/agency/contracts", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/30" },
-  { key: "signed", label: "已签约", href: "/agency/contracts", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
-  { key: "newThisMonth", label: "本月新增", href: "/agency/influencers", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/30" },
-];
+const phaseLabelMap: Record<string, string> = {
+  discovery: "达人发现",
+  completed_discovery: "已入池",
+  contract: "签约中",
+  completed_contract: "签约完成",
+  incubation: "孵化中",
+  completed_incubation: "已完成",
+};
 
 const categoryColors = [
   "bg-pink-500", "bg-blue-500", "bg-amber-500", "bg-emerald-500",
@@ -40,9 +32,7 @@ export default function AgencyPage() {
 
   useEffect(() => {
     fetch("/api/agency/stats", { cache: "no-store" })
-      .then(r => r.json())
-      .then(setStats)
-      .catch(() => {});
+      .then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 
   const maxCat = stats?.categories[0]?.c || 1;
@@ -51,7 +41,7 @@ export default function AgencyPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">机构管理</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">达人孵化 · 签约跟进 · 供应链工厂</p>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">达人孵化 · 签约跟进 · 品牌孵化</p>
       </div>
 
       {/* Overdue alerts */}
@@ -75,25 +65,70 @@ export default function AgencyPage() {
         </div>
       )}
 
-      {/* Stats grid */}
+      {/* Phase pipeline cards */}
       {stats && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {statCards.map(s => (
-            <Link key={s.key} href={s.href} className={cn("rounded-xl border border-[var(--border)] p-4 transition-all hover:shadow-md hover:border-[var(--ring)]", s.bg)}>
-              <p className="text-xs text-[var(--muted-foreground)]">{s.label}</p>
-              <p className={cn("mt-1 text-2xl font-semibold tabular-nums", s.color)}>
-                {String(stats[s.key as keyof Stats] ?? 0)}
-              </p>
-            </Link>
-          ))}
+          <Link href="/agency/influencers" className="rounded-xl border border-pink-200 dark:border-pink-800 bg-pink-50/40 dark:bg-pink-950/20 p-4 transition-all hover:shadow-md hover:border-pink-300">
+            <div className="flex items-center gap-2">
+              <Users className="size-4 text-pink-500" />
+              <p className="text-xs text-[var(--muted-foreground)]">达人发现</p>
+            </div>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-pink-600 dark:text-pink-400">
+              {stats.discoveryCount ?? 0}
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">进行中</p>
+          </Link>
+
+          <Link href="/agency/influencers?tab=evaluating" className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/20 p-4 transition-all hover:shadow-md hover:border-purple-300">
+            <div className="flex items-center gap-2">
+              <Search className="size-4 text-purple-500" />
+              <p className="text-xs text-[var(--muted-foreground)]">已入池</p>
+            </div>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-purple-600 dark:text-purple-400">
+              {stats.poolCount ?? 0}
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">待签约/孵化</p>
+          </Link>
+
+          <Link href="/agency/contracts" className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/20 p-4 transition-all hover:shadow-md hover:border-blue-300">
+            <div className="flex items-center gap-2">
+              <FileSignature className="size-4 text-blue-500" />
+              <p className="text-xs text-[var(--muted-foreground)]">签约中</p>
+            </div>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-blue-600 dark:text-blue-400">
+              {stats.contractingCount ?? 0}
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">9步流程中</p>
+          </Link>
+
+          <Link href="/agency/incubation" className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20 p-4 transition-all hover:shadow-md hover:border-amber-300">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="size-4 text-amber-500" />
+              <p className="text-xs text-[var(--muted-foreground)]">品牌孵化</p>
+            </div>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+              {stats.incubatingCount ?? 0}
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">5步流程中</p>
+          </Link>
+
+          <div className="rounded-xl border border-green-200 dark:border-green-800 bg-green-50/40 dark:bg-green-950/20 p-4">
+            <div className="flex items-center gap-2">
+              <PackageCheck className="size-4 text-green-500" />
+              <p className="text-xs text-[var(--muted-foreground)]">已完成</p>
+            </div>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-green-600 dark:text-green-400">
+              {stats.completedCount ?? 0}
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">孵化完成</p>
+          </div>
         </div>
       )}
 
-      {/* Category distribution + 3 cards */}
+      {/* Category + Entry cards */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Category chart */}
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 lg:col-span-2">
-          <h3 className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
+          <h3 className="text-sm font-medium flex items-center gap-2">
             <TrendingUp className="size-4 text-[var(--muted-foreground)]" />
             品类分布
           </h3>
@@ -103,10 +138,8 @@ export default function AgencyPage() {
                 <div key={cat.category} className="flex items-center gap-3">
                   <span className="w-20 text-xs text-[var(--muted-foreground)] truncate">{cat.category}</span>
                   <div className="flex-1 h-5 rounded-full bg-[var(--muted)] overflow-hidden">
-                    <div
-                      className={cn("h-full rounded-full transition-all", categoryColors[i % categoryColors.length])}
-                      style={{ width: `${Math.round((cat.c / maxCat) * 100)}%` }}
-                    />
+                    <div className={cn("h-full rounded-full transition-all", categoryColors[i % categoryColors.length])}
+                      style={{ width: `${Math.round((cat.c / maxCat) * 100)}%` }} />
                   </div>
                   <span className="w-8 text-right text-xs font-medium tabular-nums text-[var(--foreground)]">{cat.c}</span>
                 </div>
@@ -117,19 +150,36 @@ export default function AgencyPage() {
           )}
         </div>
 
-        {/* 3 entry cards */}
         <div className="flex flex-col gap-3">
-          {cards.map(card => (
-            <Link key={card.title} href={card.href} className="group flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 transition-all hover:shadow-md hover:border-[var(--ring)]">
-              <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br", card.color)}>
-                <card.icon className="size-4 text-white" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--foreground)]">{card.title}</p>
-                <p className="text-xs text-[var(--muted-foreground)] truncate">{card.desc}</p>
-              </div>
-            </Link>
-          ))}
+          <Link href="/agency/influencers/tasks" className="group flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 transition-all hover:shadow-md hover:border-[var(--ring)]">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500 to-rose-500">
+              <Search className="size-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--foreground)]">达人发现</p>
+              <p className="text-xs text-[var(--muted-foreground)] truncate">创建任务、收录达人、提交评估</p>
+            </div>
+          </Link>
+
+          <Link href="/agency/contracts" className="group flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 transition-all hover:shadow-md hover:border-[var(--ring)]">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500">
+              <FileSignature className="size-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--foreground)]">签约跟进</p>
+              <p className="text-xs text-[var(--muted-foreground)] truncate">签约9步流程、合同佣金管理</p>
+            </div>
+          </Link>
+
+          <Link href="/agency/incubation" className="group flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 transition-all hover:shadow-md hover:border-[var(--ring)]">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-500">
+              <FlaskConical className="size-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--foreground)]">品牌孵化</p>
+              <p className="text-xs text-[var(--muted-foreground)] truncate">孵化5步流程、工厂对接跟踪</p>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
