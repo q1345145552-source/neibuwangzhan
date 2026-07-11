@@ -17,9 +17,9 @@ interface Stats {
 }
 
 const cards = [
-  { title: "达人管理", desc: "TikTok 达人库，评估、筛选、跟进、签约全流程", href: "/agency/influencers", icon: Users, color: "from-pink-500 to-rose-500" },
-  { title: "签约跟进", desc: "已签约达人的合同、佣金、付款状态一目了然", href: "/agency/contracts", icon: FileSignature, color: "from-blue-500 to-indigo-500" },
-  { title: "工厂管理", desc: "合作工厂信息库，擅长品类、起订量、联系人", href: "/agency/factories", icon: Factory, color: "from-amber-500 to-orange-500" },
+  { title: "达人发现", desc: "创建发现任务、收录达人、提交Ploy评估池", href: "/agency/influencers", icon: Users, color: "from-pink-500 to-rose-500" },
+  { title: "签约跟进", desc: "已入池达人签约九步流程，合同佣金付款管理", href: "/agency/contracts", icon: FileSignature, color: "from-blue-500 to-indigo-500" },
+  { title: "品牌孵化", desc: "达人品牌孵化五步流程，工厂对接生产跟踪", href: "/agency/incubation", icon: Factory, color: "from-amber-500 to-orange-500" },
 ];
 
 const statCards = [

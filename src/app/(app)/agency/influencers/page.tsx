@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, ExternalLink, Sparkles, Play, ListTodo, ClipboardList } from "lucide-react";
+import { Search, Plus, ExternalLink, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { startPhase } from "@/lib/api";
+
 
 const statusClass: Record<string, string> = {
   "待评估": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
@@ -22,16 +22,11 @@ const statusClass: Record<string, string> = {
   "已入池": "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
 };
 
-const phaseLabelMap: Record<string, string> = {
-  "completed_discovery": "已入池，待签约",
-  "completed_contract": "签约已完成",
-  "completed_incubation": "孵化已完成",
-};
+
 
 const tabs = [
   { key: "discovery", label: "达人发现" },
   { key: "evaluating", label: "待评估" },
-  { key: "incubation", label: "品牌孵化" },
 ];
 
 interface Influencer {
@@ -55,7 +50,7 @@ export default function InfluencersPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("discovery");
-  const [startingPhases, setStartingPhases] = useState<Record<number, boolean>>({});
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,16 +70,7 @@ export default function InfluencersPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleStartPhase = async (influencerId: number, phase: string) => {
-    setStartingPhases(p => ({ ...p, [influencerId]: true }));
-    try {
-      await startPhase(influencerId, phase);
-      load();
-    } catch (err) {
-      console.error(err);
-    }
-    setStartingPhases(p => ({ ...p, [influencerId]: false }));
-  };
+
 
   const filtered = influencers.filter((i) => {
     if (!search) return true;
@@ -95,17 +81,10 @@ export default function InfluencersPage() {
   const getDisplayStatus = (inf: Influencer) => {
     if (inf.status === "评估中" && activeTab === "evaluating") return "待评估";
     if (inf.phase === "completed_discovery") return "已入池";
-    if (inf.phase === "completed_contract") return "签约已完成";
-    if (inf.phase === "completed_incubation") return "孵化已完成";
     return inf.status;
   };
 
-  const getDisplayLabel = (inf: Influencer) => {
-    if (activeTab === "incubation" && inf.phase === "completed_discovery") return "已入池，可孵化";
-    if (activeTab === "incubation" && inf.phase === "completed_contract") return "已入池，可孵化";
-    if (activeTab === "incubation" && (inf.phase === "incubation" || inf.phase === "completed_incubation")) return phaseLabelMap[inf.phase] || "";
-    return "";
-  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -162,7 +141,7 @@ export default function InfluencersPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">联系方式</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
-                {(activeTab === "incubation" || activeTab === "evaluating") && (
+                {(activeTab === "evaluating") && (
                   <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
                 )}
               </tr>
@@ -190,24 +169,11 @@ export default function InfluencersPage() {
                     <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[getDisplayStatus(inf)] || statusClass["待评估"])}>
                       {getDisplayStatus(inf)}
                     </span>
-                    {getDisplayLabel(inf) && (
-                      <span className="ml-2 text-xs text-[var(--muted-foreground)]">{getDisplayLabel(inf)}</span>
-                    )}
+
                   </td>
-                  {(activeTab === "incubation" || activeTab === "evaluating") && (
+                  {(activeTab === "evaluating") && (
                     <td className="py-3 px-4">
-                      {(inf.phase === "completed_discovery" || inf.phase === "completed_contract") && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => handleStartPhase(inf.id, "incubation")}
-                          disabled={startingPhases[inf.id]}
-                        >
-                          <Sparkles className="size-3" />
-                          {startingPhases[inf.id] ? "启动中..." : "开始孵化"}
-                        </Button>
-                      )}
+                      {/* No specific operation for evaluating tab - just view */}
                     </td>
                   )}
                 </tr>
@@ -216,7 +182,7 @@ export default function InfluencersPage() {
           </table>
           {filtered.length === 0 && (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
-              {activeTab === "discovery" ? "暂无发现阶段的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : "暂无可孵化的达人"}
+              {activeTab === "discovery" ? "暂无发现阶段的达人" : "暂无待评估的达人"}
             </div>
           )}
         </div>
