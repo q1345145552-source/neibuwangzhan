@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus } from "lucide-react";
@@ -74,7 +75,9 @@ export default function FactoriesPage() {
             <tbody>
               {filtered.map((f) => (
                 <tr key={f.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors">
-                  <td className="py-3 px-4 font-medium text-[var(--foreground)]">{f.name}</td>
+                  <td className="py-3 px-4 font-medium text-[var(--foreground)]">
+                    <Link href={`/agency/factories/${f.id}`} className="hover:underline">{f.name}</Link>
+                  </td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{f.category || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{f.moq || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{f.contact || "-"}</td>

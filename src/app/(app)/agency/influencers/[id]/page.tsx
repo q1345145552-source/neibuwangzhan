@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Check, AlertTriangle, FileText, Paperclip, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, AlertTriangle, FileText, Paperclip, Loader2, Upload as UploadIcon, Building } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const statusClass: Record<string, string> = {
@@ -67,6 +67,69 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [stopping, setStopping] = useState(false);
   const [completingId, setCompletingId] = useState<number | null>(null);
   const [fileUploading, setFileUploading] = useState<Record<number, boolean>>({});
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult] = useState<{ imported: number; skipped: string[]; total: number } | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [factoryModal, setFactoryModal] = useState(false);
+  const [factories, setFactories] = useState<any[]>([]);
+  const [linkedFactories, setLinkedFactories] = useState<any[]>([]);
+  const [linkingFactory, setLinkingFactory] = useState(false);
+
+  const loadFactories = async () => {
+    const res = await fetch("/api/factories", { cache: "no-store" });
+    const data = await res.json();
+    setFactories(data);
+  };
+
+  const loadLinkedFactories = async () => {
+    if (!influencer?.id) return;
+    const res = await fetch(`/api/influencers/${influencer.id}/factories`, { cache: "no-store" });
+    const data = await res.json();
+    setLinkedFactories(data);
+  };
+
+  const handleLinkFactory = async (factoryId: number) => {
+    if (!influencer) return;
+    setLinkingFactory(true);
+    try {
+      await fetch(`/api/influencers/${influencer.id}/factories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factory_id: factoryId, relationship: "合作" }),
+      });
+      await loadLinkedFactories();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "关联失败");
+    } finally {
+      setLinkingFactory(false);
+    }
+  };
+
+  const handleUnlinkFactory = async (linkId: number) => {
+    await fetch(`/api/influencers/${influencer?.id}/factories?id=` + linkId, { method: "DELETE" });
+    loadLinkedFactories();
+  };
+
+  const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvImporting(true);
+    setCsvResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/influencers/evaluations/import", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "导入失败");
+      setCsvResult(data);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "CSV导入失败");
+    } finally {
+      setCsvImporting(false);
+      if (e.target) e.target.value = "";
+    }
+  };
 
   const load = async () => {
     try {
@@ -81,7 +144,8 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     }
   };
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); loadFactories(); }, [id]);
+  useEffect(() => { if (influencer) loadLinkedFactories(); }, [influencer?.id]);
 
   const canComplete = (step: InfluencerStep, allSteps: InfluencerStep[]): boolean => {
     if (step.status === "已完成" || step.status === "已停止") return false;
@@ -216,6 +280,19 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
       </div>
 
       {error && <div className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
+      {csvResult && (
+        <div className="rounded-md bg-green-50 dark:bg-green-950/30 px-4 py-3 text-sm border border-green-200 dark:border-green-800">
+          <p className="font-medium text-green-700 dark:text-green-300">✅ CSV 导入成功: {csvResult.imported}/{csvResult.total} 条</p>
+          {csvResult.skipped.length > 0 && (
+            <details className="mt-1">
+              <summary className="text-xs text-green-600 dark:text-green-400 cursor-pointer">跳过 {csvResult.skipped.length} 条（点击展开）</summary>
+              <ul className="mt-1 text-xs text-[var(--muted-foreground)] space-y-0.5">
+                {csvResult.skipped.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* 19-step timeline by phase */}
       {phases.map(phase => {
@@ -322,6 +399,36 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                               停止合作
                             </Button>
 
+{/* Factory association for step 17 */}
+                            {step.step_order === 17 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1"
+                                onClick={() => setFactoryModal(true)}
+                              >
+                                <Building className="size-3" />
+                                关联工厂 ({linkedFactories.length})
+                              </Button>
+                            )}
+
+                            {/* CSV import for step 3 (Ploy evaluation) */}
+                            {step.step_order === 3 && (
+                              <>
+                                <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvImport} />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1"
+                                  onClick={() => csvInputRef.current?.click()}
+                                  disabled={csvImporting}
+                                >
+                                  {csvImporting ? <Loader2 className="size-3 animate-spin" /> : <UploadIcon className="size-3" />}
+                                  {csvImporting ? "导入中..." : "导入 CSV"}
+                                </Button>
+                              </>
+                            )}
+
                             {/* File upload */}
                             <label className={cn(
                               "cursor-pointer inline-flex items-center gap-1 h-7 px-2 text-xs rounded-md border border-[var(--border)] hover:bg-[var(--secondary)]",
@@ -346,6 +453,58 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
           </div>
         );
       })}
+
+      {/* Factory association modal */}
+      {factoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setFactoryModal(false)}>
+          <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-medium text-[var(--foreground)] flex items-center gap-2">
+              <Building className="size-5" />
+              关联工厂
+            </h3>
+            
+            {/* Already linked */}
+            {linkedFactories.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">已关联 ({linkedFactories.length})</p>
+                <div className="space-y-1">
+                  {linkedFactories.map((lf: any) => (
+                    <div key={lf.id} className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm">
+                      <span>{lf.factory_name}</span>
+                      <Button size="sm" variant="ghost" className="h-6 text-xs text-red-500" onClick={() => handleUnlinkFactory(lf.id)}>移除</Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Available factories */}
+            <div className="mt-3">
+              <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">可选工厂</p>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {factories.filter(f => !linkedFactories.some((lf: any) => lf.factory_id === f.id)).map(f => (
+                  <div key={f.id} className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2 text-sm">
+                    <div>
+                      <span className="font-medium">{f.name}</span>
+                      {f.category && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{f.category}</span>}
+                    </div>
+                    <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleLinkFactory(f.id)} disabled={linkingFactory}>
+                      关联
+                    </Button>
+                  </div>
+                ))}
+                {factories.filter(f => !linkedFactories.some((lf: any) => lf.factory_id === f.id)).length === 0 && (
+                  <p className="text-xs text-[var(--muted-foreground)]">没有更多工厂可选</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setFactoryModal(false)}>关闭</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stop reason modal */}
       {stopModal && (

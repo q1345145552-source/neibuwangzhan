@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ExternalLink, FileText } from "lucide-react";
+import { Search, FileText, Clock, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const payClass: Record<string, string> = {
@@ -29,10 +30,30 @@ interface Contract {
   created_at: string;
 }
 
+function getOverdueLabel(createdAt: string): { label: string; cls: string } | null {
+  if (!createdAt) return null;
+  const created = new Date(createdAt);
+  const now = new Date();
+  const days = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+  if (days >= 5) return { label: "已超时", cls: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" };
+  if (days >= 2) return { label: "需跟进", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" };
+  return null;
+}
+
+function getOverdueRowClass(createdAt: string, paymentStatus: string): string {
+  if (paymentStatus === "已付") return "";
+  const overdue = getOverdueLabel(createdAt);
+  if (!overdue) return "";
+  if (overdue.label === "已超时") return "bg-red-50/50 dark:bg-red-950/20";
+  return "bg-amber-50/50 dark:bg-amber-950/20";
+}
+
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const overdueFilter = searchParams.get("overdue");
 
   const load = async () => {
     try {
@@ -46,10 +67,27 @@ export default function ContractsPage() {
   useEffect(() => { load(); }, []);
 
   const filtered = contracts.filter((c) => {
+    // Overdue filter from URL
+    if (overdueFilter) {
+      const overdue = getOverdueLabel(c.created_at);
+      if (!overdue) return false;
+      if (overdueFilter === "5" && overdue.label !== "已超时") return false;
+      if (overdueFilter === "2" && overdue.label === "已超时") return false;
+      if (overdueFilter === "2" && overdue.label !== "需跟进") return false;
+    }
     if (!search) return true;
     const s = search.toLowerCase();
     return c.influencer_name?.toLowerCase().includes(s) || c.payment_status.includes(s);
   });
+
+  const overdue2d = contracts.filter(c => {
+    const o = getOverdueLabel(c.created_at);
+    return o && o.label === "需跟进";
+  }).length;
+  const overdue5d = contracts.filter(c => {
+    const o = getOverdueLabel(c.created_at);
+    return o && o.label === "已超时";
+  }).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -58,6 +96,13 @@ export default function ContractsPage() {
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">签约跟进</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             共 {contracts.length} 份签约
+            {(overdue2d > 0 || overdue5d > 0) && (
+              <span className="ml-2">
+                {overdue5d > 0 && <span className="text-red-500 font-medium">{overdue5d} 个已超时</span>}
+                {overdue5d > 0 && overdue2d > 0 && " · "}
+                {overdue2d > 0 && <span className="text-amber-500 font-medium">{overdue2d} 个需跟进</span>}
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -81,11 +126,15 @@ export default function ContractsPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">视频数量</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">合同</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">付款</th>
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">提醒</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => (
-                <tr key={c.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors">
+              {filtered.map((c) => {
+                const overdue = getOverdueLabel(c.created_at);
+                const rowClass = getOverdueRowClass(c.created_at, c.payment_status);
+                return (
+                <tr key={c.id} className={cn("border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors", rowClass)}>
                   <td className="py-3 px-4 font-medium text-[var(--foreground)]">{c.influencer_name || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.base_salary || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.commission || "-"}</td>
@@ -105,8 +154,18 @@ export default function ContractsPage() {
                       {c.payment_status}
                     </span>
                   </td>
+                  <td className="py-3 px-4">
+                    {overdue && c.payment_status !== "已付" ? (
+                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium", overdue.cls)}>
+                        {overdue.label === "已超时" ? <AlertCircle className="size-3" /> : <Clock className="size-3" />}
+                        {overdue.label}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                    )}
+                  </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
           {filtered.length === 0 && (
