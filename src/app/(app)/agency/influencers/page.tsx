@@ -93,16 +93,16 @@ export default function InfluencersPage() {
             </thead>
             <tbody>
               {filtered.map((inf) => (
-                <tr key={inf.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors">
+                <tr key={inf.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors cursor-pointer" onClick={() => { /* handled by Link in name cell */ }}>
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
+                    <Link href={`/agency/influencers/${inf.id}`} className="flex items-center gap-2 hover:underline">
                       <span className="font-medium text-[var(--foreground)]">{inf.name}</span>
                       {inf.tiktok_link && (
                         <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="text-[var(--muted-foreground)] hover:text-[var(--primary)]">
                           <ExternalLink className="size-3" />
                         </a>
                       )}
-                    </div>
+                    </Link>
                   </td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.category || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>

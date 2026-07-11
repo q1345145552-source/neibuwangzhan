@@ -207,6 +207,52 @@ export function getStepsWithAddressType(businessTypeId: number, subServiceType?:
   return base;
 }
 
+
+/* ── 达人流程 19 步模板 ── */
+
+export interface InfluencerStepTemplate {
+  name: string;
+  assignee: string;
+  phase: "discovery" | "contract" | "incubation";
+}
+
+export function getInfluencerSteps(): InfluencerStepTemplate[] {
+  return [
+    // 一、达人发现 (5 步)
+    { name: "刷 TikTok 直播找达人，录入系统建基础档案", assignee: "全员", phase: "discovery" },
+    { name: "无合适人选则 Facebook 发帖或 TikTok 关键词搜索", assignee: "全员", phase: "discovery" },
+    { name: "Ploy 从 Kalodata 拉数据评估打分", assignee: "Ploy", phase: "discovery" },
+    { name: "Prae/Namcha 筛 A 级达人，每次推 3 位给老板", assignee: "Prae / Namcha", phase: "discovery" },
+    { name: "老板确认联系 or 否决", assignee: "老板", phase: "discovery" },
+    // 二、签约跟进 (9 步)
+    { name: "Prae/Namcha 联系达人聊合作，给出报价方案", assignee: "Prae / Namcha", phase: "contract" },
+    { name: "老板审批后元丽开发票，付款方式标全款/部分付款", assignee: "元丽", phase: "contract" },
+    { name: "确认达人尺码、身高、地址等细节", assignee: "Prae / Namcha", phase: "contract" },
+    { name: "客户寄样品到 Ploy 地址，元丽和 Ploy 建 TAP 推广", assignee: "元丽 / Ploy", phase: "contract" },
+    { name: "Ploy 建好 TAP 方案，元丽确定佣金比例教客户操作", assignee: "Ploy / 元丽", phase: "contract" },
+    { name: "Ploy 收样检查登记产品信息", assignee: "Ploy", phase: "contract" },
+    { name: "Prae/Namcha 起草合同让达人线上签，打印两份", assignee: "Prae / Namcha", phase: "contract" },
+    { name: "Ploy 寄样品、更新物流单号、确认达人收到、催产出", assignee: "Ploy", phase: "contract" },
+    { name: "持续跟踪直播和视频数据做报表", assignee: "全员", phase: "contract" },
+    // 三、品牌孵化 (5 步)
+    { name: "Namcha/元丽从达人池筛适合做品牌的", assignee: "Namcha / 元丽", phase: "incubation" },
+    { name: "趁送样时机口聊品牌合作意向，留联系方式", assignee: "Prae / Namcha", phase: "incubation" },
+    { name: "达人带需求回来，元丽对接中国工厂，谈低 MOQ", assignee: "元丽", phase: "incubation" },
+    { name: "打样确认，拿参考品，跟达人一起看实物", assignee: "元丽 / Namcha", phase: "incubation" },
+    { name: "正式下生产单，跟踪生产、质检、物流全过程", assignee: "元丽 / Namcha", phase: "incubation" },
+  ];
+}
+
+export function seedInfluencerSteps(db: any, influencerId: number) {
+  const steps = getInfluencerSteps();
+  const insert = db.prepare(
+    "INSERT INTO influencer_steps (influencer_id, step_name, step_order, phase, status, assignee) VALUES (?, ?, ?, ?, '待处理', ?)"
+  );
+  steps.forEach((step, i) => {
+    insert.run(influencerId, step.name, i + 1, step.phase, step.assignee);
+  });
+}
+
 import { stepRequiredDocs, stepTimeEstimates, subServices } from "./constants";
 export { stepRequiredDocs, stepTimeEstimates, subServices };
 
@@ -416,6 +462,29 @@ function initTables(database: Database.Database) {
       notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS influencer_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      influencer_id INTEGER NOT NULL REFERENCES influencers(id),
+      step_name TEXT NOT NULL,
+      step_order INTEGER NOT NULL,
+      phase TEXT DEFAULT 'discovery' CHECK(phase IN ('discovery','contract','incubation')),
+      status TEXT NOT NULL DEFAULT '待处理',
+      assignee TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      stop_reason TEXT DEFAULT '',
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS influencer_step_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      step_id INTEGER NOT NULL REFERENCES influencer_steps(id),
+      influencer_id INTEGER NOT NULL REFERENCES influencers(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations for existing databases
@@ -458,6 +527,10 @@ function initTables(database: Database.Database) {
   } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT DEFAULT '', action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT DEFAULT '', detail TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
+  // Migration: influencer module tables (added 2026-07)
+  try { database.exec("CREATE TABLE IF NOT EXISTS influencer_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), step_name TEXT NOT NULL, step_order INTEGER NOT NULL, phase TEXT DEFAULT 'discovery' CHECK(phase IN ('discovery','contract','incubation')), status TEXT NOT NULL DEFAULT '待处理', assignee TEXT DEFAULT '', notes TEXT DEFAULT '', stop_reason TEXT DEFAULT '', completed_at TEXT, created_at TEXT DEFAULT (datetime('now')))"); } catch {}
+  try { database.exec("CREATE TABLE IF NOT EXISTS influencer_step_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, step_id INTEGER NOT NULL REFERENCES influencer_steps(id), influencer_id INTEGER NOT NULL REFERENCES influencers(id), content TEXT NOT NULL, created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
+  try { database.exec("ALTER TABLE influencer_steps ADD COLUMN stop_reason TEXT DEFAULT ''"); } catch {}
 }
 
 /* ── 种子数据 ── */

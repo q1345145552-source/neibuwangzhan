@@ -1,0 +1,42 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT * FROM influencer_steps WHERE influencer_id = ? ORDER BY step_order"
+  ).all(id);
+  return NextResponse.json(rows);
+}
+
+export async function PATCH(req: NextRequest) {
+  const db = getDb();
+  const body = await req.json();
+  const { step_id, status, notes, assignee, stop_reason } = body;
+  if (!step_id) return NextResponse.json({ error: "缺少步骤ID" }, { status: 400 });
+
+  const sets: string[] = []; const vals: any[] = [];
+  if (status) { sets.push("status = ?"); vals.push(status); }
+  if (notes !== undefined) { sets.push("notes = ?"); vals.push(notes); }
+  if (assignee !== undefined) { sets.push("assignee = ?"); vals.push(assignee); }
+  if (stop_reason !== undefined) { sets.push("stop_reason = ?"); vals.push(stop_reason); }
+  if (status === "已完成") { sets.push("completed_at = datetime('now')"); }
+  if (status === "进行中" || status === "待处理") { sets.push("completed_at = NULL"); }
+
+  if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
+  vals.push(step_id);
+
+  db.prepare(`UPDATE influencer_steps SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+
+  // When stopping (status = '已停止'), update the parent influencer status too
+  const step = db.prepare("SELECT * FROM influencer_steps WHERE id = ?").get(step_id) as any;
+  if (step && status === "已停止") {
+    db.prepare("UPDATE influencers SET status = '已停止', updated_at = datetime('now') WHERE id = ?").run(step.influencer_id);
+  }
+
+  return NextResponse.json(step ? db.prepare("SELECT * FROM influencer_steps WHERE id = ?").get(step_id) : { success: true });
+}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, seedInfluencerSteps } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO influencers (name, tiktok_link, category, contact, contact_phone, followers, avg_views, gmv_range, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(name, tiktok_link || "", category || "", contact || "", contact_phone || "", followers || "", avg_views || "", gmv_range || "", notes || "", status || "待评估");
+  // Auto-generate 19-step workflow
+  seedInfluencerSteps(db, Number(result.lastInsertRowid));
   const row = db.prepare("SELECT * FROM influencers WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }
