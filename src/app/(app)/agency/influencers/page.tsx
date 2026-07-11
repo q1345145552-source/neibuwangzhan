@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, ExternalLink, Sparkles, Play } from "lucide-react";
+import { Search, Plus, ExternalLink, Sparkles, Play, ListTodo, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startPhase } from "@/lib/api";
 
@@ -30,6 +30,7 @@ const phaseLabelMap: Record<string, string> = {
 
 const tabs = [
   { key: "discovery", label: "达人发现" },
+  { key: "evaluating", label: "待评估" },
   { key: "incubation", label: "品牌孵化" },
 ];
 
@@ -59,7 +60,12 @@ export default function InfluencersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const url = `/api/influencers?phase=${activeTab}`;
+      let url: string;
+      if (activeTab === "evaluating") {
+        url = "/api/influencers?status=评估中";
+      } else {
+        url = `/api/influencers?phase=${activeTab}`;
+      }
       const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
       setInfluencers(data);
@@ -87,6 +93,7 @@ export default function InfluencersPage() {
   });
 
   const getDisplayStatus = (inf: Influencer) => {
+    if (inf.status === "评估中" && activeTab === "evaluating") return "待评估";
     if (inf.phase === "completed_discovery") return "已入池";
     if (inf.phase === "completed_contract") return "签约已完成";
     if (inf.phase === "completed_incubation") return "孵化已完成";
@@ -109,9 +116,14 @@ export default function InfluencersPage() {
             共 {influencers.length} 位达人
           </p>
         </div>
-        <Link href="/agency/influencers/new">
-          <Button size="sm"><Plus className="size-3.5" />添加达人</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/agency/influencers/tasks">
+            <Button size="sm" variant="outline"><ListTodo className="size-3.5" />发现任务</Button>
+          </Link>
+          <Link href="/agency/influencers/new">
+            <Button size="sm"><Plus className="size-3.5" />添加达人</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Phase tabs */}
@@ -150,7 +162,7 @@ export default function InfluencersPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">联系方式</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
-                {(activeTab === "incubation") && (
+                {(activeTab === "incubation" || activeTab === "evaluating") && (
                   <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
                 )}
               </tr>
@@ -182,7 +194,7 @@ export default function InfluencersPage() {
                       <span className="ml-2 text-xs text-[var(--muted-foreground)]">{getDisplayLabel(inf)}</span>
                     )}
                   </td>
-                  {activeTab === "incubation" && (
+                  {(activeTab === "incubation" || activeTab === "evaluating") && (
                     <td className="py-3 px-4">
                       {(inf.phase === "completed_discovery" || inf.phase === "completed_contract") && (
                         <Button
@@ -204,7 +216,7 @@ export default function InfluencersPage() {
           </table>
           {filtered.length === 0 && (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
-              {activeTab === "discovery" ? "暂无发现阶段的达人" : "暂无可孵化的达人"}
+              {activeTab === "discovery" ? "暂无发现阶段的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : "暂无可孵化的达人"}
             </div>
           )}
         </div>
