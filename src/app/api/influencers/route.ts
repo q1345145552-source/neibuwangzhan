@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   let sql = "SELECT * FROM influencers";
   const conditions: string[] = [];
   const params: string[] = [];
-  if (status) { conditions.push("status = ?"); params.push(status); }
+  if (status) { const statuses = status.split(",").map(s => s.trim()); conditions.push("status IN (" + statuses.map(() => "?").join(",") + ")"); params.push(...statuses); }
   if (phase) {
     if (phase === "contract") {
       conditions.push("phase IN ('completed_discovery','contract','completed_contract')");
