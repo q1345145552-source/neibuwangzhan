@@ -33,6 +33,7 @@ const tabs = [
   { key: "discovery", label: "达人发现" },
   { key: "evaluating", label: "待评估" },
   { key: "evaluated", label: "待推荐" },
+  { key: "recommended", label: "老板推荐" },
 ];
 
 interface Influencer {
@@ -68,6 +69,8 @@ export default function InfluencersPage() {
         url = "/api/influencers?status=评估中";
       } else if (activeTab === "evaluated") {
         url = "/api/influencers?status=已评估,已推荐给老板";
+      } else if (activeTab === "recommended") {
+        url = "/api/influencers?status=已推荐给老板";
       } else {
         url = `/api/influencers?phase=${activeTab}`;
       }
@@ -247,7 +250,7 @@ export default function InfluencersPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">联系方式</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
-                {(activeTab === "evaluating" || activeTab === "evaluated") && (
+                {(activeTab === "evaluating" || activeTab === "evaluated" || activeTab === "recommended") && (
                   <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
                 )}
               </tr>
@@ -276,7 +279,7 @@ export default function InfluencersPage() {
                       {getDisplayStatus(inf)}
                     </span>
                   </td>
-                  {(activeTab === "evaluating" || activeTab === "evaluated") && (
+                  {(activeTab === "evaluating" || activeTab === "evaluated" || activeTab === "recommended") && (
                     <td className="py-3 px-4">
                       {activeTab === "evaluating" && (
                         <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleStartEval(inf)}>
@@ -288,6 +291,13 @@ export default function InfluencersPage() {
                           <Star className="size-3" />推荐给老板
                         </Button>
                       )}
+                      {activeTab === "recommended" && (
+                        <Link href={`/agency/influencers/${inf.id}`}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                            查看详情
+                          </Button>
+                        </Link>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -296,7 +306,7 @@ export default function InfluencersPage() {
           </table>
           {filtered.length === 0 && (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
-              {activeTab === "discovery" ? "暂无发现阶段的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : "暂无已评估的达人"}
+              {activeTab === "discovery" ? "暂无发现阶段的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : activeTab === "evaluated" ? "暂无已评估的达人" : "暂无待老板确认的达人"}
             </div>
           )}
         </div>
