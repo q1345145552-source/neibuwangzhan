@@ -151,7 +151,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         {task.status === "completed" && (
           <span className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium",
             "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300")}>
-            ✅ 已提交评估
+            已提交评估
             {task.completed_at && (
               <span className="text-xs opacity-70">
                 {new Date(task.completed_at + "Z").toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}

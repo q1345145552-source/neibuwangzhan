@@ -391,7 +391,7 @@ function getPreviewGrade() {
               {/* 维度一：月度 GMV（30分） */}
               <div className="rounded-lg border border-[var(--border)] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">📊 月度 GMV <span className="text-xs text-[var(--muted-foreground)]">（满分 30 分）</span></label>
+                  <label className="text-sm font-medium">月度 GMV <span className="text-xs text-[var(--muted-foreground)]">（满分 30 分）</span></label>
                   {evalForm.gmv_tier && (
                     <span className="text-xs font-semibold text-[var(--primary)]">{findScore(GMV_TIER_LABELS, evalForm.gmv_tier)} 分</span>
                   )}
@@ -406,7 +406,7 @@ function getPreviewGrade() {
               {/* 维度二：平均直播时长（15分） */}
               <div className="rounded-lg border border-[var(--border)] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">⏱️ 平均直播时长 <span className="text-xs text-[var(--muted-foreground)]">（满分 15 分）</span></label>
+                  <label className="text-sm font-medium">平均直播时长 <span className="text-xs text-[var(--muted-foreground)]">（满分 15 分）</span></label>
                   {evalForm.live_duration_tier && (
                     <span className="text-xs font-semibold text-[var(--primary)]">{findScore(DURATION_TIERS, evalForm.live_duration_tier)} 分</span>
                   )}
@@ -421,7 +421,7 @@ function getPreviewGrade() {
               {/* 维度三：直播频率（15分） */}
               <div className="rounded-lg border border-[var(--border)] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">📅 直播频率 <span className="text-xs text-[var(--muted-foreground)]">（满分 15 分）</span></label>
+                  <label className="text-sm font-medium">直播频率 <span className="text-xs text-[var(--muted-foreground)]">（满分 15 分）</span></label>
                   {evalForm.live_frequency_tier && (
                     <span className="text-xs font-semibold text-[var(--primary)]">{findScore(FREQUENCY_TIERS, evalForm.live_frequency_tier)} 分</span>
                   )}
@@ -436,7 +436,7 @@ function getPreviewGrade() {
               {/* 维度四：创作者专业度（5分） */}
               <div className="rounded-lg border border-[var(--border)] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">🎯 创作者专业度 <span className="text-xs text-[var(--muted-foreground)]">（满分 5 分）</span></label>
+                  <label className="text-sm font-medium">创作者专业度 <span className="text-xs text-[var(--muted-foreground)]">（满分 5 分）</span></label>
                   {evalForm.professionalism_tier && (
                     <span className="text-xs font-semibold text-[var(--primary)]">{findScore(PROF_TIERS, evalForm.professionalism_tier)} 分</span>
                   )}
@@ -451,7 +451,7 @@ function getPreviewGrade() {
               {/* 加分项：直播 GMV 占比 */}
               <div className="rounded-lg border border-[var(--border)] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">📈 直播间 GMV 占比 <span className="text-xs text-[var(--muted-foreground)]">（≥50% 评级+加号）</span></label>
+                  <label className="text-sm font-medium">直播间 GMV 占比 <span className="text-xs text-[var(--muted-foreground)]">（≥50% 评级+加号）</span></label>
                   <span className="text-xs text-[var(--muted-foreground)]">加分规则</span>
                 </div>
                 <input value={evalForm.liveRatio} onChange={e => setEvalForm(p => ({ ...p, liveRatio: e.target.value }))}

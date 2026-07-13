@@ -281,7 +281,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
       const ur = await fetch("/api/upload", { method: "POST", body: fd });
       if (!ur.ok) throw new Error("上传失败");
       const { url } = await ur.json();
-      const note = `📎 上传文件: ${file.name} (${url})`;
+      const note = `上传文件: ${file.name} (${url})`;
       const current = steps.find(s => s.id === stepId);
       const updated = current?.notes ? current.notes + "\n" + note : note;
       await fetchWithAuth(`/api/influencers/${id}/steps`, {
@@ -548,7 +548,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
       {error && <div className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
       {csvResult && (
         <div className="rounded-md bg-green-50 dark:bg-green-950/30 px-4 py-3 text-sm border border-green-200 dark:border-green-800">
-          <p className="font-medium text-green-700 dark:text-green-300">✅ CSV 导入成功: {csvResult.imported}/{csvResult.total} 条</p>
+          <p className="font-medium text-green-700 dark:text-green-300">CSV 导入成功: {csvResult.imported}/{csvResult.total} 条</p>
           {csvResult.skipped.length > 0 && (
             <details className="mt-1"><summary className="text-xs text-green-600 dark:text-green-400 cursor-pointer">跳过 {csvResult.skipped.length} 条</summary>
               <ul className="mt-1 text-xs text-[var(--muted-foreground)] space-y-0.5">{csvResult.skipped.map((s, i) => <li key={i}>{s}</li>)}</ul>
