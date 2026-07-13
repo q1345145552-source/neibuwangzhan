@@ -470,6 +470,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_sessions TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_duration TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE contracts ADD COLUMN actual_video_count TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE contracts ADD COLUMN created_by TEXT DEFAULT ''"); } catch {}
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS influencer_factories (

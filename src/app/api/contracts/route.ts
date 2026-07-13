@@ -20,11 +20,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const db = getDb();
   const body = await req.json();
-  const { influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes } = body;
+  const { influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes, created_by } = body;
   if (!influencer_id) return NextResponse.json({ error: "请选择达人" }, { status: 400 });
   const result = db.prepare(
-    "INSERT INTO contracts (influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(influencer_id, base_salary || "", commission || "", live_sessions || "", live_duration || "", video_count || "", contract_url || "", payment_status || "未付", start_date || "", end_date || "", notes || "");
+    "INSERT INTO contracts (influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(influencer_id, base_salary || "", commission || "", live_sessions || "", live_duration || "", video_count || "", contract_url || "", payment_status || "未付", start_date || "", end_date || "", notes || "", created_by || "");
   // Update influencer status to 已签约 when contract is created
   db.prepare("UPDATE influencers SET status = '已签约', updated_at = datetime('now') WHERE id = ?").run(influencer_id);
   const row = db.prepare("SELECT c.*, i.name AS influencer_name, i.code AS influencer_code FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(result.lastInsertRowid);
