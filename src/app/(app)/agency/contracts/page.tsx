@@ -71,8 +71,8 @@ export default function ContractsPage() {
   const load = async () => {
     try {
       const [cr, ir] = await Promise.all([
-        fetch("/api/contracts", { cache: "no-store" }),
-        fetch("/api/influencers?phase=contract", { cache: "no-store" }),
+        fetchWithAuth("/api/contracts", { cache: "no-store" }),
+        fetchWithAuth("/api/influencers?phase=contract", { cache: "no-store" }),
       ]);
       const [cd, allInfs] = await Promise.all([cr.json(), ir.json()]);
       setContracts(Array.isArray(cd) ? cd : []);

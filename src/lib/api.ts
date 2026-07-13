@@ -503,7 +503,7 @@ export async function deleteEmployee(id: number) {
 
 // ── Influencer phase ──
 export async function startPhase(influencerId: number, phase: string) {
-  const res = await fetch(`/api/influencers/${influencerId}/start-phase`, {
+  const res = await fetchWithAuth(`/api/influencers/${influencerId}/start-phase`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phase }),
