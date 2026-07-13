@@ -26,6 +26,7 @@ interface Contract {
   live_duration: string;
   video_count: string;
   contract_url: string;
+  file_count: number;
   payment_status: string;
   start_date: string;
   end_date: string;
@@ -65,6 +66,9 @@ export default function ContractsPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [startingPhases, setStartingPhases] = useState<Record<number, boolean>>({});
+  const [contractModal, setContractModal] = useState<{ influencer: Influencer } | null>(null);
+  const [contractForm, setContractForm] = useState({ base_salary: "", commission: "", live_sessions: "", live_duration: "", video_count: "" });
+  const [contractFormError, setContractFormError] = useState("");
   const searchParams = useSearchParams();
   const overdueFilter = searchParams.get("overdue");
 
@@ -78,7 +82,9 @@ export default function ContractsPage() {
       setContracts(Array.isArray(cd) ? cd : []);
       const infs = Array.isArray(allInfs) ? allInfs : [];
       setPoolInfs(infs.filter((i: Influencer) => i.phase === "completed_discovery"));
-      setActiveInfs(infs.filter((i: Influencer) => i.phase === "contract"));
+      // 签约中：排除已有合同的达人（合同已在合同列表中显示）
+      const contractIds = new Set((Array.isArray(cd) ? cd : []).map((c: Contract) => c.influencer_id));
+      setActiveInfs(infs.filter((i: Influencer) => i.phase === "contract" && !contractIds.has(i.id)));
       setCompletedInfs(infs.filter((i: Influencer) => i.phase === "completed_contract"));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -86,13 +92,42 @@ export default function ContractsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const handleStartContract = async (influencerId: number) => {
-    setStartingPhases(p => ({ ...p, [influencerId]: true }));
+  const openContractForm = (inf: Influencer) => {
+    setContractModal({ influencer: inf });
+    setContractForm({ base_salary: "", commission: "", live_sessions: "", live_duration: "", video_count: "" });
+    setContractFormError("");
+  };
+
+  const handleSubmitContract = async () => {
+    if (!contractModal) return;
+    const { live_sessions, live_duration, video_count } = contractForm;
+    if (!live_sessions.trim() || !live_duration.trim() || !video_count.trim()) {
+      setContractFormError("月直播场次、每次直播时长、月视频数量为必填项");
+      return;
+    }
+    setContractFormError("");
+    const infId = contractModal.influencer.id;
+    setStartingPhases(p => ({ ...p, [infId]: true }));
     try {
-      await startPhase(influencerId, "contract");
+      // 1. Start contract phase (generate steps, update phase)
+      await startPhase(infId, "contract");
+      // 2. Create contract record with form data
+      await fetchWithAuth("/api/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          influencer_id: infId,
+          base_salary: contractForm.base_salary,
+          commission: contractForm.commission,
+          live_sessions: contractForm.live_sessions,
+          live_duration: contractForm.live_duration,
+          video_count: contractForm.video_count,
+        }),
+      });
+      setContractModal(null);
       load();
     } catch (err) { console.error(err); }
-    setStartingPhases(p => ({ ...p, [influencerId]: false }));
+    setStartingPhases(p => ({ ...p, [infId]: false }));
   };
 
   const filtered = contracts.filter((c) => {
@@ -175,7 +210,7 @@ export default function ContractsPage() {
                     <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
                     <td className="py-2.5 px-4">
                       <Button size="sm" className="h-7 text-xs gap-1"
-                        onClick={() => handleStartContract(inf.id)}
+                        onClick={() => openContractForm(inf)}
                         disabled={startingPhases[inf.id]}>
                         <Play className="size-3" />
                         {startingPhases[inf.id] ? "启动中..." : "开始签约"}
@@ -268,6 +303,7 @@ export default function ContractsPage() {
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">底薪</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">佣金</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">场次/时长</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">文件</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">合同</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">付款</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">提醒</th>
@@ -286,6 +322,9 @@ export default function ContractsPage() {
                     <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.commission || "-"}</td>
                     <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden">
                       {c.live_sessions ? `${c.live_sessions}场` : "-"}{c.live_duration ? ` / ${c.live_duration}h` : ""}
+                    </td>
+                    <td className="py-2.5 px-4 max-md:hidden">
+                      <span className="tabular-nums">{c.file_count ?? 0}</span>
                     </td>
                     <td className="py-2.5 px-4 max-md:hidden">
                       {c.contract_url ? (
@@ -314,6 +353,80 @@ export default function ContractsPage() {
           </div>
         )}
       </div>
+    {contractModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setContractModal(null)}>
+        <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+          <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">
+            创建合同 · {contractModal.influencer.name}
+          </h3>
+          {contractFormError && <p className="mb-3 text-xs text-[var(--destructive)]">{contractFormError}</p>}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-[var(--foreground)] mb-1">底薪</label>
+              <input
+                value={contractForm.base_salary}
+                onChange={e => setContractForm(p => ({ ...p, base_salary: e.target.value }))}
+                placeholder="如 15000"
+                className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--foreground)] mb-1">佣金</label>
+              <input
+                value={contractForm.commission}
+                onChange={e => setContractForm(p => ({ ...p, commission: e.target.value }))}
+                placeholder="如 10%"
+                className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+              />
+            </div>
+            <div className="border-t border-[var(--border)] pt-3">
+              <p className="text-xs font-medium text-[var(--foreground)] mb-2">工作量（必填）</p>
+              <div className="space-y-2.5">
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">月直播场次 <span className="text-[var(--destructive)]">*</span></label>
+                  <input
+                    value={contractForm.live_sessions}
+                    onChange={e => setContractForm(p => ({ ...p, live_sessions: e.target.value }))}
+                    placeholder="如 20"
+                    className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">每次直播时长（小时） <span className="text-[var(--destructive)]">*</span></label>
+                  <input
+                    value={contractForm.live_duration}
+                    onChange={e => setContractForm(p => ({ ...p, live_duration: e.target.value }))}
+                    placeholder="如 3"
+                    className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">月视频数量 <span className="text-[var(--destructive)]">*</span></label>
+                  <input
+                    value={contractForm.video_count}
+                    onChange={e => setContractForm(p => ({ ...p, video_count: e.target.value }))}
+                    placeholder="如 8"
+                    className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-5 flex gap-2 justify-end">
+            <button onClick={() => setContractModal(null)} className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]">
+              取消
+            </button>
+            <button
+              onClick={handleSubmitContract}
+              disabled={startingPhases[contractModal.influencer.id]}
+              className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+            >
+              {startingPhases[contractModal.influencer.id] ? "创建中..." : "创建合同并开始签约"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 }

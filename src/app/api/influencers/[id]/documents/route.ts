@@ -15,6 +15,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!name) return NextResponse.json({ error: "请填写文档名" }, { status: 400 });
   const result = db.prepare("INSERT INTO influencer_documents (influencer_id, name, file_type, file_url, uploaded_by) VALUES (?, ?, ?, ?, ?)")
     .run(id, name, file_type || "", file_url || "", uploaded_by || "");
+
+  // If contract already exists, update its contract_url with the latest uploaded file
+  if (file_url) {
+    const existingContract = db.prepare("SELECT id FROM contracts WHERE influencer_id = ?").get(id) as { id: number } | undefined;
+    if (existingContract) {
+      db.prepare("UPDATE contracts SET contract_url = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(file_url, existingContract.id);
+    }
+  }
+
   const row = db.prepare("SELECT * FROM influencer_documents WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }

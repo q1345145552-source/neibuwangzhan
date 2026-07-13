@@ -5,7 +5,9 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("payment_status");
-  let sql = "SELECT c.*, i.name AS influencer_name FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id";
+  let sql = `SELECT c.*, i.name AS influencer_name,
+    (SELECT COUNT(*) FROM influencer_documents d WHERE d.influencer_id = c.influencer_id) AS file_count
+    FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id`;
   const params: string[] = [];
   if (status) { sql += " WHERE c.payment_status = ?"; params.push(status); }
   sql += " ORDER BY c.created_at DESC";
