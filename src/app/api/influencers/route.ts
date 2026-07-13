@@ -5,6 +5,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  const search = searchParams.get("search");
   const phase = searchParams.get("phase");
   let sql = "SELECT * FROM influencers";
   const conditions: string[] = [];
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
       conditions.push("phase = ?"); params.push(phase);
     }
   }
+  if (search) { conditions.push("(name LIKE ? OR category LIKE ? OR contact LIKE ? OR code LIKE ?)"); const q = `%${search}%`; params.push(q, q, q, q); }
   if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
   sql += " ORDER BY created_at DESC";
   const rows = db.prepare(sql).all(...params);
@@ -30,11 +32,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const db = getDb();
   const body = await req.json();
-  const { name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status } = body;
+  const { name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status, code } = body;
   if (!name) return NextResponse.json({ error: "请填写达人名称" }, { status: 400 });
   const result = db.prepare(
-    "INSERT INTO influencers (name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(name, tiktok_link || "", category || "", contact || "", contact_phone || "", line_id || "", monthly_gmv || "", live_stream_ratio || "", contact_time || "", reply_status || "待联系", followers || "", avg_views || "", gmv_range || "", notes || "", status || "待评估");
+    "INSERT INTO influencers (name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(name, tiktok_link || "", category || "", contact || "", contact_phone || "", line_id || "", monthly_gmv || "", live_stream_ratio || "", contact_time || "", reply_status || "待联系", followers || "", avg_views || "", gmv_range || "", notes || "", status || "待评估", code || "");
   // Auto-generate discovery phase steps only (5 steps)
   seedInfluencerSteps(db, Number(result.lastInsertRowid), "discovery");
   const row = db.prepare("SELECT * FROM influencers WHERE id = ?").get(result.lastInsertRowid);

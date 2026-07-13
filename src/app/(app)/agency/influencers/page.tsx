@@ -41,7 +41,7 @@ interface Influencer {
   id: number; name: string; tiktok_link: string; category: string;
   contact: string; contact_phone: string; followers: string;
   avg_views: string; gmv_range: string; notes: string;
-  status: string; phase: string; monthly_gmv: string; live_stream_ratio: string;
+  code: string; status: string; phase: string; monthly_gmv: string; live_stream_ratio: string;
   created_at: string;
 }
 
@@ -171,7 +171,7 @@ export default function InfluencersPage() {
     }
     if (!search) return true;
     const s = search.toLowerCase();
-    return i.name.toLowerCase().includes(s) || i.category.toLowerCase().includes(s) || (i.contact || "").toLowerCase().includes(s);
+    return i.name.toLowerCase().includes(s) || i.category.toLowerCase().includes(s) || (i.contact || "").toLowerCase().includes(s) || (i.code || "").toLowerCase().includes(s);
   });
 
   const getDisplayStatus = (inf: Influencer) => {
@@ -229,7 +229,7 @@ export default function InfluencersPage() {
       <div className="flex items-center gap-3">
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-          <Input placeholder="搜索达人名称、品类..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-8 text-sm" />
+          <Input placeholder="搜索名称、品类、编号..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-8 text-sm" />
         </div>
         {activeTab === "evaluated" && (
           <div className="flex rounded-lg bg-[var(--secondary)] p-0.5">
@@ -252,6 +252,7 @@ export default function InfluencersPage() {
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">达人名称</th>
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">编号</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">品类</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">粉丝量</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
@@ -275,6 +276,7 @@ export default function InfluencersPage() {
                       </a>
                     )}
                   </td>
+                  <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.code || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.category || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.gmv_range || inf.monthly_gmv || "-"}</td>

@@ -402,6 +402,7 @@ function initTables(database: Database.Database) {
       tiktok_link TEXT DEFAULT '',
       category TEXT DEFAULT '',
       contact TEXT DEFAULT '',
+      code TEXT DEFAULT '',
       contact_phone TEXT DEFAULT '',
       line_id TEXT DEFAULT '',
       monthly_gmv TEXT DEFAULT '',
@@ -438,6 +439,7 @@ function initTables(database: Database.Database) {
       category TEXT DEFAULT '',
       moq TEXT DEFAULT '',
       contact TEXT DEFAULT '',
+      code TEXT DEFAULT '',
       contact_phone TEXT DEFAULT '',
       address TEXT DEFAULT '',
       notes TEXT DEFAULT '',
@@ -552,6 +554,7 @@ function initTables(database: Database.Database) {
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_certificates (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), certificate_number TEXT DEFAULT '', product_name TEXT DEFAULT '', issue_date TEXT DEFAULT '', expiry_date TEXT DEFAULT '', status TEXT DEFAULT 'valid', notes TEXT DEFAULT '', file_url TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS discovery_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, task_number TEXT NOT NULL, category TEXT DEFAULT '', creator TEXT DEFAULT '', status TEXT DEFAULT 'active' CHECK(status IN ('active','completed')), created_at TEXT DEFAULT (datetime('now')), completed_at TEXT)"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN discovery_task_id INTEGER REFERENCES discovery_tasks(id)"); } catch {}
+  try { database.exec("ALTER TABLE influencers ADD COLUMN code TEXT DEFAULT ''"); } catch {}
 }
 
 /* ── 种子数据 ── */
