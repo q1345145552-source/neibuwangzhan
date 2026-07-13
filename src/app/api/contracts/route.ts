@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("payment_status");
-  let sql = `SELECT c.*, i.name AS influencer_name,
+  let sql = `SELECT c.*, i.name AS influencer_name, i.code AS influencer_code,
     (SELECT COUNT(*) FROM influencer_documents d WHERE d.influencer_id = c.influencer_id) AS file_count
     FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id`;
   const params: string[] = [];
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   ).run(influencer_id, base_salary || "", commission || "", live_sessions || "", live_duration || "", video_count || "", contract_url || "", payment_status || "未付", start_date || "", end_date || "", notes || "");
   // Update influencer status to 已签约 when contract is created
   db.prepare("UPDATE influencers SET status = '已签约', updated_at = datetime('now') WHERE id = ?").run(influencer_id);
-  const row = db.prepare("SELECT c.*, i.name AS influencer_name FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(result.lastInsertRowid);
+  const row = db.prepare("SELECT c.*, i.name AS influencer_name, i.code AS influencer_code FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }
 
@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest) {
   sets.push("updated_at = datetime('now')");
   vals.push(id);
   db.prepare(`UPDATE contracts SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
-  const row = db.prepare("SELECT c.*, i.name AS influencer_name FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(id);
+  const row = db.prepare("SELECT c.*, i.name AS influencer_name, i.code AS influencer_code FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(id);
   return NextResponse.json(row);
 }
 

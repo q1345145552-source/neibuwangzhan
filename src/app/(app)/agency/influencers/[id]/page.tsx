@@ -75,8 +75,9 @@ function isImageUrl(url: string | undefined | null): boolean {
   return /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(url || "");
 }
 
-function ContractWorkCard({ contract, onReload, isClient }: {
+function ContractWorkCard({ contract, influencerCode, onReload, isClient }: {
   contract: any;
+  influencerCode: string;
   onReload: () => void;
   isClient: boolean;
 }) {
@@ -176,7 +177,10 @@ function ContractWorkCard({ contract, onReload, isClient }: {
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
-      <h3 className="text-sm font-medium text-[var(--foreground)]">合同工作明细</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-[var(--foreground)]">合同工作明细</h3>
+        {influencerCode && <span className="text-xs text-[var(--muted-foreground)] tabular-nums">编号 {influencerCode}</span>}
+      </div>
       {error && <p className="mt-1 text-xs text-[var(--destructive)]">{error}</p>}
       <dl className="mt-3 space-y-2.5">
         {renderRow("月直播场次", "actual_live_sessions", contract.live_sessions, contract.actual_live_sessions)}
@@ -1132,6 +1136,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
           {(inf.phase === "contract" || inf.phase === "completed_contract") && inf.contracts?.[0] && (
             <ContractWorkCard
               contract={inf.contracts[0]}
+              influencerCode={inf.code || ""}
               onReload={reload}
               isClient={isClient}
             />

@@ -20,6 +20,7 @@ interface Contract {
   id: number;
   influencer_id: number;
   influencer_name: string;
+  influencer_code: string;
   base_salary: string;
   commission: string;
   live_sessions: string;
@@ -109,9 +110,7 @@ export default function ContractsPage() {
     const infId = contractModal.influencer.id;
     setStartingPhases(p => ({ ...p, [infId]: true }));
     try {
-      // 1. Start contract phase (generate steps, update phase)
       await startPhase(infId, "contract");
-      // 2. Create contract record with form data
       await fetchWithAuth("/api/contracts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -128,6 +127,19 @@ export default function ContractsPage() {
       load();
     } catch (err) { console.error(err); }
     setStartingPhases(p => ({ ...p, [infId]: false }));
+  };
+
+  const paymentCycle: Record<string, string> = { "未付": "部分付", "部分付": "已付", "已付": "未付" };
+  const handleTogglePayment = async (contractId: number, currentStatus: string) => {
+    const nextStatus = paymentCycle[currentStatus] || "未付";
+    try {
+      await fetchWithAuth("/api/contracts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: contractId, payment_status: nextStatus }),
+      });
+      load();
+    } catch (err) { console.error(err); }
   };
 
   const filtered = contracts.filter((c) => {
@@ -194,6 +206,7 @@ export default function ContractsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
+                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">编号</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">达人</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">品类</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">粉丝量</th>
@@ -236,6 +249,7 @@ export default function ContractsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
+                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">编号</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">达人</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">品类</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">粉丝量</th>
@@ -299,6 +313,7 @@ export default function ContractsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
+                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">编号</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">达人</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">底薪</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">佣金</th>
@@ -315,6 +330,7 @@ export default function ContractsPage() {
                   const rowClass = getOverdueRowClass(c.created_at, c.payment_status);
                   return (
                   <tr key={c.id} className={cn("border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors", rowClass)}>
+                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden tabular-nums">{c.influencer_code || "-"}</td>
                     <td className="py-2.5 px-4">
                       <Link href={`/agency/influencers/${c.influencer_id}`} className="font-medium hover:underline">{c.influencer_name || "-"}</Link>
                     </td>
@@ -334,9 +350,13 @@ export default function ContractsPage() {
                       ) : "-"}
                     </td>
                     <td className="py-2.5 px-4">
-                      <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", payClass[c.payment_status] || payClass["未付"])}>
+                      <button
+                        onClick={() => handleTogglePayment(c.id, c.payment_status)}
+                        className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity", payClass[c.payment_status] || payClass["未付"])}
+                        title="点击切换付款状态"
+                      >
                         {c.payment_status}
-                      </span>
+                      </button>
                     </td>
                     <td className="py-2.5 px-4">
                       {overdue && c.payment_status !== "已付" ? (
