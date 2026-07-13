@@ -25,8 +25,9 @@ const statusClass: Record<string, string> = {
 };
 
 const ratingBadge = (r: string) => {
+  const base = r?.replace("+", "");
   const map: Record<string, string> = { A: "bg-emerald-500", B: "bg-blue-500", C: "bg-amber-500", D: "bg-red-500" };
-  return map[r] || "bg-slate-400";
+  return map[base] || "bg-slate-400";
 };
 const ratingColors: Record<string, string> = {
   A: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
@@ -60,7 +61,11 @@ export default function InfluencersPage() {
 
   // Evaluation modal
   const [evalModal, setEvalModal] = useState<Influencer | null>(null);
-  const [evalForm, setEvalForm] = useState({ gmv: "", liveRatio: "", rating: "", content: "", brand: "", notes: "" });
+  const [evalForm, setEvalForm] = useState({
+    gmv: "", gmv_amount: "", gmv_tier: "",
+    live_duration_tier: "", live_frequency_tier: "",
+    professionalism_tier: "", liveRatio: "", notes: ""
+  });
   const [evalSaving, setEvalSaving] = useState(false);
   const [evalError, setEvalError] = useState("");
   const csvRef = useRef<HTMLInputElement>(null);
@@ -87,12 +92,55 @@ export default function InfluencersPage() {
     finally { setLoading(false); }
   }, [activeTab]);
 
+
+// 评估评分规则
+const GMV_TIER_LABELS = [
+  { value: ">30万", label: ">30万泰铢", score: 29 },
+  { value: "20-30万", label: "20-30万泰铢", score: 25 },
+  { value: "10-20万", label: "10-20万泰铢", score: 19 },
+  { value: "5-10万", label: "5-10万泰铢", score: 11 },
+  { value: "<5万", label: "<5万泰铢 → 直接C级", score: 0 },
+];
+const DURATION_TIERS = [
+  { value: ">3小时", label: ">3小时", score: 14 },
+  { value: "2-3小时", label: "2-3小时", score: 11 },
+  { value: "1-2小时", label: "1-2小时", score: 8 },
+  { value: "<1小时", label: "<1小时", score: 5 },
+];
+const FREQUENCY_TIERS = [
+  { value: ">5次/周", label: ">5次/周", score: 14 },
+  { value: "4-5次/周", label: "4-5次/周", score: 11 },
+  { value: "2-3次/周", label: "2-3次/周", score: 8 },
+  { value: "<2次/周", label: "<2次/周", score: 5 },
+];
+const PROF_TIERS = [
+  { value: "高", label: "内容质量高，配合度好", score: 5 },
+  { value: "中", label: "表现中等，需要培养", score: 3 },
+  { value: "低", label: "质量较低，配合度差", score: 1 },
+];
+
+function findScore(tiers: {value:string,score:number}[], val: string) { return tiers.find(t => t.value === val)?.score || 0; }
+function getTotalScore() {
+  return findScore(GMV_TIER_LABELS, evalForm.gmv_tier) +
+    findScore(DURATION_TIERS, evalForm.live_duration_tier) +
+    findScore(FREQUENCY_TIERS, evalForm.live_frequency_tier) +
+    findScore(PROF_TIERS, evalForm.professionalism_tier);
+}
+function getPreviewGrade() {
+  const s = getTotalScore();
+  if (evalForm.gmv_tier === "<5万") return "C";
+  let g = s >= 50 ? "A" : s >= 20 ? "B" : "C";
+  const ratio = parseInt(evalForm.liveRatio?.replace(/%/g, "")) || 0;
+  if (ratio >= 50) g += "+";
+  return g;
+}
+
   useEffect(() => { load(); }, [load]);
 
   // ── Evaluation submission ──
   const handleStartEval = (inf: Influencer) => {
     setEvalModal(inf);
-    setEvalForm({ gmv: inf.monthly_gmv || "", liveRatio: inf.live_stream_ratio || "", rating: "", content: "", brand: "", notes: "" });
+    setEvalForm({ gmv: inf.monthly_gmv || "", gmv_amount: "", gmv_tier: "", live_duration_tier: "", live_frequency_tier: "", professionalism_tier: "", liveRatio: inf.live_stream_ratio || "", notes: "" });
     setEvalError("");
   };
 
@@ -101,28 +149,29 @@ export default function InfluencersPage() {
     setEvalSaving(true);
     setEvalError("");
     try {
-      // Save evaluation record
+      // 评估前先确认各维度都已选择
       const res = await fetchWithAuth("/api/influencers/evaluations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           influencer_id: evalModal.id,
           gmv: evalForm.gmv,
+          gmv_amount: evalForm.gmv_amount,
+          gmv_tier: evalForm.gmv_tier,
+          live_duration_tier: evalForm.live_duration_tier,
+          live_frequency_tier: evalForm.live_frequency_tier,
+          professionalism_tier: evalForm.professionalism_tier,
           live_stream_ratio: evalForm.liveRatio,
-          rating: evalForm.rating,
-          content_quality: evalForm.content,
-          brand_fit: evalForm.brand,
           notes: evalForm.notes,
           evaluated_by: user?.name || "Ploy",
         }),
       });
       if (!res.ok) throw new Error("保存评估失败");
 
-      // Update influencer status to 已评估
       await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: evalModal.id, status: "已评估", monthly_gmv: evalForm.gmv, live_stream_ratio: evalForm.liveRatio }),
+        body: JSON.stringify({ id: evalModal.id, status: "已评估" }),
       });
 
       setEvalModal(null);
@@ -166,7 +215,7 @@ export default function InfluencersPage() {
   };
 
   const filtered = influencers.filter(i => {
-    if (ratingFilter !== "all" && i.latest_rating !== ratingFilter) return false;
+    if (ratingFilter !== "all" && (i.latest_rating || "").replace("+", "") !== ratingFilter) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return i.name.toLowerCase().includes(s) || i.category.toLowerCase().includes(s) || (i.contact || "").toLowerCase().includes(s) || (i.code || "").toLowerCase().includes(s);
@@ -231,7 +280,7 @@ export default function InfluencersPage() {
         </div>
         {activeTab === "evaluated" && (
           <div className="flex rounded-lg bg-[var(--secondary)] p-0.5">
-            {[{ k: "all", l: "全部" }, { k: "A", l: "A级" }, { k: "B", l: "B级" }, { k: "C", l: "C级" }, { k: "D", l: "D级" }].map(r => (
+            {[{ k: "all", l: "全部" }, { k: "A", l: "A / A+" }, { k: "B", l: "B / B+" }, { k: "C", l: "C / C+" }].map(r => (
               <button key={r.k} onClick={() => setRatingFilter(r.k)}
                 className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
                   ratingFilter === r.k ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
@@ -339,47 +388,92 @@ export default function InfluencersPage() {
             {evalError && <div className="mb-4 text-sm text-[var(--destructive)] rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-3 py-2">{evalError}</div>}
 
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium">月度 GMV</label>
-                  <input value={evalForm.gmv} onChange={e => setEvalForm(p => ({ ...p, gmv: e.target.value }))}
-                    placeholder="例如: ฿50-100万"
-                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              {/* 维度一：月度 GMV（30分） */}
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">📊 月度 GMV <span className="text-xs text-[var(--muted-foreground)]">（满分 30 分）</span></label>
+                  {evalForm.gmv_tier && (
+                    <span className="text-xs font-semibold text-[var(--primary)]">{findScore(GMV_TIER_LABELS, evalForm.gmv_tier)} 分</span>
+                  )}
                 </div>
-                <div>
-                  <label className="text-xs font-medium">直播间 GMV 占比</label>
-                  <input value={evalForm.liveRatio} onChange={e => setEvalForm(p => ({ ...p, liveRatio: e.target.value }))}
-                    placeholder="例如: 70%"
-                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium">评分等级</label>
-                <select value={evalForm.rating} onChange={e => setEvalForm(p => ({ ...p, rating: e.target.value }))}
-                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
-                  <option value="">请选择评级</option>
-                  <option value="A">A — 优秀</option>
-                  <option value="B">B — 良好</option>
-                  <option value="C">C — 一般</option>
-                  <option value="D">D — 较差</option>
+                <select value={evalForm.gmv_tier} onChange={e => setEvalForm(p => ({ ...p, gmv_tier: e.target.value }))}
+                  className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="">请选择 GMV 档位</option>
+                  {GMV_TIER_LABELS.map(t => <option key={t.value} value={t.value}>{t.label} — {t.score}分</option>)}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium">内容质量</label>
-                  <input value={evalForm.content} onChange={e => setEvalForm(p => ({ ...p, content: e.target.value }))}
-                    placeholder="高/中/低"
-                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              {/* 维度二：平均直播时长（15分） */}
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">⏱️ 平均直播时长 <span className="text-xs text-[var(--muted-foreground)]">（满分 15 分）</span></label>
+                  {evalForm.live_duration_tier && (
+                    <span className="text-xs font-semibold text-[var(--primary)]">{findScore(DURATION_TIERS, evalForm.live_duration_tier)} 分</span>
+                  )}
                 </div>
-                <div>
-                  <label className="text-xs font-medium">品牌匹配度</label>
-                  <input value={evalForm.brand} onChange={e => setEvalForm(p => ({ ...p, brand: e.target.value }))}
-                    placeholder="高/中/低"
-                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-                </div>
+                <select value={evalForm.live_duration_tier} onChange={e => setEvalForm(p => ({ ...p, live_duration_tier: e.target.value }))}
+                  className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="">请选择时长档位</option>
+                  {DURATION_TIERS.map(t => <option key={t.value} value={t.value}>{t.label} — {t.score}分</option>)}
+                </select>
               </div>
+
+              {/* 维度三：直播频率（15分） */}
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">📅 直播频率 <span className="text-xs text-[var(--muted-foreground)]">（满分 15 分）</span></label>
+                  {evalForm.live_frequency_tier && (
+                    <span className="text-xs font-semibold text-[var(--primary)]">{findScore(FREQUENCY_TIERS, evalForm.live_frequency_tier)} 分</span>
+                  )}
+                </div>
+                <select value={evalForm.live_frequency_tier} onChange={e => setEvalForm(p => ({ ...p, live_frequency_tier: e.target.value }))}
+                  className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="">请选择频率档位</option>
+                  {FREQUENCY_TIERS.map(t => <option key={t.value} value={t.value}>{t.label} — {t.score}分</option>)}
+                </select>
+              </div>
+
+              {/* 维度四：创作者专业度（5分） */}
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">🎯 创作者专业度 <span className="text-xs text-[var(--muted-foreground)]">（满分 5 分）</span></label>
+                  {evalForm.professionalism_tier && (
+                    <span className="text-xs font-semibold text-[var(--primary)]">{findScore(PROF_TIERS, evalForm.professionalism_tier)} 分</span>
+                  )}
+                </div>
+                <select value={evalForm.professionalism_tier} onChange={e => setEvalForm(p => ({ ...p, professionalism_tier: e.target.value }))}
+                  className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="">请选择专业度档位</option>
+                  {PROF_TIERS.map(t => <option key={t.value} value={t.value}>{t.label} — {t.score}分</option>)}
+                </select>
+              </div>
+
+              {/* 加分项：直播 GMV 占比 */}
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">📈 直播间 GMV 占比 <span className="text-xs text-[var(--muted-foreground)]">（≥50% 评级+加号）</span></label>
+                  <span className="text-xs text-[var(--muted-foreground)]">加分规则</span>
+                </div>
+                <input value={evalForm.liveRatio} onChange={e => setEvalForm(p => ({ ...p, liveRatio: e.target.value }))}
+                  placeholder="例如: 70%"
+                  className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+
+              {/* 实时总分 + 等级预览 */}
+              {(evalForm.gmv_tier || evalForm.live_duration_tier || evalForm.live_frequency_tier || evalForm.professionalism_tier) && (
+                <div className="flex items-center justify-between rounded-lg bg-[var(--secondary)] px-4 py-3">
+                  <div>
+                    <span className="text-xs text-[var(--muted-foreground)]">总分</span>
+                    <p className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{getTotalScore()} / 65</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-[var(--muted-foreground)]">预计等级</span>
+                    <p className={`text-lg font-bold ${getPreviewGrade().startsWith("A") ? "text-emerald-600" : getPreviewGrade().startsWith("B") ? "text-blue-600" : "text-amber-600"}`}>
+                      {getPreviewGrade()}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-medium">备注</label>
