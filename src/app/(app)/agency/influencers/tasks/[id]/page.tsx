@@ -48,7 +48,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", tiktok_link: "", category: "", followers: "",
+    name: "", code: "", tiktok_link: "", category: "", followers: "",
   });
 
   const load = async () => {
@@ -76,11 +76,11 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       const res = await fetch(`/api/discovery-tasks/${id}/influencers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ name: form.name, code: form.code, tiktok_link: form.tiktok_link, category: form.category, followers: form.followers }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "添加失败");
-      setForm({ name: "", tiktok_link: "", category: "", followers: "" });
+      setForm({ name: "", code: "", tiktok_link: "", category: "", followers: "" });
       setShowAdd(false);
       load();
     } catch (err) {
@@ -170,6 +170,12 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <label className="text-xs font-medium">达人名称 <span className="text-red-500">*</span></label>
               <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                 placeholder="@username" autoFocus
+                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">达人编号</label>
+              <input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
+                placeholder="例如: INF-001"
                 className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
             </div>
             <div>
