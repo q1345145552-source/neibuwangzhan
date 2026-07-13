@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 const statusClass: Record<string, string> = {
@@ -76,7 +77,7 @@ export default function InfluencersPage() {
       } else {
         url = `/api/influencers?phase=${activeTab}`;
       }
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetchWithAuth(url, { cache: "no-store" });
       setInfluencers(await res.json());
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -97,7 +98,7 @@ export default function InfluencersPage() {
     setEvalError("");
     try {
       // Save evaluation record
-      const res = await fetch("/api/influencers/evaluations", {
+      const res = await fetchWithAuth("/api/influencers/evaluations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,7 +115,7 @@ export default function InfluencersPage() {
       if (!res.ok) throw new Error("保存评估失败");
 
       // Update influencer status to 已评估
-      await fetch("/api/influencers", {
+      await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: evalModal.id, status: "已评估", monthly_gmv: evalForm.gmv, live_stream_ratio: evalForm.liveRatio }),
@@ -134,7 +135,7 @@ export default function InfluencersPage() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("/api/influencers/evaluations/import", { method: "POST", body: formData });
+      const res = await fetchWithAuth("/api/influencers/evaluations/import", { method: "POST", body: formData });
       const data = await res.json();
       if (res.ok) {
         alert(`导入完成: ${data.imported} 条成功${data.skipped?.length ? `, ${data.skipped.length} 条跳过` : ""}`);
@@ -151,7 +152,7 @@ export default function InfluencersPage() {
   const handleRecommend = async (infId: number) => {
     if (!confirm("确认推荐给老板？")) return;
     try {
-      await fetch("/api/influencers", {
+      await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: infId, status: "已推荐给老板" }),

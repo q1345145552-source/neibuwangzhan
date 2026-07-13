@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { fetchWithAuth } from "@/lib/api";
 import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startPhase } from "@/lib/api";

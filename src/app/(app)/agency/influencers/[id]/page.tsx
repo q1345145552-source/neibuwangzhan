@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Upload as UploadIcon, Building, ExternalLink, Search, Play, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
-import { fetchEmployees, type Employee, startPhase } from "@/lib/api";
+import { fetchEmployees, type Employee, startPhase, fetchWithAuth } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
 
 // ── Status styles ──
@@ -139,7 +139,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     let ignore = false;
     async function run() {
       try {
-        const res = await fetch(`/api/influencers/${id}`, { cache: "no-store" });
+        const res = await fetchWithAuth(`/api/influencers/${id}`, { cache: "no-store" });
         if (!res.ok) throw new Error("加载失败");
         const data = await res.json();
         if (ignore) return;
@@ -148,18 +148,18 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
         const ns: Record<number, InfStepNote[]> = {};
         for (const s of data.steps || []) {
           try {
-            const nr = await fetch(`/api/influencers/${id}/steps/${s.id}/notes`, { cache: "no-store" });
+            const nr = await fetchWithAuth(`/api/influencers/${id}/steps/${s.id}/notes`, { cache: "no-store" });
             ns[s.id] = nr.ok ? await nr.json() : [];
           } catch { ns[s.id] = []; }
         }
         setStepNotes(ns);
         // Load documents, finances, certificates
-        try { const dr = await fetch(`/api/influencers/${id}/documents`, { cache: "no-store" }); if (dr.ok) setDocs(await dr.json()); } catch {}
-        try { const fr = await fetch(`/api/influencers/${id}/finances`, { cache: "no-store" }); if (fr.ok) setFinances(await fr.json()); } catch {}
-        try { const cr = await fetch(`/api/influencers/${id}/certificates`, { cache: "no-store" }); if (cr.ok) setCerts(await cr.json()); } catch {}
+        try { const dr = await fetchWithAuth(`/api/influencers/${id}/documents`, { cache: "no-store" }); if (dr.ok) setDocs(await dr.json()); } catch {}
+        try { const fr = await fetchWithAuth(`/api/influencers/${id}/finances`, { cache: "no-store" }); if (fr.ok) setFinances(await fr.json()); } catch {}
+        try { const cr = await fetchWithAuth(`/api/influencers/${id}/certificates`, { cache: "no-store" }); if (cr.ok) setCerts(await cr.json()); } catch {}
         // Factories
-        try { const lfr = await fetch(`/api/influencers/${id}/factories`, { cache: "no-store" }); if (lfr.ok) setLinkedFactories(await lfr.json()); } catch {}
-        const fr2 = await fetch("/api/factories", { cache: "no-store" });
+        try { const lfr = await fetchWithAuth(`/api/influencers/${id}/factories`, { cache: "no-store" }); if (lfr.ok) setLinkedFactories(await lfr.json()); } catch {}
+        const fr2 = await fetchWithAuth("/api/factories", { cache: "no-store" });
         if (fr2.ok) setFactories(await fr2.json());
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载失败");
@@ -180,7 +180,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleConfirmComplete = async (stepId: number) => {
     try {
-      await fetch(`/api/influencers/${id}/steps`, {
+      await fetchWithAuth(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stepId, status: "已完成", notes: confirmNote }),
@@ -195,7 +195,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleStepUpdate = async (stepId: number, status: string) => {
     try {
-      await fetch(`/api/influencers/${id}/steps`, {
+      await fetchWithAuth(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stepId, status }),
@@ -208,7 +208,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleRollback = async (stepId: number) => {
     try {
-      await fetch(`/api/influencers/${id}/steps`, {
+      await fetchWithAuth(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stepId, status: "进行中" }),
@@ -230,12 +230,12 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     if (!stopModal) return;
     setStopping(true);
     try {
-      await fetch(`/api/influencers/${id}`, {
+      await fetchWithAuth(`/api/influencers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "已停止" }),
       });
-      await fetch(`/api/influencers/${id}/steps`, {
+      await fetchWithAuth(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stopModal.stepId, status: "已停止", stop_reason: stopReason }),
@@ -253,22 +253,22 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     if (!content?.trim()) { setNoteErrorMsg(p => ({ ...p, [stepId]: "请填写备注内容" })); return; }
     setNoteErrorMsg(p => ({ ...p, [stepId]: "" }));
     try {
-      await fetch(`/api/influencers/${id}/steps/${stepId}/notes`, {
+      await fetchWithAuth(`/api/influencers/${id}/steps/${stepId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content, created_by: user?.name || "系统" }),
       });
       setNewNotes(p => ({ ...p, [stepId]: "" }));
-      const nr = await fetch(`/api/influencers/${id}/steps/${stepId}/notes`, { cache: "no-store" });
+      const nr = await fetchWithAuth(`/api/influencers/${id}/steps/${stepId}/notes`, { cache: "no-store" });
       const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [stepId]: notes }));
     } catch {}
   };
 
   const handleDeleteNote = async () => {
     if (!deleteNoteTarget) return;
-    await fetch(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes?id=${deleteNoteTarget.noteId}`, { method: "DELETE" });
+    await fetchWithAuth(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes?id=${deleteNoteTarget.noteId}`, { method: "DELETE" });
     setDeleteNoteTarget(null);
-    const nr = await fetch(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes`, { cache: "no-store" });
+    const nr = await fetchWithAuth(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes`, { cache: "no-store" });
     const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [deleteNoteTarget.stepId]: notes }));
   };
 
@@ -284,7 +284,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
       const note = `📎 上传文件: ${file.name} (${url})`;
       const current = steps.find(s => s.id === stepId);
       const updated = current?.notes ? current.notes + "\n" + note : note;
-      await fetch(`/api/influencers/${id}/steps`, {
+      await fetchWithAuth(`/api/influencers/${id}/steps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stepId, notes: updated }),
@@ -316,18 +316,18 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   // ── Factory association ──
   const handleLinkFactory = async (factoryId: number) => {
     try {
-      await fetch(`/api/influencers/${id}/factories`, {
+      await fetchWithAuth(`/api/influencers/${id}/factories`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factory_id: factoryId, relationship: "合作" }),
       });
-      const lfr = await fetch(`/api/influencers/${id}/factories`, { cache: "no-store" });
+      const lfr = await fetchWithAuth(`/api/influencers/${id}/factories`, { cache: "no-store" });
       if (lfr.ok) setLinkedFactories(await lfr.json());
     } catch (err) { setError(err instanceof Error ? err.message : "关联失败"); }
   };
   const handleUnlinkFactory = async (linkId: number) => {
-    await fetch(`/api/influencers/${id}/factories?id=${linkId}`, { method: "DELETE" });
-    const lfr = await fetch(`/api/influencers/${id}/factories`, { cache: "no-store" });
+    await fetchWithAuth(`/api/influencers/${id}/factories?id=${linkId}`, { method: "DELETE" });
+    const lfr = await fetchWithAuth(`/api/influencers/${id}/factories`, { cache: "no-store" });
     if (lfr.ok) setLinkedFactories(await lfr.json());
   };
 
@@ -336,7 +336,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; }
     setFinErrorMsg("");
     try {
-      await fetch(`/api/influencers/${id}/finances`, {
+      await fetchWithAuth(`/api/influencers/${id}/finances`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -357,7 +357,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; }
     setDocErrorMsg("");
     try {
-      await fetch(`/api/influencers/${id}/documents`, {
+      await fetchWithAuth(`/api/influencers/${id}/documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newDocName, file_url: docFileUrl, uploaded_by: user?.name || "" }),
@@ -368,7 +368,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleDeleteDocument = async (docId: number) => {
     if (!confirm("确认删除此文档？")) return;
-    await fetch(`/api/influencers/${id}/documents?id=${docId}`, { method: "DELETE" });
+    await fetchWithAuth(`/api/influencers/${id}/documents?id=${docId}`, { method: "DELETE" });
     reload();
   };
 
@@ -377,7 +377,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; }
     setCertErrorMsg("");
     try {
-      await fetch(`/api/influencers/${id}/certificates`, {
+      await fetchWithAuth(`/api/influencers/${id}/certificates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ certificate_number: newCertNo, issue_date: new Date().toISOString().slice(0, 10), file_url: certFileUrl }),
@@ -388,7 +388,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleSaveCertificate = async (certId: number) => {
     try {
-      await fetch(`/api/influencers/${id}/certificates/${certId}`, {
+      await fetchWithAuth(`/api/influencers/${id}/certificates/${certId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editCertFields),
@@ -399,7 +399,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleDeleteCertificate = async (certId: number) => {
     if (!confirm("确认删除此证书？")) return;
-    await fetch(`/api/influencers/${id}/certificates/${certId}`, { method: "DELETE" });
+    await fetchWithAuth(`/api/influencers/${id}/certificates/${certId}`, { method: "DELETE" });
     reload();
   };
 
@@ -621,7 +621,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                                   onChange={async (e) => {
                                     const newV = e.target.value;
                                     try {
-                                      await fetch(`/api/influencers/${id}/steps`, {
+                                      await fetchWithAuth(`/api/influencers/${id}/steps`, {
                                         method: "PATCH",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({ step_id: step.id, assignee: newV }),
