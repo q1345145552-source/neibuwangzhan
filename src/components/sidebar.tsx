@@ -61,6 +61,7 @@ const utilityNav = [
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  if (href === "/agency") return pathname === "/agency";
   return pathname.startsWith(href);
 }
 
