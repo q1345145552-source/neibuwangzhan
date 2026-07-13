@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
   const yesterdayTasks = (db.prepare("SELECT COUNT(*) as count FROM discovery_tasks WHERE date(created_at) = ?").get(yesterday) as { count: number })?.count || 0;
   const todayInfluencers = (db.prepare("SELECT COUNT(*) as count FROM influencers WHERE date(created_at) = ?").get(today) as { count: number })?.count || 0;
   const yesterdayInfluencers = (db.prepare("SELECT COUNT(*) as count FROM influencers WHERE date(created_at) = ?").get(yesterday) as { count: number })?.count || 0;
-  const todayEvaluations = (db.prepare("SELECT COUNT(*) as count FROM influencer_evaluations WHERE date(evaluated_at) = ?").get(today) as { count: number })?.count || 0;
-  const yesterdayEvaluations = (db.prepare("SELECT COUNT(*) as count FROM influencer_evaluations WHERE date(evaluated_at) = ?").get(yesterday) as { count: number })?.count || 0;
+  const todayEvaluations = (db.prepare("SELECT COUNT(*) as count FROM influencer_evaluations WHERE date(created_at) = ?").get(today) as { count: number })?.count || 0;
+  const yesterdayEvaluations = (db.prepare("SELECT COUNT(*) as count FROM influencer_evaluations WHERE date(created_at) = ?").get(yesterday) as { count: number })?.count || 0;
   const todayContracts = (db.prepare("SELECT COUNT(*) as count FROM contracts WHERE date(created_at) = ?").get(today) as { count: number })?.count || 0;
   const yesterdayContracts = (db.prepare("SELECT COUNT(*) as count FROM contracts WHERE date(created_at) = ?").get(yesterday) as { count: number })?.count || 0;
 
@@ -41,11 +41,11 @@ export async function GET(req: NextRequest) {
   `).all(twoDaysAgo) || [];
 
   const recentEvaluations = db.prepare(`
-    SELECT ie.id, ie.rating, ie.evaluated_at,
+    SELECT ie.id, COALESCE(NULLIF(ie.final_rating,''), ie.rating) as rating, ie.created_at,
            i.id as influencer_id, i.name as influencer_name, i.category
     FROM influencer_evaluations ie
     JOIN influencers i ON ie.influencer_id = i.id
-    ORDER BY ie.evaluated_at DESC
+    ORDER BY ie.created_at DESC
     LIMIT 10
   `).all() || [];
 
