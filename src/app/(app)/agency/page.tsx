@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Users, FileSignature, TrendingUp, Search, FlaskConical, PackageCheck, Send, UserPlus, Star, PenLine, Calendar, Filter, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -86,24 +86,21 @@ export default function AgencyPage() {
   const [showCustom, setShowCustom] = useState(false);
   const [employee, setEmployee] = useState("");
 
-  const buildRange = useCallback(() => {
+  useEffect(() => {
+    // Compute date range
+    let from = "", to = "";
     if (showCustom && customFrom) {
-      return { from: customFrom, to: customTo || customFrom };
-    }
-    if (quickDays === 0) {
-      const t = formatDate(new Date());
-      return { from: t, to: t };
-    }
-    if (quickDays != null) {
+      from = customFrom;
+      to = customTo || customFrom;
+    } else if (quickDays === 0) {
+      from = to = formatDate(new Date());
+    } else if (quickDays != null) {
       const end = new Date();
       const start = new Date(end.getTime() - (quickDays - 1) * 86400000);
-      return { from: formatDate(start), to: formatDate(end) };
+      from = formatDate(start);
+      to = formatDate(end);
     }
-    return { from: "", to: "" };
-  }, [quickDays, showCustom, customFrom, customTo]);
 
-  const loadDashboard = useCallback(() => {
-    const { from, to } = buildRange();
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -111,14 +108,12 @@ export default function AgencyPage() {
 
     fetchWithAuth(`/api/agency/dashboard?${params.toString()}`, { cache: "no-store" })
       .then(r => r.json()).then(setData).catch(() => {});
-  }, [buildRange, employee]);
+  }, [quickDays, showCustom, customFrom, customTo, employee]);
 
-  const loadStats = useCallback(() => {
+  useEffect(() => {
     fetchWithAuth("/api/agency/stats", { cache: "no-store" })
       .then(r => r.json()).then(setStats).catch(() => {});
   }, []);
-
-  useEffect(() => { loadDashboard(); loadStats(); }, [loadDashboard, loadStats]);
 
   const maxCat = stats?.categories[0]?.c || 1;
   const { pipelineCounts: pc } = data || { pipelineCounts: { discovery: 0, completed_discovery: 0, contract: 0, incubation: 0, completed_incubation: 0 } };
