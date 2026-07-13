@@ -36,7 +36,7 @@ const phaseLabels: Record<string, string> = {
 // ── Types ──
 interface Influencer {
   phase: string;
-  id: number; name: string; status: string; category: string; tiktok_link: string;
+  id: number; name: string; code: string; status: string; category: string; tiktok_link: string;
   line_id: string; contact_phone: string; monthly_gmv: string; live_stream_ratio: string;
   contact_time: string; reply_status: string; followers: string; avg_views: string;
   gmv_range: string; notes: string; created_at: string; updated_at: string;
@@ -223,6 +223,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [stopModal, setStopModal] = useState<{ stepId: number; stepName: string } | null>(null);
   const [stopReason, setStopReason] = useState("");
   const [stopReasonErr, setStopReasonErr] = useState("");
+  const [poolConfirming, setPoolConfirming] = useState(false);
   const [stopping, setStopping] = useState(false);
 
   const confirmStop = async () => {
@@ -403,6 +404,23 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     reload();
   };
 
+  const handleConfirmPool = async () => {
+    if (!inf || !confirm("确认将该达人纳入达人池？")) return;
+    setPoolConfirming(true);
+    try {
+      await fetchWithAuth(`/api/influencers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phase: "completed_discovery", status: "已入池" }),
+      });
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败");
+    } finally {
+      setPoolConfirming(false);
+    }
+  };
+
   const handleStartPhase = async (phase: string) => {
     if (!inf) return;
     try {
@@ -436,6 +454,114 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     const amt = f.currency === "THB" ? f.amount : f.amount * 5;
     return sum + amt;
   }, 0);
+
+  // ── 老板推荐视图：数据展示 + 确认入池 ──
+  if (inf.status === "已推荐给老板") {
+    const latestEval = inf.evaluations?.[0] || {};
+    return (
+      <div className="flex flex-col gap-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")}>
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div>
+            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{inf.name}</h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">老板推荐 · 评估数据一览</p>
+          </div>
+        </div>
+
+        {error && <div className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
+
+        {/* 基本信息卡片 */}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6">
+          <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">基本信息</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div>
+              <p className="text-xs text-[var(--muted-foreground)]">达人编号</p>
+              <p className="text-sm font-medium text-[var(--foreground)]">{inf.code || "-"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[var(--muted-foreground)]">品类</p>
+              <p className="text-sm font-medium text-[var(--foreground)]">{inf.category || "-"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[var(--muted-foreground)]">粉丝量</p>
+              <p className="text-sm font-medium tabular-nums text-[var(--foreground)]">{inf.followers || "-"}</p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-xs text-[var(--muted-foreground)]">TikTok 主页</p>
+              {inf.tiktok_link ? (
+                <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-[var(--primary)] hover:underline inline-flex items-center gap-1">
+                  <ExternalLink className="size-3" />{inf.tiktok_link}
+                </a>
+              ) : <p className="text-sm text-[var(--muted-foreground)]">-</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* 评估数据卡片 */}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6">
+          <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">评估数据</h2>
+          {latestEval.id ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="rounded-lg border border-[var(--border)] p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">月度 GMV</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--foreground)]">{latestEval.gmv_amount || latestEval.gmv || "-"}</p>
+                  {latestEval.gmv_tier && <p className="text-xs text-[var(--muted-foreground)]">{latestEval.gmv_tier} · {latestEval.gmv_score} 分</p>}
+                </div>
+                <div className="rounded-lg border border-[var(--border)] p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">平均直播时长</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--foreground)]">{latestEval.live_duration_tier || "-"}</p>
+                  {latestEval.live_duration_score != null && <p className="text-xs text-[var(--muted-foreground)]">{latestEval.live_duration_score} 分</p>}
+                </div>
+                <div className="rounded-lg border border-[var(--border)] p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">直播频率</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--foreground)]">{latestEval.live_frequency_tier || "-"}</p>
+                  {latestEval.live_frequency_score != null && <p className="text-xs text-[var(--muted-foreground)]">{latestEval.live_frequency_score} 分</p>}
+                </div>
+                <div className="rounded-lg border border-[var(--border)] p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">创作者专业度</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--foreground)]">{latestEval.professionalism_tier || "-"}</p>
+                  {latestEval.professionalism_score != null && <p className="text-xs text-[var(--muted-foreground)]">{latestEval.professionalism_score} 分</p>}
+                </div>
+              </div>
+
+              {/* 总分 + 最终评级 + GMV占比 */}
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-[var(--secondary)] p-3 text-center">
+                  <p className="text-xs text-[var(--muted-foreground)]">直播间 GMV 占比</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--foreground)]">{latestEval.live_stream_ratio || "-"}</p>
+                </div>
+                <div className="rounded-lg bg-[var(--secondary)] p-3 text-center">
+                  <p className="text-xs text-[var(--muted-foreground)]">总分</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--foreground)]">{latestEval.total_score != null ? `${latestEval.total_score} / 65` : "-"}</p>
+                </div>
+                <div className="rounded-lg p-3 text-center" style={{ background: latestEval.final_rating?.startsWith("A") ? "oklch(0.93 0.03 155)" : latestEval.final_rating?.startsWith("B") ? "oklch(0.94 0.03 240)" : "oklch(0.95 0.05 85)" }}>
+                  <p className="text-xs text-[var(--muted-foreground)]">最终评级</p>
+                  <p className={`mt-1 text-lg font-bold ${
+                    latestEval.final_rating?.startsWith("A") ? "text-emerald-700" :
+                    latestEval.final_rating?.startsWith("B") ? "text-blue-700" : "text-amber-700"
+                  }`}>{latestEval.final_rating || "-"}</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="py-4 text-sm text-center text-[var(--muted-foreground)]">暂无评估数据</p>
+          )}
+        </div>
+
+        {/* 确认入池 */}
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6">
+          <p className="text-sm text-[var(--foreground)] mb-4">确认该达人通过评估，将其纳入达人池？入池后达人将出现在签约跟进和品牌孵化列表。</p>
+          <Button size="sm" onClick={handleConfirmPool} disabled={poolConfirming} className="gap-1">
+            {poolConfirming ? "处理中..." : "确认入池"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
