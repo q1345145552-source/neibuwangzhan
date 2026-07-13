@@ -22,6 +22,7 @@ export default function NewInfluencerPage() {
     followers: "",
     avg_views: "",
     gmv_range: "",
+    code: "",
     notes: "",
   });
 
@@ -69,6 +70,11 @@ export default function NewInfluencerPage() {
             <div>
               <label className="text-sm font-medium text-[var(--foreground)]">达人姓名 / 昵称 <span className="text-red-500">*</span></label>
               <input value={form.name} onChange={e => update("name", e.target.value)} placeholder="例如: @beauty_thai" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" autoFocus />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)]">达人编号</label>
+              <input value={form.code} onChange={e => update("code", e.target.value)} placeholder="例如: INF-001，可手动输入" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
             </div>
 
             <div>
