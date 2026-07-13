@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus } from "lucide-react";
+import { fetchWithAuth } from "@/lib/api";
 
 interface Factory {
   id: number;
@@ -25,7 +26,7 @@ export default function FactoriesPage() {
 
   const load = async () => {
     try {
-      const res = await fetch("/api/factories", { cache: "no-store" });
+      const res = await fetchWithAuth("/api/factories", { cache: "no-store" });
       const data = await res.json();
       setFactories(data);
     } catch (err) { console.error(err); }

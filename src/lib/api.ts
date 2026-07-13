@@ -122,6 +122,16 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+
+// 统一封装带认证的 fetch，防止后退导航时 token 丢失导致错误冒泡
+export async function fetchWithAuth(url: string, options?: RequestInit): Promise<Response> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const headers: Record<string, string> = { ...(options?.headers as Record<string, string> || {}) };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
+
+
 export async function fetchOrders(params?: { business_type_id?: number; status?: string }) {
   const searchParams = new URLSearchParams();
   if (params?.business_type_id) searchParams.set("business_type_id", String(params.business_type_id));

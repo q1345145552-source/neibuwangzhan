@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Users, FileSignature, TrendingUp, Search, FlaskConical, PackageCheck, Send, UserPlus, Star, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchWithAuth } from "@/lib/api";
 
 interface DashboardData {
   pipelineCounts: { discovery: number; completed_discovery: number; contract: number; incubation: number; completed_incubation: number };
@@ -56,9 +57,9 @@ export default function AgencyPage() {
   const [stats, setStats] = useState<StatsData | null>(null);
 
   useEffect(() => {
-    fetch("/api/agency/dashboard", { cache: "no-store" })
+    fetchWithAuth("/api/agency/dashboard", { cache: "no-store" })
       .then(r => r.json()).then(setData).catch(() => {});
-    fetch("/api/agency/stats", { cache: "no-store" })
+    fetchWithAuth("/api/agency/stats", { cache: "no-store" })
       .then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 

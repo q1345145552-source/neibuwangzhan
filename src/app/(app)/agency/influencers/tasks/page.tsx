@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Plus, Search, Send, Clock, CheckCircle2, Users, Trash2, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 interface DiscoveryTask {
@@ -39,7 +40,7 @@ export default function DiscoveryTasksPage() {
   const load = useCallback(async () => {
     try {
       const url = statusFilter !== "all" ? `/api/discovery-tasks?status=${statusFilter}` : "/api/discovery-tasks";
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetchWithAuth(url, { cache: "no-store" });
       setTasks(await res.json());
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -57,7 +58,7 @@ export default function DiscoveryTasksPage() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/discovery-tasks", {
+      const res = await fetchWithAuth("/api/discovery-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...newTask, creator: user?.name || "" }),
@@ -74,7 +75,7 @@ export default function DiscoveryTasksPage() {
 
   const handleSubmitForEval = async (taskId: number) => {
     try {
-      await fetch("/api/discovery-tasks", {
+      await fetchWithAuth("/api/discovery-tasks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: taskId, status: "completed" }),
@@ -86,7 +87,7 @@ export default function DiscoveryTasksPage() {
 
   const handleDelete = async (taskId: number) => {
     if (!confirm("确认删除此任务？任务下的达人不会被删除。")) return;
-    await fetch(`/api/discovery-tasks?id=${taskId}`, { method: "DELETE" });
+    await fetchWithAuth(`/api/discovery-tasks?id=${taskId}`, { method: "DELETE" });
     load();
   };
 

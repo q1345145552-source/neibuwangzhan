@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { fetchWithAuth } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Search, Sparkles, Play, ExternalLink, ArrowLeft, Building } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,7 @@ export default function IncubationPage() {
     setLoading(true);
     try {
       // incubation phase filter already includes completed_discovery + contract + incubation
-      const res = await fetch("/api/influencers?phase=incubation", { cache: "no-store" });
+      const res = await fetchWithAuth("/api/influencers?phase=incubation", { cache: "no-store" });
       const all = await res.json() as Influencer[];
       setPool(all.filter(i => i.phase === "completed_discovery" || i.phase === "completed_contract"));
       setActive(all.filter(i => i.phase === "incubation"));
@@ -48,7 +49,7 @@ export default function IncubationPage() {
 
   useEffect(() => {
     fetch("/api/factories", { cache: "no-store" })
-      .then(r => r.json()).then(d => setFactories(Array.isArray(d) ? d : [])).catch(() => {});
+      .then(r => r.json()).then(d => setFactories(Array.isArray(d) ? d : []));
   }, []);
 
   const handleStartIncubation = async (influencerId: number) => {

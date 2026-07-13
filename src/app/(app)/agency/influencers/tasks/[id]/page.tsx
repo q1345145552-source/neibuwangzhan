@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Send, ExternalLink, Trash2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 const statusClass: Record<string, string> = {
@@ -73,7 +74,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/discovery-tasks/${id}/influencers`, {
+      const res = await fetchWithAuth(`/api/discovery-tasks/${id}/influencers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: form.name, code: form.code, tiktok_link: form.tiktok_link, category: form.category, followers: form.followers }),
@@ -90,7 +91,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
   const handleDeleteInf = async (infId: number) => {
     if (!confirm("确认删除此达人？")) return;
-    await fetch(`/api/discovery-tasks/${id}/influencers`, {
+    await fetchWithAuth(`/api/discovery-tasks/${id}/influencers`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ influencer_id: infId }),
@@ -102,7 +103,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     if (!confirm(`确认提交评估？任务下 ${infList.length} 位达人将进入 Ploy 的评估池。`)) return;
     setSubmitting(true);
     try {
-      await fetch("/api/discovery-tasks", {
+      await fetchWithAuth("/api/discovery-tasks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: Number(id), status: "completed" }),

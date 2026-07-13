@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { fetchWithAuth } from "@/lib/api";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 const categories = ["美妆", "服饰", "食品", "家居", "3C数码", "母婴", "运动", "宠物", "其他"];
@@ -32,7 +33,7 @@ export default function NewInfluencerPage() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/influencers", {
+      const res = await fetchWithAuth("/api/influencers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
