@@ -24,8 +24,9 @@ const categoryColors = [
 ];
 
 const ratingColor = (r: string) => {
+  const base = (r || "").replace("+", "");
   const map: Record<string, string> = { A: "bg-emerald-500", B: "bg-blue-500", C: "bg-amber-500", D: "bg-red-500" };
-  return map[r] || "bg-slate-400";
+  return map[base] || "bg-slate-400";
 };
 
 function timeAgo(dateStr: string) {
