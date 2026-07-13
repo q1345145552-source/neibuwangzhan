@@ -454,7 +454,6 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   // 标准化 phase：completed_discovery → discovery，completed_contract → contract
   const currentPhase = inf.phase?.startsWith("completed_") ? inf.phase.replace("completed_", "") : inf.phase;
-  (() => { console.log("[详情页] phase=" + inf.phase + " currentPhase=" + currentPhase + " status=" + inf.status + " steps.length=" + steps.length); })();
   const currentPhaseSteps = steps.filter(s => s.phase === currentPhase);
   const displaySteps = currentPhaseSteps.length > 0 ? currentPhaseSteps : steps;
   const completedCount = displaySteps.filter(s => s.status === "已完成").length;
