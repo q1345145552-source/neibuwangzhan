@@ -46,6 +46,7 @@ const businessLines = [
 ];
 
 const agencyNav = [
+  { name: "机构管理", href: "/agency", icon: LayoutDashboard },
   { name: "达人发现", href: "/agency/influencers", icon: UsersRound },
   { name: "签约跟进", href: "/agency/contracts", icon: FileCheck },
   { name: "品牌孵化", href: "/agency/incubation", icon: Sparkles },
