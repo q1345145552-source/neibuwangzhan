@@ -124,7 +124,7 @@ export default function AgencyPage() {
       {/* 今日团队工作量 */}
       {data && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
-          <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">📊 今日团队工作量</h2>
+          <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">今日团队工作量</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div className="rounded-lg border border-[var(--border)] p-3">
               <div className="flex items-center gap-1.5">
@@ -184,7 +184,7 @@ export default function AgencyPage() {
           {/* 签约超时提醒 */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
             <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">
-              ⏰ 签约超时提醒
+              签约超时提醒
               {data.overdueContracts.length > 0 && (
                 <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-950/30 dark:text-red-400">
                   {data.overdueContracts.length}
@@ -192,7 +192,7 @@ export default function AgencyPage() {
               )}
             </h2>
             {data.overdueContracts.length === 0 ? (
-              <p className="text-sm text-[var(--muted-foreground)] py-4 text-center">暂无超时合同 🎉</p>
+              <p className="text-sm text-[var(--muted-foreground)] py-4 text-center">暂无超时合同</p>
             ) : (
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {data.overdueContracts.map((c) => {
@@ -206,7 +206,7 @@ export default function AgencyPage() {
                         critical ? "border-red-200 bg-red-50 dark:bg-red-950/20" : "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20"
                       }`}
                     >
-                      <span className="text-lg">{critical ? "🔴" : "⚠️"}</span>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${critical ? "bg-red-500" : "bg-yellow-500"}`}></span>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{c.influencer_name}</div>
                         <div className="text-xs text-[var(--muted-foreground)]">
@@ -227,7 +227,7 @@ export default function AgencyPage() {
 
           {/* 最近评估结果 */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
-            <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">📋 最近评估结果</h2>
+            <h2 className="text-sm font-semibold text-[var(--foreground)] mb-4">最近评估结果</h2>
             {data.recentEvaluations.length === 0 ? (
               <p className="text-sm text-[var(--muted-foreground)] py-4 text-center">暂无评估记录</p>
             ) : (
