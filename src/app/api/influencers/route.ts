@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search");
   const phase = searchParams.get("phase");
   let sql = `SELECT i.*, 
-    (SELECT ie.rating FROM influencer_evaluations ie WHERE ie.influencer_id = i.id ORDER BY ie.evaluated_at DESC LIMIT 1) as latest_rating
+    (SELECT ie.final_rating FROM influencer_evaluations ie WHERE ie.influencer_id = i.id ORDER BY ie.created_at DESC LIMIT 1) as latest_rating
     FROM influencers i`;
   const conditions: string[] = [];
   const params: string[] = [];

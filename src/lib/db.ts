@@ -554,6 +554,17 @@ function initTables(database: Database.Database) {
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_certificates (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), certificate_number TEXT DEFAULT '', product_name TEXT DEFAULT '', issue_date TEXT DEFAULT '', expiry_date TEXT DEFAULT '', status TEXT DEFAULT 'valid', notes TEXT DEFAULT '', file_url TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS discovery_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, task_number TEXT NOT NULL, category TEXT DEFAULT '', creator TEXT DEFAULT '', status TEXT DEFAULT 'active' CHECK(status IN ('active','completed')), created_at TEXT DEFAULT (datetime('now')), completed_at TEXT)"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN discovery_task_id INTEGER REFERENCES discovery_tasks(id)"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN gmv_amount TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN gmv_tier TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN gmv_score INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_duration_tier TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_duration_score INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_frequency_tier TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_frequency_score INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN professionalism_tier TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN professionalism_score INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN total_score INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN final_rating TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN code TEXT DEFAULT ''"); } catch {}
 }
 
@@ -575,5 +586,7 @@ function seedData(database: Database.Database) {
     for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC"]) insert.run(name);
   }
 
-}
 
+
+
+}
