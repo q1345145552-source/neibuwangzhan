@@ -531,6 +531,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
           live_duration: contractForm.live_duration,
           video_count: contractForm.video_count,
           contract_url: latestDoc?.file_url || "",
+          created_by: user?.name || "",
         }),
       });
       setShowContractModal(false);

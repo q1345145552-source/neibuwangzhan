@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
 import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startPhase } from "@/lib/api";
@@ -60,6 +61,7 @@ function getOverdueRowClass(createdAt: string, paymentStatus: string): string {
 
 export default function ContractsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [poolInfs, setPoolInfs] = useState<Influencer[]>([]);
   const [activeInfs, setActiveInfs] = useState<Influencer[]>([]);
@@ -121,6 +123,7 @@ export default function ContractsPage() {
           live_sessions: contractForm.live_sessions,
           live_duration: contractForm.live_duration,
           video_count: contractForm.video_count,
+          created_by: user?.name || "",
         }),
       });
       setContractModal(null);
