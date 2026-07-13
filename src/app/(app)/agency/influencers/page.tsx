@@ -80,7 +80,7 @@ export default function InfluencersPage() {
       if (activeTab === "evaluating") {
         url = "/api/influencers?status=评估中";
       } else if (activeTab === "evaluated") {
-        url = "/api/influencers?status=已评估,已推荐给老板";
+        url = "/api/influencers?status=已评估";
       } else if (activeTab === "recommended") {
         url = "/api/influencers?status=已推荐给老板";
       } else {
