@@ -22,7 +22,7 @@ export async function POST(
   const { id } = await params;
   const db = getDb();
   const body = await req.json();
-  const { name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes } = body;
+  const { name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes, code } = body;
 
   if (!name) return NextResponse.json({ error: "请填写达人名称" }, { status: 400 });
   if (!tiktok_link) return NextResponse.json({ error: "请填写TikTok链接" }, { status: 400 });
@@ -30,8 +30,8 @@ export async function POST(
   // Create influencer WITHOUT discovery steps (steps generated when task is completed)
   // Status starts as 待评估, phase = discovery
   const result = db.prepare(
-    "INSERT INTO influencers (name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes, status, phase, discovery_task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待评估', 'discovery', ?)"
-  ).run(name, tiktok_link, category || "", contact_phone || "", line_id || "", followers || "", avg_views || "", gmv_range || "", monthly_gmv || "", live_stream_ratio || "", notes || "", id);
+    "INSERT INTO influencers (name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes, code, status, phase, discovery_task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待评估', 'discovery', ?)"
+  ).run(name, tiktok_link, category || "", contact_phone || "", line_id || "", followers || "", avg_views || "", gmv_range || "", monthly_gmv || "", live_stream_ratio || "", notes || "", code || "", id);
 
   const inf = db.prepare("SELECT * FROM influencers WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(inf, { status: 201 });
