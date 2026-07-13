@@ -24,6 +24,10 @@ const statusClass: Record<string, string> = {
   "已入池": "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
 };
 
+const ratingBadge = (r: string) => {
+  const map: Record<string, string> = { A: "bg-emerald-500", B: "bg-blue-500", C: "bg-amber-500", D: "bg-red-500" };
+  return map[r] || "bg-slate-400";
+};
 const ratingColors: Record<string, string> = {
   A: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   B: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
@@ -43,7 +47,7 @@ interface Influencer {
   contact: string; contact_phone: string; followers: string;
   avg_views: string; gmv_range: string; notes: string;
   code: string; status: string; phase: string; monthly_gmv: string; live_stream_ratio: string;
-  created_at: string;
+  latest_rating: string | null; created_at: string;
 }
 
 export default function InfluencersPage() {
@@ -162,14 +166,7 @@ export default function InfluencersPage() {
   };
 
   const filtered = influencers.filter(i => {
-    // Rating filter for 待推荐 tab
-    if (activeTab === "evaluated" && ratingFilter !== "all") {
-      // Check latest evaluation rating
-      if (i.status === "已评估" && ratingFilter !== "all") {
-        // We need the rating from evaluations — but we don't have it in the influencer list
-        // Let's just check any A rated ones via the API's phase field
-      }
-    }
+    if (ratingFilter !== "all" && i.latest_rating !== ratingFilter) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return i.name.toLowerCase().includes(s) || i.category.toLowerCase().includes(s) || (i.contact || "").toLowerCase().includes(s) || (i.code || "").toLowerCase().includes(s);
@@ -270,6 +267,11 @@ export default function InfluencersPage() {
                   <td className="py-3 px-4">
                     <Link href={`/agency/influencers/${inf.id}`} className="flex items-center gap-2 hover:underline">
                       <span className="font-medium text-[var(--foreground)]">{inf.name}</span>
+                      {inf.latest_rating && (
+                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white ${ratingBadge(inf.latest_rating)}`}>
+                          {inf.latest_rating}
+                        </span>
+                      )}
                     </Link>
                     {inf.tiktok_link && (
                       <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="inline-flex text-[var(--muted-foreground)] hover:text-[var(--primary)] ml-1" onClick={e => e.stopPropagation()}>
@@ -354,19 +356,14 @@ export default function InfluencersPage() {
 
               <div>
                 <label className="text-xs font-medium">评分等级</label>
-                <div className="mt-1.5 flex gap-2">
-                  {["A", "B", "C", "D"].map(r => (
-                    <button key={r} onClick={() => setEvalForm(p => ({ ...p, rating: r }))}
-                      className={cn("flex-1 py-1.5 rounded-md text-sm font-semibold border transition-colors",
-                        evalForm.rating === r
-                          ? "border-current text-white bg-current"
-                          : "border-[var(--border)] text-[var(--muted-foreground)] hover:border-current",
-                        r === "A" ? "text-green-600 bg-green-600" : r === "B" ? "text-blue-600 bg-blue-600" : r === "C" ? "text-amber-600 bg-amber-600" : "text-red-600 bg-red-600"
-                      )}>
-                      {r}
-                    </button>
-                  ))}
-                </div>
+                <select value={evalForm.rating} onChange={e => setEvalForm(p => ({ ...p, rating: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="">请选择评级</option>
+                  <option value="A">A — 优秀</option>
+                  <option value="B">B — 良好</option>
+                  <option value="C">C — 一般</option>
+                  <option value="D">D — 较差</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
