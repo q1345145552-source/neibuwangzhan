@@ -75,6 +75,119 @@ function isImageUrl(url: string | undefined | null): boolean {
   return /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(url || "");
 }
 
+function ContractWorkCard({ contract, onReload, isClient }: {
+  contract: any;
+  onReload: () => void;
+  isClient: boolean;
+}) {
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSave = async () => {
+    if (!editingField) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetchWithAuth("/api/contracts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: contract.id, [editingField]: editValue }),
+      });
+      if (!res.ok) throw new Error("保存失败");
+      setEditingField(null);
+      onReload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const calcPct = (actual: string, target: string): number | null => {
+    const a = parseFloat(actual) || 0;
+    const t = parseFloat(target) || 0;
+    if (t === 0) return null;
+    return Math.round((a / t) * 100);
+  };
+
+  const renderRow = (label: string, field: string, target: string, actual: string) => {
+    const isEditing = editingField === field;
+    const pct = calcPct(actual, target);
+    const displayActual = actual || "0";
+
+    return (
+      <div className="text-xs" key={field}>
+        <div className="flex items-center justify-between">
+          <span className="text-[var(--muted-foreground)] w-20 shrink-0">{label}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="tabular-nums text-[var(--muted-foreground)]">合同</span>
+            <span className="tabular-nums font-medium w-8 text-right">{target || "-"}</span>
+            <span className="text-[var(--muted-foreground)] mx-0.5">/</span>
+            <span className="tabular-nums text-[var(--muted-foreground)]">实际</span>
+            {isEditing ? (
+              <div className="flex items-center gap-1">
+                <input
+                  value={editValue}
+                  onChange={e => setEditValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleSave();
+                    if (e.key === "Escape") setEditingField(null);
+                  }}
+                  className="w-14 h-6 rounded border border-[var(--ring)] bg-[var(--background)] px-1.5 text-xs outline-none tabular-nums"
+                  autoFocus
+                  disabled={saving}
+                />
+                <button onClick={handleSave} disabled={saving}
+                  className="shrink-0 rounded p-0.5 text-[var(--success)] hover:bg-[var(--success)]/10">
+                  <CheckCircle2 className="size-3.5" />
+                </button>
+                <button onClick={() => setEditingField(null)}
+                  className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="tabular-nums font-medium w-8 text-right">{displayActual}</span>
+                {!isClient && (
+                  <button
+                    onClick={() => { setEditingField(field); setEditValue(displayActual); setError(""); }}
+                    className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)]"
+                    title="编辑实际完成量"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                )}
+              </div>
+            )}
+            <span className={cn(
+              "tabular-nums font-semibold ml-1 min-w-[2.5rem] text-right",
+              pct === null ? "text-[var(--muted-foreground)]" : pct >= 100 ? "text-[var(--success)]" : "text-[var(--destructive)]"
+            )}>
+              {pct !== null ? `${pct}%` : "—"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
+      <h3 className="text-sm font-medium text-[var(--foreground)]">合同工作明细</h3>
+      {error && <p className="mt-1 text-xs text-[var(--destructive)]">{error}</p>}
+      <dl className="mt-3 space-y-2.5">
+        {renderRow("月直播场次", "actual_live_sessions", contract.live_sessions, contract.actual_live_sessions)}
+        {renderRow("每次时长", "actual_live_duration", contract.live_duration, contract.actual_live_duration)}
+        {renderRow("月视频数", "actual_video_count", contract.video_count, contract.actual_video_count)}
+      </dl>
+    </div>
+  );
+}
+
+
 export default function InfluencerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -99,7 +212,6 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs" | "certs">("finances");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
   // ── CSV ──
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvResult, setCsvResult] = useState<{ imported: number; skipped: string[]; total: number } | null>(null);
@@ -128,6 +240,12 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [docFileUrl, setDocFileUrl] = useState("");
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docErrorMsg, setDocErrorMsg] = useState("");
+
+  // ── Contract creation modal (triggers on doc upload) ──
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractForm, setContractForm] = useState({ base_salary: "", commission: "", live_sessions: "", live_duration: "", video_count: "" });
+  const [contractFormError, setContractFormError] = useState("");
+  const [contractFormSaving, setContractFormSaving] = useState(false);
 
   // ── Certificate form ──
   const [newCertNo, setNewCertNo] = useState("");
@@ -371,13 +489,53 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; }
     setDocErrorMsg("");
     try {
-      await fetchWithAuth(`/api/influencers/${id}/documents`, {
+      const res = await fetchWithAuth(`/api/influencers/${id}/documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newDocName, file_url: docFileUrl, uploaded_by: user?.name || "" }),
       });
-      setNewDocName(""); setDocFileUrl(""); setDocFileName(""); reload();
+      setNewDocName(""); setDocFileUrl(""); setDocFileName("");
+      // If influencer is in contract phase and has no contract yet, prompt to create one
+      if (inf && (inf.phase === "contract" || inf.phase === "completed_contract") && (!inf.contracts || inf.contracts.length === 0)) {
+        setContractForm({ base_salary: "", commission: "", live_sessions: "", live_duration: "", video_count: "" });
+        setContractFormError("");
+        setShowContractModal(true);
+      }
+      reload();
     } catch (err) { setDocErrorMsg("添加失败"); }
+  };
+
+  const handleCreateContract = async () => {
+    const { live_sessions, live_duration, video_count } = contractForm;
+    if (!live_sessions.trim() || !live_duration.trim() || !video_count.trim()) {
+      setContractFormError("月直播场次、每次直播时长、月视频数量为必填项");
+      return;
+    }
+    setContractFormError("");
+    setContractFormSaving(true);
+    try {
+      // Get the document URL that was just uploaded
+      const latestDoc = docs.length > 0 ? docs[0] : null;
+      await fetchWithAuth("/api/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          influencer_id: Number(id),
+          base_salary: contractForm.base_salary,
+          commission: contractForm.commission,
+          live_sessions: contractForm.live_sessions,
+          live_duration: contractForm.live_duration,
+          video_count: contractForm.video_count,
+          contract_url: latestDoc?.file_url || "",
+        }),
+      });
+      setShowContractModal(false);
+      reload();
+    } catch (err) {
+      setContractFormError("创建合同失败");
+    } finally {
+      setContractFormSaving(false);
+    }
   };
 
   const handleDeleteDocument = async (docId: number) => {
@@ -920,6 +1078,65 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
         {/* Right: Sidebar panels */}
         <div className="flex flex-col gap-4">
+
+          {/* ── Evaluation info card (contract/incubation phase) ── */}
+          {(inf.phase === "contract" || inf.phase === "completed_contract" || inf.phase === "incubation" || inf.phase === "completed_incubation") && inf.evaluations?.[0]?.id && (() => {
+            const e = inf.evaluations[0];
+            const hasDetailFields = e.gmv_tier || e.live_duration_tier || e.live_frequency_tier || e.professionalism_tier;
+            if (!hasDetailFields) return null;
+            return (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
+                <h3 className="text-sm font-medium text-[var(--foreground)]">评估信息</h3>
+                <dl className="mt-3 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <dt className="text-[var(--muted-foreground)]">月度 GMV</dt>
+                    <dd>{e.gmv_amount || e.gmv || "-"} {e.gmv_tier && <span className="text-[var(--muted-foreground)]">({e.gmv_tier} · {e.gmv_score ?? 0}分)</span>}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-[var(--muted-foreground)]">平均直播时长</dt>
+                    <dd>{e.live_duration_tier || "-"} {e.live_duration_score != null && <span className="text-[var(--muted-foreground)]">({e.live_duration_score}分)</span>}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-[var(--muted-foreground)]">直播频率</dt>
+                    <dd>{e.live_frequency_tier || "-"} {e.live_frequency_score != null && <span className="text-[var(--muted-foreground)]">({e.live_frequency_score}分)</span>}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-[var(--muted-foreground)]">创作者专业度</dt>
+                    <dd>{e.professionalism_tier || "-"} {e.professionalism_score != null && <span className="text-[var(--muted-foreground)]">({e.professionalism_score}分)</span>}</dd>
+                  </div>
+                  {e.live_stream_ratio && (
+                    <div className="flex justify-between">
+                      <dt className="text-[var(--muted-foreground)]">直播间 GMV 占比</dt>
+                      <dd>{e.live_stream_ratio}</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-[var(--border)] pt-2 mt-1">
+                    <dt className="text-xs font-medium text-[var(--foreground)]">总分</dt>
+                    <dd className="text-xs font-semibold tabular-nums">{e.total_score != null ? `${e.total_score}/65` : "-"}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-xs font-medium text-[var(--foreground)]">最终评级</dt>
+                    <dd className={cn("text-xs font-bold tabular-nums px-1.5 py-0.5 rounded",
+                      e.final_rating?.startsWith("A") && "bg-green-100 text-green-700",
+                      e.final_rating?.startsWith("B") && "bg-blue-100 text-blue-700",
+                      e.final_rating?.startsWith("C") && "bg-yellow-100 text-yellow-700")}>
+                      {e.final_rating || e.rating || "-"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            );
+          })()}
+
+          {/* ── Contract work details card ── */}
+          {(inf.phase === "contract" || inf.phase === "completed_contract") && inf.contracts?.[0] && (
+            <ContractWorkCard
+              contract={inf.contracts[0]}
+              onReload={reload}
+              isClient={isClient}
+            />
+          )}
+
           {/* Info card */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
             <h3 className="text-sm font-medium text-[var(--foreground)]">达人信息</h3>
@@ -941,9 +1158,9 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
               <button key={tab} onClick={() => setSidebarTab(tab)}
                 className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                   sidebarTab === tab ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}>
-                {tab === "finances" && <><DollarSign className="mr-1 inline size-3" />费用</>}
-                {tab === "docs" && <><Paperclip className="mr-1 inline size-3" />文档</>}
-                {tab === "certs" && <><FileText className="mr-1 inline size-3" />证书</>}
+                {tab === "finances" && <><DollarSign className="mr-1 inline size-3" />合同费用</>}
+                {tab === "docs" && <><Paperclip className="mr-1 inline size-3" />合同</>}
+                {tab === "certs" && <><FileText className="mr-1 inline size-3" />其他文件</>}
               </button>
             ))}
           </div>
@@ -1127,6 +1344,83 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
           )}
         </div>
       </div>
+
+      {/* Contract creation modal */}
+      {showContractModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowContractModal(false)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">
+              创建合同 · {inf?.name}
+            </h3>
+            <p className="text-xs text-[var(--muted-foreground)] mb-3">合同文件已上传，请填写工作量信息完成合同创建。</p>
+            {contractFormError && <p className="mb-3 text-xs text-[var(--destructive)]">{contractFormError}</p>}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-[var(--foreground)] mb-1">底薪</label>
+                <input
+                  value={contractForm.base_salary}
+                  onChange={e => setContractForm(p => ({ ...p, base_salary: e.target.value }))}
+                  placeholder="如 15000"
+                  className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--foreground)] mb-1">佣金</label>
+                <input
+                  value={contractForm.commission}
+                  onChange={e => setContractForm(p => ({ ...p, commission: e.target.value }))}
+                  placeholder="如 10%"
+                  className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+              <div className="border-t border-[var(--border)] pt-3">
+                <p className="text-xs font-medium text-[var(--foreground)] mb-2">工作量（必填）</p>
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">月直播场次 <span className="text-[var(--destructive)]">*</span></label>
+                    <input
+                      value={contractForm.live_sessions}
+                      onChange={e => setContractForm(p => ({ ...p, live_sessions: e.target.value }))}
+                      placeholder="如 20"
+                      className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">每次直播时长（小时） <span className="text-[var(--destructive)]">*</span></label>
+                    <input
+                      value={contractForm.live_duration}
+                      onChange={e => setContractForm(p => ({ ...p, live_duration: e.target.value }))}
+                      placeholder="如 3"
+                      className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">月视频数量 <span className="text-[var(--destructive)]">*</span></label>
+                    <input
+                      value={contractForm.video_count}
+                      onChange={e => setContractForm(p => ({ ...p, video_count: e.target.value }))}
+                      placeholder="如 8"
+                      className="w-full h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2 justify-end">
+              <button onClick={() => setShowContractModal(false)} className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]">
+                跳过
+              </button>
+              <button
+                onClick={handleCreateContract}
+                disabled={contractFormSaving}
+                className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+              >
+                {contractFormSaving ? "创建中..." : "创建合同"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

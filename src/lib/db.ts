@@ -221,23 +221,23 @@ export function getInfluencerSteps(): InfluencerStepTemplate[] {
     // 一、达人发现 (5 步)
     { name: "刷 TikTok 直播找达人，录入系统建基础档案", assignee: "全员", phase: "discovery" },
     { name: "无合适人选则 Facebook 发帖或 TikTok 关键词搜索", assignee: "全员", phase: "discovery" },
-    { name: "Ploy 从 Kalodata 拉数据评估打分", assignee: "Ploy", phase: "discovery" },
-    { name: "Prae/Namcha 筛 A 级达人，每次推 3 位给老板", assignee: "Prae / Namcha", phase: "discovery" },
+    { name: "从 Kalodata 拉取数据评估打分", assignee: "Ploy", phase: "discovery" },
+    { name: "筛选 A 级达人推送老板审批", assignee: "Prae / Namcha", phase: "discovery" },
     { name: "老板确认联系 or 否决", assignee: "老板", phase: "discovery" },
     // 二、签约跟进 (9 步)
-    { name: "Prae/Namcha 联系达人聊合作，给出报价方案", assignee: "Prae / Namcha", phase: "contract" },
-    { name: "老板审批后元丽开发票，付款方式标全款/部分付款", assignee: "元丽", phase: "contract" },
+    { name: "联系达人沟通报价方案", assignee: "Prae / Namcha", phase: "contract" },
+    { name: "老板审批后开具发票", assignee: "元丽", phase: "contract" },
     { name: "确认达人尺码、身高、地址等细节", assignee: "Prae / Namcha", phase: "contract" },
-    { name: "客户寄样品到 Ploy 地址，元丽和 Ploy 建 TAP 推广", assignee: "元丽 / Ploy", phase: "contract" },
-    { name: "Ploy 建好 TAP 方案，元丽确定佣金比例教客户操作", assignee: "Ploy / 元丽", phase: "contract" },
-    { name: "Ploy 收样检查登记产品信息", assignee: "Ploy", phase: "contract" },
-    { name: "Prae/Namcha 起草合同让达人线上签，打印两份", assignee: "Prae / Namcha", phase: "contract" },
-    { name: "Ploy 寄样品、更新物流单号、确认达人收到、催产出", assignee: "Ploy", phase: "contract" },
+    { name: "客户寄样品并创建 TAP 推广方案", assignee: "元丽 / Ploy", phase: "contract" },
+    { name: "确定佣金比例并指导客户操作", assignee: "Ploy / 元丽", phase: "contract" },
+    { name: "收样检查并登记产品信息", assignee: "Ploy", phase: "contract" },
+    { name: "起草合同安排达人线上签署", assignee: "Prae / Namcha", phase: "contract" },
+    { name: "寄送样品并催产出", assignee: "Ploy", phase: "contract" },
     { name: "持续跟踪直播和视频数据做报表", assignee: "全员", phase: "contract" },
     // 三、品牌孵化 (5 步)
-    { name: "Namcha/元丽从达人池筛适合做品牌的", assignee: "Namcha / 元丽", phase: "incubation" },
+    { name: "从达人池筛选适合做品牌的达人", assignee: "Namcha / 元丽", phase: "incubation" },
     { name: "趁送样时机口聊品牌合作意向，留联系方式", assignee: "Prae / Namcha", phase: "incubation" },
-    { name: "达人带需求回来，元丽对接中国工厂，谈低 MOQ", assignee: "元丽", phase: "incubation" },
+    { name: "对接中国工厂洽谈低 MOQ 条件", assignee: "元丽", phase: "incubation" },
     { name: "打样确认，拿参考品，跟达人一起看实物", assignee: "元丽 / Namcha", phase: "incubation" },
     { name: "正式下生产单，跟踪生产、质检、物流全过程", assignee: "元丽 / Namcha", phase: "incubation" },
   ];
@@ -465,7 +465,13 @@ function initTables(database: Database.Database) {
       updated_at TEXT DEFAULT (datetime('now')),
       phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation'))
     );
+  `);
 
+  try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_sessions TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_duration TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE contracts ADD COLUMN actual_video_count TEXT DEFAULT ''"); } catch {}
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS influencer_factories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       influencer_id INTEGER NOT NULL REFERENCES influencers(id),
@@ -575,7 +581,13 @@ function seedData(database: Database.Database) {
   const empCount = database.prepare("SELECT COUNT(*) as c FROM employees").get() as { c: number };
   if (empCount.c === 0) {
     const insert = database.prepare("INSERT INTO employees (name, email, role, password) VALUES (?, ?, ?, ?)");
-    for (const [name, email] of [["Bam","bam@xiangtai.com"], ["Fern","fern@xiangtai.com"], ["Ing","ing@xiangtai.com"], ["Pop","pop@xiangtai.com"], ["Eve","eve@xiangtai.com"]]) insert.run(name, email, "employee", bcrypt.hashSync("123456", 10));
+    const teamEmps: [string, string][] = [
+      ["Bam","bam@xiangtai.com"], ["Fern","fern@xiangtai.com"], ["Ing","ing@xiangtai.com"],
+      ["Pop","pop@xiangtai.com"], ["Eve","eve@xiangtai.com"],
+      ["Ploy","ploy@xiangtai.com"], ["元丽","yuanli@xiangtai.com"],
+      ["Prae","prae@xiangtai.com"], ["Namcha","namcha@xiangtai.com"]
+    ];
+    for (const [name, email] of teamEmps) insert.run(name, email, "employee", bcrypt.hashSync("123456", 10));
     insert.run("张三", "zhangsan@xiangtai.com", "admin", bcrypt.hashSync("123456", 10));
     insert.run("李四", "lisi@client.com", "client", bcrypt.hashSync("123456", 10));
   }
