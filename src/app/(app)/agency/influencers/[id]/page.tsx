@@ -452,12 +452,15 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   if (error && !inf) return <div className="py-20 text-center text-sm text-[var(--destructive)]">{error}</div>;
   if (!inf) return null;
 
-  const currentPhaseSteps = steps.filter(s => s.phase === inf.phase || (!inf.phase || inf.phase === "discovery"));
+  // 标准化 phase：completed_discovery → discovery，completed_contract → contract
+  const currentPhase = inf.phase?.startsWith("completed_") ? inf.phase.replace("completed_", "") : inf.phase;
+  (() => { console.log("[详情页] phase=" + inf.phase + " currentPhase=" + currentPhase + " status=" + inf.status + " steps.length=" + steps.length); })();
+  const currentPhaseSteps = steps.filter(s => s.phase === currentPhase);
   const displaySteps = currentPhaseSteps.length > 0 ? currentPhaseSteps : steps;
   const completedCount = displaySteps.filter(s => s.status === "已完成").length;
   const totalSteps = displaySteps.length;
   const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
-  const phases = ["discovery", "contract", "incubation"] as const;
+  const phases = [currentPhase] as const;
 
   const totalIncome = finances.filter(f => f.type === "income").reduce((sum, f) => {
     const amt = f.currency === "THB" ? f.amount : f.amount * 5;
