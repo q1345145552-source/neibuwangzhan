@@ -7,6 +7,19 @@ import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare
 import { useAuth } from "@/components/auth-provider";
 import { fetchEmployees, type Employee, startPhase, fetchWithAuth } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
+function getBackUrl(inf: any) {
+  if (!inf) return "/agency/influencers";
+  if (inf.phase === "contract" || inf.phase === "completed_contract") return "/agency/contracts";
+  if (inf.phase === "incubation" || inf.phase === "completed_incubation") return "/agency/incubation";
+  return "/agency/influencers";
+}
+function getPageTitle(inf: any) {
+  if (inf?.phase === "contract" || inf?.phase === "completed_contract") return "签约跟进";
+  if (inf?.phase === "incubation" || inf?.phase === "completed_incubation") return "品牌孵化";
+  if (inf?.status === "已推荐给老板") return "老板推荐";
+  return "达人发现";
+}
+
 
 // ── Status styles ──
 const stepStatusClass: Record<string, string> = {
@@ -462,12 +475,12 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
       <div className="flex flex-col gap-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")}>
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push(getBackUrl(inf))}>
             <ArrowLeft className="size-4" />
           </Button>
           <div>
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{inf.name}</h1>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">老板推荐 · 评估数据一览</p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{getPageTitle(inf)} · 评估数据</p>
           </div>
         </div>
 
@@ -644,7 +657,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push("/agency/influencers")} aria-label="返回达人列表">
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push(getBackUrl(inf))} aria-label="返回达人列表">
           <ArrowLeft className="size-4" />
         </Button>
         <div className="flex-1">
