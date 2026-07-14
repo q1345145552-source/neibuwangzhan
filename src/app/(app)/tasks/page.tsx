@@ -80,7 +80,6 @@ export default function TasksPage() {
     if (!deleteTaskTarget) return;
     setDeletingTask(true);
     try {
-      console.log("[删除任务]", deleteTaskTarget.id);
       await deleteTask(deleteTaskTarget.id);
       setTaskList(prev => prev.filter(t => t.id !== deleteTaskTarget.id));
       setDeleteTaskTarget(null);

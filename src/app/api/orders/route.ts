@@ -53,28 +53,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const insertAll = db.transaction(() => {
-      console.log("[POST /api/orders] 开始事务, id=" + id);
       const insParams = [id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, currency || "CNY", trademark_name || "", now, now];
-      console.log("[POST /api/orders] INSERT params:", JSON.stringify(insParams));
       db.prepare(
         "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, currency, trademark_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
       ).run(...insParams);
-      console.log("[POST /api/orders] orders 插入成功");
 
       const steps = getStepsWithAddressType(Number(business_type_id), ssType, address_type);
-      console.log("[POST /api/orders] 步骤数:", steps.length);
       const insertStep = db.prepare(
         "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
       );
       steps.forEach((step, i) => {
         insertStep.run(id, step.name, i + 1, step.assignee);
       });
-      console.log("[POST /api/orders] 步骤全部插入");
     });
 
     insertAll();
-    console.log("[POST /api/orders] 事务提交成功");
-      logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
+    logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
     return NextResponse.json(order, { status: 201 });

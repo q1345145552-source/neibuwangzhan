@@ -4,9 +4,10 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Upload, Download, FileText, ArrowLeft, Trash2 } from "lucide-react";
-import { fetchAllDocuments, uploadGlobalDocument, deleteGlobalDocument } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { Search, Upload, Download, FileText, ArrowLeft } from "lucide-react";
+import { fetchAllDocuments, uploadGlobalDocument, fetchOrders, fetchBusinessTypes } from "@/lib/api";
+import type { Order } from "@/lib/api";
+import { cn, fileUrl } from "@/lib/utils";
 
 const statusClass: Record<string, string> = {
   approved: "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
@@ -49,6 +50,8 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,23 +68,23 @@ export default function DocumentsPage() {
     load();
   }, []);
 
-  const reload = () => {
-    console.log("[文档列表] 刷新文档列表...");
-    fetchAllDocuments().then((data) => {
-      console.log("[文档列表] 刷新成功, 共", data.length, "条");
-      setAllDocs(data);
-    }).catch((err) => console.error("Reload docs error:", err));
-  };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("确定删除这条文档吗？")) return;
-    try {
-      await deleteGlobalDocument(id);
-      reload();
-    } catch (err) {
-      console.error("[删除文档] 失败:", err);
-      setUploadError(err instanceof Error ? err.message : "删除失败");
+  // 加载订单列表，供"上传文档"时选择归属订单；如果当前是按业务线筛选进来的，只列该业务线下的订单
+  useEffect(() => {
+    async function loadOrders() {
+      try {
+        const types = await fetchBusinessTypes();
+        const bt = businessFilter ? types.find((t) => t.name === businessFilter) : undefined;
+        const data = await fetchOrders(bt ? { business_type_id: bt.id } : undefined);
+        setOrders(data);
+      } catch (err) {
+        console.error("Orders load error:", err);
+      }
     }
+    loadOrders();
+  }, [businessFilter]);
+
+  const reload = () => {
+    fetchAllDocuments().then(setAllDocs).catch((err) => console.error("Reload docs error:", err));
   };
 
   const handleUpload = async () => {
@@ -96,24 +99,21 @@ export default function DocumentsPage() {
       // 1. Upload file
       const formData = new FormData();
       formData.append("file", file);
-      console.log("[上传文档] 开始上传文件:", file.name);
       const uploadRes = await fetch("/api/upload", {
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
         body: formData,
       });
       const uploadData = await uploadRes.json();
-      console.log("[上传文档] 上传结果:", uploadRes.status, uploadData);
       if (!uploadRes.ok) throw new Error(uploadData.error || "文件上传失败");
 
-      // 2. Create document record
-      console.log("[上传文档] 创建文档记录");
+      // 2. Create document record，关联到选中的订单（可不选）
       await uploadGlobalDocument({
         name: file.name,
         file_type: file.type,
         file_url: uploadData.url,
+        order_id: selectedOrderId || undefined,
       });
-      console.log("[上传文档] 文档记录创建成功");
 
       // 3. Reset and reload
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -160,6 +160,15 @@ export default function DocumentsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={selectedOrderId}
+            onChange={(e) => setSelectedOrderId(e.target.value)}
+            aria-label="关联订单"
+            className="h-9 max-w-[220px] rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+          >
+            <option value="">不关联订单（可选）</option>
+            {orders.map((o) => <option key={o.id} value={o.id}>{o.id} · {o.customer_name}</option>)}
+          </select>
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} />
           <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
             <Upload className="size-3.5" aria-hidden="true" />
@@ -214,14 +223,9 @@ export default function DocumentsPage() {
                   </span>
                 </td>
                 <td className="py-3 px-4">
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(doc.file_url, "_blank"); else setUploadError("该文档无可下载文件"); }}>
-                      <Download className="size-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => handleDelete(doc.id!)}>
-                      <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
-                    </Button>
-                  </div>
+                  <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(fileUrl(doc.file_url), "_blank"); else setUploadError("该文档无可下载文件"); }}>
+                    <Download className="size-3.5" aria-hidden="true" />
+                  </Button>
                 </td>
               </tr>
             ))}

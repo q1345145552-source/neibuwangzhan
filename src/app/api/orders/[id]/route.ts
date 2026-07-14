@@ -41,7 +41,6 @@ export async function PATCH(
   if (!existing) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
   const body = await req.json();
-  console.log("[PATCH /api/orders/" + id + "] body keys:", JSON.stringify(Object.keys(body)));
   const fields: string[] = [];
   const values: unknown[] = [];
 
@@ -63,10 +62,7 @@ export async function PATCH(
   values.push(id);
 
   const sql = `UPDATE orders SET ${fields.join(", ")} WHERE id = ?`;
-  console.log("[PATCH /api/orders/" + id + "] SQL:", sql);
-  console.log("[PATCH /api/orders/" + id + "] values:", JSON.stringify(values));
   db.prepare(sql).run(...values);
-  console.log("[PATCH /api/orders/" + id + "] 更新成功");
   logOperation(auth.name, "修改订单", "order", id, `${fields.join(",")}`);
 
   const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);

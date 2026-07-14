@@ -7,10 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Plus, Save, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [saved, setSaved] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [empError, setEmpError] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -27,6 +31,7 @@ export default function SettingsPage() {
 
   const handleAdd = async () => {
     if (!newName.trim() || !newEmail.trim()) return;
+    setEmpError("");
     try {
       const emp = await createEmployee({ name: newName, email: newEmail, role: newRole, password: newPassword || "123456" });
       setEmployees(prev => [...prev, emp]);
@@ -34,6 +39,7 @@ export default function SettingsPage() {
       setShowAddForm(false);
     } catch (err) {
       console.error("Add employee failed:", err);
+      setEmpError("添加失败，仅管理员可操作");
     }
   };
 
@@ -46,22 +52,26 @@ export default function SettingsPage() {
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
+    setEmpError("");
     try {
       const emp = await updateEmployee(editingId, { name: editName, email: editEmail, role: editRole });
       setEmployees(prev => prev.map(e => e.id === editingId ? emp : e));
       setEditingId(null);
     } catch (err) {
       console.error("Update employee failed:", err);
+      setEmpError("保存失败，仅管理员可操作");
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("确认删除该员工？")) return;
+    setEmpError("");
     try {
       await deleteEmployee(id);
       setEmployees(prev => prev.filter(e => e.id !== id));
     } catch (err) {
       console.error("Delete employee failed:", err);
+      setEmpError("删除失败，仅管理员可操作");
     }
   };
 
@@ -86,11 +96,13 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-[var(--foreground)]">员工管理</h3>
-            <Button variant="outline" size="icon-xs" aria-label="添加员工" onClick={() => setShowAddForm(v => !v)}><Plus className="size-3.5" aria-hidden="true" /></Button>
+            {isAdmin && <Button variant="outline" size="icon-xs" aria-label="添加员工" onClick={() => setShowAddForm(v => !v)}><Plus className="size-3.5" aria-hidden="true" /></Button>}
           </div>
+          {!isAdmin && <p className="text-xs text-[var(--muted-foreground)]">仅管理员可以添加、编辑或删除员工</p>}
+          {empError && <p className="text-xs text-[var(--destructive)]">{empError}</p>}
 
           {/* Add form */}
-          {showAddForm && (
+          {isAdmin && showAddForm && (
             <div className="space-y-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
               <Input placeholder="姓名" value={newName} onChange={(e) => setNewName(e.target.value)} className="h-8 text-sm" />
               <Input placeholder="邮箱" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="h-8 text-sm" />
@@ -152,7 +164,9 @@ export default function SettingsPage() {
                       </span>
                     </td>
                     <td className="py-2.5">
-                      {editingId === emp.id ? (
+                      {!isAdmin ? (
+                        <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                      ) : editingId === emp.id ? (
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon-xs" onClick={handleSaveEdit}><Save className="size-3" /></Button>
                           <Button variant="ghost" size="icon-xs" onClick={() => setEditingId(null)}>✕</Button>

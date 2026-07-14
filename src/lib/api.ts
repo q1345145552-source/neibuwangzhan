@@ -165,8 +165,9 @@ export async function createOrder(data: {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("创建订单失败");
-  return res.json() as Promise<Order>;
+  const resData = await res.json();
+  if (!res.ok) throw new Error(resData.error || "创建订单失败");
+  return resData as Order;
 }
 
 export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string }>) {
@@ -175,8 +176,9 @@ export async function updateOrder(id: string, data: Partial<{ customer_name: str
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("更新订单失败");
-  return res.json() as Promise<Order>;
+  const updateData = await res.json();
+  if (!res.ok) throw new Error(updateData.error || "更新订单失败");
+  return updateData as Order;
 }
 
 export async function deleteOrder(id: string) {
