@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const {
     influencer_id, gmv, gmv_amount,
-    gmv_tier, live_duration_tier, live_frequency_tier, professionalism_tier,
+    live_gmv, gmv_tier, live_duration_tier, live_frequency_tier, professionalism_tier,
     live_stream_ratio, notes, evaluated_by
   } = body;
   if (!influencer_id) return NextResponse.json({ error: "缺少达人ID" }, { status: 400 });
@@ -54,14 +54,14 @@ export async function POST(req: NextRequest) {
 
   const result = db.prepare(
     `INSERT INTO influencer_evaluations
-      (influencer_id, gmv, gmv_amount, gmv_tier, gmv_score,
+      (influencer_id, gmv, gmv_amount, live_gmv, gmv_tier, gmv_score,
        live_duration_tier, live_duration_score,
        live_frequency_tier, live_frequency_score,
        professionalism_tier, professionalism_score,
        live_stream_ratio, total_score, final_rating, notes, evaluated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
-    influencer_id, gmv || "", gmv_amount || "", gmv_tier || "", gmv_score,
+    influencer_id, gmv || "", gmv_amount || "", live_gmv || "", gmv_tier || "", gmv_score,
     live_duration_tier || "", duration_score,
     live_frequency_tier || "", frequency_score,
     professionalism_tier || "", prof_score,

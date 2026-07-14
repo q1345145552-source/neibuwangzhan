@@ -572,6 +572,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN professionalism_score INTEGER DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN total_score INTEGER DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN final_rating TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_gmv TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN code TEXT DEFAULT ''"); } catch {}
 }
 

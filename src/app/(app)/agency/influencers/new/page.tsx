@@ -6,7 +6,16 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
-const categories = ["美妆", "服饰", "食品", "家居", "3C数码", "母婴", "运动", "宠物", "其他"];
+const categories = ["美妆 (Beauty)", "测评 (Review/Try-on)", "生活 (Lifestyle)", "时尚 (Fashion)",
+    "美食 (Food)", "3C (Electronics)", "日用品 (Daily Items)", "母婴 (Mom & Baby)",
+    "健康保健品 (Health Supplement)", "健康 (Health)", "家具 (Furniture)", "运动户外 (Sports & Outdoor)",
+    "汽摩 (Auto & Motor)", "牛仔裤 (Jeans)", "包包 (Bags)", "衣服 (Clothing)",
+    "睡衣 (Sleepwear)", "内衣 (Underwear)", "家电 (Appliances)", "便携风扇 (Portable Fan)",
+    "电宝 (Power Bank)", "露营 (Camping)", "钱包 (Wallets)", "鞋子 (Shoes)",
+    "微胖女生 (Plus Size Women)", "男士裤子 (Men's Pants)", "手机配件 (Phone Accessories)",
+    "耳机 (Earphones)", "音箱 (Speakers)", "家装建材 (Home Improvement)", "农业品类 (Agriculture)",
+    "泳衣 (Swimwear)", "太阳能灯 (Solar Lights)", "健身器材 (Fitness Equipment)", "眼镜 (Eyewear)",
+    "玩具 (Toys)"];
 
 export default function NewInfluencerPage() {
   const router = useRouter();
