@@ -4,6 +4,7 @@ import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
+import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
@@ -473,6 +474,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   const isExceeded = isWaiting && elapsedDays > 60;
                   const over14Days = isWaiting && elapsedDays > 14 && step.step_name.includes("官员");
                   const over30Days = isWaiting && elapsedDays > 30 && step.step_name.includes("检测");
+                  // 预估值转工作小时数（1 天 ≈ 9 工作小时）
+                  const deadlineHours = est ? est * 9 : undefined;
                   const stepData = (() => { try { return JSON.parse(step.step_data || "{}"); } catch { return {}; } })();
                   const logistics = stepData.logistics as { step: string; status: string; note?: string }[] | undefined;
 
@@ -602,17 +605,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 )}
                               </>
                             )}
-                            {isWaiting && (
-                              <span className={cn("text-xs font-medium", isExceeded ? "text-[var(--destructive)]" : "text-[var(--info)]")}>
-                                ⏳ {elapsedDays} 天{isExceeded && "（超期）"}
-                              </span>
+                            {(step.status === "进行中" || step.status === "已完成" || step.status === "阻塞") && (
+                              <StepTimer created_at={step.created_at} completed_at={step.completed_at} deadline_hours={deadlineHours} status={step.status} className="ml-1" />
                             )}
                           </div>
                         )}
                         {(step.status === "已完成" || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
-                              <p className="text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(step.completed_at)}</p>
+                              <div className="flex items-center gap-3">
+                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} deadline_hours={deadlineHours} status="已完成" />
+                              </div>
                             )}
                             {!isClient && (
                               <button onClick={() => handleRollback(step.id)} className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">

@@ -7,6 +7,7 @@ import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare
 import { useAuth } from "@/components/auth-provider";
 import { fetchEmployees, type Employee, startPhase, fetchWithAuth } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
+import { StepTimer } from "@/components/step-timer";
 function getBackUrl(inf: any) {
   if (!inf) return "/agency/influencers";
   if (inf.phase === "contract" || inf.phase === "completed_contract") return "/agency/contracts";
@@ -950,10 +951,10 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                             )}
                           </div>
 
-                          {/* Complete time */}
-                          {step.status === "已完成" && step.completed_at && (
-                            <p className="text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(step.completed_at)}</p>
-                          )}
+                          {/* Work hours timer */}
+                          <div className="mt-1">
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} />
+                          </div>
                           {isOverdue && step.stop_reason && (
                             <p className="text-xs text-[var(--destructive)]">🛑 {step.stop_reason}</p>
                           )}
