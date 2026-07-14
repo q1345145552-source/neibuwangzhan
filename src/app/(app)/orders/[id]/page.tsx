@@ -10,7 +10,7 @@ import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, 
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
-import { getStepTimes, getStepDocs } from "@/lib/constants";
+import { getStepDocs } from "@/lib/constants";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 
 const stepStatusClass: Record<string, string> = {
@@ -82,7 +82,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const { user } = useAuth();
   const isClient = user?.role === "client";
-  const [nowMs] = useState(() => Date.now());
   // 编辑模式
   const [editingOrder, setEditingOrder] = useState(false);
   const [editFields, setEditFields] = useState<Partial<Order>>({});
@@ -455,35 +454,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   const notes = stepNotes[step.id] || [];
                   const sd = stepDocs[step.id] || [];
                   const uploadedCount = sd.filter((d: { status?: string; uploaded?: boolean }) => d.status === "uploaded").length;
-                  const times = getStepTimes(order.business_type_id, order.sub_service_type);
                   const docs = getStepDocs(order.business_type_id, order.sub_service_type);
                   // 湘泰地址订单在第4、5位插入了两个额外步骤，模板配置按"基础步骤序号"存储，
-                  // 这里换算回基础序号，避免文件清单/预估时间整体错位两位
+                  // 湘泰地址订单：换算回基础序号匹配文件清单
                   const isXiangtai = order.business_type_id === 7 && order.address_type === "xiangtai";
                   const baseOrder = isXiangtai
                     ? (step.step_order === 4 || step.step_order === 5 ? -1 : step.step_order > 5 ? step.step_order - 2 : step.step_order)
                     : step.step_order;
-                  const est = times[baseOrder];
                   const expanded = expandedSteps[step.id] || false;
                   const hasDocs = !!(docs[baseOrder]?.length);
                   const hasNotes = notes.length > 0;
-                  const isOverdue = step.deadline && new Date(step.deadline) < new Date(nowMs) && step.status !== "已完成";
-                  // TISI step 8: show elapsed days
-                  const isWaiting = step.step_name.includes("等待") && step.status === "进行中";
-                  const elapsedDays = isWaiting ? Math.floor((nowMs - new Date(step.created_at).getTime()) / 86400000) : 0;
-                  const isExceeded = isWaiting && elapsedDays > 60;
-                  const over14Days = isWaiting && elapsedDays > 14 && step.step_name.includes("官员");
-                  const over30Days = isWaiting && elapsedDays > 30 && step.step_name.includes("检测");
-                  // 预估值转工作小时数（1 天 ≈ 9 工作小时）。est 是 "1天"/"2-3天"/"5-7个工作日"/"1-2周" 等字符串，
-                  // 取区间上限换算；"每月" 等无法量化的返回 undefined
-                  const deadlineHours = (() => {
-                    if (!est) return undefined;
-                    const nums = est.match(/\d+/g)?.map(Number);
-                    if (!nums || nums.length === 0) return undefined;
-                    const maxNum = Math.max(...nums);
-                    const days = est.includes("周") ? maxNum * 7 : maxNum;
-                    return days * 9;
-                  })();
                   const stepData = (() => { try { return JSON.parse(step.step_data || "{}"); } catch { return {}; } })();
                   const logistics = stepData.logistics as { step: string; status: string; note?: string }[] | undefined;
 
@@ -499,9 +479,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         {i < steps.length - 1 && <div className={cn("w-px flex-1 min-h-[20px]", step.status === "已完成" ? "bg-[var(--success)]" : "bg-[var(--border)]")} />}
                       </div>
                       <div className="pb-5 flex-1">
-                        {isOverdue && <p className="mb-1 text-xs font-medium text-[var(--destructive)]">⚠ 逾期 — 截止 {step.deadline?.slice(0, 10)}</p>}
-                        {over14Days && <p className="mb-1 text-xs font-medium text-[var(--warning)]">⚠ 已等 {elapsedDays} 天，建议 Fern 主动跟进</p>}
-                        {over30Days && <p className="mb-1 text-xs font-medium text-[var(--warning)]">⚠ 检测已 {elapsedDays} 天，建议跟进进度</p>}
                         {step.step_order === 9 && logistics && logistics.length > 0 && (
                           <div className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2">
                             <p className="mb-1 text-xs font-medium text-[var(--foreground)]">样品物流追踪</p>
@@ -571,7 +548,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               ))}
                             </select>
                           )}
-                          {est && <span className="text-xs text-[var(--muted-foreground)]">⏱ {est}</span>}
                           {sd.length > 0 && (
                             <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>
                           )}
@@ -614,7 +590,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               </>
                             )}
                             {(step.status === "进行中" || step.status === "已完成" || step.status === "阻塞") && (
-                              <StepTimer created_at={step.created_at} completed_at={step.completed_at} deadline_hours={deadlineHours} status={step.status} className="ml-1" />
+                              <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} className="ml-1" />
                             )}
                           </div>
                         )}
@@ -622,7 +598,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
                               <div className="flex items-center gap-3">
-                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} deadline_hours={deadlineHours} status="已完成" />
+                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" />
                               </div>
                             )}
                             {!isClient && (

@@ -260,8 +260,8 @@ export function seedInfluencerSteps(db: any, influencerId: number, phase?: strin
   });
 }
 
-import { stepRequiredDocs, stepTimeEstimates, subServices, getStepDocs, internationalTrademarkSteps, buyRTrademarkSteps } from "./constants";
-export { stepRequiredDocs, stepTimeEstimates, subServices };
+import { stepRequiredDocs, subServices, getStepDocs, internationalTrademarkSteps, buyRTrademarkSteps } from "./constants";
+export { stepRequiredDocs, subServices };
 
 /* ── 动态 UPDATE 的字段白名单（防止请求体字段名拼进 SQL 造成列名注入） ── */
 
