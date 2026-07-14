@@ -69,6 +69,9 @@ export default function InternalPage() {
   const [calendarEmployee, setCalendarEmployee] = useState(user?.name || "");
   const [calendarData, setCalendarData] = useState<any[]>([]);
   const [calDetailDay, setCalDetailDay] = useState<any>(null);
+  const [anomalyModal, setAnomalyModal] = useState<{ type: string; label: string; employee: string } | null>(null);
+  const [anomalyRecords, setAnomalyRecords] = useState<any[]>([]);
+  const [loadingAnomaly, setLoadingAnomaly] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [requestForm, setRequestForm] = useState({ date: "", time: "", reason: "" });
   const [requestErr, setRequestErr] = useState("");
@@ -140,6 +143,16 @@ export default function InternalPage() {
       setCalendarData(await res.json());
     } catch {}
   };
+  const handleAnomalyClick = async (type: string, label: string, emp: string) => {
+    setAnomalyModal({ type, label, employee: emp });
+    setLoadingAnomaly(true);
+    try {
+      const res = await fetchWithAuth(`/api/attendance/details?employee=${encodeURIComponent(emp)}&month=${summaryMonth}&type=${type}`, { cache: "no-store" });
+      setAnomalyRecords(await res.json());
+    } catch {}
+    setLoadingAnomaly(false);
+  };
+
   useEffect(() => { loadAll(); loadAttendance(); loadCalendar(); }, [summaryMonth, calendarMonth, calendarEmployee]);
 
   // ── Photo upload helpers ──
@@ -553,10 +566,10 @@ export default function InternalPage() {
                     <td className="py-2.5 px-4 font-medium">{m.name}</td>
                     <td className="py-2.5 px-3 text-center tabular-nums">{m.totalHours}</td>
                     <td className="py-2.5 px-3 text-center tabular-nums text-green-600">{m.normalDays}</td>
-                    <td className="py-2.5 px-3 text-center tabular-nums text-amber-600">{m.supplementDays}</td>
-                    <td className="py-2.5 px-3 text-center tabular-nums text-blue-600">{m.leaveCount}</td>
-                    <td className="py-2.5 px-3 text-center tabular-nums text-orange-600">{m.lateCount}</td>
-                    <td className={cn("py-2.5 px-3 text-center tabular-nums", m.absentCount > 0 ? "text-red-600 font-semibold" : "")}>{m.absentCount}</td>
+                    <td className={cn("py-2.5 px-3 text-center tabular-nums text-amber-600", m.supplementDays > 0 && "cursor-pointer hover:underline")} onClick={() => m.supplementDays > 0 && handleAnomalyClick("supplement", "补签明细", m.name)}>{m.supplementDays}</td>
+                    <td className={cn("py-2.5 px-3 text-center tabular-nums text-blue-600", m.leaveCount > 0 && "cursor-pointer hover:underline")} onClick={() => m.leaveCount > 0 && handleAnomalyClick("leave", "请假明细", m.name)}>{m.leaveCount}</td>
+                    <td className={cn("py-2.5 px-3 text-center tabular-nums text-orange-600", m.lateCount > 0 && "cursor-pointer hover:underline")} onClick={() => m.lateCount > 0 && handleAnomalyClick("late", "迟到明细", m.name)}>{m.lateCount}</td>
+                    <td className={cn("py-2.5 px-3 text-center tabular-nums", m.absentCount > 0 ? "text-red-600 font-semibold cursor-pointer hover:underline" : "")} onClick={() => m.absentCount > 0 && handleAnomalyClick("absent", "缺勤明细", m.name)}>{m.absentCount}</td>
                     <td className="py-2.5 px-3 text-center tabular-nums text-[var(--muted-foreground)]">{m.workDays}</td>
                   </tr>
                 ))
@@ -701,6 +714,93 @@ export default function InternalPage() {
             ) : (
               <p className="text-sm text-red-500">缺勤，未打卡</p>
             )}
+          </div>
+        </div>
+      )}
+
+
+      {/* ── 异常明细弹窗 ── */}
+      {anomalyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAnomalyModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+              <h3 className="text-sm font-semibold">{anomalyModal.employee} · {anomalyModal.label}</h3>
+              <button onClick={() => setAnomalyModal(null)}><X className="size-4" /></button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-1">
+              {loadingAnomaly ? (
+                <p className="text-center text-sm text-[var(--muted-foreground)] py-8">加载中...</p>
+              ) : anomalyRecords.length === 0 ? (
+                <p className="text-center text-sm text-[var(--muted-foreground)] py-8">暂无数据</p>
+              ) : anomalyModal.type === "supplement" ? (
+                /* 补签明细 */
+                <div className="space-y-3">
+                  {anomalyRecords.map((r: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-[var(--border)] p-3 bg-amber-50/30 dark:bg-amber-950/10">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{r.date}</span>
+                        <span className="text-xs text-amber-600 font-medium">补签</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">
+                        <p>打卡时间: {r.check_in?.slice(11,19) || "—"}</p>
+                        {r.reason && <p className="mt-0.5">原因: {r.reason}</p>}
+                      </div>
+                      {(r.check_in_photo || r.request_photo) && (
+                        <img src={r.check_in_photo || r.request_photo} alt="补签照片" className="mt-2 w-32 h-20 object-cover rounded border" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : anomalyModal.type === "leave" ? (
+                /* 请假明细 */
+                <div className="space-y-3">
+                  {anomalyRecords.map((r: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-[var(--border)] p-3 bg-blue-50/30 dark:bg-blue-950/10">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{r.start_date}{r.start_date !== r.end_date ? ` ~ ${r.end_date}` : ""}</span>
+                        <span className={cn("text-xs font-medium rounded px-1.5 py-0.5", r.status === "已通过" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")}>{r.status}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-[var(--muted-foreground)]">
+                        <p>类型: {r.leave_type} | 审批人: {r.approved_by || "—"} | 审批时间: {r.approved_at?.slice(0,16) || "—"}</p>
+                        {r.reason && <p className="mt-0.5">原因: {r.reason}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : anomalyModal.type === "late" ? (
+                /* 迟到明细 */
+                <div className="space-y-3">
+                  {anomalyRecords.map((r: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-[var(--border)] p-3 bg-orange-50/30 dark:bg-orange-950/10">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{r.date}</span>
+                        <span className="text-xs text-orange-600 font-medium">迟到</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">
+                        <p>签到: {r.check_in?.slice(11,19) || "—"} | 签退: {r.check_out?.slice(11,19) || "—"}</p>
+                        <p className="mt-0.5">IP: {r.check_in_ip || r.ip_address || "—"}</p>
+                      </div>
+                      {r.check_in_photo && (
+                        <img src={r.check_in_photo} alt="签到照片" className="mt-2 w-32 h-20 object-cover rounded border" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* 缺勤明细 */
+                <div className="space-y-3">
+                  {anomalyRecords.map((r: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-[var(--border)] p-3 bg-red-50/30 dark:bg-red-950/10">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{r.date}</span>
+                        <span className="text-xs text-red-600 font-medium">缺勤</span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">当天无任何打卡记录</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
