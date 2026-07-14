@@ -21,7 +21,16 @@ interface DiscoveryTask {
   completed_at: string | null;
 }
 
-const categories = ["美妆", "服饰", "食品", "家居", "3C数码", "母婴", "运动", "宠物", "其他"];
+const categories = ["美妆 (Beauty)", "测评 (Review/Try-on)", "生活 (Lifestyle)", "时尚 (Fashion)",
+    "美食 (Food)", "3C (Electronics)", "日用品 (Daily Items)", "母婴 (Mom & Baby)",
+    "健康保健品 (Health Supplement)", "健康 (Health)", "家具 (Furniture)", "运动户外 (Sports & Outdoor)",
+    "汽摩 (Auto & Motor)", "牛仔裤 (Jeans)", "包包 (Bags)", "衣服 (Clothing)",
+    "睡衣 (Sleepwear)", "内衣 (Underwear)", "家电 (Appliances)", "便携风扇 (Portable Fan)",
+    "电宝 (Power Bank)", "露营 (Camping)", "钱包 (Wallets)", "鞋子 (Shoes)",
+    "微胖女生 (Plus Size Women)", "男士裤子 (Men's Pants)", "手机配件 (Phone Accessories)",
+    "耳机 (Earphones)", "音箱 (Speakers)", "家装建材 (Home Improvement)", "农业品类 (Agriculture)",
+    "泳衣 (Swimwear)", "太阳能灯 (Solar Lights)", "健身器材 (Fitness Equipment)", "眼镜 (Eyewear)",
+    "玩具 (Toys)"];
 
 export default function DiscoveryTasksPage() {
   const router = useRouter();
@@ -35,6 +44,10 @@ export default function DiscoveryTasksPage() {
   const [newTask, setNewTask] = useState({ task_number: "", category: "" });
   const [error, setError] = useState("");
   const [confirmSubmitId, setConfirmSubmitId] = useState<number | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ taskId: number; infCount: number } | null>(null);
+  const [editModal, setEditModal] = useState<{ taskId: number; taskNumber: string; category: string } | null>(null);
+  const [editForm, setEditForm] = useState({ task_number: "", category: "" });
+  const [editSaving, setEditSaving] = useState(false);
   const [stats, setStats] = useState<{ today: { today_tasks: number; today_creators: number; today_infs: number }; byCreator: any[] } | null>(null);
 
   const load = useCallback(async () => {
@@ -85,10 +98,27 @@ export default function DiscoveryTasksPage() {
     } catch (err) { console.error(err); }
   };
 
-  const handleDelete = async (taskId: number) => {
-    if (!confirm("确认删除此任务？任务下的达人不会被删除。")) return;
-    await fetchWithAuth(`/api/discovery-tasks?id=${taskId}`, { method: "DELETE" });
+  const handleDeleteTask = async (taskId: number, deleteInfluencers: boolean) => {
+    const url = deleteInfluencers
+      ? `/api/discovery-tasks?id=${taskId}&deleteInfluencers=true`
+      : `/api/discovery-tasks?id=${taskId}`;
+    await fetchWithAuth(url, { method: "DELETE" });
+    setDeleteModal(null);
     load();
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editModal || !editForm.task_number.trim()) return;
+    setEditSaving(true);
+    try {
+      await fetchWithAuth("/api/discovery-tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editModal.taskId, task_number: editForm.task_number, category: editForm.category }),
+      });
+      setEditModal(null);
+      load();
+    } catch {} finally { setEditSaving(false); }
   };
 
   const filtered = tasks.filter(t => {
@@ -251,15 +281,17 @@ export default function DiscoveryTasksPage() {
                   <Button variant="outline" size="sm" className="h-7 text-xs">查看达人</Button>
                 </Link>
                 {task.status === "active" && (
-                  <>
-                    <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setConfirmSubmitId(task.id)}>
-                      <Send className="size-3" />提交评估
-                    </Button>
-                    <button onClick={() => handleDelete(task.id)} className="text-[var(--muted-foreground)] hover:text-red-500">
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </>
+                  <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setConfirmSubmitId(task.id)}>
+                    <Send className="size-3" />提交评估
+                  </Button>
                 )}
+                <button onClick={() => { setEditModal({ taskId: task.id, taskNumber: task.task_number, category: task.category }); setEditForm({ task_number: task.task_number, category: task.category }); }}
+                  className="text-[var(--muted-foreground)] hover:text-[var(--primary)]" title="编辑任务">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                </button>
+                <button onClick={() => setDeleteModal({ taskId: task.id, infCount: task.inf_count || 0 })} className="text-[var(--muted-foreground)] hover:text-red-500">
+                  <Trash2 className="size-3.5" />
+                </button>
               </div>
             </div>
           ))}
@@ -267,6 +299,63 @@ export default function DiscoveryTasksPage() {
       )}
       {!loading && filtered.length === 0 && (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无发现任务，点击"添加任务"开始</div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDeleteModal(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-[var(--foreground)]">确认删除任务？</p>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+              此任务下有 <span className="font-medium text-[var(--foreground)]">{deleteModal.infCount} 位</span> 达人。
+            </p>
+            <div className="mt-4 space-y-2">
+              <button
+                onClick={() => handleDeleteTask(deleteModal.taskId, false)}
+                className="w-full rounded-md border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+              >
+                保留达人，只删任务
+              </button>
+              <button
+                onClick={() => handleDeleteTask(deleteModal.taskId, true)}
+                className="w-full rounded-md bg-red-500 px-4 py-2 text-sm text-white hover:bg-red-600 transition-colors"
+              >
+                任务和达人一起删除
+              </button>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setDeleteModal(null)}>取消</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit task modal */}
+      {editModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setEditModal(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-[var(--foreground)] mb-4">编辑任务</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium">任务编号</label>
+                <input value={editForm.task_number} onChange={e => setEditForm(p => ({ ...p, task_number: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">品类</label>
+                <select value={editForm.category} onChange={e => setEditForm(p => ({ ...p, category: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm">
+                  <option value="">不设置</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setEditModal(null)}>取消</Button>
+              <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>{editSaving ? "保存中..." : "保存"}</Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Submit confirmation modal */}

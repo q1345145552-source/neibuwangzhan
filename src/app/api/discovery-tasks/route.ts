@@ -80,9 +80,21 @@ export async function DELETE(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
+  const deleteInfluencers = searchParams.get("deleteInfluencers") === "true";
   if (!id) return NextResponse.json({ error: "缺少任务ID" }, { status: 400 });
 
-  // Remove task association from influencers (don't delete them)
+  if (deleteInfluencers) {
+    // Delete influencers and related data first
+    const infs = db.prepare("SELECT id FROM influencers WHERE discovery_task_id = ?").all(id) as { id: number }[];
+    for (const inf of infs) {
+      db.prepare("DELETE FROM influencer_step_notes WHERE influencer_id = ?").run(inf.id);
+      db.prepare("DELETE FROM influencer_steps WHERE influencer_id = ?").run(inf.id);
+      db.prepare("DELETE FROM influencer_evaluations WHERE influencer_id = ?").run(inf.id);
+      db.prepare("DELETE FROM contracts WHERE influencer_id = ?").run(inf.id);
+      db.prepare("DELETE FROM influencer_factories WHERE influencer_id = ?").run(inf.id);
+      db.prepare("DELETE FROM influencers WHERE id = ?").run(inf.id);
+    }
+  }
   
   db.prepare("DELETE FROM discovery_tasks WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
