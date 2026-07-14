@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
+import { StepTimerStatic } from "@/components/step-timer";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2 } from "lucide-react";
 
@@ -1122,6 +1123,9 @@ export default function InternalPage() {
                             <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
                               <span>步骤: {item.step_name}</span>
                               <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
+                              {item.created_at && (item.status === "进行中" || item.status === "已完成") && (
+                                <StepTimerStatic created_at={item.created_at} completed_at={item.completed_at || null} />
+                              )}
                               {item.deadline && <span>截止: {item.deadline}</span>}
                             </div>
                           </div>
@@ -1145,6 +1149,9 @@ export default function InternalPage() {
                               <span>阶段: {item.phase === "discovery" ? "达人发现" : item.phase === "contract" ? "签约跟进" : "品牌孵化"}</span>
                               <span>步骤: {item.step_name}</span>
                               <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
+                              {item.created_at && (item.status === "进行中" || item.status === "已完成") && (
+                                <StepTimerStatic created_at={item.created_at} completed_at={item.completed_at || null} />
+                              )}
                             </div>
                           </div>
                           <a href={`/agency/influencers/${item.influencer_id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>

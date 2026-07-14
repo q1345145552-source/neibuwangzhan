@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   if (type === "order_steps") {
     data = db.prepare(`
-      SELECT os.id, os.step_name, os.step_order, os.status, os.deadline,
+      SELECT os.id, os.step_name, os.step_order, os.status, os.deadline, os.created_at, os.completed_at,
              o.id as order_id, o.customer_name, o.status as order_status
       FROM order_steps os
       JOIN orders o ON os.order_id = o.id
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     `).all(employee);
   } else if (type === "influencer_steps") {
     data = db.prepare(`
-      SELECT ist.id, ist.step_name, ist.step_order, ist.phase, ist.status,
+      SELECT ist.id, ist.step_name, ist.step_order, ist.phase, ist.status, ist.created_at, ist.completed_at,
              i.id as influencer_id, i.name as influencer_name, i.code, i.status as influencer_status
       FROM influencer_steps ist
       JOIN influencers i ON ist.influencer_id = i.id
