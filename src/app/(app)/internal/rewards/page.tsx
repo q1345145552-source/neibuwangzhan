@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Trophy, TrendingUp, RefreshCw, X, Medal, Crown, AlertCircle, CheckCircle, MessageSquare } from "lucide-react";
+import { Trophy, TrendingUp, RefreshCw, X, Medal, Crown, AlertCircle, MessageSquare, Heart, ThumbsUp, ThumbsDown, Calendar } from "lucide-react";
 
 interface Ranking {
   name: string; total_points: number; bonus: number; penalty: number;
@@ -17,6 +17,13 @@ interface PointsRecord {
   created_by: string; created_at: string;
 }
 interface Employee { name: string; }
+interface PeerVote {
+  id: number; voter: string; nominee: string; reason: string; month: string; created_at: string;
+}
+interface ClientFeedback {
+  id: number; order_id: string; responsible_person: string; score: string; created_at: string;
+}
+interface Quarter { label: string; value: string; }
 
 export default function RewardsPage() {
   const { user } = useAuth();
@@ -26,23 +33,32 @@ export default function RewardsPage() {
   const [records, setRecords] = useState<PointsRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [appeals, setAppeals] = useState<PointsRecord[]>([]);
+  const [peerVotes, setPeerVotes] = useState<PeerVote[]>([]);
+  const [clientFeedback, setClientFeedback] = useState<ClientFeedback[]>([]);
+  const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [filterEmployee, setFilterEmployee] = useState("");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [quarter, setQuarter] = useState("");
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
 
-  // Manual form
+  // Form states
   const [form, setForm] = useState({ employee_name: "", points: "", reason: "" });
   const [formErr, setFormErr] = useState("");
-
-  // Appeal modal
   const [appealTarget, setAppealTarget] = useState<PointsRecord | null>(null);
   const [appealReason, setAppealReason] = useState("");
+
+  // Peer vote
+  const [voteNominee, setVoteNominee] = useState("");
+  const [voteReason, setVoteReason] = useState("");
+  const [hasVoted, setHasVoted] = useState(false);
+  const [voteMsg, setVoteMsg] = useState("");
 
   const load = async () => {
     setLoading(true);
     try {
       let url = `/api/internal/points?month=${month}`;
+      if (quarter) url += `&quarter=${encodeURIComponent(quarter)}`;
       if (filterEmployee) url += `&employee=${encodeURIComponent(filterEmployee)}`;
       const res = await fetchWithAuth(url, { cache: "no-store" });
       const data = await res.json();
@@ -50,18 +66,25 @@ export default function RewardsPage() {
       setRecords(data.records || []);
       setEmployees(data.employees || []);
       setAppeals(data.appeals || []);
+      setPeerVotes(data.peerVotes || []);
+      setClientFeedback(data.clientFeedback || []);
+      setQuarters(data.quarters || []);
+      // Check if current user has voted this month
+      if (data.peerVotes) {
+        setHasVoted(data.peerVotes.some((v: PeerVote) => v.voter === user?.name));
+      }
     } catch (e) { console.error("[奖惩] 加载失败", e); }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [month, filterEmployee]);
+  useEffect(() => { load(); }, [month, filterEmployee, quarter]);
 
   const handleCompute = async () => {
     setComputing(true);
     try {
       await fetchWithAuth(`/api/internal/points?month=${month}&refresh=1`, { cache: "no-store" });
       load();
-    } catch (e) { console.error("[奖惩] 刷新积分失败", e); }
+    } catch (e) { console.error("[奖惩] 刷新失败", e); }
     setComputing(false);
   };
 
@@ -70,54 +93,42 @@ export default function RewardsPage() {
     if (!form.employee_name || !pts || !form.reason.trim()) { setFormErr("请填写完整信息"); return; }
     setFormErr("");
     try {
-      const res = await fetchWithAuth("/api/internal/points", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employee_name: form.employee_name, points: pts, reason: form.reason }),
-      });
-      if (!res.ok) throw new Error("提交失败");
+      await fetchWithAuth("/api/internal/points", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employee_name: form.employee_name, points: pts, reason: form.reason }) });
       setForm({ employee_name: "", points: "", reason: "" });
       load();
-    } catch { setFormErr("提交失败，请重试"); }
+    } catch { setFormErr("提交失败"); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("确定删除这条记录？")) return;
-    await fetchWithAuth("/api/internal/points", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", id }),
-    });
+    if (!confirm("确定删除？")) return;
+    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id }) });
     load();
   };
 
   const handleAppeal = async () => {
     if (!appealTarget || !appealReason.trim()) return;
-    await fetchWithAuth("/api/internal/points", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "appeal", id: appealTarget.id, reason: appealReason }),
-    });
-    setAppealTarget(null);
-    setAppealReason("");
-    load();
+    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "appeal", id: appealTarget.id, reason: appealReason }) });
+    setAppealTarget(null); setAppealReason(""); load();
   };
 
   const handleApproveAppeal = async (id: number) => {
-    await fetchWithAuth("/api/internal/points", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve_appeal", id }),
-    });
+    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve_appeal", id }) });
     load();
   };
 
   const handleRejectAppeal = async (id: number) => {
-    await fetchWithAuth("/api/internal/points", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "reject_appeal", id }),
-    });
+    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reject_appeal", id }) });
+    load();
+  };
+
+  const handlePeerVote = async () => {
+    if (!voteNominee) { setVoteMsg("请选择同事"); return; }
+    setVoteMsg("");
+    const res = await fetchWithAuth("/api/internal/points", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "peer_vote", nominee: voteNominee, reason: voteReason }) });
+    const d = await res.json();
+    if (d.error) { setVoteMsg(d.error); return; }
+    setVoteNominee(""); setVoteReason("");
+    setHasVoted(true);
     load();
   };
 
@@ -128,26 +139,39 @@ export default function RewardsPage() {
     return <span className="text-xs text-[var(--muted-foreground)] w-4 text-center">{idx + 1}</span>;
   };
 
+  const title = quarter ? `奖惩制度 · ${quarter}` : `奖惩制度 · ${month}`;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight">奖惩制度</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">积分排名与奖惩记录</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{quarter ? `季度排名: ${quarter}` : "积分排名与奖惩记录"}</p>
         </div>
         <div className="flex items-center gap-3">
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="h-9 rounded border border-[var(--border)] px-3 text-sm bg-[var(--background)]" />
-          <Button size="sm" variant="outline" className="h-9" onClick={handleCompute} disabled={computing}>
-            <RefreshCw className={cn("size-3.5 mr-1.5", computing && "animate-spin")} />刷新积分
-          </Button>
+          {!quarter && (
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+              className="h-9 rounded border border-[var(--border)] px-3 text-sm bg-[var(--background)]" />
+          )}
+          {quarters.length > 0 && (
+            <select value={quarter} onChange={e => setQuarter(e.target.value)}
+              className="h-9 rounded border border-[var(--border)] px-2 text-sm bg-[var(--background)]">
+              <option value="">按月查看</option>
+              {quarters.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+            </select>
+          )}
+          {!quarter && (
+            <Button size="sm" variant="outline" className="h-9" onClick={handleCompute} disabled={computing}>
+              <RefreshCw className={cn("size-3.5 mr-1.5", computing && "animate-spin")} />刷新积分
+            </Button>
+          )}
         </div>
       </div>
 
       {/* ── 积分排名榜 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)]">
-          <h2 className="text-sm font-medium flex items-center gap-2"><Trophy className="size-4" />积分排名 · {month}</h2>
+          <h2 className="text-sm font-medium flex items-center gap-2"><Trophy className="size-4" />积分排名 · {title}</h2>
         </div>
         {loading ? (
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中...</div>
@@ -172,7 +196,7 @@ export default function RewardsPage() {
                   )}>
                     <td className="py-2.5 px-5">{rankMedal(idx)}</td>
                     <td className={cn("py-2.5 px-4 font-medium", idx < 3 && "font-semibold")}>{r.name}</td>
-                    <td className={cn("py-2.5 px-4 text-center font-semibold tabular-nums",
+                    <td className={cn("py-2.5 px-4 text-center font-bold tabular-nums",
                       r.total_points > 0 ? "text-green-600" : r.total_points < 0 ? "text-red-500" : "text-[var(--muted-foreground)]")}>
                       {r.total_points > 0 ? "+" : ""}{r.total_points}
                     </td>
@@ -186,13 +210,57 @@ export default function RewardsPage() {
         )}
       </div>
 
+      {/* ── 同事互评 ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-5 py-4 border-b border-[var(--border)]">
+          <h2 className="text-sm font-medium flex items-center gap-2"><Heart className="size-4" />同事互评</h2>
+        </div>
+        <div className="p-5">
+          {!hasVoted ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="text-xs font-medium">点赞对象</label>
+                <select value={voteNominee} onChange={e => setVoteNominee(e.target.value)}
+                  className="mt-1 h-9 rounded border border-[var(--border)] px-3 text-sm min-w-[120px]">
+                  <option value="">选择同事</option>
+                  {employees.filter(e => e.name !== user?.name).map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">点赞理由</label>
+                <input value={voteReason} onChange={e => setVoteReason(e.target.value)} placeholder="Ta 哪里做得好..."
+                  className="mt-1 h-9 rounded border border-[var(--border)] px-3 text-sm w-64" />
+              </div>
+              <Button size="sm" onClick={handlePeerVote}><Heart className="size-3.5 mr-1" />送出点赞 (+2分)</Button>
+              {voteMsg && <span className="text-xs text-red-500 ml-2">{voteMsg}</span>}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--muted-foreground)]">本月已投过票，感谢你的参与。</p>
+          )}
+
+          {peerVotes.length > 0 && (
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <h3 className="text-xs font-medium text-[var(--muted-foreground)] mb-2">本月点赞记录</h3>
+              <div className="space-y-1.5">
+                {peerVotes.map(v => (
+                  <div key={v.id} className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">{v.voter}</span>
+                    <span className="text-[var(--muted-foreground)]">点赞</span>
+                    <span className="font-medium text-green-600">{v.nominee}</span>
+                    {v.reason && <span className="text-xs text-[var(--muted-foreground)]">— {v.reason}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── 申诉列表（管理员） ── */}
       {isAdmin && appeals.length > 0 && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-[var(--background)]">
           <div className="px-5 py-4 border-b border-[var(--border)]">
-            <h2 className="text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="size-4 text-amber-500" />申诉待处理 · {appeals.length} 条
-            </h2>
+            <h2 className="text-sm font-medium flex items-center gap-2"><AlertCircle className="size-4 text-amber-500" />申诉待处理 · {appeals.length} 条</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -245,54 +313,99 @@ export default function RewardsPage() {
                 <th className="py-2.5 px-4 text-center text-xs font-medium">操作</th>
               </tr></thead>
               <tbody>
-                {records.map(r => (
-                  <tr key={r.id} className={cn("border-b border-[var(--border)]",
-                    r.status === "已撤销" && "opacity-40 line-through",
-                    r.status === "已救回" && "bg-green-50/30 dark:bg-green-950/10"
-                  )}>
-                    {isAdmin && <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>}
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-xs truncate">
-                      {r.reason}
-                      {r.is_manual === 1 && <span className="ml-1.5 text-xs text-blue-500">[手动]</span>}
-                      {r.status === "已救回" && <span className="ml-1.5 text-xs text-green-600">[已救回]</span>}
-                      {r.status === "已撤销" && <span className="ml-1.5 text-xs text-red-400">[已撤销]</span>}
-                      {r.is_appealed === 1 && r.appeal_status === "申诉中" && <span className="ml-1.5 text-xs text-amber-500">[申诉中]</span>}
-                      {r.appeal_status === "已驳回" && <span className="ml-1.5 text-xs text-slate-400">[申诉已驳回]</span>}
-                    </td>
-                    <td className={cn("py-2.5 px-4 text-center font-semibold tabular-nums",
-                      r.points > 0 ? "text-green-600" : "text-red-500"
-                    )}>{r.points > 0 ? "+" : ""}{r.points}</td>
-                    <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{r.created_at?.slice(0, 16)}</td>
-                    <td className="py-2.5 px-4 text-center">
-                      <div className="flex items-center gap-1 justify-center">
-                        {/* 申诉按钮：自动扣分且未申诉、未撤销 */}
-                        {!isAdmin && r.is_manual === 0 && r.points < 0 && r.is_appealed === 0 && r.status === "有效" && (
-                          <button onClick={() => { setAppealTarget(r); setAppealReason(""); }}
-                            className="text-amber-500 hover:text-amber-700 text-xs flex items-center gap-0.5">
-                            <MessageSquare className="size-3" />申诉
-                          </button>
-                        )}
-                        {isAdmin && r.is_manual === 1 && r.status !== "已撤销" && (
-                          <button onClick={() => handleDelete(r.id)} className="text-red-400 hover:text-red-600 text-xs">
-                            <X className="size-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {records.map(r => {
+                  const tagClass = (() => {
+                    if (r.status === "已撤销") return "line-through opacity-40";
+                    if (r.status === "已救回") return "bg-green-50/30 dark:bg-green-950/10";
+                    return "";
+                  })();
+                  const badges: string[] = [];
+                  if (r.is_manual === 1) badges.push("手动");
+                  if (r.status === "已救回") badges.push("已救回");
+                  if (r.status === "已撤销") badges.push("已撤销");
+                  if (r.rule_key === "peer_vote") badges.push("互评");
+                  if (r.rule_key === "client_feedback") badges.push("客户反馈");
+                  if (r.is_appealed === 1 && r.appeal_status === "申诉中") badges.push("申诉中");
+                  if (r.appeal_status === "已驳回") badges.push("申诉已驳回");
+
+                  return (
+                    <tr key={r.id} className={cn("border-b border-[var(--border)]", tagClass)}>
+                      {isAdmin && <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>}
+                      <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-xs truncate">
+                        {r.reason}
+                        {badges.map(b => {
+                          const c = b === "已救回" || b === "互评" ? "text-green-600" :
+                                    b === "已撤销" ? "text-red-400" :
+                                    b === "客户反馈" ? "text-blue-500" :
+                                    b === "申诉中" ? "text-amber-500" : "text-blue-500";
+                          return <span key={b} className={cn("ml-1.5 text-xs", c)}>[{b}]</span>;
+                        })}
+                      </td>
+                      <td className={cn("py-2.5 px-4 text-center font-semibold tabular-nums", r.points > 0 ? "text-green-600" : "text-red-500")}>
+                        {r.points > 0 ? "+" : ""}{r.points}
+                      </td>
+                      <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{r.created_at?.slice(0, 16)}</td>
+                      <td className="py-2.5 px-4 text-center">
+                        <div className="flex items-center gap-1 justify-center">
+                          {!isAdmin && r.is_manual === 0 && r.points < 0 && r.is_appealed === 0 && r.status === "有效" && (
+                            <button onClick={() => { setAppealTarget(r); setAppealReason(""); }}
+                              className="text-amber-500 hover:text-amber-700 text-xs flex items-center gap-0.5">
+                              <MessageSquare className="size-3" />申诉
+                            </button>
+                          )}
+                          {isAdmin && r.is_manual === 1 && r.status !== "已撤销" && (
+                            <button onClick={() => handleDelete(r.id)} className="text-red-400 hover:text-red-600 text-xs"><X className="size-3.5" /></button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
+      {/* ── 客户反馈记录 ── */}
+      {clientFeedback.length > 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2"><ThumbsUp className="size-4" />客户反馈记录</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-[var(--border)]">
+                <th className="py-2.5 px-4 text-left text-xs font-medium">订单</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">负责人</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium">评价</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">时间</th>
+              </tr></thead>
+              <tbody>
+                {clientFeedback.map(fb => (
+                  <tr key={fb.id} className="border-b border-[var(--border)]">
+                    <td className="py-2.5 px-4 font-mono text-xs">{fb.order_id}</td>
+                    <td className="py-2.5 px-4">{fb.responsible_person}</td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
+                        fb.score === "满意" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400")}>
+                        {fb.score === "满意" ? <ThumbsUp className="size-3" /> : <ThumbsDown className="size-3" />}
+                        {fb.score}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{fb.created_at?.slice(0, 16)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── 老板手动奖惩 ── */}
       {isAdmin && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
-          <div className="px-5 py-4 border-b border-[var(--border)]">
-            <h2 className="text-sm font-medium">手动奖惩</h2>
-          </div>
+          <div className="px-5 py-4 border-b border-[var(--border)]"><h2 className="text-sm font-medium">手动奖惩</h2></div>
           <div className="p-5">
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
@@ -326,9 +439,7 @@ export default function RewardsPage() {
           <div className="bg-[var(--background)] rounded-xl shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
               <h2 className="text-sm font-medium">申诉扣分</h2>
-              <button onClick={() => setAppealTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-                <X className="size-4" />
-              </button>
+              <button onClick={() => setAppealTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
             </div>
             <div className="p-5 space-y-3">
               <div>
@@ -338,8 +449,7 @@ export default function RewardsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium">申诉理由</label>
-                <textarea value={appealReason} onChange={e => setAppealReason(e.target.value)}
-                  placeholder="填写申诉理由..." rows={3}
+                <textarea value={appealReason} onChange={e => setAppealReason(e.target.value)} placeholder="填写申诉理由..." rows={3}
                   className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm resize-none" />
               </div>
               <div className="flex gap-2">
