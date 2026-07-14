@@ -11,7 +11,14 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status");
   let sql = "SELECT * FROM leave_requests WHERE 1=1";
   const params: any[] = [];
-  if (employee) { sql += " AND employee_name = ?"; params.push(employee); }
+  // 员工只能看自己的请假记录，管理员看全部
+  if (auth.role !== "admin") {
+    sql += " AND employee_name = ?";
+    params.push(auth.name);
+  } else if (employee) {
+    sql += " AND employee_name = ?";
+    params.push(employee);
+  }
   if (status) { sql += " AND status = ?"; params.push(status); }
   sql += " ORDER BY created_at DESC";
   return NextResponse.json(db.prepare(sql).all(...params));
@@ -27,6 +34,12 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)"
   ).run(employee_name, leave_type || "事假", start_date, end_date, reason || "");
+  const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
+  for (const admin of admins) {
+    db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+      "leave_requested", "请假申请", `${employee_name} 申请${leave_type || "事假"} (${start_date} ~ ${end_date})`, admin.name, String(result.lastInsertRowid), "leave"
+    );
+  }
   return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
 }
 

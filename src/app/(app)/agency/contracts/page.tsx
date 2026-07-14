@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink } from "lucide-react";
+import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { startPhase } from "@/lib/api";
 
 const payClass: Record<string, string> = {
@@ -169,6 +170,24 @@ export default function ContractsPage() {
 
   if (loading) return <div className="py-20 text-center text-sm text-[var(--muted-foreground)]">加载中...</div>;
 
+  const handleExport = () => {
+    const cols: ExportColumn<Contract>[] = [
+      { header: "达人编号", render: (r) => r.influencer_code || "—" },
+      { header: "达人名称", key: "influencer_name" },
+      { header: "底薪", key: "base_salary" },
+      { header: "佣金", key: "commission" },
+      { header: "月直播场次", key: "live_sessions" },
+      { header: "每次直播时长", key: "live_duration" },
+      { header: "月视频数量", key: "video_count" },
+      { header: "付款状态", key: "payment_status" },
+      { header: "创建时间", key: "created_at" },
+    ];
+    const filtered_ = search
+      ? contracts.filter(c => (c.influencer_name || "").toLowerCase().includes(search.toLowerCase()))
+      : contracts;
+    exportToExcel(filtered_, cols, `合同列表_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -192,6 +211,7 @@ export default function ContractsPage() {
             </p>
           </div>
         </div>
+        <Button size="sm" variant="outline" onClick={handleExport}><Download className="size-3.5" />导出</Button>
       </div>
 
       <div className="relative max-w-sm">

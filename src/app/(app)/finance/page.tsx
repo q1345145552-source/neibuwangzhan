@@ -3,9 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, TrendingUp, TrendingDown } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Download } from "lucide-react";
 import { fetchAllFinances } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
 const statusLabels: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款" };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { verifyAuth } from "@/lib/auth";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -32,13 +33,28 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
   const { id, influencer_id, ...fields } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
+
+  // Read old values for version tracking
+  const oldRow = db.prepare("SELECT * FROM contracts WHERE id = ?").get(id) as any;
+  if (!oldRow) return NextResponse.json({ error: "合同不存在" }, { status: 404 });
+
+  const trackedFields = ["base_salary", "commission", "live_sessions", "live_duration", "video_count", "payment_status"];
   const sets: string[] = []; const vals: any[] = [];
   for (const [k, v] of Object.entries(fields)) {
     sets.push(`${k} = ?`); vals.push(v);
+    if (trackedFields.includes(k)) {
+      const oldVal = oldRow[k] || "";
+      const newVal = String(v || "");
+      if (oldVal !== newVal) {
+        logOperation(auth.name, "修改合同", "contract", String(id), `${k}: ${oldVal} → ${newVal}`, oldVal, newVal, k);
+      }
+    }
   }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   sets.push("updated_at = datetime('now')");

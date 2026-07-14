@@ -12,9 +12,15 @@ export async function GET(req: NextRequest) {
   const created_by = searchParams.get("created_by");
   let sql = "SELECT * FROM issue_tickets WHERE 1=1";
   const params: any[] = [];
-  if (status) { sql += " AND status = ?"; params.push(status); }
-  if (assignee) { sql += " AND assignee = ?"; params.push(assignee); }
-  if (created_by) { sql += " AND created_by = ?"; params.push(created_by); }
+  // 员工只能看自己的工单（指派给自己的、或自己创建的），管理员看全部
+  if (auth.role !== "admin") {
+    sql += " AND (assignee = ? OR created_by = ?)";
+    params.push(auth.name, auth.name);
+  } else {
+    if (status) { sql += " AND status = ?"; params.push(status); }
+    if (assignee) { sql += " AND assignee = ?"; params.push(assignee); }
+    if (created_by) { sql += " AND created_by = ?"; params.push(created_by); }
+  }
   sql += " ORDER BY created_at DESC";
   return NextResponse.json(db.prepare(sql).all(...params));
 }
@@ -31,6 +37,11 @@ export async function POST(req: NextRequest) {
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assignee || "", created_by || "");
   const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
+  if (assignee) {
+    db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+      "issue_assigned", "新问题工单", description, assignee, String(result.lastInsertRowid), "issue"
+    );
+  }
   return NextResponse.json(row, { status: 201 });
 }
 

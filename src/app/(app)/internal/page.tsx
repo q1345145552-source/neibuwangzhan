@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp } from "lucide-react";
+import { exportToExcel, type ExportColumn } from "@/lib/export";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -24,6 +25,12 @@ interface LeaveRequest {
   approved_by: string; created_at: string;
 }
 
+interface Notification {
+  id: number; type: string; title: string; body: string;
+  recipient: string; related_id: string; related_type: string;
+  is_read: number; created_at: string;
+}
+
 const staffNames = ["Ploy", "元丽", "Prae", "Namcha", "Bam", "Fern", "Ing", "Pop", "Eve"];
 
 export default function InternalPage() {
@@ -31,6 +38,7 @@ export default function InternalPage() {
   const [wl, setWl] = useState<WorkloadData | null>(null);
   const [issues, setIssues] = useState<IssueTicket[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showIssueForm, setShowIssueForm] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [attendanceAction, setAttendanceAction] = useState<"check_in" | "check_out" | null>(null);
@@ -47,14 +55,17 @@ export default function InternalPage() {
 
   const loadAll = async () => {
     try {
+      const leaveUrl = isAdmin ? "/api/leave?status=待审批" : `/api/leave?employee=${encodeURIComponent(user?.name || "")}`;
       const [wlRes, isRes, lvRes] = await Promise.all([
         fetchWithAuth("/api/internal/workload", { cache: "no-store" }),
         fetchWithAuth("/api/issues", { cache: "no-store" }),
-        fetchWithAuth("/api/leave?status=待审批", { cache: "no-store" }),
+        fetchWithAuth(leaveUrl, { cache: "no-store" }),
       ]);
       setWl(await wlRes.json());
       setIssues(await isRes.json());
       setLeaves(await lvRes.json());
+      const notifRes = await fetchWithAuth(`/api/notifications?recipient=${user?.name || ""}&limit=30`, { cache: "no-store" });
+      setNotifications(await notifRes.json());
     } catch {}
   };
 
@@ -68,6 +79,22 @@ export default function InternalPage() {
   };
 
   useEffect(() => { loadAll(); loadAttendance(); }, []);
+
+  const handleExportAttendance = async () => {
+    try {
+      const res = await fetchWithAuth("/api/attendance", { cache: "no-store" });
+      const data = await res.json();
+      const arr = Array.isArray(data) ? data : [];
+      const cols: ExportColumn<any>[] = [
+        { header: "员工", key: "employee_name" },
+        { header: "日期", key: "date" },
+        { header: "签到时间", render: (r) => r.check_in || "—" },
+        { header: "签退时间", render: (r) => r.check_out || "—" },
+        { header: "工时(小时)", render: (r) => r.work_hours != null ? String(r.work_hours) : "—" },
+      ];
+      exportToExcel(arr, cols, `考勤记录_${new Date().toISOString().slice(0, 10)}`);
+    } catch {}
+  };
 
   const handleAttendance = async (action: "check_in" | "check_out") => {
     try {
@@ -130,13 +157,36 @@ export default function InternalPage() {
     loadAll();
   };
 
+  const markNotifRead = async (id: number) => {
+    await fetchWithAuth("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
+  };
+
+  const markAllNotifRead = async () => {
+    await fetchWithAuth("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAll: true, recipient: user?.name }),
+    });
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
+  };
+
   const isAdmin = user?.role === "admin";
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">内部管理</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">问题工单 · 工作量 · 考勤打卡</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">内部管理</h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">问题工单 · 工作量 · 考勤打卡</p>
+          </div>
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
+        </div>
       </div>
 
       {/* ── 考勤打卡 ── */}
@@ -144,6 +194,7 @@ export default function InternalPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />今日考勤</h2>
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendance}><Download className="size-3" />导出考勤</Button>
             {todayRecord?.check_in ? (
               <span className="text-xs text-[var(--muted-foreground)]">签到 {todayRecord.check_in}</span>
             ) : (
@@ -157,6 +208,38 @@ export default function InternalPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── 通知中心 ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+          <h2 className="text-sm font-medium flex items-center gap-2"><Bell className="size-4" />通知中心</h2>
+          {notifications.some(n => n.is_read === 0) && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={markAllNotifRead}>全部已读</Button>
+          )}
+        </div>
+        {notifications.length === 0 ? (
+          <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无通知</div>
+        ) : (
+          <div className="divide-y divide-[var(--border)] max-h-64 overflow-y-auto">
+            {notifications.map(n => (
+              <div
+                key={n.id}
+                onClick={() => { if (n.is_read === 0) markNotifRead(n.id); }}
+                className={cn(
+                  "px-5 py-3 cursor-pointer transition-colors hover:bg-[var(--muted)]/50",
+                  n.is_read === 0 ? "border-l-2 border-l-blue-500 bg-blue-50/30 dark:bg-blue-950/10" : "text-[var(--muted-foreground)]"
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{n.title}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">{n.created_at?.slice(0, 16)}</span>
+                </div>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">{n.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── 工作量预警 ── */}
@@ -305,10 +388,10 @@ export default function InternalPage() {
         )}
       </div>
 
-      {/* ── 请假审批 (admin only) ── */}
+      {/* ── 请假审批 / 我的请假 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
-          <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />请假审批</h2>
+          <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />{isAdmin ? "请假审批" : "我的请假"}</h2>
           <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => setShowLeaveForm(true)}><Plus className="size-3" />申请请假</Button>
         </div>
 
@@ -347,7 +430,7 @@ export default function InternalPage() {
         )}
 
         {leaves.length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无待审批的请假</div>
+          <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">{isAdmin ? "暂无待审批的请假" : "暂无请假记录"}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

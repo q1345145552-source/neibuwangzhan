@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
@@ -253,6 +254,24 @@ function getPreviewGrade() {
     return inf.status;
   };
 
+  const handleExport = () => {
+    const cols: ExportColumn<Influencer>[] = [
+      { header: "达人编号", render: (r) => r.code || "—" },
+      { header: "达人名称", key: "name" },
+      { header: "品类", key: "category" },
+      { header: "TikTok链接", key: "tiktok_link" },
+      { header: "粉丝量", key: "followers" },
+      { header: "状态", key: "status" },
+      { header: "评级", render: (r) => r.latest_rating || "—" },
+      { header: "月度GMV", render: (r) => r.monthly_gmv || "—" },
+      { header: "创建时间", key: "created_at" },
+    ];
+    const filtered_ = search
+      ? influencers.filter(i => i.name.toLowerCase().includes(search.toLowerCase()) || (i.code || "").toLowerCase().includes(search.toLowerCase()))
+      : influencers;
+    exportToExcel(filtered_, cols, `达人列表_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -268,6 +287,7 @@ function getPreviewGrade() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExport}><Download className="size-3.5" />导出</Button>
           <Link href="/agency/influencers/tasks">
             <Button size="sm"><ListTodo className="size-3.5" />添加任务</Button>
           </Link>

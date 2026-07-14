@@ -18,7 +18,8 @@ export default function LoginPage() {
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
     if (stored) router.push("/");
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
