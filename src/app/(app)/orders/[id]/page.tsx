@@ -3,14 +3,14 @@
 import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Clock, History } from "lucide-react";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepTimes, getStepDocs } from "@/lib/constants";
-import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
+import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -55,7 +55,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [newFinAmount, setNewFinAmount] = useState("");
   const [newFinType, setNewFinType] = useState("income");
   const [newFinCurrency, setNewFinCurrency] = useState("CNY");
-  const [exchangeRate, setExchangeRate] = useState<number>(5);
+  const [exchangeRate, setExchangeRateState] = useState<number>(() => {
+    if (typeof window === "undefined") return 5;
+    const stored = Number(localStorage.getItem("cnyToThbRate"));
+    return stored > 0 ? stored : 5;
+  });
+  const setExchangeRate = (rate: number) => {
+    setExchangeRateState(rate);
+    if (typeof window !== "undefined") localStorage.setItem("cnyToThbRate", String(rate));
+  };
   const [newFinMethod, setNewFinMethod] = useState("");
   const [newFinSlip, setNewFinSlip] = useState("");
   const [finErrorMsg, setFinErrorMsg] = useState("");
@@ -80,19 +88,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [savingOrder, setSavingOrder] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
-
-  const loadHistory = async () => {
-    try {
-      const token = localStorage.getItem("authToken");
-      const res = await fetch(`/api/audit-logs?target_type=order&target_id=${id}&limit=50`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        cache: "no-store",
-      });
-      setHistoryLogs(await res.json());
-    } catch {}
-  };
   const [orderDeleteError, setOrderDeleteError] = useState<string | null>(null);
   // 费用编辑删除
   const [editingFinanceId, setEditingFinanceId] = useState<number | null>(null);
@@ -264,17 +259,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch { setError("更新失败"); }
   };
 
-  // 调试：监控 editingOrder 变化
-  useEffect(() => {
-    console.log("[调试] editingOrder 状态变化:", editingOrder, "order 存在:", !!order);
-  }, [editingOrder]);
-
   // 编辑订单
   const startEdit = () => {
     try {
-      console.log("[编辑] startEdit 被调用, order:", order?.id);
-      if (!order) { console.log("[编辑] order 为空，退出"); return; }
-      console.log("[编辑] 设置 editFields, edingOrder 当前:", editingOrder);
+      if (!order) return;
       setEditFields({
         customer_name: order.customer_name,
         business_type_id: order.business_type_id,
@@ -287,9 +275,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         currency: order.currency || "CNY",
         trademark_name: order.trademark_name || "",
       });
-      console.log("[编辑] editFields 已设置完，准备切 editingOrder = true");
       setEditingOrder(true);
-      console.log("[编辑] editingOrder 已设为 true");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "切换编辑失败";
       console.error("[编辑] 切编辑态失败:", msg, err);
@@ -302,14 +288,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     setSavingOrder(true);
     setError("");
     try {
-      const res = await fetch(`/api/orders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken")}` },
-        body: JSON.stringify(editFields),
-      });
-      const data = await res.json();
-      console.log("[保存订单] 响应:", res.status, data);
-      if (!res.ok) throw new Error(data.error || data.message || `服务器错误 ${res.status}`);
+      await updateOrder(id, editFields);
       setEditingOrder(false);
       reload();
     } catch (err) {
@@ -378,7 +357,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <div className="flex items-center gap-2 shrink-0">
               {!editingOrder ? (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => { console.log("[编辑按钮] 被点击"); startEdit(); }} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
+                  <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
                   <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>
                 </>
               ) : (
@@ -797,9 +776,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           {f.slip_file && (
                             <p className="mt-0.5">
                               {/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(f.slip_file) ? (
-                                <img src={f.slip_file} alt="水单" className="max-h-16 rounded border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewUrl(f.slip_file ?? null)} />
+                                <img src={fileUrl(f.slip_file)} alt="水单" className="max-h-16 rounded border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewUrl(f.slip_file ?? null)} />
                               ) : (
-                                <a href={f.slip_file} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary)] hover:underline">查看水单</a>
+                                <a href={fileUrl(f.slip_file)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary)] hover:underline">查看水单</a>
                               )}
                             </p>
                           )}
@@ -854,9 +833,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         <FileText className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
                         <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-[var(--foreground)]">{doc.name}{doc.file_url && (
                           /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(doc.file_url) ? (
-                            <img src={doc.file_url} alt={doc.name} className="max-h-10 rounded border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity ml-1.5" onClick={() => setPreviewUrl(doc.file_url ?? null)} />
+                            <img src={fileUrl(doc.file_url)} alt={doc.name} className="max-h-10 rounded border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity ml-1.5" onClick={() => setPreviewUrl(doc.file_url ?? null)} />
                           ) : (
-                            <> <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary)] hover:underline">查看文件</a></>
+                            <> <a href={fileUrl(doc.file_url)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary)] hover:underline">查看文件</a></>
                           )
                         )}</p>
                           <span className={cn("text-xs", doc.status === "已审核" ? "text-[var(--success)]" : "text-[var(--warning)]")}>{doc.status}</span></div>
@@ -922,9 +901,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             {cert.file_url && (
                             <p className="mt-0.5">
                               {/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(cert.file_url) ? (
-                                <img src={cert.file_url} alt="证书" className="max-h-12 rounded border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewUrl(cert.file_url ?? null)} />
+                                <img src={fileUrl(cert.file_url)} alt="证书" className="max-h-12 rounded border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewUrl(cert.file_url ?? null)} />
                               ) : (
-                                <a href={cert.file_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)] transition-colors">查看证书文件</a>
+                                <a href={fileUrl(cert.file_url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)] transition-colors">查看证书文件</a>
                               )}
                             </p>
                           )}
@@ -982,7 +961,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       {/* Image preview overlay */}
       {previewUrl && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center cursor-pointer" onClick={() => setPreviewUrl(null)} onKeyDown={(e) => { if (e.key === "Escape") setPreviewUrl(null); }}>
-          <img src={previewUrl} alt="预览" className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
+          <img src={fileUrl(previewUrl)} alt="预览" className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
         </div>
       )}
 
@@ -1033,46 +1012,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       )}
-
-      {/* 历史版本面板 */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
-        <button
-          onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }}
-          className="w-full px-5 py-4 flex items-center justify-between text-sm font-medium hover:bg-[var(--muted)]/30 transition-colors"
-        >
-          <span className="flex items-center gap-2"><History className="size-4" />历史版本</span>
-          <span className="text-xs text-[var(--muted-foreground)]">{showHistory ? "收起" : "展开"}</span>
-        </button>
-        {showHistory && (
-          <div className="border-t border-[var(--border)] max-h-64 overflow-y-auto">
-            {historyLogs.length === 0 ? (
-              <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无变更记录</div>
-            ) : (
-              historyLogs.map((log: any, i: number) => (
-                <div key={i} className="px-5 py-2.5 border-b border-[var(--border)] last:border-b-0 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{log.actor}</span>
-                    <span className="text-xs text-[var(--muted-foreground)]">{log.created_at?.slice(0, 16)}</span>
-                  </div>
-                  <p className="mt-0.5 text-[var(--muted-foreground)]">
-                    {log.action}
-                    {log.field_name && (
-                      <span className="ml-2 text-xs">
-                        <span className="line-through text-red-500">{log.old_value || "(空)"}</span>
-                        {" → "}
-                        <span className="text-green-600">{log.new_value || "(空)"}</span>
-                      </span>
-                    )}
-                  </p>
-                  {log.detail && !log.field_name && (
-                    <p className="text-xs text-[var(--muted-foreground)]/70">{log.detail}</p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
 
       {/* 删除订单确认弹窗 */}
       {deleteTarget && (
