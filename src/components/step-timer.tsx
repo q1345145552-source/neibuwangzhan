@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { calcWorkHours, formatWorkHours, isWorkingHours } from "@/lib/work-hours";
+import { calcWorkHours, formatWorkHours } from "@/lib/work-hours";
 import { cn } from "@/lib/utils";
 import { Clock } from "lucide-react";
 
@@ -21,7 +21,7 @@ interface StepTimerProps {
  */
 export function StepTimer({ created_at, completed_at, deadline_hours, status, className }: StepTimerProps) {
   const [elapsed, setElapsed] = useState(0);
-  const isCompleted = status === "已完成" || !!completed_at;
+  const isCompleted = status === "已完成" || (typeof completed_at === "string" && completed_at.length > 0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -60,9 +60,20 @@ export function StepTimer({ created_at, completed_at, deadline_hours, status, cl
         isOverdue ? "text-[var(--destructive)] font-semibold" : "text-[var(--muted-foreground)]",
         className
       )}
-      title={isCompleted ? "实际用时（工作小时）" : "已用工作小时"}
+      title={isCompleted
+        ? `实际用时 ${formatWorkHours(elapsed)}（工作小时）`
+        : `计时中 ${formatWorkHours(elapsed)}（工作小时，周一至周六 08:00-17:00）`
+      }
     >
-      <Clock className="size-3" />
+      <span className="relative inline-flex">
+        <Clock className="size-3" />
+        {!isCompleted && (
+          <span className="absolute -right-0.5 -top-0.5 flex size-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-green-500" />
+          </span>
+        )}
+      </span>
       {formatWorkHours(elapsed)}
       {isOverdue && deadline_hours !== undefined && (
         <span className="text-[var(--destructive)]"> / 超 {formatWorkHours(elapsed - deadline_hours)}</span>
