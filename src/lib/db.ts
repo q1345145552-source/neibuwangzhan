@@ -506,6 +506,55 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 内部管理 - 问题工单
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS issue_tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_number TEXT DEFAULT '',
+      ref_id TEXT DEFAULT '',
+      ref_type TEXT DEFAULT '',
+      description TEXT NOT NULL,
+      priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
+      status TEXT DEFAULT '待处理' CHECK(status IN ('待处理','处理中','已解决')),
+      assignee TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      resolved_by TEXT DEFAULT '',
+      resolved_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 内部管理 - 考勤打卡
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      date TEXT NOT NULL,
+      check_in TEXT DEFAULT '',
+      check_out TEXT DEFAULT '',
+      work_hours REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 内部管理 - 请假
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      leave_type TEXT DEFAULT '事假' CHECK(leave_type IN ('事假','病假','年假','其他')),
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      reason TEXT DEFAULT '',
+      status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
+      approved_by TEXT DEFAULT '',
+      approved_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+
   // Migrations for existing databases
   try { database.exec("ALTER TABLE finances ADD COLUMN payment_method TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_number TEXT DEFAULT ''"); } catch {}
