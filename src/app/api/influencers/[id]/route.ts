@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { verifyAuth } from "@/lib/auth";
+import { getDb, INFLUENCER_UPDATABLE_FIELDS } from "@/lib/db";
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await verifyAuth(_req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id } = await params;
   const db = getDb();
   const influencer = db.prepare("SELECT * FROM influencers WHERE id = ?").get(id);
@@ -19,13 +23,16 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id } = await params;
   const db = getDb();
   const body = await req.json();
   const { ...fields } = body;
   const sets: string[] = []; const vals: any[] = [];
   for (const [k, v] of Object.entries(fields)) {
-    if (k === "id") continue;
+    if (k === "id" || !INFLUENCER_UPDATABLE_FIELDS.has(k)) continue;
     sets.push(`${k} = ?`); vals.push(v);
   }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
@@ -40,6 +47,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id } = await params;
   const db = getDb();
   db.prepare("DELETE FROM influencer_step_notes WHERE influencer_id = ?").run(id);

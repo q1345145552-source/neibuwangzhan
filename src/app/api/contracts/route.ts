@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb, logOperation } from "@/lib/db";
+import { getDb, logOperation, CONTRACT_UPDATABLE_FIELDS } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("payment_status");
@@ -19,6 +22,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const body = await req.json();
   const { influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes, created_by } = body;
@@ -47,6 +53,8 @@ export async function PATCH(req: NextRequest) {
   const trackedFields = ["base_salary", "commission", "live_sessions", "live_duration", "video_count", "payment_status"];
   const sets: string[] = []; const vals: any[] = [];
   for (const [k, v] of Object.entries(fields)) {
+    // 字段白名单：防止请求体字段名被拼进 SQL（列名注入）
+    if (!CONTRACT_UPDATABLE_FIELDS.has(k)) continue;
     sets.push(`${k} = ?`); vals.push(v);
     if (trackedFields.includes(k)) {
       const oldVal = oldRow[k] || "";
@@ -65,6 +73,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

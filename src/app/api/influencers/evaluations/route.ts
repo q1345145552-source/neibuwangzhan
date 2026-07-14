@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // Scoring rules
@@ -17,6 +18,9 @@ function calcFinalRating(totalScore: number, liveRatioPct: number): string {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const influencerId = searchParams.get("influencer_id");
@@ -29,6 +33,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const body = await req.json();
   const {

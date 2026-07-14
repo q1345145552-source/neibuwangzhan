@@ -26,13 +26,16 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { employee_name, date, time, reason } = body;
+  const { date, time, reason } = body;
+  // 防冒名申请：普通员工只能给自己提补卡，管理员可代指定员工提
+  const employee_name = auth.role === "admin" && body.employee_name ? body.employee_name : auth.name;
   if (!employee_name || !date || !time) {
     return NextResponse.json({ error: "请填写必填字段" }, { status: 400 });
   }
+  // 注意：占位符数量必须与传值一致（此前漏传 photo 导致 500）
   const result = db.prepare(
     "INSERT INTO attendance_requests (employee_name, date, time, type, reason, photo) VALUES (?, ?, ?, '补签', ?, ?)"
-  ).run(employee_name, date, time, reason || "");
+  ).run(employee_name, date, time, reason || "", body.photo || "");
 
   // 通知管理员
   const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];

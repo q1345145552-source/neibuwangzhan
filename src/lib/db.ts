@@ -107,28 +107,12 @@ const businessSteps: Record<number, StepTemplate[]> = {
   ],
 };
 
-export function getBusinessSteps(businessTypeId: number, subServiceType?: string): StepTemplate[] {  if (subServiceType === "international") return [
-    { name: "客户沟通确认需求", assignee: "Ing" },
-    { name: "查重（检查维普/各国商标库）", assignee: "Ing" },
-    { name: "分类确认（与泰国TM标一致）", assignee: "Ing" },
-    { name: "收费开票", assignee: "Ing" },
-    { name: "文件整理（护照+商标图样+委托书）", assignee: "Ing" },
-    { name: "提交安合注册", assignee: "Ing" },
-    { name: "缴费(YJ)", assignee: "Pop" },
-    { name: "收TM标发给客户", assignee: "Ing" },
-  ];
-  if (subServiceType === "buy-r") return [
-    { name: "客户询盘需求沟通", assignee: "Ing" },
-    { name: "匹配可用R标", assignee: "Ing" },
-    { name: "确认类别（可加1个类别）", assignee: "Ing" },
-    { name: "收费开票", assignee: "Ing" },
-    { name: "准备转让文件", assignee: "Ing" },
-    { name: "提交变更申请（与Fern一起去商标局）", assignee: "Ing" },
-    { name: "缴费(Pop)", assignee: "Pop" },
-    { name: "完成转让", assignee: "Ing" },
-  ];
+export function getBusinessSteps(businessTypeId: number, subServiceType?: string): StepTemplate[] {
+  // 子服务分支必须限定在对应业务线内，避免不同业务线出现同名 key 时拿错模板
+  if (businessTypeId === 2 && subServiceType === "international") return internationalTrademarkSteps;
+  if (businessTypeId === 2 && subServiceType === "buy-r") return buyRTrademarkSteps;
   // FDA sub-services
-  if (subServiceType === "cosmetics") return [
+  if (businessTypeId === 3 && subServiceType === "cosmetics") return [
     { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
     { name: "Ing整理资料", assignee: "Ing" },
     { name: "Ing提交资料给FDA系统", assignee: "Ing" },
@@ -142,7 +126,7 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "审核通过后支付备案证书费", assignee: "Pop" },
     { name: "拿证，发给客户", assignee: "Ing" },
   ];
-  if (subServiceType === "food") return [
+  if (businessTypeId === 3 && subServiceType === "food") return [
     { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
     { name: "Ing整理资料", assignee: "Ing" },
     { name: "把所有资料提交E-consult给官方审查", assignee: "Ing" },
@@ -156,7 +140,7 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "审核通过后支付备案证书费", assignee: "Pop" },
     { name: "拿证，发给客户", assignee: "Ing" },
   ];
-  if (subServiceType === "hazard") return [
+  if (businessTypeId === 3 && subServiceType === "hazard") return [
     { name: "Ing收集资料并检查文件完整性", assignee: "Ing" },
     { name: "Ing整理资料", assignee: "Ing" },
     { name: "把成分信息发给官方检查", assignee: "Ing" },
@@ -173,14 +157,14 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "拿证，发给客户", assignee: "Ing" },
   ];
   // DLD sub-services
-  if (subServiceType === "site") return [
+  if (businessTypeId === 5 && subServiceType === "site") return [
     { name: "确认存储位置和进口位置分开（有货架+合规标识）", assignee: "" },
     { name: "准备场地平面图", assignee: "" },
     { name: "提交DLD场地检查申请", assignee: "" },
     { name: "等官员上门检查", assignee: "" },
   ];
   // Mall sub-services
-  if (subServiceType === "tiktok") return [
+  if (businessTypeId === 8 && subServiceType === "tiktok") return [
     { name: "Bam收集客户资料（企业店铺信息+商标资料+法人护照+公司证书不超过6个月+店铺账号密码+其他平台店铺链接），如无企业店铺可代办收500元", assignee: "Bam" },
     { name: "申请品牌认证（TikTok认WIPO商标信息，TM标只能品牌所有者提交不能授权，授权需等R标）", assignee: "Bam" },
     { name: "准备其他平台店铺资料（Instagram主页改品牌信息+上传产品图，粉丝需超1万）", assignee: "Pop" },
@@ -188,7 +172,7 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "提交TikTok审核", assignee: "" },
     { name: "审核通过，店铺上线", assignee: "" },
   ];
-  if (subServiceType === "lazada") return [
+  if (businessTypeId === 8 && subServiceType === "lazada") return [
     { name: "Bam收集客户资料（公司证书不超过6个月+PP20+公司银行账户+法人护照，全部文件法人蓝笔签名+盖章，电话号码+邮箱密码。电器类必须提供自有TISI认证，不能挂靠别人）", assignee: "Bam" },
     { name: "提交公司资料和商标资料给平台审核（所有文件提交Lazada审核系统，5-7个工作日）", assignee: "" },
     { name: "添加仓库地址（以DBD泰国商务发展厅登记信息为准）", assignee: "" },
@@ -207,6 +191,26 @@ export function getStepsWithAddressType(businessTypeId: number, subServiceType?:
     return result;
   }
   return base;
+}
+
+export interface StepTemplateWithDocs extends StepTemplate {
+  docs: string[];
+}
+
+/**
+ * 订单创建用：返回步骤模板 + 每步所需文件清单。
+ * 文件清单先按"基础模板"的步骤序号取，再插入湘泰地址的额外步骤，
+ * 保证插入步骤后文件清单不会错位。
+ */
+export function getOrderStepsWithDocs(businessTypeId: number, subServiceType?: string, addressType?: string): StepTemplateWithDocs[] {
+  const base = getBusinessSteps(businessTypeId, subServiceType);
+  const docsMap = getStepDocs(businessTypeId, subServiceType);
+  const withDocs: StepTemplateWithDocs[] = base.map((s, i) => ({ ...s, docs: docsMap[i + 1] || [] }));
+  if (businessTypeId === 7 && addressType === "xiangtai") {
+    withDocs.splice(3, 0, { name: "签订租赁合同", assignee: "Pop", docs: ["租赁合同"] });
+    withDocs.splice(4, 0, { name: "收取首月租金", assignee: "Ing", docs: ["租金收款凭证"] });
+  }
+  return withDocs;
 }
 
 
@@ -256,8 +260,26 @@ export function seedInfluencerSteps(db: any, influencerId: number, phase?: strin
   });
 }
 
-import { stepRequiredDocs, stepTimeEstimates, subServices } from "./constants";
+import { stepRequiredDocs, stepTimeEstimates, subServices, getStepDocs, internationalTrademarkSteps, buyRTrademarkSteps } from "./constants";
 export { stepRequiredDocs, stepTimeEstimates, subServices };
+
+/* ── 动态 UPDATE 的字段白名单（防止请求体字段名拼进 SQL 造成列名注入） ── */
+
+export const INFLUENCER_UPDATABLE_FIELDS = new Set([
+  "name", "tiktok_link", "category", "contact", "code", "contact_phone", "line_id",
+  "monthly_gmv", "live_stream_ratio", "contact_time", "reply_status", "followers",
+  "avg_views", "gmv_range", "notes", "status", "phase", "created_by", "discovery_task_id",
+]);
+
+export const FACTORY_UPDATABLE_FIELDS = new Set([
+  "name", "category", "moq", "contact", "code", "contact_phone", "address", "notes", "phase",
+]);
+
+export const CONTRACT_UPDATABLE_FIELDS = new Set([
+  "base_salary", "commission", "live_sessions", "live_duration", "video_count",
+  "contract_url", "payment_status", "start_date", "end_date", "notes",
+  "actual_live_sessions", "actual_live_duration", "actual_video_count", "phase",
+]);
 
 /* ── 建表 ── */
 
@@ -611,6 +633,42 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 奖惩制度 - 积分规则表
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS points_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rule_name TEXT NOT NULL,
+      rule_key TEXT NOT NULL UNIQUE,
+      points INTEGER NOT NULL,
+      rule_type TEXT DEFAULT 'auto' CHECK(rule_type IN ('auto','manual')),
+      description TEXT DEFAULT '',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 奖惩制度 - 积分记录表
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS points_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      rule_key TEXT DEFAULT '',
+      ref_id TEXT DEFAULT '',
+      ref_type TEXT DEFAULT '',
+      is_manual INTEGER DEFAULT 0,
+      is_appealed INTEGER DEFAULT 0,
+      appeal_reason TEXT DEFAULT '',
+      appeal_status TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 触发自动积分规则
+  try { seedPointsRulesZ(database); } catch {}
+
 
   // Migrations for existing databases
   try { database.exec("ALTER TABLE finances ADD COLUMN payment_method TEXT DEFAULT ''"); } catch {}
@@ -691,6 +749,31 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN final_rating TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_gmv TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN code TEXT DEFAULT ''"); } catch {}
+}
+
+/* ── 积分规则种子 ── */
+let pointsRulesSeeded = false;
+
+function seedPointsRulesZ(database: Database.Database) {
+  if (pointsRulesSeeded) return;
+  const rules = [
+    ["迟到扣分", "late", -3, "auto", "迟到一次扣3分"],
+    ["缺勤扣分", "absent", -10, "auto", "缺勤一天扣10分"],
+    ["请假扣分", "leave", -1, "auto", "请假一天扣1分"],
+    ["全勤奖励", "full_attendance", 5, "auto", "当月无迟到奖励5分"],
+    ["步骤逾期扣分", "step_overdue", -5, "auto", "订单步骤到期未完成扣5分"],
+    ["步骤提前完成加分", "step_early", 2, "auto", "订单步骤提前完成加2分"],
+    ["工单超时扣分", "issue_overdue", -3, "auto", "工单超过2天未处理扣3分"],
+    ["工单解决加分", "issue_resolved", 3, "auto", "解决一个工单加3分"],
+    ["达人A级评估加分", "influencer_a_grade", 5, "auto", "评估出一个A级达人加5分"],
+  ];
+  const stmt = database.prepare(
+    "INSERT OR IGNORE INTO points_rules (rule_name, rule_key, points, rule_type, description) VALUES (?, ?, ?, ?, ?)"
+  );
+  for (const r of rules) {
+    stmt.run(r[0], r[1], r[2], r[3], r[4]);
+  }
+  pointsRulesSeeded = true;
 }
 
 /* ── 种子数据 ── */

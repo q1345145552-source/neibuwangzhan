@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await verifyAuth(_req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id } = await params;
   const db = getDb();
   const rows = db.prepare(
@@ -17,6 +21,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id } = await params;
   const db = getDb();
   const { factory_id, relationship, notes } = await req.json();
@@ -38,6 +45,9 @@ export async function POST(
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const linkId = searchParams.get("id");

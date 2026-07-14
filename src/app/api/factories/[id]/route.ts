@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await verifyAuth(_req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { id } = await params;
   const db = getDb();
   const factory = db.prepare("SELECT * FROM factories WHERE id = ?").get(id);

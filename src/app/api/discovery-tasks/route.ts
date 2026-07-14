@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb, seedInfluencerSteps } from "@/lib/db";
 
 // GET /api/discovery-tasks - list all tasks
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
@@ -24,6 +28,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/discovery-tasks - create a new task
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const body = await req.json();
   const { task_number, category, creator } = body;
@@ -38,6 +45,9 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/discovery-tasks - update task (e.g., submit for evaluation)
 export async function PATCH(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const body = await req.json();
   const { id, status } = body;
@@ -77,6 +87,9 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE /api/discovery-tasks
 export async function DELETE(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

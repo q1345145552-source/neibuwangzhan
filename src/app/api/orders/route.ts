@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb, getStepsWithAddressType, logOperation } from "@/lib/db";
+import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -58,12 +58,19 @@ export async function POST(req: NextRequest) {
         "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, currency, trademark_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
       ).run(...insParams);
 
-      const steps = getStepsWithAddressType(Number(business_type_id), ssType, address_type);
+      const steps = getOrderStepsWithDocs(Number(business_type_id), ssType, address_type);
       const insertStep = db.prepare(
         "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
       );
+      const insertStepDoc = db.prepare(
+        "INSERT INTO step_documents (step_id, order_id, document_name, status) VALUES (?, ?, ?, 'pending')"
+      );
       steps.forEach((step, i) => {
-        insertStep.run(id, step.name, i + 1, step.assignee);
+        const res = insertStep.run(id, step.name, i + 1, step.assignee);
+        // 按步骤模板同步生成"所需文件"清单，供订单详情页跟踪上传状态
+        for (const docName of step.docs) {
+          insertStepDoc.run(res.lastInsertRowid, id, docName);
+        }
       });
     });
 
