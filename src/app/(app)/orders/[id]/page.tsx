@@ -189,7 +189,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
       await updateStep(id, stepId, { status: "已完成" });
       reload();
-    } catch { setError("更新失败"); }
+    } catch (e) { console.error("[订单] 步骤完成失败", e); setError("更新失败"); }
   };
 
   // 步骤撤回
@@ -197,7 +197,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       await updateStep(id, stepId, { status: "进行中" });
       reload();
-    } catch { setError("撤回失败"); }
+    } catch (e) { console.error("[订单] 步骤撤回失败", e); setError("撤回失败"); }
   };
 
   // 费用保存
@@ -207,7 +207,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       setEditingFinanceId(null);
       setEditFinanceFields({});
       reload();
-    } catch { setError("保存费用失败"); }
+    } catch (e) { console.error("[订单] 保存费用失败", e); setError("保存费用失败"); }
   };
 
   // 费用删除
@@ -218,7 +218,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteFinance(id, deleteFinanceTarget);
       setDeleteFinanceTarget(null);
       reload();
-    } catch { setError("删除费用失败"); setDeletingFinance(false); setDeleteFinanceTarget(null); }
+    } catch (e) { console.error("[订单] 删除费用失败", e); setError("删除费用失败"); setDeletingFinance(false); setDeleteFinanceTarget(null); }
   };
 
   // 证书删除
@@ -229,7 +229,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteCertificate(id, deleteCertTarget);
       setDeleteCertTarget(null);
       reload();
-    } catch { setError("删除证书失败"); setDeletingCert(false); setDeleteCertTarget(null); }
+    } catch (e) { console.error("[订单] 删除证书失败", e); setError("删除证书失败"); setDeletingCert(false); setDeleteCertTarget(null); }
   };
 
   // 文档删除
@@ -240,7 +240,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteDocument(id, deleteDocTarget);
       setDeleteDocTarget(null);
       reload();
-    } catch { setError("删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
+    } catch (e) { console.error("[订单] 删除文档失败", e); setError("删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
   };
 
   const handleSaveCert = async (certId: number) => {
@@ -249,14 +249,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       setEditingCertId(null);
       setEditCertFields({});
       reload();
-    } catch { setError("保存证书失败"); }
+    } catch (e) { console.error("[订单] 保存证书失败", e); setError("保存证书失败"); }
   };
 
   const handleStepUpdate = async (stepId: number, newStatus: string) => {
     try {
       await updateStep(id, stepId, { status: newStatus });
       reload();
-    } catch { setError("更新失败"); }
+    } catch (e) { console.error("[订单] 步骤状态修改失败", e); setError("更新失败"); }
   };
 
   // 编辑订单
