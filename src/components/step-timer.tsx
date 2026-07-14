@@ -26,10 +26,14 @@ export function StepTimer({ created_at, completed_at, deadline_hours, status, cl
 
   useEffect(() => {
     const compute = () => {
-      if (isCompleted && completed_at) {
-        setElapsed(calcWorkHours(created_at, completed_at));
-      } else {
-        setElapsed(calcWorkHours(created_at, new Date().toISOString()));
+      try {
+        if (isCompleted && completed_at) {
+          setElapsed(calcWorkHours(created_at, completed_at));
+        } else {
+          setElapsed(calcWorkHours(created_at, new Date().toISOString()));
+        }
+      } catch {
+        setElapsed(0);
       }
     };
 

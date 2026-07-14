@@ -40,9 +40,20 @@ function workHoursOnDay(utcDate: Date): number {
 /**
  * 计算两个 UTC 时间之间的工作小时数
  */
+function parseUtcDate(raw: Date | string): Date {
+  if (raw instanceof Date) return raw;
+  let s = raw;
+  // DB stores UTC: "2026-07-15 01:48:00" or "2026-07-15" or ISO "2026-07-15T01:48:00Z"
+  // Normalize to ISO UTC
+  if (s.includes(" ")) s = s.replace(" ", "T") + "Z";
+  else if (!s.includes("T")) s += "T00:00:00Z";
+  else if (!s.match(/[Z+-]/)) s += "Z";
+  return new Date(s);
+}
+
 export function calcWorkHours(fromUtc: Date | string, toUtc: Date | string): number {
-  const from = typeof fromUtc === "string" ? new Date(fromUtc + (fromUtc.includes("T") ? "" : "T00:00:00")) : new Date(fromUtc);
-  const to = typeof toUtc === "string" ? new Date(toUtc + (toUtc.includes("T") ? "" : "T00:00:00")) : new Date(toUtc);
+  const from = parseUtcDate(fromUtc);
+  const to = parseUtcDate(toUtc);
 
   if (from >= to) return 0;
 
@@ -98,7 +109,7 @@ export function calcElapsedWorkHours(createdAt: string): number {
  * 格式化小时数为显示文本
  */
 export function formatWorkHours(hours: number): string {
-  if (hours <= 0) return "0h";
+  if (!isFinite(hours) || hours <= 0) return "0h";
   if (hours < 1) return `${Math.round(hours * 60)}m`;
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
