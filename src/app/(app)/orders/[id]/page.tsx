@@ -456,9 +456,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   const uploadedCount = sd.filter((d: { status?: string; uploaded?: boolean }) => d.status === "uploaded").length;
                   const times = getStepTimes(order.business_type_id, order.sub_service_type);
                   const docs = getStepDocs(order.business_type_id, order.sub_service_type);
-                  const est = times[step.step_order];
+                  // 湘泰地址订单在第4、5位插入了两个额外步骤，模板配置按"基础步骤序号"存储，
+                  // 这里换算回基础序号，避免文件清单/预估时间整体错位两位
+                  const isXiangtai = order.business_type_id === 7 && order.address_type === "xiangtai";
+                  const baseOrder = isXiangtai
+                    ? (step.step_order === 4 || step.step_order === 5 ? -1 : step.step_order > 5 ? step.step_order - 2 : step.step_order)
+                    : step.step_order;
+                  const est = times[baseOrder];
                   const expanded = expandedSteps[step.id] || false;
-                  const hasDocs = !!(docs[step.step_order]?.length);
+                  const hasDocs = !!(docs[baseOrder]?.length);
                   const hasNotes = notes.length > 0;
                   const isOverdue = step.deadline && new Date(step.deadline) < new Date(nowMs) && step.status !== "已完成";
                   // TISI step 8: show elapsed days
@@ -652,12 +658,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               {noteErrorMsg[step.id] && <p className="text-xs text-[var(--destructive)]">{noteErrorMsg[step.id]}</p>}
                             </div>
 
-                            {/* Required documents */}
-                            {docs[step.step_order]?.length > 0 && (
+                            {/* Required documents：优先用数据库里该步骤的清单（新订单创建时生成），老订单回退到模板配置 */}
+                            {(sd.length > 0 || docs[baseOrder]?.length > 0) && (
                               <div className="border-t border-[var(--border)] pt-3">
                                 <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">所需文件</h4>
                                 <ul className="space-y-1">
-                                  {docs[step.step_order].map((docName, di) => {
+                                  {(sd.length > 0 ? sd.map((d) => d.document_name) : docs[baseOrder]).map((docName, di) => {
                                     const existingDoc = sd.find((d) => d.document_name === docName);
                                     const isUploaded = existingDoc?.status === "uploaded";
                                     return (

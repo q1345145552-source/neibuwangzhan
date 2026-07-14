@@ -53,8 +53,10 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
     const inProgress = orders.filter((o) => o.status === "进行中").length;
     const completed = orders.filter((o) => o.status === "已完成").length;
     const pending = orders.filter((o) => o.status === "待处理").length;
-    const totalAmount = orders.reduce((sum, o) => sum + o.total_amount, 0);
-    return { total, inProgress, completed, pending, totalAmount };
+    // 按币种分别汇总，人民币和泰铢不能直接相加
+    const cnyAmount = orders.filter((o) => (o.currency || "CNY") === "CNY").reduce((sum, o) => sum + o.total_amount, 0);
+    const thbAmount = orders.filter((o) => o.currency === "THB").reduce((sum, o) => sum + o.total_amount, 0);
+    return { total, inProgress, completed, pending, cnyAmount, thbAmount };
   }, [orders]);
 
   const filteredOrders = (search
@@ -104,7 +106,11 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
             <span><span className="text-[var(--success)]">●</span> 已完成 <strong className="font-mono tabular-nums">{stats.completed}</strong></span>
             {stats.pending > 0 && <span><span className="text-[var(--warning)]">◉</span> 待处理 <strong className="font-mono tabular-nums">{stats.pending}</strong></span>}
           </div>
-          <span className="ml-auto text-sm text-[var(--muted-foreground)]">总额 <strong className="font-mono tabular-nums text-[var(--foreground)]">{formatCurrency(stats.totalAmount)}</strong></span>
+          <span className="ml-auto text-sm text-[var(--muted-foreground)]">总额 <strong className="font-mono tabular-nums text-[var(--foreground)]">
+            {stats.cnyAmount > 0 || stats.thbAmount === 0 ? formatCurrency(stats.cnyAmount, "CNY") : null}
+            {stats.cnyAmount > 0 && stats.thbAmount > 0 ? " + " : null}
+            {stats.thbAmount > 0 ? formatCurrency(stats.thbAmount, "THB") : null}
+          </strong></span>
         </div>
       </div>
 

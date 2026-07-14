@@ -30,13 +30,19 @@ export async function POST(req: NextRequest) {
   const { title, assignee, priority, business_line, deadline, description } = body;
   if (!title) return NextResponse.json({ error: "请提供任务标题" }, { status: 400 });
 
-  const id = `TASK-${String(Date.now()).slice(-6)}`;
+  const validPriorities = ["low", "medium", "high"];
+  if (priority && !validPriorities.includes(priority)) {
+    return NextResponse.json({ error: "无效的优先级" }, { status: 400 });
+  }
+
+  // 时间戳 base36 + 随机后缀，避免旧格式（毫秒时间戳后6位）每 ~17 分钟循环导致主键碰撞
+  const id = `TASK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   db.prepare(
     "INSERT INTO tasks (id, title, description, assignee, priority, status, business_line, deadline) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)"
   ).run(id, title, description || "", assignee || "", priority || "medium", business_line || "", deadline || "");
 
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
-  logOperation(assignee || "系统", "创建任务", "task", id);
+  logOperation(auth.name, "创建任务", "task", id);
     return NextResponse.json(task, { status: 201 });
 }
 
@@ -48,6 +54,11 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, status } = body;
   if (!id) return NextResponse.json({ error: "请提供任务ID" }, { status: 400 });
+  // 校验状态值，避免非法值触发 CHECK 约束直接 500
+  const validStatuses = ["pending", "in_progress", "completed"];
+  if (status && !validStatuses.includes(status)) {
+    return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
+  }
 
   db.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(status || "pending", id);
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);

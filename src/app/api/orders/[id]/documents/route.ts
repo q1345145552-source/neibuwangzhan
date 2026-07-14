@@ -31,9 +31,10 @@ export async function POST(
   const docStatus = status || "已审核";
   const result = db.prepare(
     "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, name, file_type || "", docStatus, direction || "client_to_us", uploaded_by || "", file_url || "");
+  ).run(id, name, file_type || "", docStatus, direction || "client_to_us", uploaded_by || auth.name, file_url || "");
   const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
-  logOperation(uploaded_by || "系统", "添加文档", "document", id);
+  // 审计日志操作人以登录身份为准，不信任请求体
+  logOperation(auth.name, "添加文档", "document", id);
     return NextResponse.json(doc, { status: 201 });
 }
 
@@ -56,6 +57,6 @@ export async function DELETE(
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
 
   db.prepare("DELETE FROM documents WHERE id = ?").run(document_id);
-  logOperation("系统", "删除文档", "document", String(document_id), `订单:${id}`);
+  logOperation(auth.name, "删除文档", "document", String(document_id), `订单:${id}`);
   return NextResponse.json({ success: true });
 }
