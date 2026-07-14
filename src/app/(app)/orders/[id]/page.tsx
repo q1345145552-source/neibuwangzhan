@@ -474,8 +474,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   const isExceeded = isWaiting && elapsedDays > 60;
                   const over14Days = isWaiting && elapsedDays > 14 && step.step_name.includes("官员");
                   const over30Days = isWaiting && elapsedDays > 30 && step.step_name.includes("检测");
-                  // 预估值转工作小时数（1 天 ≈ 9 工作小时）
-                  const deadlineHours = est ? est * 9 : undefined;
+                  // 预估值转工作小时数（1 天 ≈ 9 工作小时）。est 是 "1天"/"2-3天"/"5-7个工作日"/"1-2周" 等字符串，
+                  // 取区间上限换算；"每月" 等无法量化的返回 undefined
+                  const deadlineHours = (() => {
+                    if (!est) return undefined;
+                    const nums = est.match(/\d+/g)?.map(Number);
+                    if (!nums || nums.length === 0) return undefined;
+                    const maxNum = Math.max(...nums);
+                    const days = est.includes("周") ? maxNum * 7 : maxNum;
+                    return days * 9;
+                  })();
                   const stepData = (() => { try { return JSON.parse(step.step_data || "{}"); } catch { return {}; } })();
                   const logistics = stepData.logistics as { step: string; status: string; note?: string }[] | undefined;
 

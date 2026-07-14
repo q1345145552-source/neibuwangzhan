@@ -119,7 +119,7 @@ export function Sidebar() {
   useEffect(() => {
     if (!user?.name) return;
     const fetchUnread = () => {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken");
       if (!token) return;
       fetch(`/api/notifications?recipient=${encodeURIComponent(user.name)}&unread=1`, {
         headers: { Authorization: `Bearer ${token}` },

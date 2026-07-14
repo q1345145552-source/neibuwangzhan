@@ -90,8 +90,13 @@ export default function InfluencersPage() {
         url = `/api/influencers?phase=${activeTab}`;
       }
       const res = await fetchWithAuth(url, { cache: "no-store" });
-      setInfluencers(await res.json());
-    } catch (err) { console.error(err); }
+      if (!res.ok) {
+        if (res.status === 401) { router.push("/login"); return; }
+        throw new Error(`API ${res.status}`);
+      }
+      const data = await res.json();
+      setInfluencers(Array.isArray(data) ? data : []);
+    } catch (err) { console.error("达人列表加载失败:", err); setInfluencers([]); }
     finally { setLoading(false); }
   }, [activeTab]);
 
