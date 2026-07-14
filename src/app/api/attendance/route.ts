@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { bangkokToday, utcNowStr } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -31,11 +32,17 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { employee_name, action } = body;
+  const { action } = body;
+  // 防代打卡：普通员工只能给自己打卡，管理员可代指定员工补录
+  const employee_name = auth.role === "admin" && body.employee_name ? body.employee_name : auth.name;
   if (!employee_name) return NextResponse.json({ error: "缺少员工姓名" }, { status: 400 });
+  if (action !== "check_in" && action !== "check_out") {
+    return NextResponse.json({ error: "无效的 action，应为 check_in 或 check_out" }, { status: 400 });
+  }
 
-  const today = new Date().toISOString().split("T")[0];
-  const now = new Date().toISOString().replace("T", " ").split(".")[0];
+  // 日期按曼谷时区（UTC+7）计算，时间戳仍存 UTC
+  const today = bangkokToday();
+  const now = utcNowStr();
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1";
   const ua = req.headers.get("user-agent") || "";
 

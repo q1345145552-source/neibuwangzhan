@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { verifyAuth } from "@/lib/auth";
+import { getDb, FACTORY_UPDATABLE_FIELDS } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const rows = db.prepare("SELECT * FROM factories ORDER BY created_at DESC").all();
   const res = NextResponse.json(rows);
@@ -10,6 +14,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const body = await req.json();
   const { name, category, moq, contact, contact_phone, address, notes } = body;
@@ -22,12 +29,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const body = await req.json();
   const { id, ...fields } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
   const sets: string[] = []; const vals: any[] = [];
   for (const [k, v] of Object.entries(fields)) {
+    if (!FACTORY_UPDATABLE_FIELDS.has(k)) continue;
     sets.push(`${k} = ?`); vals.push(v);
   }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
@@ -38,6 +49,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

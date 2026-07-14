@@ -29,9 +29,13 @@ export default function NewOrderPage() {
     currency: "CNY",
     sub_service_type: "",
     trademark_name: "",
+    address_type: "client",
+    monthly_rent: "",
   });
 
   const availableSubServices = subServices[Number(form.business_type_id)] || [];
+  // 地址认证业务线：需要选择客户地址 / 湘泰地址（湘泰地址会自动追加租赁合同和首月租金步骤）
+  const isAddressBiz = businessTypes.find((t) => t.id === Number(form.business_type_id))?.name === "地址认证";
 
   useEffect(() => {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => setError("加载业务线失败"));
@@ -85,6 +89,8 @@ export default function NewOrderPage() {
         currency: form.currency,
         sub_service_type: form.sub_service_type,
         trademark_name: form.business_type_id === "2" ? form.trademark_name : "",
+        address_type: isAddressBiz ? form.address_type : "client",
+        monthly_rent: isAddressBiz && form.address_type === "xiangtai" ? Number(form.monthly_rent) || 0 : 0,
       });
       router.push("/orders");
     } catch (err) {
@@ -123,6 +129,21 @@ export default function NewOrderPage() {
               <option value="">请选择子类型</option>
               {availableSubServices.map((s: { key: string; label: string }) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
+          </div>
+          )}
+          {isAddressBiz && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="address_type" className="text-sm font-medium">地址类型</Label>
+            <select id="address_type" name="address_type" value={form.address_type} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+              <option value="client">客户地址</option>
+              <option value="xiangtai">湘泰地址（含租赁合同+首月租金步骤）</option>
+            </select>
+          </div>
+          )}
+          {isAddressBiz && form.address_type === "xiangtai" && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="monthly_rent" className="text-sm font-medium">月租金</Label>
+            <Input id="monthly_rent" name="monthly_rent" type="number" value={form.monthly_rent} onChange={handleChange} className="h-10" placeholder="0" />
           </div>
           )}
           <div className="flex flex-col gap-2">

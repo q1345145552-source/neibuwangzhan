@@ -357,44 +357,61 @@ export const dldSubServices = [
 /* ── 通用查询函数 ── */
 export function getStepDocs(businessTypeId: number, subServiceType?: string): Record<number, string[]> {
   if (businessTypeId === 1) return companyRegDocs;
+  if (businessTypeId === 2) {
+    if (subServiceType === "international") return internationalTrademarkDocs;
+    if (subServiceType === "buy-r") return buyRTrademarkDocs;
+    return trademarkDocs;
+  }
   if (businessTypeId === 3) {
     if (subServiceType === "food") return fdaFoodDocs;
     if (subServiceType === "hazard") return fdaHazardDocs;
+    // 医疗器械暂无独立配置：返回空映射，避免展示化妆品的错误清单
+    if (subServiceType === "medical") return {};
     return fdaCosmeticsDocs;
   }
+  if (businessTypeId === 4) return tisiDocs;
   if (businessTypeId === 5) {
     if (subServiceType === "site") return dldSiteDocs;
     return dldProductDocs;
   }
+  if (businessTypeId === 6) return customsDocs;
+  if (businessTypeId === 7) return addressDocs;
   if (businessTypeId === 8) {
     if (subServiceType === "tiktok") return mallTiktokDocs;
     if (subServiceType === "lazada") return mallLazadaDocs;
     return mallShopeeDocs;
   }
   if (businessTypeId === 9) return nbtcDocs;
-  if (businessTypeId === 2) return trademarkDocs;
-  return companyRegDocs;
+  return {};
 }
 
 export function getStepTimes(businessTypeId: number, subServiceType?: string): Record<number, string> {
   if (businessTypeId === 1) return companyRegTimes;
+  if (businessTypeId === 2) {
+    if (subServiceType === "international") return internationalTrademarkTimes;
+    if (subServiceType === "buy-r") return buyRTrademarkTimes;
+    return trademarkTimes;
+  }
   if (businessTypeId === 3) {
     if (subServiceType === "food") return fdaFoodTimes;
     if (subServiceType === "hazard") return fdaHazardTimes;
+    if (subServiceType === "medical") return {};
     return fdaCosmeticsTimes;
   }
+  if (businessTypeId === 4) return tisiTimes;
   if (businessTypeId === 5) {
     if (subServiceType === "site") return dldSiteTimes;
     return dldProductTimes;
   }
+  if (businessTypeId === 6) return customsTimes;
+  if (businessTypeId === 7) return addressTimes;
   if (businessTypeId === 8) {
     if (subServiceType === "tiktok") return mallTiktokTimes;
     if (subServiceType === "lazada") return mallLazadaTimes;
     return mallShopeeTimes;
   }
   if (businessTypeId === 9) return nbtcTimes;
-  if (businessTypeId === 2) return trademarkTimes;
-  return companyRegTimes;
+  return {};
 }
 
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {

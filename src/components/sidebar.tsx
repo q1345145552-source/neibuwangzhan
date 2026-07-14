@@ -28,6 +28,7 @@ import {
   X,
   LogOut,
   Monitor,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -57,6 +58,7 @@ const agencyNav = [
 
 const internalNav = [
   { name: "内部管理", href: "/internal", icon: Monitor },
+  { name: "奖惩制度", href: "/internal/rewards", icon: Star },
   { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
   { name: "模板库", href: "/internal/templates", icon: Layers },
 ];

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export async function GET(_req: NextRequest) {
+  const auth = await verifyAuth(_req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const db = getDb();
 
   const total = (db.prepare("SELECT COUNT(*) as c FROM influencers").get() as any).c;

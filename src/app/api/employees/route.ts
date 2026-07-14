@@ -67,6 +67,15 @@ export async function DELETE(req: NextRequest) {
   const body = await req.json();
   const { id } = body;
   if (!id) return NextResponse.json({ error: "请提供员工ID" }, { status: 400 });
+  if (Number(id) === auth.id) return NextResponse.json({ error: "不能删除自己的账号" }, { status: 400 });
+  // 保护最后一个管理员，避免系统失去管理入口
+  const target = db.prepare("SELECT role FROM employees WHERE id = ?").get(id) as { role: string } | undefined;
+  if (!target) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
+  if (target.role === "admin") {
+    const adminCount = (db.prepare("SELECT COUNT(*) as c FROM employees WHERE role = 'admin'").get() as { c: number }).c;
+    if (adminCount <= 1) return NextResponse.json({ error: "不能删除最后一个管理员" }, { status: 400 });
+  }
   db.prepare("DELETE FROM employees WHERE id = ?").run(id);
+  logOperation(auth.name, "删除员工", "employee", String(id));
   return NextResponse.json({ success: true });
 }
