@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -31,6 +31,23 @@ interface Notification {
   is_read: number; created_at: string;
 }
 
+interface AttendanceRequest {
+  id: number; employee_name: string; date: string; time: string;
+  type: string; reason: string; photo: string; status: string; approved_by: string;
+  approved_at: string; created_at: string;
+}
+interface TodayStatus {
+  name: string; hasCheckedIn: boolean; hasCheckedOut: boolean;
+  checkInTime: string | null; checkOutTime: string | null;
+  workHours: number | null; type: string | null;
+  isOnLeave: boolean; leaveType: string | null;
+}
+interface MonthlySummary {
+  name: string; month: string; totalHours: number; lateCount: number;
+  absentCount: number; leaveCount: number; normalDays: number;
+  supplementDays: number; workDays: number;
+}
+
 const staffNames = ["Ploy", "元丽", "Prae", "Namcha", "Bam", "Fern", "Ing", "Pop", "Eve"];
 
 export default function InternalPage() {
@@ -41,8 +58,27 @@ export default function InternalPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showIssueForm, setShowIssueForm] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
-  const [attendanceAction, setAttendanceAction] = useState<"check_in" | "check_out" | null>(null);
   const [todayRecord, setTodayRecord] = useState<any>(null);
+  const [clockAnim, setClockAnim] = useState<"in" | "out" | null>(null);
+  const [currentTime, setCurrentTime] = useState("");
+  const [attendanceRequests, setAttendanceRequests] = useState<AttendanceRequest[]>([]);
+  const [todayStatuses, setTodayStatuses] = useState<TodayStatus[]>([]);
+  const [monthlySummaries, setMonthlySummaries] = useState<MonthlySummary[]>([]);
+  const [summaryMonth, setSummaryMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [calendarEmployee, setCalendarEmployee] = useState(user?.name || "");
+  const [calendarData, setCalendarData] = useState<any[]>([]);
+  const [calDetailDay, setCalDetailDay] = useState<any>(null);
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [requestForm, setRequestForm] = useState({ date: "", time: "", reason: "" });
+  const [requestErr, setRequestErr] = useState("");
+
+  // Photo upload state
+  const [photoModal, setPhotoModal] = useState<{ action: "check_in" | "check_out" } | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Issue form
   const [issueForm, setIssueForm] = useState({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
@@ -71,14 +107,96 @@ export default function InternalPage() {
 
   const loadAttendance = async () => {
     try {
-      const res = await fetchWithAuth(`/api/attendance?employee=${user?.name || ""}`, { cache: "no-store" });
-      const data = await res.json();
       const today = new Date().toISOString().split("T")[0];
-      setTodayRecord((Array.isArray(data) ? data : []).find((r: any) => r.date === today) || null);
+      const [attRes, todayRes, sumRes, reqRes] = await Promise.all([
+        fetchWithAuth(`/api/attendance?employee=${user?.name || ""}`, { cache: "no-store" }),
+        fetchWithAuth("/api/attendance/today", { cache: "no-store" }),
+        fetchWithAuth(`/api/attendance/summary?month=${summaryMonth}`, { cache: "no-store" }),
+        fetchWithAuth("/api/attendance/request", { cache: "no-store" }),
+      ]);
+      const attData = await attRes.json();
+      setTodayRecord((Array.isArray(attData) ? attData : []).find((r: any) => r.date === today) || null);
+      setTodayStatuses(await todayRes.json());
+      setMonthlySummaries(await sumRes.json());
+      setAttendanceRequests(await reqRes.json());
     } catch {}
   };
 
-  useEffect(() => { loadAll(); loadAttendance(); }, []);
+  useEffect(() => {
+    const tick = () => setCurrentTime(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const loadCalendar = async () => {
+    try {
+      const [y, m] = calendarMonth.split("-");
+      const lastDay = new Date(Number(y), Number(m), 0).getDate();
+      const from = `${calendarMonth}-01`;
+      const to = `${calendarMonth}-${String(lastDay).padStart(2, "0")}`;
+      const emp = calendarEmployee || user?.name || "";
+      const res = await fetchWithAuth(`/api/attendance?employee=${encodeURIComponent(emp)}&from=${from}&to=${to}`, { cache: "no-store" });
+      setCalendarData(await res.json());
+    } catch {}
+  };
+  useEffect(() => { loadAll(); loadAttendance(); loadCalendar(); }, [summaryMonth, calendarMonth, calendarEmployee]);
+
+  // ── Photo upload helpers ──
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setPhotoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleTakePhoto = () => {
+    photoInputRef.current?.click();
+  };
+
+  const clearPhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  };
+
+  const handleClockAction = async (action: "check_in" | "check_out") => {
+    setPhotoModal({ action });
+  };
+
+  const handleSubmitClock = async () => {
+    if (!photoFile || !photoModal) return;
+    setUploading(true);
+    try {
+      // 1. Upload photo
+      const fd = new FormData();
+      fd.append("file", photoFile);
+      const upRes = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      if (!upRes.ok) { alert("照片上传失败"); setUploading(false); return; }
+      const { url } = await upRes.json();
+
+      // 2. Clock in/out with photo
+      const action = photoModal.action;
+      setClockAnim(action === "check_in" ? "in" : "out");
+      const body = action === "check_in"
+        ? JSON.stringify({ employee_name: user?.name, action, check_in_photo: url })
+        : JSON.stringify({ employee_name: user?.name, action, check_out_photo: url });
+      const res = await fetchWithAuth("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (!res.ok) { const e = await res.json(); alert(e.error); setTimeout(() => setClockAnim(null), 800); setUploading(false); return; }
+
+      setTimeout(() => setClockAnim(null), 800);
+      setPhotoModal(null);
+      clearPhoto();
+      loadAttendance();
+    } catch { alert("操作失败"); }
+    setUploading(false);
+  };
 
   const handleExportAttendance = async () => {
     try {
@@ -91,20 +209,10 @@ export default function InternalPage() {
         { header: "签到时间", render: (r) => r.check_in || "—" },
         { header: "签退时间", render: (r) => r.check_out || "—" },
         { header: "工时(小时)", render: (r) => r.work_hours != null ? String(r.work_hours) : "—" },
+        { header: "签到照片", render: (r) => r.check_in_photo || "—" },
+        { header: "签退照片", render: (r) => r.check_out_photo || "—" },
       ];
       exportToExcel(arr, cols, `考勤记录_${new Date().toISOString().slice(0, 10)}`);
-    } catch {}
-  };
-
-  const handleAttendance = async (action: "check_in" | "check_out") => {
-    try {
-      const res = await fetchWithAuth("/api/attendance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employee_name: user?.name, action }),
-      });
-      if (!res.ok) { const e = await res.json(); alert(e.error); return; }
-      loadAttendance();
     } catch {}
   };
 
@@ -157,6 +265,39 @@ export default function InternalPage() {
     loadAll();
   };
 
+  // 补卡
+  const handleCreateRequest = async () => {
+    if (!requestForm.date || !requestForm.time) { setRequestErr("请填写日期和时间"); return; }
+    try {
+      let photoUrl = "";
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("file", photoFile);
+        const upRes = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (upRes.ok) photoUrl = (await upRes.json()).url;
+      }
+      await fetchWithAuth("/api/attendance/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_name: user?.name, ...requestForm, photo: photoUrl }),
+      });
+      setShowRequestForm(false);
+      setRequestForm({ date: "", time: "", reason: "" });
+      setRequestErr("");
+      clearPhoto();
+      loadAttendance();
+    } catch {}
+  };
+
+  const handleApproveRequest = async (id: number, status: string) => {
+    await fetchWithAuth("/api/attendance/request", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+    loadAttendance();
+  };
+
   const markNotifRead = async (id: number) => {
     await fetchWithAuth("/api/notifications", {
       method: "PATCH",
@@ -189,26 +330,436 @@ export default function InternalPage() {
         </div>
       </div>
 
-      {/* ── 考勤打卡 ── */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />今日考勤</h2>
+      {/* ── 今日考勤打卡 ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+          <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />今日考勤打卡</h2>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendance}><Download className="size-3" />导出考勤</Button>
-            {todayRecord?.check_in ? (
-              <span className="text-xs text-[var(--muted-foreground)]">签到 {todayRecord.check_in}</span>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowRequestForm(!showRequestForm)}><History className="size-3" />补卡申请</Button>
+          </div>
+        </div>
+        <div className="p-6">
+          <div className="text-center mb-6">
+            <div className="text-5xl font-mono font-bold tracking-wider text-[var(--foreground)]">{currentTime}</div>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p>
+          </div>
+          <div className="flex items-center justify-center gap-6">
+            {!todayRecord?.check_in ? (
+              <button
+                onClick={() => handleClockAction("check_in")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-2xl border-2 border-green-400 bg-green-50 px-10 py-6 transition-all duration-300 hover:bg-green-100 hover:scale-105 active:scale-95 dark:bg-green-950/20",
+                  clockAnim === "in" && "scale-110 bg-green-200 dark:bg-green-900"
+                )}
+              >
+                <LogIn className="size-10 text-green-600" />
+                <span className="text-lg font-semibold text-green-700">签到打卡</span>
+                <span className="text-xs text-green-500 flex items-center gap-1"><Camera className="size-3" />需拍照上传</span>
+              </button>
+            ) : !todayRecord?.check_out ? (
+              <button
+                onClick={() => handleClockAction("check_out")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-2xl border-2 border-orange-400 bg-orange-50 px-10 py-6 transition-all duration-300 hover:bg-orange-100 hover:scale-105 active:scale-95 dark:bg-orange-950/20",
+                  clockAnim === "out" && "scale-110 bg-orange-200 dark:bg-orange-900"
+                )}
+              >
+                <LogOut className="size-10 text-orange-600" />
+                <span className="text-lg font-semibold text-orange-700">签退下班</span>
+                <span className="text-xs text-orange-500 flex items-center gap-1"><Camera className="size-3" />需拍照上传 · 签到于 {todayRecord.check_in?.slice(11, 19)}</span>
+              </button>
             ) : (
-              <Button size="sm" className="h-7 text-xs" onClick={() => handleAttendance("check_in")}>签到打卡</Button>
+              <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-gray-200 bg-gray-50 px-10 py-6 dark:bg-gray-900/30">
+                <CheckCircle2 className="size-10 text-gray-400" />
+                <span className="text-lg font-semibold text-gray-500">今日打卡完成</span>
+                <span className="text-xs text-gray-400">
+                  签到 {todayRecord.check_in?.slice(11, 19)} / 签退 {todayRecord.check_out?.slice(11, 19)} · 工时 {todayRecord.work_hours || "—"}h
+                </span>
+                {(todayRecord.check_in_photo || todayRecord.check_out_photo) && (
+                  <div className="flex gap-2 mt-1">
+                    {todayRecord.check_in_photo && (
+                      <a href={todayRecord.check_in_photo} target="_blank" className="text-xs text-blue-500 underline">签到照片</a>
+                    )}
+                    {todayRecord.check_out_photo && (
+                      <a href={todayRecord.check_out_photo} target="_blank" className="text-xs text-blue-500 underline">签退照片</a>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
-            {todayRecord?.check_in && !todayRecord?.check_out && (
-              <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => handleAttendance("check_out")}>签退</Button>
+          </div>
+          {todayRecord?.type === "补签" && (
+            <p className="mt-4 text-center text-xs text-amber-600 font-medium">补签记录</p>
+          )}
+          {todayRecord?.type === "请假" && (
+            <p className="mt-4 text-center text-xs text-blue-600 font-medium">请假中</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── 拍照上传弹窗 ── */}
+      {photoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { if (!uploading) { setPhotoModal(null); clearPhoto(); } }}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">{photoModal.action === "check_in" ? "签到拍照" : "签退拍照"}</h3>
+              <button onClick={() => { setPhotoModal(null); clearPhoto(); }} disabled={uploading}><X className="size-4" /></button>
+            </div>
+            <p className="text-xs text-[var(--muted-foreground)] mb-4">
+              {photoModal.action === "check_in" ? "请拍摄一张现场照片作为签到证据" : "请拍摄一张现场照片作为签退证据"}
+            </p>
+            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
+            {photoPreview ? (
+              <div className="mb-4">
+                <img src={photoPreview} alt="预览" className="w-full h-48 object-cover rounded-lg border" />
+                <button onClick={clearPhoto} className="mt-2 text-xs text-red-500" disabled={uploading}>重新选择</button>
+              </div>
+            ) : (
+              <button
+                onClick={handleTakePhoto}
+                className="w-full rounded-lg border-2 border-dashed border-[var(--border)] py-10 flex flex-col items-center gap-2 hover:bg-[var(--muted)]/20 transition-colors"
+              >
+                <Camera className="size-10 text-[var(--muted-foreground)]" />
+                <span className="text-sm text-[var(--muted-foreground)]">点击拍照或选择照片</span>
+                <span className="text-xs text-[var(--muted-foreground)]/60">支持 JPG / PNG</span>
+              </button>
             )}
-            {todayRecord?.check_out && (
-              <span className="text-xs text-[var(--success)] font-medium">工时 {todayRecord.work_hours}h · 签退 {todayRecord.check_out}</span>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setPhotoModal(null); clearPhoto(); }} disabled={uploading}>取消</Button>
+              <Button size="sm" onClick={handleSubmitClock} disabled={!photoFile || uploading}>
+                {uploading ? "上传中..." : "确认打卡"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 补卡申请表单 ── */}
+      {showRequestForm && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
+          <h3 className="text-sm font-medium mb-3">补卡申请</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="text-xs font-medium">日期</label>
+              <input type="date" value={requestForm.date} onChange={e => setRequestForm(p => ({ ...p, date: e.target.value }))}
+                className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">时间</label>
+              <input type="time" step="1" value={requestForm.time} onChange={e => setRequestForm(p => ({ ...p, time: e.target.value }))}
+                className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">原因</label>
+              <input value={requestForm.reason} onChange={e => setRequestForm(p => ({ ...p, reason: e.target.value }))} placeholder="漏打卡/迟到原因"
+                className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
+            </div>
+          </div>
+          {/* 补卡照片 */}
+          <div className="mt-3">
+            <label className="text-xs font-medium">现场照片</label>
+            <div className="mt-1 flex items-center gap-3">
+              <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
+              {photoPreview ? (
+                <div className="flex items-center gap-2">
+                  <img src={photoPreview} alt="" className="size-12 object-cover rounded border" />
+                  <button onClick={clearPhoto} className="text-xs text-red-500">移除</button>
+                </div>
+              ) : (
+                <button onClick={handleTakePhoto} className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] border rounded px-3 py-1.5">
+                  <Camera className="size-3" />上传照片
+                </button>
+              )}
+            </div>
+          </div>
+          {requestErr && <p className="mt-2 text-xs text-[var(--destructive)]">{requestErr}</p>}
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={handleCreateRequest}>提交申请</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setShowRequestForm(false); clearPhoto(); }}>取消</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 今日在岗 ── */}
+      {isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2"><Users className="size-4" />今日在岗</h2>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {todayStatuses.map(s => (
+                <div key={s.name} className={cn(
+                  "rounded-lg border p-3 text-center",
+                  s.isOnLeave ? "border-blue-200 bg-blue-50 dark:bg-blue-950/20" :
+                  s.hasCheckedIn && s.hasCheckedOut ? "border-green-200 bg-green-50 dark:bg-green-950/20" :
+                  s.hasCheckedIn ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20" :
+                  "border-red-200 bg-red-50 dark:bg-red-950/20"
+                )}>
+                  <div className="text-sm font-medium">{s.name}</div>
+                  {s.isOnLeave ? (
+                    <div className="mt-1 text-xs text-blue-600">请假中 ({s.leaveType})</div>
+                  ) : s.hasCheckedIn && s.hasCheckedOut ? (
+                    <div className="mt-1 text-xs text-green-600">
+                      <CheckCircle2 className="size-3 inline mr-0.5" />
+                      {s.checkInTime?.slice(11, 19)} - {s.checkOutTime?.slice(11, 19)}
+                    </div>
+                  ) : s.hasCheckedIn ? (
+                    <div className="mt-1 text-xs text-amber-600">
+                      <Clock className="size-3 inline mr-0.5" />
+                      已签到 {s.checkInTime?.slice(11, 19)}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-xs text-red-600">
+                      <AlertCircle className="size-3 inline mr-0.5" />
+                      未打卡
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 月度考勤汇总 ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+          <h2 className="text-sm font-medium flex items-center gap-2"><Timer className="size-4" />月度考勤汇总</h2>
+          <input type="month" value={summaryMonth} onChange={e => setSummaryMonth(e.target.value)}
+            className="h-8 rounded border border-[var(--border)] px-2 text-xs" />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
+                <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">总工时(h)</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">正常打卡</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">补签</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">请假</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">迟到</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">缺勤</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">工作日</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlySummaries.length === 0 ? (
+                <tr><td colSpan={8} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
+              ) : (
+                monthlySummaries.map(m => (
+                  <tr key={m.name} className="border-b border-[var(--border)] hover:bg-[var(--muted)]/20">
+                    <td className="py-2.5 px-4 font-medium">{m.name}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums">{m.totalHours}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-green-600">{m.normalDays}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-amber-600">{m.supplementDays}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-blue-600">{m.leaveCount}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-orange-600">{m.lateCount}</td>
+                    <td className={cn("py-2.5 px-3 text-center tabular-nums", m.absentCount > 0 ? "text-red-600 font-semibold" : "")}>{m.absentCount}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-[var(--muted-foreground)]">{m.workDays}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+
+      {/* ── 考勤日历 ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />考勤日历</h2>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <select value={calendarEmployee} onChange={e => setCalendarEmployee(e.target.value)}
+                className="h-7 rounded border border-[var(--border)] px-2 text-xs">
+                {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
             )}
+            <button
+              className="h-7 w-7 flex items-center justify-center rounded border border-[var(--border)] hover:bg-[var(--muted)] transition-colors"
+              onClick={() => {
+                const parts = calendarMonth.split("-");
+                const yr = parseInt(parts[0]);
+                const mo = parseInt(parts[1]);
+                const d = new Date(yr, mo - 2, 1);
+                setCalendarMonth(d.toISOString().slice(0, 7));
+              }}
+            ><ChevronLeft className="size-3.5" /></button>
+            <span className="text-sm font-medium w-[100px] text-center">{calendarMonth}</span>
+            <button
+              className="h-7 w-7 flex items-center justify-center rounded border border-[var(--border)] hover:bg-[var(--muted)] transition-colors"
+              onClick={() => {
+                const parts = calendarMonth.split("-");
+                const yr = parseInt(parts[0]);
+                const mo = parseInt(parts[1]);
+                const d = new Date(yr, mo, 1);
+                setCalendarMonth(d.toISOString().slice(0, 7));
+              }}
+            ><ChevronRight className="size-3.5" /></button>
+          </div>
+        </div>
+        <div className="p-2">
+          {/* 周头 */}
+          <div className="grid grid-cols-7 gap-0.5 mb-0.5">
+            {["一","二","三","四","五","六","日"].map(d => (
+              <div key={d} className="text-center text-[11px] font-medium text-[var(--muted-foreground)] py-0.5">{d}</div>
+            ))}
+          </div>
+          {/* 日历格子 */}
+          <div className="grid grid-cols-7 gap-0.5">
+            {(() => {
+              const parts = calendarMonth.split("-");
+              const yr = parseInt(parts[0]);
+              const mo = parseInt(parts[1]);
+              const firstDay = new Date(yr, mo - 1, 1).getDay();
+              const offset = firstDay === 0 ? 6 : firstDay - 1;
+              const lastDate = new Date(yr, mo, 0).getDate();
+              const cells: React.ReactNode[] = [];
+              for (let i = 0; i < offset; i++) cells.push(<div key={"e"+i} className="rounded" />);
+              for (let d2 = 1; d2 <= lastDate; d2++) {
+                const ds = `${calendarMonth}-${String(d2).padStart(2,"0")}`;
+                const rec = calendarData.find((r:any) => r.date === ds);
+                const isSunday = new Date(yr, mo - 1, d2).getDay() === 0;
+                let bg = "bg-gray-50 dark:bg-gray-900/20";
+                let label = "";
+                if (rec) {
+                  if (rec.type === "请假") { bg = "bg-blue-100 dark:bg-blue-950/30"; label = "假"; }
+                  else if (rec.check_in && rec.check_out) {
+                    const late = rec.check_in > `${ds} 09:00:00`;
+                    bg = late ? "bg-amber-100 dark:bg-amber-950/30" : "bg-green-100 dark:bg-green-950/30";
+                    label = late ? "迟" : "";
+                  } else if (rec.check_in) {
+                    bg = "bg-amber-100 dark:bg-amber-950/30"; label = "签";
+                  } else {
+                    bg = "bg-red-50 dark:bg-red-950/20"; label = "缺";
+                  }
+                } else if (isSunday) {
+                  bg = "bg-gray-50/40 dark:bg-gray-900/10";
+                } else {
+                  const todayStr = new Date().toISOString().slice(0,10);
+                  if (ds < todayStr) { bg = "bg-red-50 dark:bg-red-950/20"; label = "缺"; }
+                }
+                cells.push(
+                  <div key={d2}
+                    onClick={() => setCalDetailDay(rec ? { ...rec, date: ds, isSunday } : { date: ds, isSunday, check_in: null, check_out: null, type: null, check_in_photo: null, check_out_photo: null, ip_address: null })}
+                    className={cn("h-8 rounded flex flex-col items-center justify-center cursor-pointer hover:ring-1 hover:ring-[var(--ring)] text-[11px] leading-tight", bg)}>
+                    <span className="font-medium">{d2}</span>
+                    {label && <span className="text-[9px] leading-none">{label}</span>}
+                  </div>
+                );
+              }
+              return cells;
+            })()}
+          </div>
+          {/* 图例 */}
+          <div className="mt-2 flex items-center gap-3 text-[10px] text-[var(--muted-foreground)]">
+            <span className="flex items-center gap-1"><span className="size-2 rounded bg-green-100 dark:bg-green-950/30" />正常</span>
+            <span className="flex items-center gap-1"><span className="size-2 rounded bg-amber-100 dark:bg-amber-950/30" />迟到/补签</span>
+            <span className="flex items-center gap-1"><span className="size-2 rounded bg-blue-100 dark:bg-blue-950/30" />请假</span>
+            <span className="flex items-center gap-1"><span className="size-2 rounded bg-red-50 dark:bg-red-950/20" />缺勤</span>
           </div>
         </div>
       </div>
+
+      {/* ── 日期详情弹窗 ── */}
+      {calDetailDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCalDetailDay(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">{calDetailDay.date}{calDetailDay.isSunday ? " (周日)" : ""}</h3>
+              <button onClick={() => setCalDetailDay(null)}><X className="size-4" /></button>
+            </div>
+            {calDetailDay.check_in ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">签到</span><span>{calDetailDay.check_in?.slice(11,19) || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">签退</span><span>{calDetailDay.check_out?.slice(11,19) || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">工时</span><span>{calDetailDay.work_hours != null ? calDetailDay.work_hours+"h" : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">类型</span><span>{calDetailDay.type || "正常"}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">IP</span><span className="text-xs font-mono">{calDetailDay.ip_address || calDetailDay.check_in_ip || "—"}</span></div>
+                {(calDetailDay.check_in_photo || calDetailDay.check_out_photo) && (
+                  <div className="flex gap-3 pt-2">
+                    {calDetailDay.check_in_photo && (
+                      <a href={calDetailDay.check_in_photo} target="_blank" className="flex-1">
+                        <img src={calDetailDay.check_in_photo} alt="签到照" className="w-full h-32 object-cover rounded-lg border" />
+                        <span className="block text-center text-xs text-blue-500 mt-1">签到照片</span>
+                      </a>
+                    )}
+                    {calDetailDay.check_out_photo && (
+                      <a href={calDetailDay.check_out_photo} target="_blank" className="flex-1">
+                        <img src={calDetailDay.check_out_photo} alt="签退照" className="w-full h-32 object-cover rounded-lg border" />
+                        <span className="block text-center text-xs text-blue-500 mt-1">签退照片</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : calDetailDay.isSunday ? (
+              <p className="text-sm text-[var(--muted-foreground)]">周日休息日</p>
+            ) : (
+              <p className="text-sm text-red-500">缺勤，未打卡</p>
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {/* ── 补卡审批 (管理员) ── */}
+      {isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2"><History className="size-4" />补卡审批</h2>
+          </div>
+          {attendanceRequests.filter(r => r.status === "待审批").length === 0 ? (
+            <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无待审批的补卡申请</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">时间</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">照片</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendanceRequests.filter(r => r.status === "待审批").map(r => (
+                    <tr key={r.id} className="border-b border-[var(--border)]">
+                      <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>
+                      <td className="py-2.5 px-4">{r.date}</td>
+                      <td className="py-2.5 px-4">{r.time}</td>
+                      <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{r.reason || "—"}</td>
+                      <td className="py-2.5 px-4">
+                        {r.photo ? <a href={r.photo} target="_blank" className="text-blue-500 underline text-xs">查看</a> : "—"}
+                      </td>
+                      <td className="py-2.5 px-4 flex gap-1.5">
+                        <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
+                        <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {attendanceRequests.filter(r => r.status !== "待审批").length > 0 && (
+            <div className="border-t border-[var(--border)] px-5 py-3">
+              <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">已完成</p>
+              {attendanceRequests.filter(r => r.status !== "待审批").slice(0, 10).map(r => (
+                <div key={r.id} className="flex items-center justify-between py-1 text-xs">
+                  <span>{r.employee_name} · {r.date} {r.time}</span>
+                  <span className={cn(r.status === "已通过" ? "text-green-600" : "text-red-500")}>{r.status} {r.approved_by && `· ${r.approved_by}`}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── 通知中心 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
@@ -286,7 +837,7 @@ export default function InternalPage() {
                 </tr>
               ))}
               {(!wl || wl.employees.length === 0) && (
-                <tr><td colSpan={5} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无进行中的任务</td></tr>
+                <tr><td colSpan={5} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
               )}
             </tbody>
           </table>
@@ -297,7 +848,7 @@ export default function InternalPage() {
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="text-sm font-medium flex items-center gap-2"><FileEdit className="size-4" />问题工单 ({issues.length})</h2>
-          <Button size="sm" className="h-7 text-xs" onClick={() => setShowIssueForm(true)}><Plus className="size-3" />新建工单</Button>
+          <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => setShowIssueForm(true)}><Plus className="size-3" />新增工单</Button>
         </div>
 
         {showIssueForm && (
@@ -312,10 +863,10 @@ export default function InternalPage() {
                 <label className="text-xs font-medium">紧急程度</label>
                 <select value={issueForm.priority} onChange={e => setIssueForm(p => ({ ...p, priority: e.target.value }))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
-                  <option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="urgent">紧急</option>
+                  <option value="medium">普通</option><option value="high">紧急</option><option value="low">低</option>
                 </select>
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <label className="text-xs font-medium">指定解决人</label>
                 <select value={issueForm.assignee} onChange={e => setIssueForm(p => ({ ...p, assignee: e.target.value }))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
@@ -325,8 +876,8 @@ export default function InternalPage() {
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">问题描述</label>
-                <textarea value={issueForm.description} onChange={e => setIssueForm(p => ({ ...p, description: e.target.value }))} rows={2}
-                  placeholder="详细描述遇到的问题..." className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none" />
+                <textarea value={issueForm.description} onChange={e => setIssueForm(p => ({ ...p, description: e.target.value }))} placeholder="描述遇到的问题..."
+                  rows={2} className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
             </div>
             {issueErr && <p className="mt-2 text-xs text-[var(--destructive)]">{issueErr}</p>}
@@ -337,35 +888,29 @@ export default function InternalPage() {
           </div>
         )}
 
-        {issues.length === 0 && !showIssueForm ? (
+        {issues.length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无问题工单</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">描述</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">关联</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">优先级</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">解决人</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">编号</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">关联</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">问题</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">指定人</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {issues.map(t => (
-                  <tr key={t.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
+                  <tr key={t.id} className="border-b border-[var(--border)]">
+                    <td className="py-2.5 px-4 font-mono text-xs">{t.ticket_number || `#${t.id}`}</td>
+                    <td className="py-2.5 px-4 text-xs">{t.ref_id ? `${t.ref_type === "influencer" ? "达人:" : "订单:"}${t.ref_id}` : "—"}</td>
                     <td className="py-2.5 px-4 max-w-[200px] truncate">{t.description}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{t.ref_id || "-"}</td>
-                    <td className="py-2.5 px-4">
-                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                        t.priority === "urgent" && "bg-red-100 text-red-700",
-                        t.priority === "high" && "bg-orange-100 text-orange-700",
-                        t.priority === "medium" && "bg-blue-100 text-blue-700",
-                        t.priority === "low" && "bg-gray-100 text-gray-700"
-                      )}>{t.priority}</span>
-                    </td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
+                    <td className="py-2.5 px-4">{t.assignee || "—"}</td>
                     <td className="py-2.5 px-4">
                       <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
                         t.status === "已解决" && "bg-green-100 text-green-700",
@@ -373,6 +918,7 @@ export default function InternalPage() {
                         "bg-gray-100 text-gray-700"
                       )}>{t.status}</span>
                     </td>
+                    <td className="py-2.5 px-4">{t.created_by}</td>
                     <td className="py-2.5 px-4">
                       {t.status !== "已解决" && (
                         <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleResolveIssue(t.id)}>

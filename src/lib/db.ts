@@ -539,10 +539,33 @@ function initTables(database: Database.Database) {
       check_in TEXT DEFAULT '',
       check_out TEXT DEFAULT '',
       work_hours REAL DEFAULT 0,
+      type TEXT DEFAULT '正常' CHECK(type IN ('正常','补签','请假')),
+      ip_address TEXT DEFAULT '',
+      user_agent TEXT DEFAULT '',
+      check_in_ip TEXT DEFAULT '',
+      check_out_ip TEXT DEFAULT '',
+      check_in_photo TEXT DEFAULT '',
+      check_out_photo TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
 
+  // 补卡申请表
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS attendance_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      date TEXT NOT NULL,
+      time TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT '补签',
+      reason TEXT DEFAULT '',
+      photo TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
+      approved_by TEXT DEFAULT '',
+      approved_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
 
   // 内部管理 - 通知中心
   database.exec(`
@@ -596,6 +619,14 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN email TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client'))"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN api_key TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN type TEXT DEFAULT '正常' CHECK(type IN ('正常','补签','请假'))"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN ip_address TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN user_agent TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN check_in_ip TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN check_out_ip TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN check_in_photo TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance ADD COLUMN check_out_photo TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance_requests ADD COLUMN photo TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN password TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_file TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE documents ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}

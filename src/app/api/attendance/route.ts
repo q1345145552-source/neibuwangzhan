@@ -12,7 +12,14 @@ export async function GET(req: NextRequest) {
   const to = searchParams.get("to");
   let sql = "SELECT * FROM attendance WHERE 1=1";
   const params: any[] = [];
-  if (employee) { sql += " AND employee_name = ?"; params.push(employee); }
+  // 角色隔离：非管理员只能看自己
+  if (auth.role !== "admin") {
+    sql += " AND employee_name = ?";
+    params.push(auth.name);
+  } else if (employee) {
+    sql += " AND employee_name = ?";
+    params.push(employee);
+  }
   if (from) { sql += " AND date >= ?"; params.push(from); }
   if (to) { sql += " AND date <= ?"; params.push(to); }
   sql += " ORDER BY date DESC, created_at DESC";
@@ -24,25 +31,35 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { employee_name, action } = body; // action: "check_in" | "check_out"
+  const { employee_name, action } = body;
   if (!employee_name) return NextResponse.json({ error: "缺少员工姓名" }, { status: 400 });
 
   const today = new Date().toISOString().split("T")[0];
   const now = new Date().toISOString().replace("T", " ").split(".")[0];
+  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1";
+  const ua = req.headers.get("user-agent") || "";
 
   if (action === "check_in") {
     const existing = db.prepare("SELECT id FROM attendance WHERE employee_name = ? AND date = ?").get(employee_name, today) as any;
     if (existing) return NextResponse.json({ error: "今天已经打过卡了" }, { status: 400 });
-    db.prepare("INSERT INTO attendance (employee_name, date, check_in) VALUES (?, ?, ?)").run(employee_name, today, now);
+    db.prepare(
+      "INSERT INTO attendance (employee_name, date, check_in, check_in_ip, ip_address, user_agent, check_in_photo) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(employee_name, today, now, ip, ip, ua, body.check_in_photo || '');
   } else if (action === "check_out") {
-    const record = db.prepare("SELECT * FROM attendance WHERE employee_name = ? AND date = ? AND check_out = ''").get(employee_name, today) as any;
+    const record = db.prepare(
+      "SELECT * FROM attendance WHERE employee_name = ? AND date = ? AND check_out = ''"
+    ).get(employee_name, today) as any;
     if (!record) return NextResponse.json({ error: "今天还没有签到记录" }, { status: 400 });
     const checkIn = new Date(record.check_in);
     const checkOut = new Date(now);
     const hours = Math.round(((checkOut.getTime() - checkIn.getTime()) / 3600000) * 100) / 100;
-    db.prepare("UPDATE attendance SET check_out = ?, work_hours = ? WHERE id = ?").run(now, hours, record.id);
+    db.prepare(
+      "UPDATE attendance SET check_out = ?, work_hours = ?, check_out_ip = ?, check_out_photo = ? WHERE id = ?"
+    ).run(now, hours, ip, body.check_out_photo || '', record.id);
   }
 
-  const rows = db.prepare("SELECT * FROM attendance WHERE employee_name = ? AND date = ?").all(employee_name, today);
+  const rows = db.prepare(
+    "SELECT * FROM attendance WHERE employee_name = ? AND date = ?"
+  ).all(employee_name, today);
   return NextResponse.json(rows[0] || {});
 }

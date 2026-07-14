@@ -54,5 +54,24 @@ export async function PATCH(req: NextRequest) {
   if (status === "已通过" || status === "已驳回") { sets.push("approved_at = datetime('now')"); if (approved_by) { sets.push("approved_by = ?"); vals.push(approved_by); } }
   vals.push(id);
   db.prepare(`UPDATE leave_requests SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+
+  // 请假通过：在该日期范围内自动创建/标记考勤为请假
+  if (status === "已通过") {
+    const leaveReq = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id) as any;
+    if (leaveReq) {
+      const start = new Date(leaveReq.start_date);
+      const end = new Date(leaveReq.end_date);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split("T")[0];
+        const existing = db.prepare("SELECT id FROM attendance WHERE employee_name = ? AND date = ?").get(leaveReq.employee_name, ds) as any;
+        if (existing) {
+          db.prepare("UPDATE attendance SET type = '请假' WHERE id = ?").run(existing.id);
+        } else {
+          db.prepare("INSERT INTO attendance (employee_name, date, type) VALUES (?, ?, '请假')").run(leaveReq.employee_name, ds);
+        }
+      }
+    }
+  }
+
   return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
 }
