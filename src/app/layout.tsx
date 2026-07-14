@@ -20,8 +20,17 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "公司内部管理系统",
+  title: "湘泰内部管理系统",
   description: "企业内部管理平台",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "湘泰系统",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 const systemCJK =
@@ -40,6 +49,12 @@ export default function RootLayout({
       className={`${inter.variable} ${cormorant.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+        <meta name="theme-color" content="#0f172a" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="湘泰系统" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
         <style>{`
           :root {
             --font-sans: ${inter.style.fontFamily}, ${systemCJK};
@@ -51,6 +66,9 @@ export default function RootLayout({
             font-weight: 300;
           }
         `}</style>
+        <script dangerouslySetInnerHTML={{
+          __html: `if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }`
+        }} />
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>{children}</ThemeProvider>

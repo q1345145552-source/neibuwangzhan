@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Plus, Search, ArrowUpDown, Trash2 } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Trash2, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { fetchOrders, fetchBusinessTypes, deleteOrder } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
+import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -82,6 +83,26 @@ export default function OrdersPage() {
     else { setSortField(field); setSortDir("desc"); }
   };
 
+  const handleExport = () => {
+    const filtered_ = search
+      ? orders.filter((o) =>
+          o.id.toLowerCase().includes(search.toLowerCase()) ||
+          o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+          (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
+        )
+      : orders;
+    const cols: ExportColumn<Order>[] = [
+      { header: "订单编号", key: "id", width: 16 },
+      { header: "客户名称", key: "customer_name" },
+      { header: "业务类型", render: (r) => businessTypes.find(b => b.id === r.business_type_id)?.name || "—" },
+      { header: "商标名称", render: (r) => r.trademark_name || "—" },
+      { header: "金额", render: (r) => formatCurrency(r.total_amount) },
+      { header: "状态", render: (r) => statusLabels[r.status] || r.status },
+      { header: "创建时间", render: (r) => toThaiTime(r.created_at) },
+    ];
+    exportToExcel(filtered_, cols, `订单列表_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Row 1: Title + new order button */}
@@ -90,9 +111,14 @@ export default function OrdersPage() {
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>订单管理</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">{loading ? "加载中..." : `一共 ${orders.length} 条，搜一下更快`}</p>
         </div>
-        <Link href="/orders/new" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
-          <Plus className="size-3.5" aria-hidden="true" />新建订单
-        </Link>
+        <div className="flex items-center gap-2">
+          <button onClick={handleExport} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium transition-all hover:bg-[var(--muted)]">
+            <Download className="size-3.5" />导出
+          </button>
+          <Link href="/orders/new" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+            <Plus className="size-3.5" aria-hidden="true" />新建订单
+          </Link>
+        </div>
       </div>
 
       {/* Row 2: Search bar — full width */}

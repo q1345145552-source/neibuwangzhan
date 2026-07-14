@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import {
+  BarChart3,
+  Layers,
   LayoutDashboard,
   Building2,
   Tag,
@@ -55,6 +57,8 @@ const agencyNav = [
 
 const internalNav = [
   { name: "内部管理", href: "/internal", icon: Monitor },
+  { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
+  { name: "模板库", href: "/internal/templates", icon: Layers },
 ];
 
 const utilityNav = [
@@ -71,11 +75,12 @@ function isActiveRoute(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
-function NavSection({ items, pathname, onClose }: { items: typeof navigation; pathname: string; onClose: () => void }) {
+function NavSection({ items, pathname, onClose, badgeMap }: { items: typeof navigation; pathname: string; onClose: () => void; badgeMap?: Record<string, number> }) {
   return (
     <ul className="flex flex-col gap-1">
       {items.map((item) => {
         const active = isActiveRoute(pathname, item.href);
+        const badge = badgeMap?.[item.name];
         return (
           <li key={item.name}>
             <Link
@@ -89,7 +94,10 @@ function NavSection({ items, pathname, onClose }: { items: typeof navigation; pa
               )}
             >
               <item.icon className="size-4 shrink-0" />
-              <span>{item.name}</span>
+              <span className="flex-1">{item.name}</span>
+              {badge != null && badge > 0 && (
+                <span className="flex items-center justify-center size-5 rounded-full bg-red-500 text-[10px] font-semibold text-white">{badge > 99 ? "99+" : badge}</span>
+              )}
             </Link>
           </li>
         );
@@ -104,6 +112,24 @@ export function Sidebar() {
   const close = useCallback(() => setOpen(false), []);
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.name) return;
+    const fetchUnread = () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      fetch(`/api/notifications?recipient=${encodeURIComponent(user.name)}&unread=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(data => setUnreadCount(Array.isArray(data) ? data.length : 0))
+        .catch(() => {});
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000); // poll every 30s
+    return () => clearInterval(interval);
+  }, [user?.name]);
 
   // 路由变化时关闭移动端菜单：渲染期间派生状态，避免在 effect 中直接 setState
   const [prevPathname, setPrevPathname] = useState(pathname);
@@ -140,7 +166,7 @@ export function Sidebar() {
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">内部管理</span>
         </div>
-        <NavSection items={internalNav} pathname={pathname} onClose={close} />
+        <NavSection items={internalNav} pathname={pathname} onClose={close} badgeMap={{ "内部管理": unreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">工具</span>

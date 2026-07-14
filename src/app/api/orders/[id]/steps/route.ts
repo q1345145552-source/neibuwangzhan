@@ -37,8 +37,12 @@ export async function PATCH(
     values.push(notes);
   }
   if (assignee !== undefined) {
+    const oldAssignee = (step as any).assignee || "";
     updates.push("assignee = ?");
     values.push(assignee);
+    if (oldAssignee !== assignee) {
+      logOperation(auth.name, "修改负责人", "step", String(step_id), `${(step as any).step_name}: ${oldAssignee} → ${assignee}`, oldAssignee, assignee, "assignee");
+    }
   }
   if (approval_status !== undefined) {
     updates.push("approval_status = ?");

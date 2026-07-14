@@ -18,10 +18,12 @@ export function getDb(): Database.Database {
   return db;
 }
 
-export function logOperation(actor: string, action: string, targetType: string, targetId: string, detail?: string) {
+export function logOperation(actor: string, action: string, targetType: string, targetId: string, detail?: string, oldValue?: string, newValue?: string, fieldName?: string) {
   try {
     const d = getDb();
-    d.prepare("INSERT INTO audit_logs (actor, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?)").run(actor, action, targetType, targetId, detail || "");
+    d.prepare("INSERT INTO audit_logs (actor, action, target_type, target_id, detail, old_value, new_value, field_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+      actor, action, targetType, targetId, detail || "", oldValue || "", newValue || "", fieldName || ""
+    );
   } catch {}
 }
 
@@ -394,6 +396,9 @@ function initTables(database: Database.Database) {
       target_type TEXT NOT NULL,
       target_id TEXT DEFAULT '',
       detail TEXT DEFAULT '',
+      old_value TEXT DEFAULT '',
+      new_value TEXT DEFAULT '',
+      field_name TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS influencers (
@@ -538,6 +543,35 @@ function initTables(database: Database.Database) {
     );
   `);
 
+
+  // 内部管理 - 通知中心
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention')),
+      title TEXT DEFAULT '',
+      body TEXT DEFAULT '',
+      recipient TEXT DEFAULT '',
+      related_id TEXT DEFAULT '',
+      related_type TEXT DEFAULT '',
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 模板库
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('contract','evaluation','finance')),
+      category TEXT DEFAULT '',
+      data_json TEXT DEFAULT '{}',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // 内部管理 - 请假
   database.exec(`
     CREATE TABLE IF NOT EXISTS leave_requests (
@@ -561,6 +595,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE documents ADD COLUMN direction TEXT DEFAULT 'client_to_us' CHECK(direction IN ('client_to_us', 'us_to_client'))"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN email TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client'))"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN api_key TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN password TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_file TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE documents ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
@@ -594,7 +629,9 @@ function initTables(database: Database.Database) {
     }
   } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
-  try { database.exec("CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT DEFAULT '', action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT DEFAULT '', detail TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
+  try { database.exec("ALTER TABLE audit_logs ADD COLUMN old_value TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE audit_logs ADD COLUMN new_value TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE audit_logs ADD COLUMN field_name TEXT DEFAULT ''"); } catch {}
   // Migration: influencer module tables (added 2026-07)
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), step_name TEXT NOT NULL, step_order INTEGER NOT NULL, phase TEXT DEFAULT 'discovery' CHECK(phase IN ('discovery','contract','incubation')), status TEXT NOT NULL DEFAULT '待处理', assignee TEXT DEFAULT '', notes TEXT DEFAULT '', stop_reason TEXT DEFAULT '', completed_at TEXT, created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_step_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, step_id INTEGER NOT NULL REFERENCES influencer_steps(id), influencer_id INTEGER NOT NULL REFERENCES influencers(id), content TEXT NOT NULL, created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}

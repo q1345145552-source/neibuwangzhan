@@ -3,7 +3,7 @@
 import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Clock, History } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
@@ -80,6 +80,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [savingOrder, setSavingOrder] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+
+  const loadHistory = async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`/api/audit-logs?target_type=order&target_id=${id}&limit=50`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+      setHistoryLogs(await res.json());
+    } catch {}
+  };
   const [orderDeleteError, setOrderDeleteError] = useState<string | null>(null);
   // 费用编辑删除
   const [editingFinanceId, setEditingFinanceId] = useState<number | null>(null);
@@ -1020,6 +1033,46 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       )}
+
+      {/* 历史版本面板 */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <button
+          onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }}
+          className="w-full px-5 py-4 flex items-center justify-between text-sm font-medium hover:bg-[var(--muted)]/30 transition-colors"
+        >
+          <span className="flex items-center gap-2"><History className="size-4" />历史版本</span>
+          <span className="text-xs text-[var(--muted-foreground)]">{showHistory ? "收起" : "展开"}</span>
+        </button>
+        {showHistory && (
+          <div className="border-t border-[var(--border)] max-h-64 overflow-y-auto">
+            {historyLogs.length === 0 ? (
+              <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无变更记录</div>
+            ) : (
+              historyLogs.map((log: any, i: number) => (
+                <div key={i} className="px-5 py-2.5 border-b border-[var(--border)] last:border-b-0 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{log.actor}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{log.created_at?.slice(0, 16)}</span>
+                  </div>
+                  <p className="mt-0.5 text-[var(--muted-foreground)]">
+                    {log.action}
+                    {log.field_name && (
+                      <span className="ml-2 text-xs">
+                        <span className="line-through text-red-500">{log.old_value || "(空)"}</span>
+                        {" → "}
+                        <span className="text-green-600">{log.new_value || "(空)"}</span>
+                      </span>
+                    )}
+                  </p>
+                  {log.detail && !log.field_name && (
+                    <p className="text-xs text-[var(--muted-foreground)]/70">{log.detail}</p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 删除订单确认弹窗 */}
       {deleteTarget && (

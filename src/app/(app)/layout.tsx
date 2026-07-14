@@ -12,7 +12,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem("authToken");
     if (!token) router.replace("/login");
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!user) {
     return (
