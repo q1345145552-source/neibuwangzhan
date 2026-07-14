@@ -110,9 +110,18 @@ export default function InternalPage() {
     setWlDetailData([]);
     try {
       const res = await fetchWithAuth(`/api/internal/workload-details?employee=${encodeURIComponent(employee)}&type=${type}`, { cache: "no-store" });
-      const json = await res.json();
-      setWlDetailData(json.data || []);
-    } catch {}
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.error("[工作量明细] API 返回错误", { status: res.status, employee, type, body: errText });
+        setWlDetailData([]);
+      } else {
+        const json = await res.json();
+        console.log("[工作量明细] API 返回数据", { employee, type, count: json.data?.length });
+        setWlDetailData(json.data || []);
+      }
+    } catch (e) {
+      console.error("[工作量明细] 请求异常", e, { employee, type });
+    }
     setWlDetailLoading(false);
   };
 
@@ -129,7 +138,7 @@ export default function InternalPage() {
       setLeaves(await lvRes.json());
       const notifRes = await fetchWithAuth(`/api/notifications?recipient=${user?.name || ""}&limit=30`, { cache: "no-store" });
       setNotifications(await notifRes.json());
-    } catch {}
+    } catch (e) { console.error("[内部管理] 加载通知/工单/请假失败", e); }
   };
 
   const isWithinDays = (dateStr: string, days: number) => {
@@ -154,7 +163,7 @@ export default function InternalPage() {
       setTodayStatuses(await todayRes.json());
       setMonthlySummaries(await sumRes.json());
       setAttendanceRequests(await reqRes.json());
-    } catch {}
+    } catch (e) { console.error("[内部管理] 加载考勤数据失败", e); }
   };
 
   useEffect(() => {
@@ -173,7 +182,7 @@ export default function InternalPage() {
       const emp = calendarEmployee || user?.name || "";
       const res = await fetchWithAuth(`/api/attendance?employee=${encodeURIComponent(emp)}&from=${from}&to=${to}`, { cache: "no-store" });
       setCalendarData(await res.json());
-    } catch {}
+    } catch (e) { console.error("[内部管理] 加载日历数据失败", e); }
   };
   const handleAnomalyClick = async (type: string, label: string, emp: string) => {
     setAnomalyModal({ type, label, employee: emp });
@@ -181,7 +190,7 @@ export default function InternalPage() {
     try {
       const res = await fetchWithAuth(`/api/attendance/details?employee=${encodeURIComponent(emp)}&month=${summaryMonth}&type=${type}`, { cache: "no-store" });
       setAnomalyRecords(await res.json());
-    } catch {}
+    } catch (e) { console.error("[内部管理] 加载异常明细失败", e); }
     setLoadingAnomaly(false);
   };
 
@@ -258,7 +267,7 @@ export default function InternalPage() {
         { header: "签退照片", render: (r) => r.check_out_photo || "—" },
       ];
       exportToExcel(arr, cols, `考勤记录_${new Date().toISOString().slice(0, 10)}`);
-    } catch {}
+    } catch (e) { console.error("[内部管理] 导出考勤失败", e); }
   };
 
   const handleCreateIssue = async () => {
@@ -274,7 +283,7 @@ export default function InternalPage() {
       setIssueForm({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
       setIssueErr("");
       loadAll();
-    } catch {} finally { setIssueSaving(false); }
+    } catch (e) { console.error("[内部管理] 创建工单失败", e); } finally { setIssueSaving(false); }
   };
 
   const handleResolveIssue = async (id: number) => {
@@ -298,7 +307,7 @@ export default function InternalPage() {
       setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
       setLeaveErr("");
       loadAll();
-    } catch {}
+    } catch (e) { console.error("[内部管理] 创建请假失败", e); }
   };
 
   const handleApproveLeave = async (id: number, status: string) => {
@@ -331,7 +340,7 @@ export default function InternalPage() {
       setRequestErr("");
       clearPhoto();
       loadAttendance();
-    } catch {}
+    } catch (e) { console.error("[内部管理] 提交补卡申请失败", e); }
   };
 
   const handleApproveRequest = async (id: number, status: string) => {
