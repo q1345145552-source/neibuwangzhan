@@ -29,11 +29,17 @@ export async function POST(
   const { certificate_number, product_name, issue_date, expiry_date, notes, file_url } = body;
   if (!certificate_number) return NextResponse.json({ error: "请输入证书编号" }, { status: 400 });
 
+  // 按到期日自动计算初始状态（此前恒为 valid，即使已过期）
+  let initialStatus = "valid";
+  if (expiry_date) {
+    const diffDays = Math.floor((new Date(expiry_date).getTime() - Date.now()) / 86400000);
+    initialStatus = diffDays < 0 ? "expired" : diffDays <= 30 ? "expiring" : "valid";
+  }
   const result = db.prepare(
-    "INSERT INTO certificates (order_id, certificate_number, product_name, issue_date, expiry_date, status, notes, file_url) VALUES (?, ?, ?, ?, ?, 'valid', ?, ?)"
-  ).run(id, certificate_number, product_name || "", issue_date || "", expiry_date || "", notes || "", file_url || "");
+    "INSERT INTO certificates (order_id, certificate_number, product_name, issue_date, expiry_date, status, notes, file_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, certificate_number, product_name || "", issue_date || "", expiry_date || "", initialStatus, notes || "", file_url || "");
   const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(result.lastInsertRowid) as { id: number };
-  logOperation("系统", "添加证书", "certificate", String(cert.id), `订单:${id}`);
+  logOperation(auth.name, "添加证书", "certificate", String(cert.id), `订单:${id}`);
   return NextResponse.json(cert, { status: 201 });
 }
 
@@ -50,6 +56,10 @@ export async function PATCH(
   const body = await req.json();
   const { cert_id, certificate_number, product_name, issue_date, expiry_date, status, nsw_registration, nsw_download_status, notes, file_url } = body;
   if (!cert_id) return NextResponse.json({ error: "缺少 cert_id" }, { status: 400 });
+
+  // 校验证书属于当前订单，防止跨订单修改
+  const existing = db.prepare("SELECT id FROM certificates WHERE id = ? AND order_id = ?").get(cert_id, id);
+  if (!existing) return NextResponse.json({ error: "证书不存在" }, { status: 404 });
 
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -74,8 +84,8 @@ export async function PATCH(
   }
 
   if (fields.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
-  values.push(cert_id);
-  db.prepare(`UPDATE certificates SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  values.push(cert_id, id);
+  db.prepare(`UPDATE certificates SET ${fields.join(", ")} WHERE id = ? AND order_id = ?`).run(...values);
   const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(cert_id);
   return NextResponse.json(cert);
 }

@@ -66,16 +66,24 @@ export default function FinancePage() {
     return result;
   }, [allFinances, search, typeFilter]);
 
+  // 按币种分别汇总（人民币和泰铢不能直接相加），返回 "¥x + ฿y" 形式的展示文案
+  const sumByCurrency = (rows: FinanceRecord[]): string => {
+    const cny = rows.filter((r) => ((r as { currency?: string }).currency || "CNY") === "CNY").reduce((s, r) => s + Number(r.amount), 0);
+    const thb = rows.filter((r) => (r as { currency?: string }).currency === "THB").reduce((s, r) => s + Number(r.amount), 0);
+    if (thb === 0) return `¥${cny.toLocaleString()}`;
+    if (cny === 0) return `฿${thb.toLocaleString()}`;
+    return `¥${cny.toLocaleString()} + ฿${thb.toLocaleString()}`;
+  };
   const totalIncome = useMemo(
-    () => filtered.filter((r: FinanceRecord) => r.type === "income" && r.status === "paid").reduce((s: number, r: FinanceRecord) => s + Number(r.amount), 0),
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "income" && r.status === "paid")),
     [filtered]
   );
   const totalExpense = useMemo(
-    () => filtered.filter((r: FinanceRecord) => r.type === "expense").reduce((s: number, r: FinanceRecord) => s + Number(r.amount), 0),
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "expense")),
     [filtered]
   );
   const totalPending = useMemo(
-    () => filtered.filter((r: FinanceRecord) => r.status === "unpaid" || r.status === "pending").reduce((s: number, r: FinanceRecord) => s + Number(r.amount), 0),
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.status === "unpaid" || r.status === "pending")),
     [filtered]
   );
 
@@ -100,19 +108,19 @@ export default function FinancePage() {
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
             <TrendingUp className="size-4 text-[var(--success)]" />总收入
           </div>
-          <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">¥{totalIncome.toLocaleString()}</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">{totalIncome}</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
             <TrendingDown className="size-4 text-[var(--destructive)]" />总支出
           </div>
-          <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">¥{totalExpense.toLocaleString()}</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">{totalExpense}</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
             待付余额
           </div>
-          <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">¥{totalPending.toLocaleString()}</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">{totalPending}</p>
         </div>
       </div>
 
@@ -171,7 +179,7 @@ export default function FinancePage() {
                         {typeLabels[r.type] || r.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-mono tabular-nums">¥{Number(r.amount).toLocaleString()}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{(r as { currency?: string }).currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>
                         {statusLabels[r.status] || r.status}

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { bangkokToday } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const today = new Date().toISOString().split("T")[0];
+  const today = bangkokToday();
 
   const employees = db.prepare(
     "SELECT name FROM employees WHERE role IN ('admin','employee')"

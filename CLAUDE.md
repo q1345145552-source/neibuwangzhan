@@ -2,7 +2,11 @@
 
 ## 项目概览
 
-这是一套面向泰国/中国跨境企业服务公司的内部管理系统，覆盖 8 条业务线的订单全流程管理。
+这是一套面向泰国/中国跨境企业服务公司的内部管理系统，覆盖 9 条业务线的订单全流程管理（公司注册/商标/FDA认证/TISI/DLD/清关/地址认证/Mall开店/NBTC），另含达人代运营（agency/influencers/factories/contracts/discovery-tasks）、内部管理（考勤/补卡/请假/工单/通知/周报）等模块。
+
+**时区约定**：数据库时间戳统一存 UTC；"哪一天"（考勤日期等）按曼谷时区（UTC+7）计算，工具函数在 `src/lib/time.ts`。前端展示用 `toThaiTime()`（utils.ts）。
+
+**安全约定**：所有 API 路由（除 /api/auth/login 和 /api/external/*）必须先 `verifyAuth`；动态 UPDATE 的字段名必须走 db.ts 里的 `*_UPDATABLE_FIELDS` 白名单；审计日志操作人用 `auth.name`，不信任请求体。
 
 - **技术栈**: Next.js 16 (App Router) + TypeScript + Tailwind CSS v4 + shadcn/ui (@base-ui/react)
 - **数据库**: SQLite (better-sqlite3)，文件 `data.db`，已在 `.gitignore`
@@ -79,7 +83,7 @@ src/
 
 ### 关键设计决策
 
-1. **订单创建自动生成步骤**: `POST /api/orders` 根据 `business_type_id` + `sub_service_type` + `address_type` 自动生成对应步骤和负责人
+1. **订单创建自动生成步骤和文件清单**: `POST /api/orders` 根据 `business_type_id` + `sub_service_type` + `address_type` 通过 `getOrderStepsWithDocs()` 自动生成步骤、负责人和每步的 `step_documents` 所需文件清单
 2. **步骤 JSON 字段**: `order_steps.step_data` 存储灵活的 JSON 数据（物流追踪、外部联系人、外部确认等）
 3. **地址认证特殊处理**: `address_type` 为 `xiangtai` 时，自动插入"签订租赁合同"和"收取首月租金"两个额外步骤
 4. **子服务路由**: 相同 business_type_id 的不同子服务通过 `sub_service_type` 字段区分，步骤模板在 `getBusinessSteps()` 中按 sub_service_type 分发

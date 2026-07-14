@@ -16,12 +16,13 @@ export async function PATCH(
   const body = await req.json();
   const { step_id, status, notes, assignee, approval_status, submission_count } = body;
 
-  if (!step_id || !status) {
-    return NextResponse.json({ error: "请提供 step_id 和 status" }, { status: 400 });
+  if (!step_id) {
+    return NextResponse.json({ error: "请提供 step_id" }, { status: 400 });
   }
 
+  // status 可选：只改负责人/备注等字段时不必传，避免误触完成时间的重算逻辑
   const validStatuses = ["待处理", "进行中", "已完成", "阻塞"];
-  if (!validStatuses.includes(status)) {
+  if (status !== undefined && !validStatuses.includes(status)) {
     return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
   }
 
@@ -30,8 +31,12 @@ export async function PATCH(
     return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   }
 
-  const updates: string[] = ["status = ?"];
-  const values: unknown[] = [status];
+  const updates: string[] = [];
+  const values: unknown[] = [];
+  if (status !== undefined) {
+    updates.push("status = ?");
+    values.push(status);
+  }
 
   if (notes !== undefined) {
     updates.push("notes = ?");
@@ -53,11 +58,17 @@ export async function PATCH(
     updates.push("submission_count = ?");
     values.push(submission_count);
   }
-  if (status === "已完成") {
-    updates.push("completed_at = datetime('now')");
-  } else {
-    // 撤回：清空完成时间
-    updates.push("completed_at = NULL");
+  if (status !== undefined) {
+    if (status === "已完成") {
+      updates.push("completed_at = datetime('now')");
+    } else {
+      // 撤回：清空完成时间
+      updates.push("completed_at = NULL");
+    }
+  }
+
+  if (updates.length === 0) {
+    return NextResponse.json({ error: "没有要更新的字段" }, { status: 400 });
   }
 
   values.push(step_id, id);
@@ -67,12 +78,13 @@ export async function PATCH(
 
   // 同步订单状态
   const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
-  const allDone = steps.every((s) => s.status === "已完成" || s.status === "阻塞");
-  const anyProgress = steps.some((s) => s.status === "进行中");
+  // 只有全部步骤真正"已完成"才算订单完成（此前全部"阻塞"也会被标成已完成）
+  const allDone = steps.every((s) => s.status === "已完成");
+  const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
   if (steps.length > 0) {
     let orderStatus = "待处理";
     if (allDone) orderStatus = "已完成";
-    else if (anyProgress) orderStatus = "进行中";
+    else if (anyActivity) orderStatus = "进行中";
     db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(orderStatus, id);
   }
 

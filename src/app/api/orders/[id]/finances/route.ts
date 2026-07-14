@@ -27,11 +27,16 @@ export async function POST(
   const db = getDb();
   const body = await req.json();
   const { type, amount, description, payment_method, slip_number, slip_file, status, currency } = body;
-  if (!type || !amount) return NextResponse.json({ error: "请提供类型和金额" }, { status: 400 });
+  // amount 用 == null 判断而不是取反，否则金额 0 会被误拒
+  if (!type || amount == null || amount === "") return NextResponse.json({ error: "请提供类型和金额" }, { status: 400 });
+  if (type !== "income" && type !== "expense") return NextResponse.json({ error: "type 必须是 income 或 expense" }, { status: 400 });
+  if (isNaN(Number(amount)) || Number(amount) < 0) return NextResponse.json({ error: "金额必须是非负数字" }, { status: 400 });
+  const order = db.prepare("SELECT id FROM orders WHERE id = ?").get(id);
+  if (!order) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
   const result = db.prepare(
     "INSERT INTO finances (order_id, type, amount, status, description, payment_method, slip_number, slip_file, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, type, amount, status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
+  ).run(id, type, Number(amount), status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
   const fin = db.prepare("SELECT * FROM finances WHERE id = ?").get(result.lastInsertRowid) as { id: number };
   logOperation(auth.name, "添加费用", "finance", String(fin.id), `订单:${id} 类型:${type}`);
   return NextResponse.json(fin, { status: 201 });
