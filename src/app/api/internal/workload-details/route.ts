@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   if (type === "order_steps") {
     data = db.prepare(`
       SELECT os.id, os.step_name, os.step_order, os.status, os.deadline,
-             o.id as order_id, o.customer_name, o.status as order_status, o.phase
+             o.id as order_id, o.customer_name, o.status as order_status
       FROM order_steps os
       JOIN orders o ON os.order_id = o.id
       WHERE os.assignee = ? AND os.status NOT IN ('已完成','已停止')
