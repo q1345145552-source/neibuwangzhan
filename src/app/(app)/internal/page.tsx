@@ -1127,7 +1127,9 @@ export default function InternalPage() {
                         <div key={idx} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 hover:bg-[var(--muted)]/30 transition-colors">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium truncate">{item.influencer_name}</span>
+                              <a href={`/agency/influencers/${item.influencer_id}`} target="_blank" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={e => e.stopPropagation()}>
+                                {item.influencer_name}
+                              </a>
                               {item.code && <span className="text-xs text-[var(--muted-foreground)] shrink-0">编号: {item.code}</span>}
                             </div>
                             <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
@@ -1136,6 +1138,9 @@ export default function InternalPage() {
                               <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
                             </div>
                           </div>
+                          <a href={`/agency/influencers/${item.influencer_id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>
+                            <ExternalLink className="size-3.5" />
+                          </a>
                         </div>
                       );
                     }
@@ -1156,7 +1161,7 @@ export default function InternalPage() {
                               )}
                             </div>
                           </div>
-                          <a href={`/agency/contracts/${item.id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>
+                          <a href={`/agency/influencers/${item.id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>
                             <ExternalLink className="size-3.5" />
                           </a>
                         </div>
