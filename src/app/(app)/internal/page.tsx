@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2 } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -92,9 +92,33 @@ export default function InternalPage() {
   const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
   const [leaveErr, setLeaveErr] = useState("");
 
+  // History toggles & date filters
+  const [showAtdHistory, setShowAtdHistory] = useState(false);
+  const [atdHistoryFilter, setAtdHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
+  const [showLeaveHistory, setShowLeaveHistory] = useState(false);
+  const [leaveHistoryFilter, setLeaveHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
+  const [showNotifHistory, setShowNotifHistory] = useState(false);
+  const [notifHistoryFilter, setNotifHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
+
+  // Workload detail modal
+  const [wlDetailModal, setWlDetailModal] = useState<{ employee: string; type: string; label: string } | null>(null);
+  const [wlDetailData, setWlDetailData] = useState<any[]>([]);
+  const [wlDetailLoading, setWlDetailLoading] = useState(false);
+  const handleWlDetail = async (employee: string, type: string, label: string) => {
+    setWlDetailModal({ employee, type, label });
+    setWlDetailLoading(true);
+    setWlDetailData([]);
+    try {
+      const res = await fetchWithAuth(`/api/internal/workload-details?employee=${encodeURIComponent(employee)}&type=${type}`, { cache: "no-store" });
+      const json = await res.json();
+      setWlDetailData(json.data || []);
+    } catch {}
+    setWlDetailLoading(false);
+  };
+
   const loadAll = async () => {
     try {
-      const leaveUrl = isAdmin ? "/api/leave?status=待审批" : `/api/leave?employee=${encodeURIComponent(user?.name || "")}`;
+      const leaveUrl = isAdmin ? "/api/leave" : `/api/leave?employee=${encodeURIComponent(user?.name || "")}`;
       const [wlRes, isRes, lvRes] = await Promise.all([
         fetchWithAuth("/api/internal/workload", { cache: "no-store" }),
         fetchWithAuth("/api/issues", { cache: "no-store" }),
@@ -106,6 +130,14 @@ export default function InternalPage() {
       const notifRes = await fetchWithAuth(`/api/notifications?recipient=${user?.name || ""}&limit=30`, { cache: "no-store" });
       setNotifications(await notifRes.json());
     } catch {}
+  };
+
+  const isWithinDays = (dateStr: string, days: number) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    return diff <= days * 24 * 60 * 60 * 1000;
   };
 
   const loadAttendance = async () => {
@@ -847,17 +879,58 @@ export default function InternalPage() {
               </table>
             </div>
           )}
-          {attendanceRequests.filter(r => r.status !== "待审批").length > 0 && (
-            <div className="border-t border-[var(--border)] px-5 py-3">
-              <p className="text-xs font-medium text-[var(--muted-foreground)] mb-2">已完成</p>
-              {attendanceRequests.filter(r => r.status !== "待审批").slice(0, 10).map(r => (
-                <div key={r.id} className="flex items-center justify-between py-1 text-xs">
-                  <span>{r.employee_name} · {r.date} {r.time}</span>
-                  <span className={cn(r.status === "已通过" ? "text-green-600" : "text-red-500")}>{r.status} {r.approved_by && `· ${r.approved_by}`}</span>
+        {attendanceRequests.filter(r => r.status !== "待审批").length > 0 && (
+          <div className="border-t border-[var(--border)]">
+            {!showAtdHistory ? (
+              <button
+                className="w-full px-5 py-3 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors text-left"
+                onClick={() => setShowAtdHistory(true)}
+              >
+                历史记录 ({attendanceRequests.filter(r => r.status !== "待审批").length})
+              </button>
+            ) : (
+              <div className="px-5 py-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-1.5">
+                    {(["7d", "30d", "all"] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setAtdHistoryFilter(f)}
+                        className={cn(
+                          "px-2.5 py-1 text-xs rounded transition-colors",
+                          atdHistoryFilter === f ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                        )}
+                      >
+                        {f === "7d" ? "最近七天" : f === "30d" ? "最近三十天" : "全部"}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onClick={() => setShowAtdHistory(false)}>收起</button>
                 </div>
-              ))}
-            </div>
-          )}
+                {(atdHistoryFilter === "7d"
+                  ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 7))
+                  : atdHistoryFilter === "30d"
+                  ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
+                  : attendanceRequests.filter(r => r.status !== "待审批")
+                ).length === 0 ? (
+                  <p className="text-xs text-[var(--muted-foreground)] py-2">该时间段内无记录</p>
+                ) : (
+                  (atdHistoryFilter === "7d"
+                    ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 7))
+                    : atdHistoryFilter === "30d"
+                    ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
+                    : attendanceRequests.filter(r => r.status !== "待审批")
+                  ).map(r => (
+                    <div key={r.id} className="flex items-center justify-between py-1 text-xs">
+                      <span>{r.employee_name} · {r.date} {r.time}</span>
+                      <span className={cn(r.status === "已通过" ? "text-green-600" : "text-red-500")}>{r.status}{r.approved_by ? ` · ${r.approved_by}` : ""}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
         </div>
       )}
 
@@ -872,8 +945,16 @@ export default function InternalPage() {
         {notifications.length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无通知</div>
         ) : (
+          <>
           <div className="divide-y divide-[var(--border)] max-h-64 overflow-y-auto">
-            {notifications.map(n => (
+            {notifications
+              .filter(n => {
+                if (showNotifHistory) return true;
+                if (notifHistoryFilter === "7d") return isWithinDays(n.created_at, 7);
+                if (notifHistoryFilter === "30d") return isWithinDays(n.created_at, 30);
+                return true;
+              })
+              .map(n => (
               <div
                 key={n.id}
                 onClick={() => { if (n.is_read === 0) markNotifRead(n.id); }}
@@ -890,6 +971,43 @@ export default function InternalPage() {
               </div>
             ))}
           </div>
+          {(() => {
+            const hidden = notifications.filter(n => {
+              if (showNotifHistory) return false;
+              if (notifHistoryFilter === "7d") return !isWithinDays(n.created_at, 7);
+              if (notifHistoryFilter === "30d") return !isWithinDays(n.created_at, 30);
+              return false;
+            });
+            return hidden.length > 0 ? (
+              <div className="border-t border-[var(--border)]">
+                {!showNotifHistory ? (
+                  <button
+                    className="w-full px-5 py-3 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors text-left"
+                    onClick={() => setShowNotifHistory(true)}
+                  >
+                    查看历史 ({hidden.length})
+                  </button>
+                ) : (
+                  <div className="px-5 py-3 flex items-center gap-1.5">
+                    {(["7d", "30d", "all"] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setNotifHistoryFilter(f)}
+                        className={cn(
+                          "px-2.5 py-1 text-xs rounded transition-colors",
+                          notifHistoryFilter === f ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                        )}
+                      >
+                        {f === "7d" ? "最近七天" : f === "30d" ? "最近三十天" : "全部"}
+                      </button>
+                    ))}
+                    <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] ml-auto" onClick={() => setShowNotifHistory(false)}>收起</button>
+                  </div>
+                )}
+              </div>
+            ) : null;
+          })()}
+          </>
         )}
       </div>
 
@@ -926,9 +1044,27 @@ export default function InternalPage() {
                     {e.level === "critical" && <AlertTriangle className="size-3 text-red-500" />}
                     {e.level === "warn" && <AlertTriangle className="size-3 text-amber-500" />}
                   </td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">{e.orderSteps}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">{e.influencerSteps}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">{e.contractInfs}</td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {e.orderSteps > 0 ? (
+                      <button onClick={() => handleWlDetail(e.name, "order_steps", `${e.name} 的订单步骤`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {e.orderSteps}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {e.influencerSteps > 0 ? (
+                      <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人步骤`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {e.influencerSteps}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {e.contractInfs > 0 ? (
+                      <button onClick={() => handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {e.contractInfs}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
                   <td className={cn(
                     "py-2.5 px-4 text-center tabular-nums font-semibold",
                     e.level === "critical" && "text-red-600",
@@ -943,6 +1079,97 @@ export default function InternalPage() {
           </table>
         </div>
       </div>
+
+      {/* ── 工作量明细弹窗 ── */}
+      {wlDetailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setWlDetailModal(null)}>
+          <div className="bg-[var(--background)] rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+              <h2 className="text-sm font-medium">{wlDetailModal.label}</h2>
+              <button onClick={() => setWlDetailModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-5">
+              {wlDetailLoading ? (
+                <div className="py-12 flex items-center justify-center gap-2 text-sm text-[var(--muted-foreground)]">
+                  <Loader2 className="size-4 animate-spin" />加载中...
+                </div>
+              ) : wlDetailData.length === 0 ? (
+                <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无明细数据</p>
+              ) : (
+                <div className="space-y-2">
+                  {wlDetailData.map((item: any, idx: number) => {
+                    if (wlDetailModal.type === "order_steps") {
+                      return (
+                        <div key={idx} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 hover:bg-[var(--muted)]/30 transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <a href={`/orders/${item.order_id}`} target="_blank" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={e => e.stopPropagation()}>
+                                {item.customer_name || item.order_id}
+                              </a>
+                              <span className="text-xs text-[var(--muted-foreground)] shrink-0">{item.order_id}</span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                              <span>步骤: {item.step_name}</span>
+                              <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
+                              {item.deadline && <span>截止: {item.deadline}</span>}
+                            </div>
+                          </div>
+                          <a href={`/orders/${item.order_id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        </div>
+                      );
+                    }
+                    if (wlDetailModal.type === "influencer_steps") {
+                      return (
+                        <div key={idx} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 hover:bg-[var(--muted)]/30 transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium truncate">{item.influencer_name}</span>
+                              {item.code && <span className="text-xs text-[var(--muted-foreground)] shrink-0">编号: {item.code}</span>}
+                            </div>
+                            <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                              <span>阶段: {item.phase === "discovery" ? "达人发现" : item.phase === "contract" ? "签约跟进" : "品牌孵化"}</span>
+                              <span>步骤: {item.step_name}</span>
+                              <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (wlDetailModal.type === "contract_infs") {
+                      return (
+                        <div key={idx} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 hover:bg-[var(--muted)]/30 transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium truncate">{item.name}</span>
+                              {item.code && <span className="text-xs text-[var(--muted-foreground)] shrink-0">编号: {item.code}</span>}
+                            </div>
+                            <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                              {item.base_salary && <span>底薪: {item.base_salary}</span>}
+                              {item.commission && <span>佣金: {item.commission}</span>}
+                              {item.live_sessions && <span>直播: {item.live_sessions}场</span>}
+                              {item.payment_status && (
+                                <span className={item.payment_status === "已付" ? "text-green-600" : "text-amber-600"}>付款: {item.payment_status}</span>
+                              )}
+                            </div>
+                          </div>
+                          <a href={`/agency/contracts/${item.id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 问题工单 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
@@ -1075,7 +1302,8 @@ export default function InternalPage() {
           </div>
         )}
 
-        {leaves.length === 0 ? (
+        {/* Pending leaves - always shown */}
+        {leaves.filter(l => l.status === "待审批").length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">{isAdmin ? "暂无待审批的请假" : "暂无请假记录"}</div>
         ) : (
           <div className="overflow-x-auto">
@@ -1090,7 +1318,7 @@ export default function InternalPage() {
                 </tr>
               </thead>
               <tbody>
-                {leaves.map(l => (
+                {leaves.filter(l => l.status === "待审批").map(l => (
                   <tr key={l.id} className="border-b border-[var(--border)]">
                     <td className="py-2.5 px-4 font-medium">{l.employee_name}</td>
                     <td className="py-2.5 px-4">{l.leave_type}</td>
@@ -1106,6 +1334,80 @@ export default function InternalPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* History toggle for approved/rejected leaves */}
+        {leaves.filter(l => l.status !== "待审批").length > 0 && (
+          <div className="border-t border-[var(--border)]">
+            {!showLeaveHistory ? (
+              <button
+                className="w-full px-5 py-3 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors text-left"
+                onClick={() => setShowLeaveHistory(true)}
+              >
+                历史记录 ({leaves.filter(l => l.status !== "待审批").length})
+              </button>
+            ) : (
+              <div className="px-5 py-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-1.5">
+                    {(["7d", "30d", "all"] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setLeaveHistoryFilter(f)}
+                        className={cn(
+                          "px-2.5 py-1 text-xs rounded transition-colors",
+                          leaveHistoryFilter === f ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                        )}
+                      >
+                        {f === "7d" ? "最近七天" : f === "30d" ? "最近三十天" : "全部"}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onClick={() => setShowLeaveHistory(false)}>收起</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border)]">
+                        <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
+                        <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
+                        <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
+                        <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+                        <th className="py-2.5 px-4 text-left text-xs font-medium">审批人</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(leaveHistoryFilter === "7d"
+                        ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 7))
+                        : leaveHistoryFilter === "30d"
+                        ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 30))
+                        : leaves.filter(l => l.status !== "待审批")
+                      ).length === 0 ? (
+                        <tr><td colSpan={5} className="py-4 text-center text-xs text-[var(--muted-foreground)]">该时间段内无记录</td></tr>
+                      ) : (
+                        (leaveHistoryFilter === "7d"
+                          ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 7))
+                          : leaveHistoryFilter === "30d"
+                          ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 30))
+                          : leaves.filter(l => l.status !== "待审批")
+                        ).map(l => (
+                          <tr key={l.id} className="border-b border-[var(--border)]">
+                            <td className="py-2.5 px-4 font-medium">{l.employee_name}</td>
+                            <td className="py-2.5 px-4">{l.leave_type}</td>
+                            <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</td>
+                            <td className="py-2.5 px-4">
+                              <span className={cn(l.status === "已通过" ? "text-green-600" : "text-red-500", "text-xs")}>{l.status}</span>
+                            </td>
+                            <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{l.approved_by || "—"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
