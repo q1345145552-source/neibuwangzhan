@@ -1126,7 +1126,6 @@ export default function InternalPage() {
                               {item.created_at && (item.status === "进行中" || item.status === "已完成") && (
                                 <StepTimerStatic created_at={item.created_at} completed_at={item.completed_at || null} />
                               )}
-                              {item.deadline && <span>截止: {item.deadline}</span>}
                             </div>
                           </div>
                           <a href={`/orders/${item.order_id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>

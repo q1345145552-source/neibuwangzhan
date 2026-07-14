@@ -8,7 +8,6 @@ import { Clock } from "lucide-react";
 interface StepTimerProps {
   created_at: string;
   completed_at?: string | null;
-  deadline_hours?: number; // 预估工作小时数
   status?: string;
   className?: string;
 }
@@ -17,9 +16,9 @@ interface StepTimerProps {
  * 步骤计时器组件
  * - 进行中：每秒更新，计算 created_at → now 的工作小时
  * - 已完成：计算 created_at → completed_at 的工作小时（不更新）
- * - 超时数字变红
+ * - 纯秒表计时，不标红不对比
  */
-export function StepTimer({ created_at, completed_at, deadline_hours, status, className }: StepTimerProps) {
+export function StepTimer({ created_at, completed_at, status, className }: StepTimerProps) {
   const [elapsed, setElapsed] = useState(0);
   const isCompleted = status === "已完成" || (typeof completed_at === "string" && completed_at.length > 0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -51,13 +50,10 @@ export function StepTimer({ created_at, completed_at, deadline_hours, status, cl
     };
   }, [created_at, completed_at, isCompleted]);
 
-  const isOverdue = deadline_hours !== undefined && deadline_hours > 0 && elapsed > deadline_hours;
-
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-xs tabular-nums",
-        isOverdue ? "text-[var(--destructive)] font-semibold" : "text-[var(--muted-foreground)]",
+        "inline-flex items-center gap-1 text-xs tabular-nums text-[var(--muted-foreground)]",
         className
       )}
       title={isCompleted
@@ -75,9 +71,6 @@ export function StepTimer({ created_at, completed_at, deadline_hours, status, cl
         )}
       </span>
       {formatWorkHours(elapsed)}
-      {isOverdue && deadline_hours !== undefined && (
-        <span className="text-[var(--destructive)]"> / 超 {formatWorkHours(elapsed - deadline_hours)}</span>
-      )}
     </span>
   );
 }
@@ -85,17 +78,14 @@ export function StepTimer({ created_at, completed_at, deadline_hours, status, cl
 /**
  * 纯展示组件（不实时更新，用于列表页）
  */
-export function StepTimerStatic({ created_at, completed_at, deadline_hours }: StepTimerProps) {
+export function StepTimerStatic({ created_at, completed_at }: StepTimerProps) {
   const elapsed = completed_at
     ? calcWorkHours(created_at, completed_at)
     : calcWorkHours(created_at, new Date().toISOString());
-  const isOverdue = deadline_hours !== undefined && deadline_hours > 0 && elapsed > deadline_hours;
-
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-xs tabular-nums",
-        isOverdue ? "text-[var(--destructive)] font-semibold" : "text-[var(--muted-foreground)]"
+        "inline-flex items-center gap-1 text-xs tabular-nums text-[var(--muted-foreground)]"
       )}
       title={completed_at ? "实际用时（工作小时）" : "已用工作小时"}
     >

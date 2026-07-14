@@ -13,10 +13,6 @@ export const companyRegDocs: Record<number, string[]> = {
   11: [],
 };
 
-export const companyRegTimes: Record<number, string> = {
-  1: "1天", 2: "1天", 3: "1-2天", 4: "2-3天", 5: "2-3天", 6: "1天", 7: "1-2周", 8: "1天", 9: "每月", 10: "2-5天", 11: "1天",
-};
-
 export const companySubServices = [
   { key: "company-reg", label: "新公司注册", businessTypeId: 1 },
   { key: "vat", label: "VAT注册", businessTypeId: 1 },
@@ -37,10 +33,6 @@ export const trademarkDocs: Record<number, string[]> = {
   7: [],
 };
 
-export const trademarkTimes: Record<number, string> = {
-  1: "1天", 2: "1-2天", 3: "1天", 4: "2-3天", 5: "3-5天", 6: "1天", 7: "1天",
-};
-
 /* ── 商标 — 国际商标 ── */
 export const internationalTrademarkDocs: Record<number, string[]> = {
   1: ["客户需求确认表"],
@@ -51,10 +43,6 @@ export const internationalTrademarkDocs: Record<number, string[]> = {
   6: ["国际注册申请表"],
   7: ["缴费凭证"],
   8: [],
-};
-
-export const internationalTrademarkTimes: Record<number, string> = {
-  1: "1天", 2: "2-3天", 3: "1天", 4: "1天", 5: "2-3天", 6: "4-6周", 7: "1天", 8: "1天",
 };
 
 export const internationalTrademarkSteps: { name: string; assignee: string }[] = [
@@ -78,10 +66,6 @@ export const buyRTrademarkDocs: Record<number, string[]> = {
   6: ["变更申请表"],
   7: ["缴费凭证"],
   8: [],
-};
-
-export const buyRTrademarkTimes: Record<number, string> = {
-  1: "1天", 2: "1-3天", 3: "1天", 4: "1天", 5: "1-2天", 6: "1-2天", 7: "1天", 8: "1-2周",
 };
 
 export const buyRTrademarkSteps: { name: string; assignee: string }[] = [
@@ -118,10 +102,6 @@ export const fdaCosmeticsDocs: Record<number, string[]> = {
   12: [],
 };
 
-export const fdaCosmeticsTimes: Record<number, string> = {
-  1: "1-2天", 2: "1天", 3: "1天", 4: "1天", 5: "5-7个工作日", 6: "2-3天", 7: "5-7个工作日", 8: "1-2天", 9: "1天", 10: "5-7个工作日", 11: "1天", 12: "1天",
-};
-
 /* ── FDA — 食品认证 ── */
 export const fdaFoodDocs: Record<number, string[]> = {
   1: ["工厂文件", "产品配方", "产品图+标签", "生产工艺流程", "商标文件"],
@@ -136,10 +116,6 @@ export const fdaFoodDocs: Record<number, string[]> = {
   10: [],
   11: [],
   12: [],
-};
-
-export const fdaFoodTimes: Record<number, string> = {
-  1: "1-2天", 2: "1天", 3: "1天", 4: "30个工作日", 5: "1天", 6: "1天", 7: "5-7个工作日", 8: "2-3天", 9: "1天", 10: "5-7个工作日", 11: "1天", 12: "1天",
 };
 
 /* ── FDA — 危险品认证 ── */
@@ -160,10 +136,6 @@ export const fdaHazardDocs: Record<number, string[]> = {
   14: [],
 };
 
-export const fdaHazardTimes: Record<number, string> = {
-  1: "1-2天", 2: "1天", 3: "3-5个工作日", 4: "1天", 5: "1天", 6: "5-7个工作日", 7: "2-3天", 8: "1天", 9: "5-7个工作日", 10: "2-3天", 11: "1-2天", 12: "5-7个工作日", 13: "1天", 14: "1天",
-};
-
 /* ── TISI ── */
 export const tisiDocs: Record<number, string[]> = {
   1: ["产品图", "产品规格书"],
@@ -180,10 +152,6 @@ export const tisiDocs: Record<number, string[]> = {
   12: [],
 };
 
-export const tisiTimes: Record<number, string> = {
-  1: "1天", 2: "1-2天", 3: "2-3天", 4: "1天", 5: "1天", 6: "7-14天", 7: "2-3天", 8: "1-2天", 9: "5-7天", 10: "1-2天", 11: "30-60天", 12: "1天",
-};
-
 export const nbtcDocs: Record<number, string[]> = {
   1: ["产品图", "产品规格书"],
   2: [],
@@ -197,10 +165,6 @@ export const nbtcDocs: Record<number, string[]> = {
   10: [],
   11: [],
   12: [],
-};
-
-export const nbtcTimes: Record<number, string> = {
-  1: "1天", 2: "1-2天", 3: "2-3天", 4: "1天", 5: "1天", 6: "7-14天", 7: "2-3天", 8: "1-2天", 9: "5-7天", 10: "1-2天", 11: "30-60天", 12: "1天",
 };
 
 export const tisiSubServices = [
@@ -257,10 +221,6 @@ export const mallShopeeDocs: Record<number, string[]> = {
   8: [],
 };
 
-export const mallShopeeTimes: Record<number, string> = {
-  1: "1-2天", 2: "1天", 3: "1天", 4: "1-3天", 5: "5-7个工作日", 6: "15个工作日", 7: "1天", 8: "1天",
-};
-
 export const mallTiktokDocs: Record<number, string[]> = {
   1: ["企业店铺信息", "商标资料", "法人护照", "公司证书（不超过6个月）", "店铺账号密码", "其他平台店铺链接"],
   2: ["WIPO商标信息", "TM标或R标证书"],
@@ -270,19 +230,11 @@ export const mallTiktokDocs: Record<number, string[]> = {
   6: [],
 };
 
-export const mallTiktokTimes: Record<number, string> = {
-  1: "1-2天", 2: "1-2天", 3: "2-3天", 4: "1-2天", 5: "3-5天", 6: "1天",
-};
-
 export const mallLazadaDocs: Record<number, string[]> = {
   1: ["公司证书（不超过6个月）", "PP20", "公司银行账户", "法人护照", "电话号码", "邮箱密码", "电器类：自有TISI认证"],
   2: ["全套公司文件", "商标资料"],
   3: ["DBD登记仓库地址", "仓库现场照片"],
   4: [],
-};
-
-export const mallLazadaTimes: Record<number, string> = {
-  1: "1-2天", 2: "5-7个工作日", 3: "1-2天", 4: "1天",
 };
 
 export const mallSubServices = [
@@ -309,9 +261,6 @@ export const addressDocs: Record<number, string[]> = {
   16: [],
 };
 
-export const addressTimes: Record<number, string> = {
-  1: "1天", 2: "1天", 3: "1天", 4: "1-2天", 5: "3-5个工作日", 6: "1-2天", 7: "1天", 8: "1天", 9: "1天", 10: "5-7个工作日", 11: "2-3天", 12: "1天", 13: "5-7个工作日", 14: "1天", 15: "1天", 16: "1天",
-};
 export const customsDocs: Record<number, string[]> = {
   1: ["产品图+规格", "公司证书", "PP20", "法人护照/身份证", "泰国收货地址", "Invoice", "Packing List"],
   2: [],
@@ -319,10 +268,6 @@ export const customsDocs: Record<number, string[]> = {
   4: [],
   5: [],
   6: [],
-};
-
-export const customsTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "1天", 4: "3-5天", 5: "5-7天", 6: "1-2天",
 };
 
 /* ── DLD ── */
@@ -334,19 +279,11 @@ export const dldProductDocs: Record<number, string[]> = {
   5: [],
 };
 
-export const dldProductTimes: Record<number, string> = {
-  1: "2天", 2: "1天", 3: "1天", 4: "7-14天", 5: "30天",
-};
-
 export const dldSiteDocs: Record<number, string[]> = {
   1: ["存储位置和进口位置分开", "有货架", "有合规标识"],
   2: ["场地平面图"],
   3: [],
   4: [],
-};
-
-export const dldSiteTimes: Record<number, string> = {
-  1: "1天", 2: "2天", 3: "1天", 4: "30天",
 };
 
 export const dldSubServices = [
@@ -385,45 +322,11 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
   return {};
 }
 
-export function getStepTimes(businessTypeId: number, subServiceType?: string): Record<number, string> {
-  if (businessTypeId === 1) return companyRegTimes;
-  if (businessTypeId === 2) {
-    if (subServiceType === "international") return internationalTrademarkTimes;
-    if (subServiceType === "buy-r") return buyRTrademarkTimes;
-    return trademarkTimes;
-  }
-  if (businessTypeId === 3) {
-    if (subServiceType === "food") return fdaFoodTimes;
-    if (subServiceType === "hazard") return fdaHazardTimes;
-    if (subServiceType === "medical") return {};
-    return fdaCosmeticsTimes;
-  }
-  if (businessTypeId === 4) return tisiTimes;
-  if (businessTypeId === 5) {
-    if (subServiceType === "site") return dldSiteTimes;
-    return dldProductTimes;
-  }
-  if (businessTypeId === 6) return customsTimes;
-  if (businessTypeId === 7) return addressTimes;
-  if (businessTypeId === 8) {
-    if (subServiceType === "tiktok") return mallTiktokTimes;
-    if (subServiceType === "lazada") return mallLazadaTimes;
-    return mallShopeeTimes;
-  }
-  if (businessTypeId === 9) return nbtcTimes;
-  return {};
-}
-
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {
   1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs,
-};
-
-export const stepTimeEstimates: Record<number, Record<number, string>> = {
-  1: companyRegTimes, 2: trademarkTimes, 3: fdaCosmeticsTimes, 4: tisiTimes, 5: dldProductTimes, 6: customsTimes, 7: addressTimes, 8: mallShopeeTimes, 9: nbtcTimes,
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {
   1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [],
 };
-
 
