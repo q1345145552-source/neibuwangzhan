@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       FROM influencers i
       LEFT JOIN contracts c ON c.influencer_id = i.id
       WHERE i.phase = 'contract'
+        AND i.status NOT IN ('已完成','已停止')
         AND i.id IN (
           SELECT influencer_id FROM influencer_steps
           WHERE assignee = ? AND status NOT IN ('已完成','已停止')
