@@ -230,7 +230,7 @@ export function getInfluencerSteps(): InfluencerStepTemplate[] {
     { name: "从 Kalodata 拉取数据评估打分", assignee: "Ploy", phase: "discovery" },
     { name: "筛选 A 级达人推送老板审批", assignee: "Prae / Namcha", phase: "discovery" },
     { name: "老板确认联系 or 否决", assignee: "老板", phase: "discovery" },
-    // 二、签约跟进 (9 步)
+    // 二、签约跟进 (12 步)
     { name: "联系达人沟通报价方案", assignee: "Prae / Namcha", phase: "contract" },
     { name: "老板审批后开具发票", assignee: "元丽", phase: "contract" },
     { name: "确认达人尺码、身高、地址等细节", assignee: "Prae / Namcha", phase: "contract" },
@@ -239,7 +239,10 @@ export function getInfluencerSteps(): InfluencerStepTemplate[] {
     { name: "收样检查并登记产品信息", assignee: "Ploy", phase: "contract" },
     { name: "起草合同安排达人线上签署", assignee: "Prae / Namcha", phase: "contract" },
     { name: "寄送样品并催产出", assignee: "Ploy", phase: "contract" },
-    { name: "持续跟踪直播和视频数据做报表", assignee: "全员", phase: "contract" },
+    { name: "跟进第一期的直播和视频数据", assignee: "Namcha / Ploy", phase: "contract" },
+    { name: "向达人支付第一期款项", assignee: "Namcha", phase: "contract" },
+    { name: "跟进第二期的直播和视频数据", assignee: "Namcha / Ploy", phase: "contract" },
+    { name: "向达人支付第二期款项", assignee: "Namcha", phase: "contract" },
     // 三、品牌孵化 (5 步)
     { name: "从达人池筛选适合做品牌的达人", assignee: "Namcha / 元丽", phase: "incubation" },
     { name: "趁送样时机口聊品牌合作意向，留联系方式", assignee: "Prae / Namcha", phase: "incubation" },
