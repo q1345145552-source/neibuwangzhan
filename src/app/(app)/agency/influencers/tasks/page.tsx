@@ -62,7 +62,7 @@ export default function DiscoveryTasksPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    fetch("/api/discovery-tasks/stats", { cache: "no-store" })
+    fetchWithAuth("/api/discovery-tasks/stats", { cache: "no-store" })
       .then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 

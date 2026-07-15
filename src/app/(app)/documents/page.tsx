@@ -99,7 +99,7 @@ export default function DocumentsPage() {
       // 1. Upload file
       const formData = new FormData();
       formData.append("file", file);
-      const uploadRes = await fetch("/api/upload", {
+      const uploadRes = await fetch("/api/upload", { 
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
         body: formData,

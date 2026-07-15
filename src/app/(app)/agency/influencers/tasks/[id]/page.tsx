@@ -65,8 +65,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     setLoading(true);
     try {
       const [taskRes, infsRes] = await Promise.all([
-        fetch(`/api/discovery-tasks/${id}`, { cache: "no-store" }),
-        fetch(`/api/discovery-tasks/${id}/influencers`, { cache: "no-store" }),
+        fetchWithAuth(`/api/discovery-tasks/${id}`, { cache: "no-store" }),
+        fetchWithAuth(`/api/discovery-tasks/${id}/influencers`, { cache: "no-store" }),
       ]);
       const [taskData, infsData] = await Promise.all([taskRes.json(), infsRes.json()]);
       setTask(taskData.error ? null : taskData);

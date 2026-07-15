@@ -48,7 +48,7 @@ export default function IncubationPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    fetch("/api/factories", { cache: "no-store" })
+    fetchWithAuth("/api/factories", { cache: "no-store" })
       .then(r => r.json()).then(d => setFactories(Array.isArray(d) ? d : []));
   }, []);
 
