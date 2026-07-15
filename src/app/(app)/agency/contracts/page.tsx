@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink, Download } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, fileUrl } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { startPhase } from "@/lib/api";
 
@@ -428,7 +428,7 @@ export default function ContractsPage() {
                     </td>
                     <td className="py-2.5 px-2 max-md:hidden">
                       {c.contract_url ? (
-                        <a href={c.contract_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline">
+                        <a href={fileUrl(c.contract_url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline">
                           <FileText className="size-3" />查看
                         </a>
                       ) : "-"}
