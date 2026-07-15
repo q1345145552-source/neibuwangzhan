@@ -59,6 +59,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
   const [form, setForm] = useState({
     name: "", code: "", tiktok_link: "", category: "", followers: "",
+    contact_phone: "", line_id: "", monthly_gmv: "", gmv_range: "",
   });
 
   const load = async () => {
@@ -86,11 +87,11 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       const res = await fetchWithAuth(`/api/discovery-tasks/${id}/influencers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, code: form.code, tiktok_link: form.tiktok_link, category: form.category, followers: form.followers }),
+        body: JSON.stringify({ name: form.name, code: form.code, tiktok_link: form.tiktok_link, category: form.category, followers: form.followers, contact_phone: form.contact_phone, line_id: form.line_id, monthly_gmv: form.monthly_gmv, gmv_range: form.gmv_range }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "添加失败");
-      setForm({ name: "", code: "", tiktok_link: "", category: "", followers: "" });
+      setForm({ name: "", code: "", tiktok_link: "", category: "", followers: "", contact_phone: "", line_id: "", monthly_gmv: "", gmv_range: "" });
       setShowAdd(false);
       load();
     } catch (err) {
@@ -207,6 +208,34 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <input value={form.followers} onChange={e => setForm(p => ({ ...p, followers: e.target.value }))}
                 placeholder="例如: 10万"
                 className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              <div>
+                <label className="text-xs font-medium">电话号码</label>
+                <input value={form.contact_phone} onChange={e => setForm(p => ({ ...p, contact_phone: e.target.value }))}
+                  placeholder="电话 / WhatsApp"
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">LINE ID</label>
+                <input value={form.line_id} onChange={e => setForm(p => ({ ...p, line_id: e.target.value }))}
+                  placeholder="Line ID"
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              <div>
+                <label className="text-xs font-medium">月度 GMV</label>
+                <input value={form.monthly_gmv} onChange={e => setForm(p => ({ ...p, monthly_gmv: e.target.value }))}
+                  placeholder="如 ฿350,000（选填）"
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">GMV 区间</label>
+                <input value={form.gmv_range} onChange={e => setForm(p => ({ ...p, gmv_range: e.target.value }))}
+                  placeholder="如 ฿5-10万（选填）"
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2">
