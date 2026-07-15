@@ -23,6 +23,13 @@ interface Contract {
   influencer_id: number;
   influencer_name: string;
   influencer_code: string;
+  influencer_category: string;
+  influencer_followers: string;
+  influencer_phone: string;
+  influencer_line: string;
+  influencer_status: string;
+  influencer_phase: string;
+  latest_gmv: string;
   base_salary: string;
   commission: string;
   live_sessions: string;
@@ -40,6 +47,23 @@ interface Contract {
 interface Influencer {
   id: number; name: string; phase: string; status: string; category: string;
   tiktok_link: string; followers: string; created_at: string;
+  code: string; contact_phone: string; line_id: string; monthly_gmv: string;
+  latest_rating: string | null;
+}
+
+
+function getPhaseLabel(phase: string): string {
+  const map: Record<string, string> = {
+    discovery: "达人发现", completed_discovery: "待签约",
+    contract: "签约中", completed_contract: "已完成",
+    incubation: "品牌孵化中", completed_incubation: "已完成孵化",
+  };
+  return map[phase] || phase;
+}
+
+
+function getGmvDisplay(inf: any): string {
+  return inf.monthly_gmv || inf.latest_gmv || "-";
 }
 
 function getOverdueLabel(createdAt: string): { label: string; cls: string } | null {
@@ -229,22 +253,29 @@ export default function ContractsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">编号</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">达人</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">品类</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">粉丝量</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">编号</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">达人</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-lg:hidden">品类</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">GMV区间</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">粉丝量</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">电话</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">LINE</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {filterInf(poolInfs).map(inf => (
                   <tr key={inf.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] tabular-nums">{inf.code || "-"}</td>
+                    <td className="py-2.5 px-3">
                       <Link href={`/agency/influencers/${inf.id}`} className="font-medium hover:underline">{inf.name}</Link>
                     </td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.category || "-"}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-lg:hidden">{inf.category || "-"}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{getGmvDisplay(inf)}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.followers || "-"}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.contact_phone || "-"}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.line_id || "-"}</td>
+                    <td className="py-2.5 px-3">
                       <Button size="sm" className="h-7 text-xs gap-1"
                         onClick={() => openContractForm(inf)}
                         disabled={startingPhases[inf.id]}>
@@ -272,22 +303,29 @@ export default function ContractsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">编号</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">达人</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">品类</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">粉丝量</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">编号</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">达人</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-lg:hidden">品类</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">GMV区间</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">粉丝量</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">电话</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">LINE</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">状态</th>
                 </tr>
               </thead>
               <tbody>
                 {filterInf(activeInfs).map(inf => (
                   <tr key={inf.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] tabular-nums">{inf.code || "-"}</td>
+                    <td className="py-2.5 px-3">
                       <Link href={`/agency/influencers/${inf.id}`} className="font-medium hover:underline">{inf.name}</Link>
                     </td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.category || "-"}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-lg:hidden">{inf.category || "-"}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{getGmvDisplay(inf)}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.followers || "-"}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.contact_phone || "-"}</td>
+                    <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.line_id || "-"}</td>
+                    <td className="py-2.5 px-3">
                       <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">签约中</span>
                     </td>
                   </tr>
@@ -306,14 +344,31 @@ export default function ContractsPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-green-200 dark:border-green-800">
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">编号</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">达人</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-lg:hidden">品类</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">GMV区间</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">粉丝量</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">电话</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">LINE</th>
+                  <th className="py-2.5 px-3 text-left text-xs font-medium">状态</th>
+                </tr>
+              </thead>
               <tbody>
                 {completedInfs.map(inf => (
                   <tr key={inf.id} className="border-b border-green-200 dark:border-green-800 hover:bg-[var(--secondary)]">
-                    <td className="py-2.5 px-4">
-                      <Link href={`/agency/influencers/${inf.id}`} className="font-medium hover:underline">{inf.name}</Link>
+                    <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 tabular-nums">{inf.code || "-"}</td>
+                    <td className="py-2.5 px-3">
+                      <Link href={`/agency/influencers/${inf.id}`} className="font-medium hover:underline text-green-700 dark:text-green-400">{inf.name}</Link>
                     </td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{inf.category || "-"}</td>
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 max-lg:hidden">{inf.category || "-"}</td>
+                    <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 max-xl:hidden">{getGmvDisplay(inf)}</td>
+                    <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 max-xl:hidden">{inf.followers || "-"}</td>
+                    <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 max-xl:hidden">{inf.contact_phone || "-"}</td>
+                    <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 max-xl:hidden">{inf.line_id || "-"}</td>
+                    <td className="py-2.5 px-3">
                       <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-700">已完成</span>
                     </td>
                   </tr>
@@ -336,15 +391,18 @@ export default function ContractsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">编号</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">达人</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">底薪</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">佣金</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-lg:hidden">场次/时长</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">文件</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium max-md:hidden">合同</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">付款</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">提醒</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium">编号</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium">达人</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-xl:hidden">品类</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-xl:hidden">GMV</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-md:hidden">底薪</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-md:hidden">佣金</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-xl:hidden">电话</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-lg:hidden">场次/时长</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-md:hidden">文件</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-md:hidden">合同</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium">付款</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium">提醒</th>
                 </tr>
               </thead>
               <tbody>
@@ -353,26 +411,29 @@ export default function ContractsPage() {
                   const rowClass = getOverdueRowClass(c.created_at, c.payment_status);
                   return (
                   <tr key={c.id} className={cn("border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors", rowClass)}>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden tabular-nums">{c.influencer_code || "-"}</td>
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] tabular-nums">{c.influencer_code || "-"}</td>
+                    <td className="py-2.5 px-2">
                       <Link href={`/agency/influencers/${c.influencer_id}`} className="font-medium hover:underline">{c.influencer_name || "-"}</Link>
                     </td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.base_salary || "-"}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-md:hidden">{c.commission || "-"}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden">
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] max-xl:hidden">{c.influencer_category || "-"}</td>
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] max-xl:hidden">{c.latest_gmv || "-"}</td>
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] max-md:hidden">{c.base_salary || "-"}</td>
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] max-md:hidden">{c.commission || "-"}</td>
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] max-xl:hidden">{c.influencer_phone || "-"}</td>
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] max-lg:hidden">
                       {c.live_sessions ? `${c.live_sessions}场` : "-"}{c.live_duration ? ` / ${c.live_duration}h` : ""}
                     </td>
-                    <td className="py-2.5 px-4 max-md:hidden">
+                    <td className="py-2.5 px-2 max-md:hidden">
                       <span className="tabular-nums">{c.file_count ?? 0}</span>
                     </td>
-                    <td className="py-2.5 px-4 max-md:hidden">
+                    <td className="py-2.5 px-2 max-md:hidden">
                       {c.contract_url ? (
                         <a href={c.contract_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline">
                           <FileText className="size-3" />查看
                         </a>
                       ) : "-"}
                     </td>
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-2">
                       <button
                         onClick={() => handleTogglePayment(c.id, c.payment_status)}
                         className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity", payClass[c.payment_status] || payClass["未付"])}
@@ -381,7 +442,7 @@ export default function ContractsPage() {
                         {c.payment_status}
                       </button>
                     </td>
-                    <td className="py-2.5 px-4">
+                    <td className="py-2.5 px-2">
                       {overdue && c.payment_status !== "已付" ? (
                         <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium", overdue.cls)}>
                           {overdue.label === "已超时" ? <AlertCircle className="size-3" /> : <Clock className="size-3" />}
