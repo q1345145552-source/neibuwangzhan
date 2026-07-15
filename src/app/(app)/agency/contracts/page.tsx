@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink, Download } from "lucide-react";
-import { cn, fileUrl } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { startPhase } from "@/lib/api";
 
@@ -86,7 +86,7 @@ function getOverdueRowClass(createdAt: string, paymentStatus: string): string {
 
 export default function ContractsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [poolInfs, setPoolInfs] = useState<Influencer[]>([]);
   const [activeInfs, setActiveInfs] = useState<Influencer[]>([]);
@@ -101,6 +101,8 @@ export default function ContractsPage() {
   const overdueFilter = searchParams.get("overdue");
 
   const load = async () => {
+    // token 没就绪时不发请求，等 useAuth 初始化完
+    if (!token) return;
     try {
       const [cr, ir] = await Promise.all([
         fetchWithAuth("/api/contracts", { cache: "no-store" }),
@@ -118,7 +120,7 @@ export default function ContractsPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [token]);
 
   const openContractForm = (inf: Influencer) => {
     setContractModal({ influencer: inf });
@@ -428,7 +430,7 @@ export default function ContractsPage() {
                     </td>
                     <td className="py-2.5 px-2 max-md:hidden">
                       {c.contract_url ? (
-                        <a href={fileUrl(c.contract_url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline">
+                        <a href={c.contract_url && token ? `${c.contract_url}${c.contract_url.includes("?")?"&":"?"}token=${encodeURIComponent(token)}` : c.contract_url || "#"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline">
                           <FileText className="size-3" />查看
                         </a>
                       ) : "-"}
