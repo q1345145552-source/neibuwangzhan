@@ -192,7 +192,7 @@ function getPreviewGrade() {
       });
       if (!res.ok) throw new Error("保存评估失败");
 
-      await fetchWithAuth("/api/influencers", {
+      const patchRes = await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -205,6 +205,11 @@ function getPreviewGrade() {
           contact_phone: evalForm.contact_phone,
         }),
       });
+
+      if (!patchRes.ok) {
+        const errText = await patchRes.text();
+        console.error("同步达人表失败:", patchRes.status, errText);
+      }
 
       setEvalModal(null);
       load();
