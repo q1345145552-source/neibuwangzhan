@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Upload as UploadIcon, Building, ExternalLink, Search, Play, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { fetchEmployees, type Employee, startPhase, fetchWithAuth } from "@/lib/api";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { StepTimer } from "@/components/step-timer";
 function getBackUrl(inf: any) {
   if (!inf) return "/agency/influencers";
@@ -1195,10 +1195,10 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                       </div>
                       {f.description && <p className="mt-0.5 text-[var(--muted-foreground)]">{f.description}</p>}
                       {f.slip_file && isImageUrl(f.slip_file) && (
-                        <img src={f.slip_file} alt="水单" className="mt-1 max-h-12 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(f.slip_file)} />
+                        <img src={fileUrl(f.slip_file)} alt="水单" className="mt-1 max-h-12 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(fileUrl(f.slip_file))} />
                       )}
                       {f.slip_file && !isImageUrl(f.slip_file) && (
-                        <a href={f.slip_file} target="_blank" className="text-[var(--primary)] hover:underline text-xs">查看水单</a>
+                        <a href={fileUrl(f.slip_file)} target="_blank" rel="noopener noreferrer" className="text-[var(--primary)] hover:underline text-xs">查看水单</a>
                       )}
                     </div>
                   ))}
@@ -1251,13 +1251,13 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                     <div key={doc.id} className="flex items-center justify-between rounded border border-[var(--border)] p-2 text-xs">
                       <div className="min-w-0 flex-1 flex items-center gap-1.5">
                         {doc.file_url && isImageUrl(doc.file_url) && (
-                          <img src={doc.file_url} alt={doc.name} className="max-h-10 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(doc.file_url)} />
+                          <img src={fileUrl(doc.file_url)} alt={doc.name} className="max-h-10 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(fileUrl(doc.file_url))} />
                         )}
                         <p className="truncate">{doc.name}</p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {doc.file_url && !isImageUrl(doc.file_url) && (
-                          <a href={doc.file_url} target="_blank" className="text-[var(--primary)] hover:underline">查看</a>
+                          <a href={fileUrl(doc.file_url)} target="_blank" rel="noopener noreferrer" className="text-[var(--primary)] hover:underline">查看</a>
                         )}
                         <button onClick={() => handleDeleteDocument(doc.id)} className="text-[var(--destructive)] hover:bg-[var(--destructive)]/10 rounded p-0.5"><Trash2 className="size-3" /></button>
                       </div>
@@ -1313,10 +1313,10 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                           {cert.product_name && <p className="text-[var(--muted-foreground)]">{cert.product_name}</p>}
                           {cert.issue_date && <p className="text-[var(--muted-foreground)]">{cert.issue_date} ~ {cert.expiry_date || "—"}</p>}
                           {cert.file_url && isImageUrl(cert.file_url) && (
-                            <img src={cert.file_url} alt="证书" className="mt-1 max-h-12 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(cert.file_url)} />
+                            <img src={fileUrl(cert.file_url)} alt="证书" className="mt-1 max-h-12 rounded border cursor-pointer hover:opacity-80" onClick={() => setPreviewUrl(fileUrl(cert.file_url))} />
                           )}
                           {cert.file_url && !isImageUrl(cert.file_url) && (
-                            <a href={cert.file_url} target="_blank" className="text-[var(--primary)] hover:underline">查看证书文件</a>
+                            <a href={fileUrl(cert.file_url)} target="_blank" rel="noopener noreferrer" className="text-[var(--primary)] hover:underline">查看证书文件</a>
                           )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
