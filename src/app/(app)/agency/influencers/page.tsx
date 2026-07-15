@@ -477,7 +477,7 @@ function getPreviewGrade() {
                 </div>
                 <div className="space-y-2.5">
                   <div>
-                    <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">GMV 总数（泰铢）</label>
+                    <label className="block text-xs text-[var(--muted-foreground)] mb-0.5">月度 GMV（泰铢）</label>
                     <input
                       value={evalForm.gmv_amount}
                       onChange={e => setEvalForm(p => ({ ...p, gmv_amount: e.target.value }))}
