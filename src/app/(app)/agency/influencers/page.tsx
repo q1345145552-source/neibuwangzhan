@@ -46,7 +46,7 @@ const tabs = [
 
 interface Influencer {
   id: number; name: string; tiktok_link: string; category: string;
-  contact: string; contact_phone: string; followers: string;
+  contact: string; contact_phone: string; line_id: string; followers: string;
   avg_views: string; gmv_range: string; notes: string;
   code: string; status: string; phase: string; monthly_gmv: string; live_stream_ratio: string;
   latest_rating: string | null; created_at: string;
@@ -363,7 +363,7 @@ function getPreviewGrade() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">品类</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">粉丝量</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
-                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">联系方式</th>
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">LINE</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
                 {(activeTab === "evaluating" || activeTab === "evaluated" || activeTab === "recommended") && (
                   <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
@@ -393,7 +393,7 @@ function getPreviewGrade() {
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.gmv_range || inf.monthly_gmv || "-"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-md:hidden">
-                    {inf.contact ? `${inf.contact}${inf.contact_phone ? ` / ${inf.contact_phone}` : ""}` : "-"}
+                    {inf.line_id || "-"}
                   </td>
                   <td className="py-3 px-4">
                     <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[getDisplayStatus(inf)] || statusClass["待评估"])}>
