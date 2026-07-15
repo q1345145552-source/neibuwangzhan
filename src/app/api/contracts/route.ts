@@ -10,6 +10,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("payment_status");
   let sql = `SELECT c.*, i.name AS influencer_name, i.code AS influencer_code,
+    i.category AS influencer_category, i.followers AS influencer_followers,
+    i.contact_phone AS influencer_phone, i.line_id AS influencer_line,
+    i.status AS influencer_status, i.phase AS influencer_phase,
+    (SELECT e.gmv_amount FROM influencer_evaluations e WHERE e.influencer_id = c.influencer_id ORDER BY e.created_at DESC LIMIT 1) AS latest_gmv,
     (SELECT COUNT(*) FROM influencer_documents d WHERE d.influencer_id = c.influencer_id) AS file_count
     FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id`;
   const params: string[] = [];
