@@ -326,7 +326,12 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
         const fr2 = await fetchWithAuth("/api/factories", { cache: "no-store" });
         if (fr2.ok) setFactories(await fr2.json());
       } catch (err) {
-        setError(err instanceof Error ? err.message : "加载失败");
+        // token 还没就绪时不报错，等 300ms 重试
+        if (err instanceof Error && err.message === "NO_TOKEN") {
+          setTimeout(() => { if (!ignore) reload(); }, 300);
+        } else {
+          setError(err instanceof Error ? err.message : "加载失败");
+        }
       } finally {
         if (!ignore) setLoading(false);
       }

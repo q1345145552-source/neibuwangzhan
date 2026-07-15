@@ -126,8 +126,10 @@ function authHeaders(): Record<string, string> {
 // 统一封装带认证的 fetch，防止后退导航时 token 丢失导致错误冒泡
 export async function fetchWithAuth(url: string, options?: RequestInit): Promise<Response> {
   const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  // token 为空时不发请求，避免 401 污染页面
+  if (!token) throw new Error("NO_TOKEN");
   const headers: Record<string, string> = { ...(options?.headers as Record<string, string> || {}) };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  headers["Authorization"] = `Bearer ${token}`;
   return fetch(url, { ...options, headers });
 }
 
