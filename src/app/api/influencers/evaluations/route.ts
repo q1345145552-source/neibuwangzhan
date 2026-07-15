@@ -76,5 +76,18 @@ export async function POST(req: NextRequest) {
   );
 
   const row = db.prepare("SELECT * FROM influencer_evaluations WHERE id = ?").get(result.lastInsertRowid);
+
+  // 同步更新达人表的 GMV、直播占比和联系方式
+  const influencerUpdates: string[] = [];
+  const influencerVals: any[] = [];
+  if (gmv_amount) { influencerUpdates.push("monthly_gmv = ?"); influencerVals.push(gmv_amount); }
+  if (live_stream_ratio) { influencerUpdates.push("live_stream_ratio = ?"); influencerVals.push(live_stream_ratio); }
+  if (body.contact) { influencerUpdates.push("contact = ?"); influencerVals.push(body.contact); }
+  if (body.contact_phone) { influencerUpdates.push("contact_phone = ?"); influencerVals.push(body.contact_phone); }
+  if (influencerUpdates.length > 0) {
+    influencerVals.push(influencer_id);
+    db.prepare("UPDATE influencers SET " + influencerUpdates.join(", ") + ", updated_at = datetime('now') WHERE id = ?").run(...influencerVals);
+  }
+
   return NextResponse.json(row, { status: 201 });
 }
