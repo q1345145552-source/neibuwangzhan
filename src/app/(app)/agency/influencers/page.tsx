@@ -66,7 +66,8 @@ export default function InfluencersPage() {
     gmv: "", gmv_amount: "",
     live_gmv: "",
     live_duration_tier: "", live_frequency_tier: "",
-    professionalism_tier: "", notes: ""
+    professionalism_tier: "", notes: "",
+    contact: "", contact_phone: ""
   });
   const [evalSaving, setEvalSaving] = useState(false);
   const [evalError, setEvalError] = useState("");
@@ -162,7 +163,7 @@ function getPreviewGrade() {
   // ── Evaluation submission ──
   const handleStartEval = (inf: Influencer) => {
     setEvalModal(inf);
-    setEvalForm({ gmv: inf.monthly_gmv || "", gmv_amount: "", live_gmv: "", live_duration_tier: "", live_frequency_tier: "", professionalism_tier: "", notes: "" });
+    setEvalForm({ gmv: inf.monthly_gmv || "", gmv_amount: "", live_gmv: "", live_duration_tier: "", live_frequency_tier: "", professionalism_tier: "", notes: "", contact: inf.contact || "", contact_phone: inf.contact_phone || "" });
     setEvalError("");
   };
 
@@ -194,7 +195,15 @@ function getPreviewGrade() {
       await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: evalModal.id, status: "已评估" }),
+        body: JSON.stringify({
+          id: evalModal.id,
+          status: "已评估",
+          monthly_gmv: evalForm.gmv_amount,
+          gmv_range: (() => { const t = getGmvTier(evalForm.gmv_amount); return t ? t.label + " (" + t.score + "分)" : ""; })(),
+          live_stream_ratio: getLiveRatio(),
+          contact: evalForm.contact,
+          contact_phone: evalForm.contact_phone,
+        }),
       });
 
       setEvalModal(null);
@@ -565,6 +574,21 @@ function getPreviewGrade() {
                   </div>
                 </div>
               )}
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-medium">联系方式</label>
+                  <input value={evalForm.contact} onChange={e => setEvalForm(p => ({ ...p, contact: e.target.value }))}
+                    placeholder="LINE / WhatsApp / 电话"
+                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-medium">电话号码</label>
+                  <input value={evalForm.contact_phone} onChange={e => setEvalForm(p => ({ ...p, contact_phone: e.target.value }))}
+                    placeholder="例如: 0812345678"
+                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+              </div>
 
               <div>
                 <label className="text-xs font-medium">备注</label>

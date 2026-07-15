@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
         const vals: any[] = [];
         if (followers) { updates.push("followers = ?"); vals.push(followers); }
         if (avgViews) { updates.push("avg_views = ?"); vals.push(avgViews); }
+        if (gmv) { updates.push("monthly_gmv = ?"); vals.push(gmv); }
         if (gmvRange) { updates.push("gmv_range = ?"); vals.push(gmvRange); }
         if (rating) { updates.push("status = CASE WHEN status = '待评估' THEN '已评估' ELSE status END"); }
 
