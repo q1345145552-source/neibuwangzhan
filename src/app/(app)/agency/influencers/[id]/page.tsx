@@ -415,7 +415,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     setStepFileNames(p => ({ ...p, [stepId]: file.name }));
     try {
       const fd = new FormData(); fd.append("file", file);
-      const ur = await fetch("/api/upload", { method: "POST", body: fd });
+      const ur = await fetch("/api/upload", { method: "POST", body: fd, headers: { Authorization: "Bearer " + localStorage.getItem("authToken") } });
       if (!ur.ok) throw new Error("上传失败");
       const { url } = await ur.json();
       const note = `上传文件: ${file.name} (${url})`;
@@ -1227,7 +1227,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                       setUploadingFin(true); setFinFileName(file.name);
                       try {
                         const fd = new FormData(); fd.append("file", file);
-                        const ur = await fetch("/api/upload", { method: "POST", body: fd });
+                        const ur = await fetch("/api/upload", { method: "POST", body: fd, headers: { Authorization: "Bearer " + localStorage.getItem("authToken") } });
                         if (!ur.ok) throw new Error("");
                         const data = await ur.json(); setFinSlipFile(data.url);
                       } catch { setFinErrorMsg("上传失败"); setFinFileName(""); }
@@ -1275,7 +1275,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                     setUploadingDoc(true); setDocFileName(file.name);
                     try {
                       const fd = new FormData(); fd.append("file", file);
-                      const ur = await fetch("/api/upload", { method: "POST", body: fd });
+                      const ur = await fetch("/api/upload", { method: "POST", body: fd, headers: { Authorization: "Bearer " + localStorage.getItem("authToken") } });
                       if (!ur.ok) throw new Error("");
                       const data = await ur.json(); setDocFileUrl(data.url);
                     } catch { setDocErrorMsg("上传失败"); setDocFileName(""); }
@@ -1337,7 +1337,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                     setUploadingCert(true); setCertFileName(file.name);
                     try {
                       const fd = new FormData(); fd.append("file", file);
-                      const ur = await fetch("/api/upload", { method: "POST", body: fd });
+                      const ur = await fetch("/api/upload", { method: "POST", body: fd, headers: { Authorization: "Bearer " + localStorage.getItem("authToken") } });
                       if (!ur.ok) throw new Error("");
                       const data = await ur.json(); setCertFileUrl(data.url);
                     } catch { setCertErrorMsg("上传失败"); setCertFileName(""); }
