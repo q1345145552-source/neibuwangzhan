@@ -113,23 +113,32 @@ export default function InternalPage() {
   const [wlDetailModal, setWlDetailModal] = useState<{ employee: string; type: string; label: string } | null>(null);
   const [wlDetailData, setWlDetailData] = useState<any[]>([]);
   const [wlDetailLoading, setWlDetailLoading] = useState(false);
+  const [wlDetailError, setWlDetailError] = useState<string | null>(null);
   const handleWlDetail = async (employee: string, type: string, label: string) => {
     setWlDetailModal({ employee, type, label });
     setWlDetailLoading(true);
     setWlDetailData([]);
+    setWlDetailError(null);
     try {
       const res = await fetchWithAuth(`/api/internal/workload-details?employee=${encodeURIComponent(employee)}&type=${type}`, { cache: "no-store" });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
         console.error("[工作量明细] API 返回错误", { status: res.status, employee, type, body: errText });
         setWlDetailData([]);
+        if (res.status === 401) setWlDetailError("登录已过期，请重新登录");
+        else setWlDetailError(`请求失败 (${res.status})`);
       } else {
         const json = await res.json();
         console.log("[工作量明细] API 返回数据", { employee, type, count: json.data?.length });
         setWlDetailData(json.data || []);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("[工作量明细] 请求异常", e, { employee, type });
+      if (e?.message === "NO_TOKEN") {
+        setWlDetailError("登录已过期，请刷新页面重新登录");
+      } else {
+        setWlDetailError("网络错误，请检查连接后重试");
+      }
     }
     setWlDetailLoading(false);
   };
@@ -1114,7 +1123,14 @@ export default function InternalPage() {
                   <Loader2 className="size-4 animate-spin" />加载中...
                 </div>
               ) : wlDetailData.length === 0 ? (
+                wlDetailError ? (
+                <div className="py-8 text-center">
+                  <p className="text-sm text-[var(--destructive)]">加载失败: {wlDetailError}</p>
+                  <button onClick={() => { if (wlDetailModal) handleWlDetail(wlDetailModal.employee, wlDetailModal.type, wlDetailModal.label); }} className="mt-2 text-xs text-blue-600 hover:underline">重试</button>
+                </div>
+              ) : (
                 <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无明细数据</p>
+              )
               ) : (
                 <div className="space-y-2">
                   {wlDetailData.map((item: any, idx: number) => {
@@ -1172,7 +1188,7 @@ export default function InternalPage() {
                         <div key={idx} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 hover:bg-[var(--muted)]/30 transition-colors">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium truncate">{item.name}</span>
+                              <a href={`/agency/influencers/${item.id}`} target="_blank" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate" onClick={e => e.stopPropagation()}>{item.name}</a>
                               {item.code && <span className="text-xs text-[var(--muted-foreground)] shrink-0">编号: {item.code}</span>}
                             </div>
                             <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
