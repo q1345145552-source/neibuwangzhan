@@ -43,6 +43,7 @@ const tabs = [
   { key: "evaluating", label: "待评估" },
   { key: "evaluated", label: "待推荐" },
   { key: "recommended", label: "老板推荐" },
+  { key: "rejected", label: "不推荐" },
 ];
 
 interface Influencer {
@@ -50,7 +51,7 @@ interface Influencer {
   contact: string; contact_phone: string; line_id: string; followers: string;
   avg_views: string; gmv_range: string; notes: string;
   code: string; status: string; phase: string; monthly_gmv: string; live_stream_ratio: string;
-  latest_rating: string | null; created_at: string;
+  latest_rating: string | null; created_at: string; updated_at?: string; created_by?: string;
 }
 
 export default function InfluencersPage() {
@@ -91,6 +92,8 @@ export default function InfluencersPage() {
         url = "/api/influencers?status=已评估";
       } else if (activeTab === "recommended") {
         url = "/api/influencers?status=已推荐给老板";
+      } else if (activeTab === "rejected") {
+        url = "/api/influencers?status=不推荐";
       } else {
         url = `/api/influencers?phase=${activeTab}`;
       }
@@ -278,6 +281,18 @@ function getPreviewGrade() {
     finally { setCancelSaving(false); }
   };
 
+  const handleRestore = async (infId: number) => {
+    if (!confirm("确认将此达人恢复到待推荐列表？")) return;
+    try {
+      await fetchWithAuth("/api/influencers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: infId, status: "已评估" }),
+      });
+      load();
+    } catch (err) { console.error(err); alert("操作失败"); }
+  };
+
   const handleDeleteInfluencer = async () => {
     if (!infToDelete) return;
     try {
@@ -296,6 +311,7 @@ function getPreviewGrade() {
 
   const getDisplayStatus = (inf: Influencer) => {
     if (inf.status === "评估中" && activeTab === "evaluating") return "待评估";
+    if (activeTab === "rejected") return "不推荐";
     if (inf.phase === "completed_discovery") return "已入池";
     return inf.status;
   };
@@ -432,7 +448,12 @@ function getPreviewGrade() {
                       {getDisplayStatus(inf)}
                     </span>
                   </td>
-                  {(activeTab === "evaluating" || activeTab === "evaluated" || activeTab === "recommended") && (
+                  {activeTab === "rejected" && (
+                    <td className="py-3 px-4 text-xs text-[var(--muted-foreground)] max-lg:hidden max-w-[200px] truncate" title={inf.notes || ""}>
+                      {inf.notes || "-"}
+                    </td>
+                  )}
+                  {(activeTab === "evaluating" || activeTab === "evaluated" || activeTab === "recommended" || activeTab === "rejected") && (
                     <td className="py-3 px-4">
                       {activeTab === "evaluating" && (
                         <div className="flex items-center gap-1.5">
@@ -460,6 +481,11 @@ function getPreviewGrade() {
                             查看详情
                           </Button>
                         </Link>
+                      )}
+                      {activeTab === "rejected" && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleRestore(inf.id)}>
+                          恢复
+                        </Button>
                       )}
                     </td>
                   )}
