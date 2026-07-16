@@ -295,6 +295,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [stepUploading, setStepUploading] = useState<Record<number, boolean>>({});
   const [stepFileNames, setStepFileNames] = useState<Record<number, string>>({});
   const [stepErrors, setStepErrors] = useState<Record<number, string>>({});
+  const [stepMessages, setStepMessages] = useState<Record<number, { type: "success"|"error"|"info"; text: string } | null>>({});
   useEffect(() => { fetchEmployees().then(setEmployees).catch(() => {}); }, []);
 
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1082,50 +1083,94 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                               type="button"
                               disabled={stepUploading[step.id]}
                               onClick={() => {
-                                const input = document.createElement("input");
-                                input.type = "file";
-                                input.accept = ".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx";
-                                input.onchange = async (_e) => {
-                                  const file = input.files?.[0]; if (!file) return;
-                                  const stepId = step.id;
-                                  setStepUploading(p => ({ ...p, [stepId]: true }));
-                                  setStepFileNames(p => ({ ...p, [stepId]: file.name }));
-                                  setStepErrors(p => ({ ...p, [stepId]: "" }));
-                                  try {
-                                    const fd = new FormData(); fd.append("file", file);
-                                    const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
-                                    if (!ur.ok) throw new Error("上传失败");
-                                    const { url } = await ur.json();
-                                    const note = "上传文件: " + file.name + " (" + url + ")";
-                                    const current = steps.find(s => s.id === stepId);
-                                    const updated = current?.notes ? current.notes + "\n" + note : note;
-                                    const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ step_id: stepId, notes: updated }),
-                                    });
-                                    if (!patchRes.ok) throw new Error("保存失败");
+                                const stepId = step.id;
+                                console.log("[附件] 按钮被点击 stepId=" + stepId);
+                                setStepMessages(p => ({ ...p, [stepId]: { type: "info", text: "正在打开文件选择..." } }));
+                                try {
+                                  const input = document.createElement("input");
+                                  input.type = "file";
+                                  input.accept = ".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx";
+                                  input.onchange = async (ev) => {
+                                    console.log("[附件] onchange 触发 stepId=" + stepId);
+                                    const file = input.files?.[0];
+                                    if (!file) {
+                                      console.log("[附件] 未选择文件 stepId=" + stepId);
+                                      setStepMessages(p => ({ ...p, [stepId]: null }));
+                                      return;
+                                    }
+                                    console.log("[附件] 选中文件", { stepId, name: file.name, size: file.size });
+                                    setStepUploading(p => ({ ...p, [stepId]: true }));
+                                    setStepFileNames(p => ({ ...p, [stepId]: file.name }));
                                     setStepErrors(p => ({ ...p, [stepId]: "" }));
-                                    reload();
-                                  } catch (err) {
-                                    const msg = err instanceof Error ? err.message : String(err);
-                                    console.error("[步骤附件上传失败]", { stepId, fileName: file.name, error: msg });
-                                    setStepErrors(p => ({ ...p, [stepId]: msg }));
-                                    setError(msg);
-                                  } finally {
-                                    setStepUploading(p => ({ ...p, [stepId]: false }));
-                                    setStepFileNames(p => ({ ...p, [stepId]: "" }));
-                                  }
-                                };
-                                input.click();
+                                    setStepMessages(p => ({ ...p, [stepId]: { type: "info", text: "上传中..." } }));
+                                    try {
+                                      const fd = new FormData();
+                                      fd.append("file", file);
+                                      console.log("[附件] 调用上传API stepId=" + stepId);
+                                      const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+                                      console.log("[附件] 上传响应 stepId=" + stepId, ur.status);
+                                      if (!ur.ok) {
+                                        let errDetail = "";
+                                        try { const e2 = await ur.json(); errDetail = e2.error || ur.statusText; } catch { errDetail = ur.statusText || String(ur.status); }
+                                        throw new Error("上传失败: " + (errDetail || "HTTP " + ur.status));
+                                      }
+                                      const { url } = await ur.json();
+                                      console.log("[附件] 上传成功 url=" + url);
+                                      const note = "上传文件: " + file.name + " (" + url + ")";
+                                      const current = steps.find(s => s.id === stepId);
+                                      const updated = current?.notes ? current.notes + "\n" + note : note;
+                                      console.log("[附件] 保存到步骤备注 stepId=" + stepId);
+                                      const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ step_id: stepId, notes: updated }),
+                                      });
+                                      if (!patchRes.ok) {
+                                        let patchErr = "";
+                                        try { const e3 = await patchRes.json(); patchErr = e3.error || patchRes.statusText; } catch { patchErr = patchRes.statusText || String(patchRes.status); }
+                                        throw new Error("保存失败: " + (patchErr || "HTTP " + patchRes.status));
+                                      }
+                                      console.log("[附件] 全部完成 stepId=" + stepId);
+                                      setExpandedSteps(p => ({ ...p, [stepId]: true }));
+                                      setStepMessages(p => ({ ...p, [stepId]: { type: "success", text: "上传成功: " + file.name + " · 点击下方「备注」查看" } }));
+                                      setStepErrors(p => ({ ...p, [stepId]: "" }));
+                                      reload();
+                                    } catch (err) {
+                                      const msg = err instanceof Error ? err.message : String(err);
+                                      console.error("[附件] 失败 stepId=" + stepId, msg);
+                                      setStepErrors(p => ({ ...p, [stepId]: msg }));
+                                      setStepMessages(p => ({ ...p, [stepId]: { type: "error", text: msg } }));
+                                      setError(msg);
+                                    } finally {
+                                      setStepUploading(p => ({ ...p, [stepId]: false }));
+                                      setStepFileNames(p => ({ ...p, [stepId]: "" }));
+                                    }
+                                  };
+                                  console.log("[附件] 调用 input.click() stepId=" + stepId);
+                                  input.click();
+                                  console.log("[附件] input.click() 完成 stepId=" + stepId);
+                                } catch (err) {
+                                  const msg = String(err);
+                                  console.error("[附件] 创建input失败 stepId=" + stepId, msg);
+                                  setStepMessages(p => ({ ...p, [stepId]: { type: "error", text: "无法打开文件选择: " + msg } }));
+                                }
                               }}
                               className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
                             >
                               <Upload className="size-3" />
                               {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
                             </button>
-                            {stepErrors[step.id] && (
-                              <span className="text-xs text-[var(--destructive)]">{stepErrors[step.id]}</span>
+                            {stepMessages[step.id] && (
+                              <span className={cn(
+                                "text-xs",
+                                stepMessages[step.id]!.type === "success" && "text-[var(--success)]",
+                                stepMessages[step.id]!.type === "error" && "text-[var(--destructive)]",
+                                stepMessages[step.id]!.type === "info" && "text-[var(--muted-foreground)]"
+                              )}>
+                                {stepMessages[step.id]!.type === "success" && "✓ "}
+                                {stepMessages[step.id]!.type === "error" && "✗ "}
+                                {stepMessages[step.id]!.text}
+                              </span>
                             )}
                           </div>
 
