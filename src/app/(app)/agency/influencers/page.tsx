@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2, Download } from "lucide-react";
+import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2, Download, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
@@ -23,6 +23,7 @@ const statusClass: Record<string, string> = {
   "已完成": "bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200",
   "已停止": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
   "已入池": "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
+  "不推荐": "bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400",
 };
 
 const ratingBadge = (r: string) => {
@@ -72,6 +73,9 @@ export default function InfluencersPage() {
   const [evalSaving, setEvalSaving] = useState(false);
   const [evalError, setEvalError] = useState("");
   const [infToDelete, setInfToDelete] = useState<number | null>(null);
+  const [cancelModal, setCancelModal] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelSaving, setCancelSaving] = useState(false);
   const csvRef = useRef<HTMLInputElement>(null);
 
   // Rating filter for 待推荐 tab
@@ -253,6 +257,27 @@ function getPreviewGrade() {
     } catch (err) { console.error(err); }
   };
 
+  const handleCancel = async () => {
+    if (!cancelModal || !cancelReason.trim()) { alert("请填写取消原因"); return; }
+    setCancelSaving(true);
+    try {
+      const getRes = await fetchWithAuth("/api/influencers/" + cancelModal, { cache: "no-store" });
+      const inf = getRes.ok ? await getRes.json() : { notes: "" };
+      const prevNotes = inf.notes || "";
+      const cancelNote = "取消原因: " + cancelReason.trim() + " (" + new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }) + ")";
+      const mergedNotes = prevNotes ? prevNotes + "\n" + cancelNote : cancelNote;
+      await fetchWithAuth("/api/influencers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: cancelModal, status: "不推荐", notes: mergedNotes }),
+      });
+      setCancelModal(null);
+      setCancelReason("");
+      load();
+    } catch (err) { console.error(err); alert("操作失败"); }
+    finally { setCancelSaving(false); }
+  };
+
   const handleDeleteInfluencer = async () => {
     if (!infToDelete) return;
     try {
@@ -420,9 +445,14 @@ function getPreviewGrade() {
                         </div>
                       )}
                       {activeTab === "evaluated" && (
-                        <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleRecommend(inf.id)}>
-                          <Star className="size-3" />推荐给老板
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleRecommend(inf.id)}>
+                            <Star className="size-3" />推荐给老板
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-[var(--muted-foreground)]" onClick={() => { setCancelModal(inf.id); setCancelReason(""); }}>
+                            <X className="size-3" />取消
+                          </Button>
+                        </div>
                       )}
                       {activeTab === "recommended" && (
                         <Link href={`/agency/influencers/${inf.id}`}>
@@ -442,6 +472,33 @@ function getPreviewGrade() {
               {activeTab === "discovery" ? "暂无发现阶段的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : activeTab === "evaluated" ? "暂无已评估的达人" : "暂无待老板确认的达人"}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cancel influencer modal */}
+      {cancelModal !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCancelModal(null)}>
+          <div className="bg-[var(--background)] rounded-xl shadow-2xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-medium">取消推荐</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">此达人将标记为“不推荐”，从待推荐列表移除。</p>
+            <div className="mt-4">
+              <label className="text-xs font-medium">取消原因</label>
+              <textarea
+                value={cancelReason}
+                onChange={e => setCancelReason(e.target.value)}
+                placeholder="例如：评级太低、品类不符合、粉丝量不足..."
+                rows={3}
+                className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCancelModal(null)}>返回</Button>
+              <Button size="sm" onClick={handleCancel} disabled={cancelSaving} className="bg-red-600 hover:bg-red-700">
+                {cancelSaving ? "处理中..." : "确认取消"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
