@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Users, FileSignature, TrendingUp, Search, FlaskConical, PackageCheck, Send, UserPlus, Star, PenLine, Calendar, Filter, ChevronDown } from "lucide-react";
+import { Users, FileSignature, TrendingUp, Search, FlaskConical, PackageCheck, Send, UserPlus, Star, PenLine, Calendar, Filter, ChevronDown, ExternalLink, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchWithAuth } from "@/lib/api";
 
@@ -85,6 +85,30 @@ export default function AgencyPage() {
   const [customTo, setCustomTo] = useState("");
   const [showCustom, setShowCustom] = useState(false);
   const [employee, setEmployee] = useState("");
+
+  const [wlModal, setWlModal] = useState<{ name: string; type: string; label: string } | null>(null);
+  const [wlData, setWlData] = useState<any[]>([]);
+  const [wlLoading, setWlLoading] = useState(false);
+  const [wlErr, setWlErr] = useState<string | null>(null);
+  const handleWlDetail = async (name: string, type: string, label: string) => {
+    setWlModal({ name, type, label });
+    setWlLoading(true);
+    setWlData([]);
+    setWlErr(null);
+    try {
+      const res = await fetchWithAuth("/api/agency/workload-details?employee=" + encodeURIComponent(name) + "&type=" + type, { cache: "no-store" });
+      if (!res.ok) {
+        setWlErr("请求失败(" + res.status + ")");
+        return;
+      }
+      const json = await res.json();
+      setWlData(json.data || []);
+    } catch (e: any) {
+      setWlErr(e?.message === "NO_TOKEN" ? "登录过期" : "网络错误");
+    } finally {
+      setWlLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Compute date range
@@ -282,10 +306,34 @@ export default function AgencyPage() {
                   employee && employee !== row.name && "opacity-40"
                 )}>
                   <td className="py-2.5 px-5 font-medium text-[var(--foreground)]">{row.name}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums text-[var(--foreground)]">{row.tasks}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums text-[var(--foreground)]">{row.influencers}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums text-[var(--foreground)]">{row.evaluations}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums text-[var(--foreground)]">{row.contracts}</td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {row.tasks > 0 ? (
+                      <button onClick={() => handleWlDetail(row.name, "tasks", row.name + " 的发现任务")} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {row.tasks}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {row.influencers > 0 ? (
+                      <button onClick={() => handleWlDetail(row.name, "influencers", row.name + " 的收录达人")} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {row.influencers}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {row.evaluations > 0 ? (
+                      <button onClick={() => handleWlDetail(row.name, "evaluations", row.name + " 的完成评估")} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {row.evaluations}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
+                  <td className="py-2.5 px-4 text-center tabular-nums">
+                    {row.contracts > 0 ? (
+                      <button onClick={() => handleWlDetail(row.name, "contracts", row.name + " 的签订合同")} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                        {row.contracts}<ExternalLink className="size-2.5 opacity-60" />
+                      </button>
+                    ) : "0"}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     live_duration_tier || "", duration_score,
     live_frequency_tier || "", frequency_score,
     professionalism_tier || "", prof_score,
-    live_stream_ratio || "", total_score, final_rating, notes || "", evaluated_by || ""
+    live_stream_ratio || "", total_score, final_rating, notes || "", (auth.name || "")
   );
 
   const row = db.prepare("SELECT * FROM influencer_evaluations WHERE id = ?").get(result.lastInsertRowid);
