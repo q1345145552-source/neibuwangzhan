@@ -130,9 +130,11 @@ const FREQUENCY_TIERS = [
   { value: "<2次/周", label: "<2次/周", score: 5 },
 ];
 const PROF_TIERS = [
-  { value: "高", label: "内容质量高，配合度好", score: 5 },
-  { value: "中", label: "表现中等，需要培养", score: 3 },
-  { value: "低", label: "质量较低，配合度差", score: 1 },
+  { value: "เยี่ยมมาก", label: "เยี่ยมมาก 优秀", score: 5 },
+  { value: "ดีมาก", label: "ดีมาก 很好", score: 4 },
+  { value: "ดี", label: "ดี 良好", score: 3 },
+  { value: "ค่อนข้างดี", label: "ค่อนข้างดี 比较好", score: 2 },
+  { value: "พอใช้", label: "พอใช้ 一般", score: 1 },
 ];
 
 function findScore(tiers: {value:string,score:number}[], val: string) { return tiers.find(t => t.value === val)?.score || 0; }
