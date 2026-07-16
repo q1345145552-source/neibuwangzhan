@@ -42,6 +42,7 @@ const categories = ["美妆 (Beauty)", "测评 (Review/Try-on)", "生活 (Lifest
     "微胖女生 (Plus Size Women)", "男士裤子 (Men's Pants)", "手机配件 (Phone Accessories)",
     "耳机 (Earphones)", "音箱 (Speakers)", "家装建材 (Home Improvement)", "农业品类 (Agriculture)",
     "泳衣 (Swimwear)", "太阳能灯 (Solar Lights)", "健身器材 (Fitness Equipment)", "眼镜 (Eyewear)",
+    "家居用品 (Home Goods)",
     "玩具 (Toys)"];
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
