@@ -607,10 +607,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               </>
                             ) : (
                               <>
-                                {/* 待处理：先点"开始" */}
-                                {step.status === "待处理" && (
-                                  <button onClick={() => handleStepUpdate(step.id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_70%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-2 py-1 text-xs text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_85%)] transition-colors font-medium">开始</button>
-                                )}
                                 {(() => {
                                   const isCompanyReg = order?.business_type_id === 1;
                                   const prevStep = steps.find(s => s.step_order === step.step_order - 1);
