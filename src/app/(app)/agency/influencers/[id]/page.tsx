@@ -1078,19 +1078,15 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
                           {/* File upload per step */}
                           <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            <span className={cn(
-                              "relative inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] transition-colors",
-                              !stepUploading[step.id] && "hover:bg-[var(--muted)] cursor-pointer",
-                              stepUploading[step.id] && "opacity-50"
-                            )}>
-                              <Upload className="size-3" />
-                              {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx"
-                                disabled={stepUploading[step.id]}
-                                onChange={async e => {
-                                  const file = e.target.files?.[0]; if (!file) return;
+                            <button
+                              type="button"
+                              disabled={stepUploading[step.id]}
+                              onClick={() => {
+                                const input = document.createElement("input");
+                                input.type = "file";
+                                input.accept = ".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx";
+                                input.onchange = async (_e) => {
+                                  const file = input.files?.[0]; if (!file) return;
                                   const stepId = step.id;
                                   setStepUploading(p => ({ ...p, [stepId]: true }));
                                   setStepFileNames(p => ({ ...p, [stepId]: file.name }));
@@ -1120,10 +1116,14 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                                     setStepUploading(p => ({ ...p, [stepId]: false }));
                                     setStepFileNames(p => ({ ...p, [stepId]: "" }));
                                   }
-                                }}
-                                style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-                              />
-                            </span>
+                                };
+                                input.click();
+                              }}
+                              className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
+                            >
+                              <Upload className="size-3" />
+                              {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
+                            </button>
                             {stepErrors[step.id] && (
                               <span className="text-xs text-[var(--destructive)]">{stepErrors[step.id]}</span>
                             )}
