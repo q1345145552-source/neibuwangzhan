@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, ArrowUpDown, Trash2, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -12,11 +13,12 @@ import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [search, setSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "all");
   const [businessFilter, setBusinessFilter] = useState("all");
   const [sortField, setSortField] = useState<"total_amount" | "created_at" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
