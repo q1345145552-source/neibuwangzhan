@@ -370,6 +370,18 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_id: stepId, status: "已完成", notes: confirmNote }),
       });
+      // 自动启动同阶段下一步
+      const step = steps.find(s => s.id === stepId);
+      if (step) {
+        const next = steps.find(s => s.phase === step.phase && s.step_order === step.step_order + 1);
+        if (next && next.status === "待处理") {
+          await fetchWithAuth(`/api/influencers/${id}/steps`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ step_id: next.id, status: "进行中" }),
+          });
+        }
+      }
       setConfirmingStepId(null);
       setConfirmNote("");
       reload();
