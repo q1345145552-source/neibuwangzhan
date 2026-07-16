@@ -78,11 +78,38 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const copyFeedbackLink = async () => {
     if (!feedbackLink) return;
+    let succeeded = false;
+
+    // 方案1：navigator.clipboard（需 HTTPS 或 localhost）
     try {
       await navigator.clipboard.writeText(feedbackLink);
+      succeeded = true;
+    } catch {}
+
+    // 方案2：document.execCommand('copy') 兼容 HTTP
+    if (!succeeded) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = feedbackLink;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        ta.style.top = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        succeeded = true;
+      } catch {}
+    }
+
+    if (succeeded) {
       setCopyingLink(true);
       setTimeout(() => setCopyingLink(false), 2000);
-    } catch {}
+    } else {
+      // 方案3：弹窗显示链接，用户手动复制
+      setCopyModalLink(feedbackLink);
+    }
   };
 
   // 人员耗时汇总（计时起点 = max(created_at, 上一步完成时间)）
@@ -132,6 +159,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [feedbackLink, setFeedbackLink] = useState<string | null>(null);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [copyingLink, setCopyingLink] = useState(false);
+  const [copyModalLink, setCopyModalLink] = useState<string | null>(null);
   const { user } = useAuth();
   const isClient = user?.role === "client";
   // 编辑模式
@@ -1167,6 +1195,44 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <button onClick={handleConfirmDeleteOrder} disabled={deletingOrder} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
                 {deletingOrder ? "删除中..." : "确认删除"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 复制链接弹窗（HTTP 兼容降级方案） */}
+      {copyModalLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCopyModalLink(null)}>
+          <div className="bg-[var(--background)] rounded-xl shadow-2xl max-w-lg w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+              <h2 className="text-sm font-medium">评价链接</h2>
+              <button onClick={() => setCopyModalLink(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-[var(--muted-foreground)]">浏览器不支持自动复制，请手动复制下方链接：</p>
+              <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--muted)] p-3">
+                <input
+                  type="text"
+                  value={copyModalLink}
+                  readOnly
+                  className="flex-1 bg-transparent text-sm font-mono outline-none select-all"
+                  onFocus={e => e.target.select()}
+                  autoFocus
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(copyModalLink).catch(() => {});
+                    setCopyModalLink(null);
+                    setCopyingLink(true);
+                    setTimeout(() => setCopyingLink(false), 2000);
+                  }}
+                >
+                  <Copy className="size-3 mr-1" />复制
+                </Button>
+              </div>
             </div>
           </div>
         </div>
