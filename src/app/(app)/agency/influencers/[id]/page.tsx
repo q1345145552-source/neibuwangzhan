@@ -1117,22 +1117,25 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                                       const { url } = await ur.json();
                                       console.log("[附件] 上传成功 url=" + url);
                                       const note = "上传文件: " + file.name + " (" + url + ")";
-                                      const current = steps.find(s => s.id === stepId);
-                                      const updated = current?.notes ? current.notes + "\n" + note : note;
-                                      console.log("[附件] 保存到步骤备注 stepId=" + stepId);
-                                      const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
-                                        method: "PATCH",
+                                      console.log("[附件] 保存到备注 stepId=" + stepId);
+                                      const noteRes = await fetchWithAuth("/api/influencers/" + id + "/steps/" + stepId + "/notes", {
+                                        method: "POST",
                                         headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ step_id: stepId, notes: updated }),
+                                        body: JSON.stringify({ content: note, created_by: user?.name || "系统" }),
                                       });
-                                      if (!patchRes.ok) {
-                                        let patchErr = "";
-                                        try { const e3 = await patchRes.json(); patchErr = e3.error || patchRes.statusText; } catch { patchErr = patchRes.statusText || String(patchRes.status); }
-                                        throw new Error("保存失败: " + (patchErr || "HTTP " + patchRes.status));
+                                      if (!noteRes.ok) {
+                                        let noteErr = "";
+                                        try { const e3 = await noteRes.json(); noteErr = e3.error || noteRes.statusText; } catch { noteErr = noteRes.statusText || String(noteRes.status); }
+                                        throw new Error("保存失败: " + (noteErr || "HTTP " + noteRes.status));
                                       }
                                       console.log("[附件] 全部完成 stepId=" + stepId);
                                       setExpandedSteps(p => ({ ...p, [stepId]: true }));
-                                      setStepMessages(p => ({ ...p, [stepId]: { type: "success", text: "上传成功: " + file.name + " · 点击下方「备注」查看" } }));
+                                      // 刷新该步骤的备注列表（立即可见）
+                                      try {
+                                        const nr = await fetchWithAuth("/api/influencers/" + id + "/steps/" + stepId + "/notes", { cache: "no-store" });
+                                        if (nr.ok) { const ns = await nr.json(); setStepNotes(p => ({ ...p, [stepId]: ns })); }
+                                      } catch {}
+                                      setStepMessages(p => ({ ...p, [stepId]: { type: "success", text: "上传成功: " + file.name } }));
                                       setStepErrors(p => ({ ...p, [stepId]: "" }));
                                       reload();
                                     } catch (err) {
