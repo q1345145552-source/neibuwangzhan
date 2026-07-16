@@ -471,44 +471,6 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [deleteNoteTarget.stepId]: notes }));
   };
 
-  // ── Step file upload ──
-  const handleStepUpload = async (stepId: number, file: File) => {
-    setStepUploading(p => ({ ...p, [stepId]: true }));
-    setStepFileNames(p => ({ ...p, [stepId]: file.name }));
-    setStepErrors(p => ({ ...p, [stepId]: "" }));
-    try {
-      const fd = new FormData(); fd.append("file", file);
-      const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
-      if (!ur.ok) {
-        let errDetail = "";
-        try { const e = await ur.json(); errDetail = e.error || ur.statusText; } catch { errDetail = ur.statusText || String(ur.status); }
-        throw new Error("上传失败: " + (errDetail || "HTTP " + ur.status));
-      }
-      const { url } = await ur.json();
-      const note = "上传文件: " + file.name + " (" + url + ")";
-      const current = steps.find(s => s.id === stepId);
-      const updated = current?.notes ? current.notes + "\n" + note : note;
-      const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step_id: stepId, notes: updated }),
-      });
-      if (!patchRes.ok) {
-        let patchErr = "";
-        try { const e = await patchRes.json(); patchErr = e.error || patchRes.statusText; } catch { patchErr = patchRes.statusText || String(patchRes.status); }
-        throw new Error("上传成功但保存失败: " + (patchErr || "HTTP " + patchRes.status));
-      }
-      reload();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[步骤附件上传失败]", { stepId, fileName: file.name, error: msg });
-      setStepErrors(p => ({ ...p, [stepId]: msg }));
-      setError(msg);
-    } finally {
-      setStepUploading(p => ({ ...p, [stepId]: false }));
-      setStepFileNames(p => ({ ...p, [stepId]: "" }));
-    }
-  };
 
   // ── CSV import ──
   const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1120,7 +1082,47 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                             <label className="cursor-pointer inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                               <Upload className="size-3" />
                               {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
-                              <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleStepUpload(step.id, f); e.target.value = ""; }}
+                              <input type="file" className="hidden" onChange={async e => {
+                                const file = e.target.files?.[0]; if (!file) return;
+                                const stepId = step.id;
+                                setStepUploading(p => ({ ...p, [stepId]: true }));
+                                setStepFileNames(p => ({ ...p, [stepId]: file.name }));
+                                setStepErrors(p => ({ ...p, [stepId]: "" }));
+                                try {
+                                  const fd = new FormData(); fd.append("file", file);
+                                  const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+                                  if (!ur.ok) {
+                                    let errDetail = "";
+                                    try { const e2 = await ur.json(); errDetail = e2.error || ur.statusText; } catch { errDetail = ur.statusText || String(ur.status); }
+                                    throw new Error("上传失败: " + (errDetail || "HTTP " + ur.status));
+                                  }
+                                  const { url } = await ur.json();
+                                  const note = "上传文件: " + file.name + " (" + url + ")";
+                                  const current = steps.find(s => s.id === stepId);
+                                  const updated = current?.notes ? current.notes + "\n" + note : note;
+                                  const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ step_id: stepId, notes: updated }),
+                                  });
+                                  if (!patchRes.ok) {
+                                    let patchErr = "";
+                                    try { const e3 = await patchRes.json(); patchErr = e3.error || patchRes.statusText; } catch { patchErr = patchRes.statusText || String(patchRes.status); }
+                                    throw new Error("上传成功但保存失败: " + (patchErr || "HTTP " + patchRes.status));
+                                  }
+                                  // Clear error and reload
+                                  setStepErrors(p => ({ ...p, [stepId]: "" }));
+                                  reload();
+                                } catch (err) {
+                                  const msg = err instanceof Error ? err.message : String(err);
+                                  console.error("[步骤附件上传失败]", { stepId, fileName: file.name, error: msg });
+                                  setStepErrors(p => ({ ...p, [stepId]: msg }));
+                                  setError(msg);
+                                } finally {
+                                  setStepUploading(p => ({ ...p, [stepId]: false }));
+                                  setStepFileNames(p => ({ ...p, [stepId]: "" }));
+                                }
+                              }}
                                 accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx" />
                             </label>
                             {stepErrors[step.id] && (
