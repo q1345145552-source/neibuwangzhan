@@ -1030,7 +1030,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
                           {/* Work hours timer */}
                           <div className="mt-1">
-                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} prev_completed_at={i === 0 ? step.created_at : phaseSteps[i-1].completed_at} started_at={step.started_at} />
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} prev_completed_at={i > 0 ? phaseSteps[i-1].completed_at : null} started_at={step.started_at} />
                           </div>
                           {isOverdue && step.stop_reason && (
                             <p className="text-xs text-[var(--destructive)]">🛑 {step.stop_reason}</p>

@@ -623,14 +623,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 )}
                               </>
                             )}
-                            <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} started_at={step.started_at} className="ml-1" />
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i > 0 ? steps[i-1].completed_at : null} started_at={step.started_at} className="ml-1" />
                           </div>
                         )}
                         {(step.status === "已完成" || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
                               <div className="flex items-center gap-3">
-                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} started_at={step.started_at} />
+                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" prev_completed_at={i > 0 ? steps[i-1].completed_at : null} started_at={step.started_at} />
                               </div>
                             )}
                             {!isClient && (
