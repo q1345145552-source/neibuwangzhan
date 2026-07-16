@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2 } from "lucide-react";
 import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
@@ -53,9 +53,41 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs">("finances");
 
+  // ── 反馈链接 ──
+  const loadFeedbackLink = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/orders/${id}/feedback-token`);
+      if (res.ok) {
+        const d = await res.json();
+        setFeedbackLink(d.link || null);
+        setFeedbackSubmitted(d.submitted || false);
+      }
+    } catch {}
+  };
+
+  const generateFeedbackLink = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/orders/${id}/feedback-token`, { method: "POST" });
+      if (res.ok) {
+        const d = await res.json();
+        setFeedbackLink(d.link);
+        setFeedbackSubmitted(false);
+      }
+    } catch {}
+  };
+
+  const copyFeedbackLink = async () => {
+    if (!feedbackLink) return;
+    try {
+      await navigator.clipboard.writeText(feedbackLink);
+      setCopyingLink(true);
+      setTimeout(() => setCopyingLink(false), 2000);
+    } catch {}
+  };
+
   // 人员耗时汇总（计时起点 = max(created_at, 上一步完成时间)）
   const personEntries = (() => {
-    const personHours: Record<string, number> = {};
+  const personHours: Record<string, number> = {};
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       if (s.status === "已完成" && s.completed_at && s.assignee && s.started_at) {
@@ -97,6 +129,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [docErrorMsg, setDocErrorMsg] = useState("");
   const [certErrorMsg, setCertErrorMsg] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [feedbackLink, setFeedbackLink] = useState<string | null>(null);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [copyingLink, setCopyingLink] = useState(false);
   const { user } = useAuth();
   const isClient = user?.role === "client";
   // 编辑模式
@@ -464,6 +499,28 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <div className={cn("h-full rounded-full transition-all duration-300", steps.filter(s => s.status === "已完成").length === steps.length ? "bg-[var(--success)]" : "bg-[var(--success)]")} style={{ width: `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%` }} />
                 </div>
                 <span className="text-xs font-medium shrink-0 text-[var(--muted-foreground)]">{steps.filter(s => s.status === "已完成").length === steps.length ? "全部完成" : `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%`}</span>
+              </div>
+            )}
+            {/* 客户评价链接 */}
+            {steps.length > 0 && steps.filter(s => s.status === "已完成").length === steps.length && (
+              <div className="mb-4 flex items-center gap-2 flex-wrap">
+                {feedbackLink ? (
+                  <>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/20 px-3 py-1 text-xs font-medium text-green-700 dark:text-green-400">
+                      <Link2 className="size-3" />
+                      评价链接已生成 {feedbackSubmitted && "（已评价）"}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={copyFeedbackLink}>
+                      {copyingLink ? <CheckCheck className="size-3" /> : <Copy className="size-3" />}
+                      {copyingLink ? "已复制" : "复制评价链接"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={generateFeedbackLink}>
+                    <Link2 className="size-3 mr-1" />
+                    生成评价链接
+                  </Button>
+                )}
               </div>
             )}
             {(() => {

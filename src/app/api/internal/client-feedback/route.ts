@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (existing) return NextResponse.json({ error: "该订单已提交过反馈" }, { status: 409 });
 
   // 插入反馈记录
-  db.prepare("INSERT INTO client_feedback (order_id, responsible_person, score) VALUES (?, ?, ?)").run(order_id, order.responsible_person || "", score);
+  db.prepare("INSERT INTO client_feedback (order_id, responsible_person, score, comment) VALUES (?, ?, ?, ?)").run(order_id, order.responsible_person || "", score, (body.comment || "").slice(0, 500));
 
   // 写入积分
   const pts = score === "满意" ? 3 : -3;
