@@ -106,7 +106,7 @@ export function calcElapsedWorkHours(createdAt: string): number {
 }
 
 /**
- * 格式化小时数为显示文本
+ * 格式化小时数为显示文本（用于汇总等）
  */
 export function formatWorkHours(hours: number): string {
   if (!isFinite(hours) || hours <= 0) return "0h";
@@ -115,6 +115,66 @@ export function formatWorkHours(hours: number): string {
   const m = Math.round((hours - h) * 60);
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
+}
+
+/**
+ * 计算两个时间之间的工作秒数（直接算秒，不经过 calcWorkHours 的舍入）
+ * 与 calcWorkHours 同算法，但精度到秒
+ */
+export function calcWorkSeconds(fromUtc: Date | string, toUtc: Date | string): number {
+  const from = parseUtcDate(fromUtc);
+  const to = parseUtcDate(toUtc);
+  if (from >= to) return 0;
+
+  let totalMs = 0;
+  const cursor = new Date(from);
+
+  // 逐个工作日、逐秒累加
+  while (cursor < to) {
+    const bkk = toBangkok(cursor);
+    const dow = bkk.getUTCDay();
+    const hour = bkk.getUTCHours() + bkk.getUTCMinutes() / 60 + bkk.getUTCSeconds() / 3600;
+
+    if (dow !== 0 && hour >= WORK_START && hour < WORK_END) {
+      // 跳到本小时结束或 to，取较小者
+      const hourEnd = new Date(cursor);
+      hourEnd.setUTCMinutes(0, 0, 0);
+      hourEnd.setUTCHours(hourEnd.getUTCHours() + 1);
+      const end = hourEnd < to ? hourEnd : to;
+      totalMs += end.getTime() - cursor.getTime();
+    }
+
+    // 跳到下一个边界：整点 或 工作日 8am 或 to
+    if (dow === 0 || hour >= WORK_END) {
+      // 跳到下一天 8am BKK
+      const nextDay = new Date(Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate() + 1, WORK_START - 7, 0, 0));
+      cursor.setTime(nextDay.getTime());
+    } else if (hour < WORK_START) {
+      // 今天 8am BKK
+      const startToday = new Date(Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate(), WORK_START - 7, 0, 0));
+      cursor.setTime(startToday.getTime());
+    } else {
+      // 在 8-17 之间，已经跳过本小时，继续
+      const hourEnd = new Date(cursor);
+      hourEnd.setUTCMinutes(0, 0, 0);
+      hourEnd.setUTCHours(hourEnd.getUTCHours() + 1);
+      cursor.setTime(hourEnd.getTime());
+    }
+  }
+
+  return Math.floor(totalMs / 1000);
+}
+
+/**
+ * 格式化为 HH:MM:SS（秒表格式，用于计时器显示）
+ */
+export function formatWorkSeconds(totalSeconds: number): string {
+  if (!isFinite(totalSeconds) || totalSeconds <= 0) return "00:00:00";
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 /**

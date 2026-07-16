@@ -1,96 +1,137 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { calcWorkHours, formatWorkHours } from "@/lib/work-hours";
+import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { cn } from "@/lib/utils";
-import { Clock } from "lucide-react";
+import { Clock, Timer } from "lucide-react";
 
 interface StepTimerProps {
   created_at: string;
   completed_at?: string | null;
   status?: string;
   className?: string;
+  /** 上一步完成时间，计时起点 = 上一步完成时。为 null 表示上一步未完成，不启动计时 */
+  prev_completed_at?: string | null;
 }
 
 /**
- * 步骤计时器组件
- * - 进行中：每秒更新，计算 created_at → now 的工作小时
- * - 已完成：计算 created_at → completed_at 的工作小时（不更新）
- * - 纯秒表计时，不标红不对比
+ * 步骤计时器 — 秒级 HH:MM:SS 走字
+ * - 计时起点 = 上一步的 completed_at（上一步未完成则不启动）
+ * - 进行中/待处理：每秒走字
+ * - 已完成：静态不动
+ * - 撤回后 completed_at 清空 → 恢复走字
  */
-export function StepTimer({ created_at, completed_at, status, className }: StepTimerProps) {
-  const [elapsed, setElapsed] = useState(0);
-  const isCompleted = status === "已完成" || (typeof completed_at === "string" && completed_at.length > 0);
+export function StepTimer({ created_at, completed_at, status, prev_completed_at, className }: StepTimerProps) {
+  const [seconds, setSeconds] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isCompleted = status === "已完成" || (typeof completed_at === "string" && completed_at.length > 0);
+
+  // 上一步没完成 → 不启动
+  const startAt = prev_completed_at || null;
+
+  // 交接间隔（上一步完成 → 本步完成）
+  const handoverSec = startAt && completed_at
+    ? calcWorkSeconds(startAt, completed_at)
+    : 0;
 
   useEffect(() => {
+    // 上一步没完成就不计时，也不显示
+    if (!startAt) {
+      setSeconds(0);
+      return;
+    }
+
     const compute = () => {
       try {
-        if (isCompleted && completed_at) {
-          setElapsed(calcWorkHours(created_at, completed_at));
-        } else {
-          setElapsed(calcWorkHours(created_at, new Date().toISOString()));
-        }
+        const end = (isCompleted && completed_at) ? completed_at : new Date().toISOString();
+        setSeconds(calcWorkSeconds(startAt, end));
       } catch {
-        setElapsed(0);
+        setSeconds(0);
       }
     };
 
     compute();
 
-    // 进行中步骤：在工作时间内每秒更新
     if (!isCompleted) {
-      intervalRef.current = setInterval(() => {
-        compute();
-      }, 1000);
+      intervalRef.current = setInterval(compute, 1000);
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [created_at, completed_at, isCompleted]);
+  }, [startAt, completed_at, isCompleted]);
+
+  // 上一步未完成：灰字占位
+  if (!startAt) {
+    return (
+      <span className={cn("inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]/40 font-mono tabular-nums", className)}>
+        <Clock className="size-3" />
+        等待上一步
+      </span>
+    );
+  }
 
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-xs tabular-nums text-[var(--muted-foreground)]",
-        className
-      )}
-      title={isCompleted
-        ? `实际用时 ${formatWorkHours(elapsed)}（工作小时）`
-        : `计时中 ${formatWorkHours(elapsed)}（工作小时，周一至周六 08:00-17:00）`
-      }
-    >
-      <span className="relative inline-flex">
-        <Clock className="size-3" />
-        {!isCompleted && (
-          <span className="absolute -right-0.5 -top-0.5 flex size-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex size-2 rounded-full bg-green-500" />
+    <span className={cn("inline-flex flex-col gap-0.5 font-mono", className)}>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 tabular-nums tracking-tight",
+          isCompleted
+            ? "text-xs text-[var(--muted-foreground)]"
+            : "text-sm font-medium text-[var(--foreground)]"
+        )}
+        title={isCompleted ? "本步耗时" : "计时中（周一至周六 08:00-17:00）"}
+      >
+        {isCompleted ? (
+          <Clock className="size-3 text-[var(--muted-foreground)]" />
+        ) : (
+          <span className="relative inline-flex">
+            <Timer className="size-3.5 text-emerald-500" />
+            <span className="absolute -right-0.5 -top-0.5 flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+            </span>
           </span>
         )}
+        <span>{formatWorkSeconds(seconds)}</span>
       </span>
-      {formatWorkHours(elapsed)}
+      {handoverSec > 0 && (
+        <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]/50 tabular-nums">
+          <span className="inline-block w-3" />
+          间隔 {formatWorkSeconds(handoverSec)}
+        </span>
+      )}
     </span>
   );
 }
 
 /**
- * 纯展示组件（不实时更新，用于列表页）
+ * 纯展示组件（列表/汇总页，不实时走字）
  */
-export function StepTimerStatic({ created_at, completed_at }: StepTimerProps) {
-  const elapsed = completed_at
-    ? calcWorkHours(created_at, completed_at)
-    : calcWorkHours(created_at, new Date().toISOString());
+export function StepTimerStatic({ created_at, completed_at, prev_completed_at }: StepTimerProps) {
+  const startAt = prev_completed_at || null;
+  if (!startAt) {
+    return <span className="text-[0.65rem] text-[var(--muted-foreground)]/40">—</span>;
+  }
+  const elapsedSec = completed_at
+    ? calcWorkSeconds(startAt, completed_at)
+    : calcWorkSeconds(startAt, new Date().toISOString());
+  const handoverSec = completed_at
+    ? calcWorkSeconds(startAt, completed_at)
+    : 0;
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-xs tabular-nums text-[var(--muted-foreground)]"
+    <span className={cn("inline-flex flex-col gap-0.5 font-mono text-xs tabular-nums text-[var(--muted-foreground)]")}>
+      <span className="inline-flex items-center gap-1">
+        <Clock className="size-3" />
+        {formatWorkSeconds(elapsedSec)}
+      </span>
+      {handoverSec > 0 && (
+        <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]/60 tabular-nums">
+          <span className="inline-block w-3" />
+          间隔 {formatWorkSeconds(handoverSec)}
+        </span>
       )}
-      title={completed_at ? "实际用时（工作小时）" : "已用工作小时"}
-    >
-      <Clock className="size-3" />
-      {formatWorkHours(elapsed)}
     </span>
   );
 }
