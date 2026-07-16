@@ -81,10 +81,7 @@ export default function RewardsPage() {
       setPeerVotes(data.peerVotes || []);
       setClientFeedback(data.clientFeedback || []);
       setQuarters(data.quarters || []);
-      // Check if current user has voted this month
-      if (data.peerVotes) {
-        setHasVoted(data.peerVotes.some((v: PeerVote) => v.voter === user?.name));
-      }
+      // hasVoted no longer checked (unlimited votes)
     } catch (e) { console.error("[奖惩] 加载失败", e); }
     setLoading(false);
   };
@@ -140,7 +137,6 @@ export default function RewardsPage() {
     const d = await res.json();
     if (d.error) { setVoteMsg(d.error); return; }
     setVoteNominee(""); setVoteReason("");
-    setHasVoted(true);
     load();
   };
 
@@ -180,7 +176,8 @@ export default function RewardsPage() {
         </div>
       </div>
 
-      {/* ── 积分排名榜 ── */}
+      {/* ── 积分排名榜（仅管理员可见）── */}
+      {isAdmin && (
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)]">
           <h2 className="text-sm font-medium flex items-center gap-2"><Trophy className="size-4" />积分排名 · {title}</h2>
@@ -221,6 +218,7 @@ export default function RewardsPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── 同事互评 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
@@ -228,8 +226,7 @@ export default function RewardsPage() {
           <h2 className="text-sm font-medium flex items-center gap-2"><Heart className="size-4" />同事互评</h2>
         </div>
         <div className="p-5">
-          {!hasVoted ? (
-            <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="text-xs font-medium">点赞对象</label>
                 <select value={voteNominee} onChange={e => setVoteNominee(e.target.value)}
@@ -239,27 +236,25 @@ export default function RewardsPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium">点赞理由</label>
-                <input value={voteReason} onChange={e => setVoteReason(e.target.value)} placeholder="Ta 哪里做得好..."
+                <label className="text-xs font-medium">点赞理由 <span className="text-red-500">*</span></label>
+                <input value={voteReason} onChange={e => setVoteReason(e.target.value)} placeholder="Ta 哪里做得好，必填..."
                   className="mt-1 h-9 rounded border border-[var(--border)] px-3 text-sm w-64" />
               </div>
-              <Button size="sm" onClick={handlePeerVote}><Heart className="size-3.5 mr-1" />送出点赞 (+2分)</Button>
+              <Button size="sm" onClick={handlePeerVote} disabled={!voteReason.trim()}><Heart className="size-3.5 mr-1" />送出点赞 (+2分)</Button>
               {voteMsg && <span className="text-xs text-red-500 ml-2">{voteMsg}</span>}
             </div>
-          ) : (
-            <p className="text-sm text-[var(--muted-foreground)]">本月已投过票，感谢你的参与。</p>
-          )}
 
           {peerVotes.length > 0 && (
             <div className="mt-4 border-t border-[var(--border)] pt-4">
-              <h3 className="text-xs font-medium text-[var(--muted-foreground)] mb-2">本月点赞记录</h3>
+              <h3 className="text-xs font-medium text-[var(--muted-foreground)] mb-2">{isAdmin ? "完整投票记录" : "收到的赞"} ({peerVotes.length})</h3>
               <div className="space-y-1.5">
                 {peerVotes.map(v => (
                   <div key={v.id} className="flex items-center gap-2 text-sm">
-                    <span className="font-medium">{v.voter}</span>
-                    <span className="text-[var(--muted-foreground)]">点赞</span>
+                    {isAdmin && <span className="font-medium">{v.voter}</span>}
+                    {isAdmin && <span className="text-[var(--muted-foreground)]">→</span>}
                     <span className="font-medium text-green-600">{v.nominee}</span>
                     {v.reason && <span className="text-xs text-[var(--muted-foreground)]">— {v.reason}</span>}
+                    {!isAdmin && (v as any).anonymous && <span className="text-xs text-[var(--muted-foreground)]/50">（来自同事）</span>}
                   </div>
                 ))}
               </div>
