@@ -54,6 +54,17 @@ export default function RewardsPage() {
   const [hasVoted, setHasVoted] = useState(false);
   const [voteMsg, setVoteMsg] = useState("");
 
+  // 独立加载员工列表（不依赖 points API 返回）
+  useEffect(() => {
+    fetchWithAuth("/api/employees", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        const empList = (Array.isArray(data) ? data : []).map((e: any) => ({ id: e.id, name: e.name, role: e.role }));
+        if (empList.length > 0) setEmployees(empList);
+      })
+      .catch(() => {});
+  }, []);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -64,7 +75,7 @@ export default function RewardsPage() {
       const data = await res.json();
       setRankings(data.rankings || []);
       setRecords(data.records || []);
-      setEmployees(data.employees || []);
+      // employees 由独立 useEffect 加载，不从 points API 取
       setAppeals(data.appeals || []);
       setPeerVotes(data.peerVotes || []);
       setClientFeedback(data.clientFeedback || []);

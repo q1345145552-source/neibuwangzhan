@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, useCallback } from "react";
+import React, { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2 } from "lucide-react";
@@ -12,6 +12,7 @@ import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepDocs } from "@/lib/constants";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
+import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -47,6 +48,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs">("finances");
+
+  // 人员耗时汇总（计时起点 = max(created_at, 上一步完成时间)）
+  const personEntries = (() => {
+    const personHours: Record<string, number> = {};
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      if (s.status === "已完成" && s.completed_at && s.assignee) {
+        const start = i > 0 && steps[i - 1].completed_at
+          ? (steps[i - 1].completed_at! > s.created_at ? steps[i - 1].completed_at! : s.created_at)
+          : s.created_at;
+        personHours[s.assignee] = (personHours[s.assignee] || 0) + calcWorkSeconds(start, s.completed_at);
+      }
+    }
+    return Object.entries(personHours).sort((a, b) => b[1] - a[1]);
+  })();
   const [newDocName, setNewDocName] = useState("");
   const [newCertNo, setNewCertNo] = useState("");
   const [editingCertId, setEditingCertId] = useState<number | null>(null);
@@ -446,6 +462,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               const allPaid = pendingCount === 0;
               return <p className={cn("mt-1.5 text-xs", allPaid ? "text-[var(--success)]" : "text-[var(--warning)]")}>付款：已付 {totalFinCount - pendingCount}/{totalFinCount}，待付 {pendingCount} 项</p>;
             })()}
+            {/* 人员耗时汇总 — see personHours computed above */}
+            {personEntries.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {personEntries.map(([name, hours]) => (
+                  <span key={name} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-1 text-xs">
+                    <span className="font-medium text-[var(--foreground)]">{name}</span>
+                    <span className="text-[var(--muted-foreground)]">累计 {formatWorkSeconds(hours)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
             {steps.length === 0 ? (
               <p className="text-sm text-[var(--muted-foreground)]">暂无步骤</p>
             ) : (
@@ -589,16 +616,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 )}
                               </>
                             )}
-                            {(step.status === "进行中" || step.status === "已完成" || step.status === "阻塞") && (
-                              <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} className="ml-1" />
-                            )}
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} className="ml-1" />
                           </div>
                         )}
                         {(step.status === "已完成" || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
                               <div className="flex items-center gap-3">
-                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" />
+                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} />
                               </div>
                             )}
                             {!isClient && (

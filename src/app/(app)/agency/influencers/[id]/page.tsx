@@ -8,6 +8,7 @@ import { useAuth } from "@/components/auth-provider";
 import { fetchEmployees, type Employee, startPhase, fetchWithAuth } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
 import { StepTimer } from "@/components/step-timer";
+import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 function getBackUrl(inf: any) {
   if (!inf) return "/agency/influencers";
   if (inf.phase === "contract" || inf.phase === "completed_contract") return "/agency/contracts";
@@ -297,6 +298,22 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey(k => k + 1), []);
+
+  // 人员耗时汇总（计时起点 = max(created_at, 上一步完成时间)）
+  const personEntries = (() => {
+    const personHours: Record<string, number> = {};
+    // steps 已按 step_order 排序
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      if (s.status === "已完成" && s.completed_at && s.assignee) {
+        const start = i > 0 && steps[i - 1].completed_at
+          ? (steps[i - 1].completed_at! > s.created_at ? steps[i - 1].completed_at! : s.created_at)
+          : s.created_at;
+        personHours[s.assignee] = (personHours[s.assignee] || 0) + calcWorkSeconds(start, s.completed_at);
+      }
+    }
+    return Object.entries(personHours).sort((a, b) => b[1] - a[1]);
+  })();
 
   // ── Load influencer data ──
   useEffect(() => {
@@ -911,6 +928,18 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
             </div>
           )}
 
+          {/* 人员耗时汇总 — see personEntries computed above */}
+          {personEntries.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {personEntries.map(([name, hours]) => (
+                <span key={name} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-1 text-xs">
+                  <span className="font-medium text-[var(--foreground)]">{name}</span>
+                  <span className="text-[var(--muted-foreground)]">累计 {formatWorkSeconds(hours)}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Steps by phase */}
           {phases.map(phase => {
             const phaseSteps = steps.filter(s => s.phase === phase);
@@ -986,7 +1015,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
                           {/* Work hours timer */}
                           <div className="mt-1">
-                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} />
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} prev_completed_at={i === 0 ? step.created_at : phaseSteps[i-1].completed_at} />
                           </div>
                           {isOverdue && step.stop_reason && (
                             <p className="text-xs text-[var(--destructive)]">🛑 {step.stop_reason}</p>
