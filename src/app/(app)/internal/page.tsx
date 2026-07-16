@@ -5,6 +5,14 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
+
+/** 将 UTC 时间字符串转为曼谷时间 HH:MM:SS */
+function toBangkokTime(utcStr: string | null): string {
+  if (!utcStr) return "—";
+  const d = new Date(utcStr.includes("Z") ? utcStr : utcStr.replace(" ", "T") + "Z");
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString("en-GB", { timeZone: "Asia/Bangkok", hour12: false });
+}
 import { StepTimerStatic } from "@/components/step-timer";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2 } from "lucide-react";
@@ -168,7 +176,7 @@ export default function InternalPage() {
   };
 
   useEffect(() => {
-    const tick = () => setCurrentTime(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+    const tick = () => setCurrentTime(new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Bangkok", hour12: false }));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -261,8 +269,8 @@ export default function InternalPage() {
       const cols: ExportColumn<any>[] = [
         { header: "员工", key: "employee_name" },
         { header: "日期", key: "date" },
-        { header: "签到时间", render: (r) => r.check_in || "—" },
-        { header: "签退时间", render: (r) => r.check_out || "—" },
+        { header: "签到时间", render: (r) => toBangkokTime(r.check_in) },
+        { header: "签退时间", render: (r) => toBangkokTime(r.check_out) },
         { header: "工时(小时)", render: (r) => r.work_hours != null ? String(r.work_hours) : "—" },
         { header: "签到照片", render: (r) => r.check_in_photo || "—" },
         { header: "签退照片", render: (r) => r.check_out_photo || "—" },
@@ -397,7 +405,7 @@ export default function InternalPage() {
         <div className="p-6">
           <div className="text-center mb-6">
             <div className="text-5xl font-mono font-bold tracking-wider text-[var(--foreground)]">{currentTime}</div>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Bangkok", year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p>
           </div>
           <div className="flex items-center justify-center gap-6">
             {!todayRecord?.check_in ? (
@@ -422,14 +430,14 @@ export default function InternalPage() {
               >
                 <LogOut className="size-10 text-orange-600" />
                 <span className="text-lg font-semibold text-orange-700">签退下班</span>
-                <span className="text-xs text-orange-500 flex items-center gap-1"><Camera className="size-3" />需拍照上传 · 签到于 {todayRecord.check_in?.slice(11, 19)}</span>
+                <span className="text-xs text-orange-500 flex items-center gap-1"><Camera className="size-3" />需拍照上传 · 签到于 {toBangkokTime(todayRecord.check_in)}</span>
               </button>
             ) : (
               <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-gray-200 bg-gray-50 px-10 py-6 dark:bg-gray-900/30">
                 <CheckCircle2 className="size-10 text-gray-400" />
                 <span className="text-lg font-semibold text-gray-500">今日打卡完成</span>
                 <span className="text-xs text-gray-400">
-                  签到 {todayRecord.check_in?.slice(11, 19)} / 签退 {todayRecord.check_out?.slice(11, 19)} · 工时 {todayRecord.work_hours || "—"}h
+                  签到 {toBangkokTime(todayRecord.check_in)} / 签退 {toBangkokTime(todayRecord.check_out)} · 工时 {todayRecord.work_hours || "—"}h
                 </span>
                 {(todayRecord.check_in_photo || todayRecord.check_out_photo) && (
                   <div className="flex gap-2 mt-1">
@@ -558,12 +566,12 @@ export default function InternalPage() {
                   ) : s.hasCheckedIn && s.hasCheckedOut ? (
                     <div className="mt-1 text-xs text-green-600">
                       <CheckCircle2 className="size-3 inline mr-0.5" />
-                      {s.checkInTime?.slice(11, 19)} - {s.checkOutTime?.slice(11, 19)}
+                      {toBangkokTime(s.checkInTime)} - {toBangkokTime(s.checkOutTime)}
                     </div>
                   ) : s.hasCheckedIn ? (
                     <div className="mt-1 text-xs text-amber-600">
                       <Clock className="size-3 inline mr-0.5" />
-                      已签到 {s.checkInTime?.slice(11, 19)}
+                      已签到 {toBangkokTime(s.checkInTime)}
                     </div>
                   ) : (
                     <div className="mt-1 text-xs text-red-600">
@@ -729,8 +737,8 @@ export default function InternalPage() {
             </div>
             {calDetailDay.check_in ? (
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">签到</span><span>{calDetailDay.check_in?.slice(11,19) || "—"}</span></div>
-                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">签退</span><span>{calDetailDay.check_out?.slice(11,19) || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">签到</span><span>{toBangkokTime(calDetailDay.check_in) || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">签退</span><span>{toBangkokTime(calDetailDay.check_out) || "—"}</span></div>
                 <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">工时</span><span>{calDetailDay.work_hours != null ? calDetailDay.work_hours+"h" : "—"}</span></div>
                 <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">类型</span><span>{calDetailDay.type || "正常"}</span></div>
                 <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">IP</span><span className="text-xs font-mono">{calDetailDay.ip_address || calDetailDay.check_in_ip || "—"}</span></div>
@@ -784,7 +792,7 @@ export default function InternalPage() {
                         <span className="text-xs text-amber-600 font-medium">补签</span>
                       </div>
                       <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">
-                        <p>打卡时间: {r.check_in?.slice(11,19) || "—"}</p>
+                        <p>打卡时间: {toBangkokTime(r.check_in) || "—"}</p>
                         {r.reason && <p className="mt-0.5">原因: {r.reason}</p>}
                       </div>
                       {(r.check_in_photo || r.request_photo) && (
@@ -819,7 +827,7 @@ export default function InternalPage() {
                         <span className="text-xs text-orange-600 font-medium">迟到</span>
                       </div>
                       <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">
-                        <p>签到: {r.check_in?.slice(11,19) || "—"} | 签退: {r.check_out?.slice(11,19) || "—"}</p>
+                        <p>签到: {toBangkokTime(r.check_in) || "—"} | 签退: {toBangkokTime(r.check_out) || "—"}</p>
                         <p className="mt-0.5">IP: {r.check_in_ip || r.ip_address || "—"}</p>
                       </div>
                       {r.check_in_photo && (
