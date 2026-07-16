@@ -66,9 +66,18 @@ export async function GET(req: NextRequest) {
   }
 
   // 互评数据
-  const peerVotes = db.prepare(
-    "SELECT * FROM peer_votes WHERE month = ? ORDER BY created_at DESC"
-  ).all(month);
+  let peerVotes: any[] = [];
+  if (isAdmin) {
+    peerVotes = db.prepare(
+      "SELECT * FROM peer_votes WHERE month = ? ORDER BY created_at DESC"
+    ).all(month);
+  } else if (auth.name) {
+    // 员工端只返回收到的赞，且隐藏投票人
+    const raw = db.prepare(
+      "SELECT id, nominee, reason, month, created_at FROM peer_votes WHERE nominee = ? AND month = ? ORDER BY created_at DESC"
+    ).all(auth.name, month) as any[];
+    peerVotes = raw.map((r: any) => ({ ...r, voter: "同事", anonymous: true }));
+  }
 
   // 客户反馈
   const clientFeedback = db.prepare(
@@ -103,13 +112,11 @@ export async function POST(req: NextRequest) {
     const voter = auth.name || "";
     const month = bangkokMonthKey();
 
-    // 检查本月是否已投票
-    const existing = db.prepare("SELECT COUNT(*) as c FROM peer_votes WHERE voter = ? AND month = ?").get(voter, month) as { c: number };
-    if (existing.c > 0) return NextResponse.json({ error: "本月已投过票" }, { status: 400 });
     if (voter === nominee) return NextResponse.json({ error: "不能给自己投票" }, { status: 400 });
 
-    db.prepare("INSERT INTO peer_votes (voter, nominee, reason, month) VALUES (?, ?, ?, ?)").run(voter, nominee, reason || "", month);
-    db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, status) VALUES (?, 2, ?, 'peer_vote', '有效')").run(nominee, `${voter} 点赞: ${reason || "优秀同事"}`);
+    if (!reason || !reason.trim()) return NextResponse.json({ error: "请填写点赞理由" }, { status: 400 });
+    db.prepare("INSERT INTO peer_votes (voter, nominee, reason, month) VALUES (?, ?, ?, ?)").run(voter, nominee, reason.trim(), month);
+    db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, status) VALUES (?, 2, ?, 'peer_vote', '有效')").run(nominee, `${voter} 点赞: ${reason.trim()}`);
 
     return NextResponse.json({ success: true });
   }
