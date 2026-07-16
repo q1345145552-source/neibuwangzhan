@@ -48,14 +48,24 @@ export async function DELETE(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
-  const { note_id } = body;
+
+  // 支持两种传参方式：query ?id=xxx 或 body { note_id: xxx }
+  let note_id: string | null = null;
+  const url = new URL(req.url);
+  note_id = url.searchParams.get("id");
+  if (!note_id) {
+    try {
+      const body = await req.json();
+      note_id = body.note_id;
+    } catch {}
+  }
 
   if (!note_id) return NextResponse.json({ error: "缺少 note_id" }, { status: 400 });
 
-  const existing = db.prepare("SELECT * FROM influencer_step_notes WHERE id = ? AND influencer_id = ?").get(note_id, id);
+  const numId = Number(note_id);
+  const existing = db.prepare("SELECT * FROM influencer_step_notes WHERE id = ? AND influencer_id = ?").get(numId, id);
   if (!existing) return NextResponse.json({ error: "备注不存在" }, { status: 404 });
 
-  db.prepare("DELETE FROM influencer_step_notes WHERE id = ?").run(note_id);
+  db.prepare("DELETE FROM influencer_step_notes WHERE id = ?").run(numId);
   return NextResponse.json({ success: true });
 }
