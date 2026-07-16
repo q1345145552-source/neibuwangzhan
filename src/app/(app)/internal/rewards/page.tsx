@@ -22,9 +22,20 @@ interface PeerVote {
   id: number; voter: string; nominee: string; reason: string; month: string; created_at: string;
 }
 interface ClientFeedback {
-  id: number; order_id: string; responsible_person: string; score: string; comment: string; created_at: string;
+  id: number; order_id: string; responsible_person: string;
+  overall: number; attitude: number; speed: number; professionalism: number;
+  comment: string; created_at: string;
 }
 interface Quarter { label: string; value: string; }
+
+function Stars({ n }: { n: number }) {
+  return (
+    <span className="inline-flex text-xs" style={{ color: "#f59e0b" }}>
+      {"★".repeat(Math.max(0, Math.min(5, n || 0)))}
+      <span style={{ color: "#d1d5db" }}>{"★".repeat(5 - Math.max(0, Math.min(5, n || 0)))}</span>
+    </span>
+  );
+}
 
 export default function RewardsPage() {
   const { user } = useAuth();
@@ -385,7 +396,10 @@ export default function RewardsPage() {
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">订单</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">负责人</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium">评价</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium">综合</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium">态度</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium">速度</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium">专业</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">意见</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">时间</th>
               </tr></thead>
@@ -395,12 +409,11 @@ export default function RewardsPage() {
                     <td className="py-2.5 px-4 font-mono text-xs">{fb.order_id}</td>
                     <td className="py-2.5 px-4">{fb.responsible_person}</td>
                     <td className="py-2.5 px-4 text-center">
-                      <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
-                        fb.score === "满意" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400")}>
-                        {fb.score === "满意" ? <ThumbsUp className="size-3" /> : <ThumbsDown className="size-3" />}
-                        {fb.score}
-                      </span>
+                      <Stars n={fb.overall} />
                     </td>
+                    <td className="py-2.5 px-4 text-center"><Stars n={fb.attitude} /></td>
+                    <td className="py-2.5 px-4 text-center"><Stars n={fb.speed} /></td>
+                    <td className="py-2.5 px-4 text-center"><Stars n={fb.professionalism} /></td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{fb.comment || "—"}</td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{fb.created_at?.slice(0, 16)}</td>
                   </tr>
