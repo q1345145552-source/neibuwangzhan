@@ -30,12 +30,13 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { ticket_number, ref_id, ref_type, description, priority, assignee, created_by } = body;
+  const { ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images } = body;
   if (!description?.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
+  const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
   const result = db.prepare(
-    `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assignee || "", created_by || "");
+    `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assignee || "", created_by || "", imagesJson);
   const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
   if (assignee) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -50,13 +51,14 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { id, status, resolved_by, assignee, description, priority } = body;
+  const { id, status, resolved_by, assignee, description, priority, images } = body;
   if (!id) return NextResponse.json({ error: "缺少工单ID" }, { status: 400 });
   const sets: string[] = []; const vals: any[] = [];
   if (status) { sets.push("status = ?"); vals.push(status); if (status === "已解决") { sets.push("resolved_at = datetime('now')"); if (resolved_by) { sets.push("resolved_by = ?"); vals.push(resolved_by); } } }
   if (assignee) { sets.push("assignee = ?"); vals.push(assignee); }
   if (description) { sets.push("description = ?"); vals.push(description); }
   if (priority) { sets.push("priority = ?"); vals.push(priority); }
+  if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   sets.push("updated_at = datetime('now')");
   vals.push(id);
@@ -70,6 +72,14 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "缺少工单ID" }, { status: 400 });
-  getDb().prepare("DELETE FROM issue_tickets WHERE id = ?").run(id);
+  const db = getDb();
+  // 只有管理员或创建人本人可以删除
+  if (auth.role !== "admin") {
+    const ticket = db.prepare("SELECT created_by FROM issue_tickets WHERE id = ?").get(id) as { created_by: string } | undefined;
+    if (!ticket || ticket.created_by !== auth.name) {
+      return NextResponse.json({ error: "无权删除此工单" }, { status: 403 });
+    }
+  }
+  db.prepare("DELETE FROM issue_tickets WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
 }

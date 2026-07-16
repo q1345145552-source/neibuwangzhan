@@ -130,7 +130,7 @@ export default function TasksPage() {
       priority: newTaskPriority,
       status: "pending",
       business_line: businessFilter || newTaskBusinessLine,
-      deadline: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+      deadline: (() => { const d = new Date(Date.now() + 7*86400000); return d.toISOString().slice(0,10); })(),
     };
     apiCreateTask(newTask).then(() => {
       setTaskList((prev) => [...prev, newTask]);

@@ -9,6 +9,7 @@ import { fetchEmployees, type Employee, startPhase, fetchWithAuth } from "@/lib/
 import { cn, toThaiTime } from "@/lib/utils";
 import { StepTimer } from "@/components/step-timer";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
+import { bangkokDateStr } from "@/lib/time";
 function getBackUrl(inf: any) {
   if (!inf) return "/agency/influencers";
   if (inf.phase === "contract" || inf.phase === "completed_contract") return "/agency/contracts";
@@ -606,7 +607,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
       await fetchWithAuth(`/api/influencers/${id}/certificates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ certificate_number: newCertNo, issue_date: new Date().toISOString().slice(0, 10), file_url: certFileUrl }),
+        body: JSON.stringify({ certificate_number: newCertNo, issue_date: bangkokDateStr(), file_url: certFileUrl }),
       });
       setNewCertNo(""); setCertFileUrl(""); setCertFileName(""); reload();
     } catch (err) { setCertErrorMsg("添加失败"); }

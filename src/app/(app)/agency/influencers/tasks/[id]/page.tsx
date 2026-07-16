@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toThaiDate } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Send, ExternalLink, Trash2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -146,7 +147,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <span>·</span>
               <span>{task.creator}</span>
               <span>·</span>
-              <span>{new Date(task.created_at + "Z").toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}</span>
+              <span>{toThaiDate(task.created_at)}</span>
             </div>
           </div>
         </div>
@@ -165,7 +166,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             已提交评估
             {task.completed_at && (
               <span className="text-xs opacity-70">
-                {new Date(task.completed_at + "Z").toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
+                {toThaiDate(task.completed_at)}
               </span>
             )}
           </span>

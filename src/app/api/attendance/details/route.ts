@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { bangkokToday, bangkokLastDayOfMonth, bangkokDayOfWeek, bangkokMonthKey } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const employee = searchParams.get("employee") || auth.name;
-  const month = searchParams.get("month") || new Date().toISOString().slice(0, 7);
+  const month = searchParams.get("month") || bangkokMonthKey();
   const type = searchParams.get("type") || "";
 
   if (auth.role !== "admin" && employee !== auth.name) {
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   }
 
   const [y, m] = month.split("-").map(Number);
-  const lastDay = new Date(y, m, 0).getDate();
+  const lastDay = bangkokLastDayOfMonth(y, m);
   const from = `${month}-01`;
   const to = `${month}-${String(lastDay).padStart(2, "0")}`;
 
@@ -24,7 +25,6 @@ export async function GET(req: NextRequest) {
     const rows = db.prepare(
       "SELECT * FROM attendance WHERE employee_name = ? AND date >= ? AND date <= ? AND type = '补签' ORDER BY date ASC"
     ).all(employee, from, to) as any[];
-    // Also get supplement request reasons
     const enriched = rows.map((r: any) => {
       const req = db.prepare(
         "SELECT reason, photo FROM attendance_requests WHERE employee_name = ? AND date = ? AND status = '已通过' ORDER BY created_at DESC LIMIT 1"
@@ -49,7 +49,6 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === "absent") {
-    // Get all attendance records for the month
     const attendances = db.prepare(
       "SELECT * FROM attendance WHERE employee_name = ? AND date >= ? AND date <= ?"
     ).all(employee, from, to) as any[];
@@ -69,12 +68,11 @@ export async function GET(req: NextRequest) {
     });
 
     const absentDates: { date: string }[] = [];
-    const today = new Date().toISOString().split("T")[0];
+    const today = bangkokToday();
     for (let d2 = 1; d2 <= lastDay; d2++) {
       const ds = `${month}-${String(d2).padStart(2, "0")}`;
       if (ds > today) break;
-      const day = new Date(y, m - 1, d2).getDay();
-      if (day === 0) continue; // 周日休息
+      if (bangkokDayOfWeek(ds) === 0) continue; // 周日休息
       if (!seenDates.has(ds) && !leaveDates.has(ds)) {
         absentDates.push({ date: ds });
       }

@@ -4,18 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn } from "@/lib/utils";
+import { cn, fileUrl, toThaiDate } from "@/lib/utils";
+import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
-/** 将 UTC 时间字符串转为曼谷时间 HH:MM:SS */
-function toBangkokTime(utcStr: string | null): string {
-  if (!utcStr) return "—";
-  const d = new Date(utcStr.includes("Z") ? utcStr : utcStr.replace(" ", "T") + "Z");
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString("en-GB", { timeZone: "Asia/Bangkok", hour12: false });
-}
 import { StepTimerStatic } from "@/components/step-timer";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2 } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2 } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -26,6 +20,7 @@ interface IssueTicket {
   id: number; ticket_number: string; ref_id: string; ref_type: string;
   description: string; priority: string; status: string; assignee: string;
   created_by: string; resolved_by: string; created_at: string;
+  images?: string;
 }
 
 interface LeaveRequest {
@@ -73,8 +68,8 @@ export default function InternalPage() {
   const [attendanceRequests, setAttendanceRequests] = useState<AttendanceRequest[]>([]);
   const [todayStatuses, setTodayStatuses] = useState<TodayStatus[]>([]);
   const [monthlySummaries, setMonthlySummaries] = useState<MonthlySummary[]>([]);
-  const [summaryMonth, setSummaryMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [summaryMonth, setSummaryMonth] = useState(bangkokMonthKey());
+  const [calendarMonth, setCalendarMonth] = useState(bangkokMonthKey());
   const [calendarEmployee, setCalendarEmployee] = useState(user?.name || "");
   const [calendarData, setCalendarData] = useState<any[]>([]);
   const [calDetailDay, setCalDetailDay] = useState<any>(null);
@@ -94,18 +89,34 @@ export default function InternalPage() {
 
   // Issue form
   const [issueForm, setIssueForm] = useState({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
+  const [issueImages, setIssueImages] = useState<string[]>([]);
+  const [issueUploading, setIssueUploading] = useState(false);
   const [issueErr, setIssueErr] = useState("");
   const [issueSaving, setIssueSaving] = useState(false);
+  const [lightboxImages, setLightboxImages] = useState<string[] | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState(0);
+  const [issueDateFilter, setIssueDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
+  const [issueCustomFrom, setIssueCustomFrom] = useState("");
+  const [issueCustomTo, setIssueCustomTo] = useState("");
+  const [issueAssigneeFilter, setIssueAssigneeFilter] = useState("");
+  const [issueCreatorFilter, setIssueCreatorFilter] = useState("");
+  const [showResolved, setShowResolved] = useState(false);
 
   // Leave form
   const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
   const [leaveErr, setLeaveErr] = useState("");
+  const [leaveImages, setLeaveImages] = useState<string[]>([]);
+  const [leaveUploading, setLeaveUploading] = useState(false);
+  const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
+  const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
+  const [leaveCustomTo, setLeaveCustomTo] = useState("");
+  const [leaveEmployeeFilter, setLeaveEmployeeFilter] = useState("");
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState("");
+  const [showLeaveHistory, setShowLeaveHistory] = useState(false);
 
   // History toggles & date filters
   const [showAtdHistory, setShowAtdHistory] = useState(false);
   const [atdHistoryFilter, setAtdHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
-  const [showLeaveHistory, setShowLeaveHistory] = useState(false);
-  const [leaveHistoryFilter, setLeaveHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
   const [showNotifHistory, setShowNotifHistory] = useState(false);
   const [notifHistoryFilter, setNotifHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
 
@@ -114,6 +125,14 @@ export default function InternalPage() {
   const [wlDetailData, setWlDetailData] = useState<any[]>([]);
   const [wlDetailLoading, setWlDetailLoading] = useState(false);
   const [wlDetailError, setWlDetailError] = useState<string | null>(null);
+  const safeJsonParseArray = (raw: any): string[] => {
+    if (!raw) return [];
+    try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  };
+
   const handleWlDetail = async (employee: string, type: string, label: string) => {
     setWlDetailModal({ employee, type, label });
     setWlDetailLoading(true);
@@ -194,7 +213,7 @@ export default function InternalPage() {
   const loadCalendar = async () => {
     try {
       const [y, m] = calendarMonth.split("-");
-      const lastDay = new Date(Number(y), Number(m), 0).getDate();
+      const lastDay = bangkokLastDayOfMonth(Number(y), Number(m));
       const from = `${calendarMonth}-01`;
       const to = `${calendarMonth}-${String(lastDay).padStart(2, "0")}`;
       const emp = calendarEmployee || user?.name || "";
@@ -284,8 +303,36 @@ export default function InternalPage() {
         { header: "签到照片", render: (r) => r.check_in_photo || "—" },
         { header: "签退照片", render: (r) => r.check_out_photo || "—" },
       ];
-      exportToExcel(arr, cols, `考勤记录_${new Date().toISOString().slice(0, 10)}`);
+      exportToExcel(arr, cols, `考勤记录_${bangkokDateStr()}`);
     } catch (e) { console.error("[内部管理] 导出考勤失败", e); }
+  };
+
+  const handleIssueImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIssueUploading(true);
+    const uploaded: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (!res.ok) throw new Error("上传失败");
+        const json = await res.json();
+        uploaded.push(json.url);
+      } catch (err) {
+        alert("上传失败: " + (err instanceof Error ? err.message : "网络错误"));
+        break;
+      }
+    }
+    setIssueImages(prev => [...prev, ...uploaded]);
+    setIssueUploading(false);
+    e.target.value = "";
+  };
+
+  const removeIssueImage = (idx: number) => {
+    setIssueImages(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleCreateIssue = async () => {
@@ -295,10 +342,11 @@ export default function InternalPage() {
       await fetchWithAuth("/api/issues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...issueForm, created_by: user?.name }),
+        body: JSON.stringify({ ...issueForm, created_by: user?.name, images: issueImages.map((url: string) => url.replace("/api/files/", "")) }),
       });
       setShowIssueForm(false);
       setIssueForm({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
+      setIssueImages([]);
       setIssueErr("");
       loadAll();
     } catch (e) { console.error("[内部管理] 创建工单失败", e); } finally { setIssueSaving(false); }
@@ -313,16 +361,44 @@ export default function InternalPage() {
     loadAll();
   };
 
+  const handleDeleteIssue = async (id: number) => {
+    if (!confirm("确认删除此工单？删除后无法恢复。")) return;
+    try {
+      await fetchWithAuth("/api/issues?id=" + id, { method: "DELETE" });
+      loadAll();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLeaveImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setLeaveUploading(true);
+    const uploaded: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const fd = new FormData(); fd.append("file", files[i]);
+      try {
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (!res.ok) throw new Error("上传失败");
+        const json = await res.json(); uploaded.push(json.url);
+      } catch (err) { alert("上传失败: " + (err instanceof Error ? err.message : "网络错误")); break; }
+    }
+    setLeaveImages(prev => [...prev, ...uploaded]);
+    setLeaveUploading(false); e.target.value = "";
+  };
+
+  const removeLeaveImage = (idx: number) => { setLeaveImages(prev => prev.filter((_, i) => i !== idx)); };
+
   const handleCreateLeave = async () => {
     if (!leaveForm.start_date || !leaveForm.end_date) { setLeaveErr("请选择日期"); return; }
     try {
       await fetchWithAuth("/api/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...leaveForm, employee_name: user?.name }),
+        body: JSON.stringify({ ...leaveForm, employee_name: user?.name, images: leaveImages.map((url) => url.replace("/api/files/", "")) }),
       });
       setShowLeaveForm(false);
       setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
+      setLeaveImages([]);
       setLeaveErr("");
       loadAll();
     } catch (e) { console.error("[内部管理] 创建请假失败", e); }
@@ -414,7 +490,7 @@ export default function InternalPage() {
         <div className="p-6">
           <div className="text-center mb-6">
             <div className="text-5xl font-mono font-bold tracking-wider text-[var(--foreground)]">{currentTime}</div>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Bangkok", year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">{((): string => { const bkk = new Date(Date.now() + 7*60*60*1000); return bkk.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" }); })()}</p>
           </div>
           <div className="flex items-center justify-center gap-6">
             {!todayRecord?.check_in ? (
@@ -639,6 +715,23 @@ export default function InternalPage() {
       </div>
 
 
+      {/* ── 图片灯箱 ── */}
+      {lightboxImages && lightboxImages.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80" onClick={() => setLightboxImages(null)}>
+          <button onClick={() => setLightboxImages(null)} className="absolute top-4 right-4 text-white/70 hover:text-white"><X className="size-6" /></button>
+          {lightboxImages.length > 1 && lightboxIdx > 0 && (
+            <button onClick={e => { e.stopPropagation(); setLightboxIdx(i => i - 1); }} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white"><ChevronLeft className="size-8" /></button>
+          )}
+          <img src={fileUrl(lightboxImages[lightboxIdx])} alt="" className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg" onClick={e => e.stopPropagation()} />
+          {lightboxImages.length > 1 && lightboxIdx < lightboxImages.length - 1 && (
+            <button onClick={e => { e.stopPropagation(); setLightboxIdx(i => i + 1); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white"><ChevronRight className="size-8" /></button>
+          )}
+          {lightboxImages.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-xs">{lightboxIdx + 1} / {lightboxImages.length}</div>
+          )}
+        </div>
+      )}
+
       {/* ── 考勤日历 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
@@ -686,15 +779,15 @@ export default function InternalPage() {
               const parts = calendarMonth.split("-");
               const yr = parseInt(parts[0]);
               const mo = parseInt(parts[1]);
-              const firstDay = new Date(yr, mo - 1, 1).getDay();
+              const firstDay = bangkokDayOfWeek(`${yr}-${String(mo).padStart(2,"0")}-01`);
               const offset = firstDay === 0 ? 6 : firstDay - 1;
-              const lastDate = new Date(yr, mo, 0).getDate();
+              const lastDate = bangkokLastDayOfMonth(yr, mo);
               const cells: React.ReactNode[] = [];
               for (let i = 0; i < offset; i++) cells.push(<div key={"e"+i} className="rounded" />);
               for (let d2 = 1; d2 <= lastDate; d2++) {
                 const ds = `${calendarMonth}-${String(d2).padStart(2,"0")}`;
                 const rec = calendarData.find((r:any) => r.date === ds);
-                const isSunday = new Date(yr, mo - 1, d2).getDay() === 0;
+                const isSunday = bangkokDayOfWeek(`${yr}-${String(mo).padStart(2,"0")}-${String(d2).padStart(2,"0")}`) === 0;
                 let bg = "bg-gray-50 dark:bg-gray-900/20";
                 let label = "";
                 if (rec) {
@@ -711,7 +804,7 @@ export default function InternalPage() {
                 } else if (isSunday) {
                   bg = "bg-gray-50/40 dark:bg-gray-900/10";
                 } else {
-                  const todayStr = new Date().toISOString().slice(0,10);
+                  const todayStr = bangkokDateStr();
                   if (ds < todayStr) { bg = "bg-red-50 dark:bg-red-950/20"; label = "缺"; }
                 }
                 cells.push(
@@ -883,7 +976,8 @@ export default function InternalPage() {
                     <th className="py-2.5 px-4 text-left text-xs font-medium">时间</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium">照片</th>
-                    <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1217,9 +1311,48 @@ export default function InternalPage() {
 
       {/* ── 问题工单 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
-        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
-          <h2 className="text-sm font-medium flex items-center gap-2"><FileEdit className="size-4" />问题工单 ({issues.length})</h2>
+        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-sm font-medium flex items-center gap-2"><FileEdit className="size-4" />问题工单 ({(() => {
+            const now = Date.now(); const today = new Date().toDateString();
+            return issues.filter(t => {
+              const d = new Date(t.created_at);
+              if (issueDateFilter === "today" && d.toDateString() !== today) return false;
+              if (issueDateFilter === "7" && d < new Date(now - 7*86400000)) return false;
+              if (issueDateFilter === "30" && d < new Date(now - 30*86400000)) return false;
+              if (issueDateFilter === "custom" && issueCustomFrom && d < new Date(issueCustomFrom)) return false;
+              if (issueDateFilter === "custom" && issueCustomTo && d > new Date(issueCustomTo+"T23:59:59")) return false;
+              if (issueAssigneeFilter && t.assignee !== issueAssigneeFilter) return false;
+              if (issueCreatorFilter && t.created_by !== issueCreatorFilter) return false;
+              return true;
+            }).length;
+          })()})</h2>
           <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => setShowIssueForm(true)}><Plus className="size-3" />新增工单</Button>
+        </div>
+        {/* Filters */}
+        <div className="px-5 py-3 border-b border-[var(--border)] flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
+            {([["all","全部"],["today","今天"],["7","7天"],["30","30天"],["custom","自定义"]] as [string,string][]).map(([k,l]) => (
+              <button key={k} onClick={() => setIssueDateFilter(k as any)}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${issueDateFilter===k?"bg-[var(--background)] text-[var(--foreground)] shadow-sm":"text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+              >{l}</button>
+            ))}
+          </div>
+          {issueDateFilter === "custom" && (
+            <div className="flex items-center gap-1 text-xs">
+              <input type="date" value={issueCustomFrom} onChange={e=>setIssueCustomFrom(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+              <span className="text-[var(--muted-foreground)]">至</span>
+              <input type="date" value={issueCustomTo} onChange={e=>setIssueCustomTo(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+            </div>
+          )}
+          <span className="text-[var(--border)] mx-1">|</span>
+          <select value={issueAssigneeFilter} onChange={e=>setIssueAssigneeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部指派人</option>
+            {staffNames.map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+          <select value={issueCreatorFilter} onChange={e=>setIssueCreatorFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部创建人</option>
+            {[...new Set(issues.map(t=>t.created_by).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
 
         {showIssueForm && (
@@ -1227,89 +1360,179 @@ export default function InternalPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="text-xs font-medium">关联编号</label>
-                <input value={issueForm.ref_id} onChange={e => setIssueForm(p => ({ ...p, ref_id: e.target.value }))} placeholder="订单编号或达人编号"
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                <input value={issueForm.ref_id} onChange={e=>setIssueForm(p=>({...p,ref_id:e.target.value}))} placeholder="订单编号或达人编号" className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
               <div>
                 <label className="text-xs font-medium">紧急程度</label>
-                <select value={issueForm.priority} onChange={e => setIssueForm(p => ({ ...p, priority: e.target.value }))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
+                <select value={issueForm.priority} onChange={e=>setIssueForm(p=>({...p,priority:e.target.value}))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
                   <option value="medium">普通</option><option value="high">紧急</option><option value="low">低</option>
                 </select>
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">指定解决人</label>
-                <select value={issueForm.assignee} onChange={e => setIssueForm(p => ({ ...p, assignee: e.target.value }))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
+                <select value={issueForm.assignee} onChange={e=>setIssueForm(p=>({...p,assignee:e.target.value}))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
                   <option value="">不指定</option>
-                  {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
+                  {staffNames.map(n=><option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">问题描述</label>
-                <textarea value={issueForm.description} onChange={e => setIssueForm(p => ({ ...p, description: e.target.value }))} placeholder="描述遇到的问题..."
-                  rows={2} className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                <textarea value={issueForm.description} onChange={e=>setIssueForm(p=>({...p,description:e.target.value}))} placeholder="描述遇到的问题..." rows={2} className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs font-medium">截图上传</label>
+              <div className="mt-1 flex flex-wrap gap-2 items-center">
+                {issueImages.map((img,idx)=>(
+                  <div key={idx} className="relative group w-16 h-16 rounded border border-[var(--border)] overflow-hidden bg-[var(--muted)] shrink-0">
+                    <img src={fileUrl(img)} alt="" className="w-full h-full object-cover" />
+                    <button onClick={()=>removeIssueImage(idx)} className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X className="size-3" /></button>
+                  </div>
+                ))}
+                <label className="w-16 h-16 rounded border-2 border-dashed border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--ring)] transition-colors shrink-0">
+                  {issueUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className="size-5 text-[var(--muted-foreground)]" />}
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleIssueImageUpload} disabled={issueUploading} />
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB</p>
             </div>
             {issueErr && <p className="mt-2 text-xs text-[var(--destructive)]">{issueErr}</p>}
             <div className="mt-3 flex gap-2">
-              <Button size="sm" onClick={handleCreateIssue} disabled={issueSaving}>{issueSaving ? "创建中..." : "提交工单"}</Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowIssueForm(false)}>取消</Button>
+              <Button size="sm" onClick={handleCreateIssue} disabled={issueSaving}>{issueSaving?"创建中...":"提交工单"}</Button>
+              <Button variant="ghost" size="sm" onClick={()=>setShowIssueForm(false)}>取消</Button>
             </div>
           </div>
         )}
 
-        {issues.length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无问题工单</div>
-        ) : (
-          <div className="overflow-x-auto">
+        {(() => {
+          const now = Date.now(); const today = new Date().toDateString();
+          const filtered = issues.filter(t => {
+            const d = new Date(t.created_at);
+            if (issueDateFilter === "today" && d.toDateString() !== today) return false;
+            if (issueDateFilter === "7" && d < new Date(now-7*86400000)) return false;
+            if (issueDateFilter === "30" && d < new Date(now-30*86400000)) return false;
+            if (issueDateFilter === "custom" && issueCustomFrom && d < new Date(issueCustomFrom)) return false;
+            if (issueDateFilter === "custom" && issueCustomTo && d > new Date(issueCustomTo+"T23:59:59")) return false;
+            if (issueAssigneeFilter && t.assignee !== issueAssigneeFilter) return false;
+            if (issueCreatorFilter && t.created_by !== issueCreatorFilter) return false;
+            return true;
+          });
+          const active = filtered.filter(t => t.status !== "已解决");
+          const resolved = filtered.filter(t => t.status === "已解决");
+          if (filtered.length === 0) return (
+            <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的工单</div>
+          );
+          // Shared render function for both active and resolved tables
+          const renderTable = (list: IssueTicket[]) => (
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">编号</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">关联</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">问题</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">指定人</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+              <thead><tr className="border-b border-[var(--border)]">
+                <th className="py-2.5 px-4 text-left text-xs font-medium">编号</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">关联</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">问题</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">指定人</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+              </tr></thead>
+              <tbody>{list.map(t => (
+                <tr key={t.id} className="border-b border-[var(--border)]">
+                  <td className="py-2.5 px-4 font-mono text-xs">{t.ticket_number || `#${t.id}`}</td>
+                  <td className="py-2.5 px-4 text-xs">{t.ref_id ? `${t.ref_type==="influencer"?"达人:":"订单:"}${t.ref_id}` : "—"}</td>
+                  <td className="py-2.5 px-4 max-w-[200px] truncate">{t.description}</td>
+                  <td className="py-2.5 px-4">{t.assignee || "—"}</td>
+                  <td className="py-2.5 px-4">
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                      t.status==="已解决"&&"bg-green-100 text-green-700",
+                      t.status==="处理中"&&"bg-blue-100 text-blue-700",
+                      "bg-gray-100 text-gray-700")}>{t.status}</span>
+                  </td>
+                  <td className="py-2.5 px-4">{t.created_by}</td>
+                  <td className="py-2.5 px-4">
+                    {(()=>{const imgs=safeJsonParseArray(t.images);return imgs.length>0?(
+                      <button onClick={()=>{setLightboxImages(imgs.map((f:string)=>`/api/files/${f}`));setLightboxIdx(0);}} className="inline-flex items-center gap-0.5 text-blue-600 hover:underline cursor-pointer">
+                        <Image className="size-4" /><span className="text-xs">{imgs.length}</span>
+                      </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
+                  </td>
+                  <td className="py-2.5 px-4">
+                    {t.status!=="已解决"&&(
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t.id)}>
+                        <CheckCircle2 className="size-3 mr-1" />解决
+                      </Button>
+                    )}
+                    <button onClick={()=>handleDeleteIssue(t.id)} className="ml-1.5 text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="删除工单">
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {issues.map(t => (
-                  <tr key={t.id} className="border-b border-[var(--border)]">
-                    <td className="py-2.5 px-4 font-mono text-xs">{t.ticket_number || `#${t.id}`}</td>
-                    <td className="py-2.5 px-4 text-xs">{t.ref_id ? `${t.ref_type === "influencer" ? "达人:" : "订单:"}${t.ref_id}` : "—"}</td>
-                    <td className="py-2.5 px-4 max-w-[200px] truncate">{t.description}</td>
-                    <td className="py-2.5 px-4">{t.assignee || "—"}</td>
-                    <td className="py-2.5 px-4">
-                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                        t.status === "已解决" && "bg-green-100 text-green-700",
-                        t.status === "处理中" && "bg-blue-100 text-blue-700",
-                        "bg-gray-100 text-gray-700"
-                      )}>{t.status}</span>
-                    </td>
-                    <td className="py-2.5 px-4">{t.created_by}</td>
-                    <td className="py-2.5 px-4">
-                      {t.status !== "已解决" && (
-                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleResolveIssue(t.id)}>
-                          <CheckCircle2 className="size-3 mr-1" />解决
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              ))}</tbody>
             </table>
-          </div>
-        )}
+          );
+          return (
+            <div>
+              {active.length > 0 ? (
+                <div className="overflow-x-auto">{renderTable(active)}</div>
+              ) : (
+                <div className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无处理中的工单</div>
+              )}
+              {resolved.length > 0 && (
+                <div className="border-t border-[var(--border)]">
+                  <button onClick={()=>setShowResolved(!showResolved)} className="w-full px-5 py-3 flex items-center justify-between text-sm hover:bg-[var(--muted)]/30 transition-colors">
+                    <span className="font-medium text-[var(--muted-foreground)]">已解决 ({resolved.length})</span>
+                    <span className={`text-xs transition-transform ${showResolved?"rotate-180":""}`}>&#9660;</span>
+                  </button>
+                  {showResolved && <div className="overflow-x-auto">{renderTable(resolved)}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── 请假审批 / 我的请假 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
-        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
-          <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />{isAdmin ? "请假审批" : "我的请假"}</h2>
-          <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => setShowLeaveForm(true)}><Plus className="size-3" />申请请假</Button>
+        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />{isAdmin ? "请假审批" : "我的请假"} ({(()=>{
+            const now=Date.now();const today=new Date().toDateString();
+            return leaves.filter(l=>{
+              const d=new Date(l.created_at);
+              if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
+              if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
+              if(leaveDateFilter==="30"&&d<new Date(now-30*86400000))return false;
+              if(leaveDateFilter==="custom"&&leaveCustomFrom&&d<new Date(leaveCustomFrom))return false;
+              if(leaveDateFilter==="custom"&&leaveCustomTo&&d>new Date(leaveCustomTo+"T23:59:59"))return false;
+              if(leaveEmployeeFilter&&l.employee_name!==leaveEmployeeFilter)return false;
+              if(leaveStatusFilter&&l.status!==leaveStatusFilter)return false;
+              return true;
+            }).length;
+          })()})</h2>
+          <Button size="sm" className="h-7 text-xs" variant="outline" onClick={()=>setShowLeaveForm(true)}><Plus className="size-3" />申请请假</Button>
+        </div>
+        {/* Filters */}
+        <div className="px-5 py-3 border-b border-[var(--border)] flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
+            {(["all","all","today","今天","7","7天","30","30天","custom","自定义"] as const).reduce<[string,string][]>((acc,_,i,a)=>{if(i%2===0)acc.push([a[i],a[i+1]]);return acc;},[]).map(([k,l])=>(
+              <button key={k} onClick={()=>setLeaveDateFilter(k as any)}
+                className={"rounded px-2.5 py-1 text-xs font-medium transition-colors "+(leaveDateFilter===k?"bg-[var(--background)] text-[var(--foreground)] shadow-sm":"text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}
+              >{l}</button>
+            ))}
+          </div>
+          {leaveDateFilter==="custom"&&(
+            <div className="flex items-center gap-1 text-xs">
+              <input type="date" value={leaveCustomFrom} onChange={e=>setLeaveCustomFrom(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+              <span className="text-[var(--muted-foreground)]">至</span>
+              <input type="date" value={leaveCustomTo} onChange={e=>setLeaveCustomTo(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+            </div>
+          )}
+          <span className="text-[var(--border)] mx-1">|</span>
+          <select value={leaveEmployeeFilter} onChange={e=>setLeaveEmployeeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部申请人</option>
+            {[...new Set(leaves.map(l=>l.employee_name).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+          <select value={leaveStatusFilter} onChange={e=>setLeaveStatusFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部状态</option>
+            <option value="待审批">待审批</option><option value="已通过">已通过</option><option value="已驳回">已驳回</option>
+          </select>
         </div>
 
         {showLeaveForm && (
@@ -1317,144 +1540,121 @@ export default function InternalPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
                 <label className="text-xs font-medium">请假类型</label>
-                <select value={leaveForm.leave_type} onChange={e => setLeaveForm(p => ({ ...p, leave_type: e.target.value }))}
+                <select value={leaveForm.leave_type} onChange={e=>setLeaveForm(p=>({...p,leave_type:e.target.value}))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
                   <option value="事假">事假</option><option value="病假">病假</option><option value="年假">年假</option><option value="其他">其他</option>
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-medium">开始日期</label>
-                <input type="date" value={leaveForm.start_date} onChange={e => setLeaveForm(p => ({ ...p, start_date: e.target.value }))}
+              <div><label className="text-xs font-medium">开始日期</label>
+                <input type="date" value={leaveForm.start_date} onChange={e=>setLeaveForm(p=>({...p,start_date:e.target.value}))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
               </div>
-              <div>
-                <label className="text-xs font-medium">结束日期</label>
-                <input type="date" value={leaveForm.end_date} onChange={e => setLeaveForm(p => ({ ...p, end_date: e.target.value }))}
+              <div><label className="text-xs font-medium">结束日期</label>
+                <input type="date" value={leaveForm.end_date} onChange={e=>setLeaveForm(p=>({...p,end_date:e.target.value}))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
               </div>
               <div className="sm:col-span-3">
                 <label className="text-xs font-medium">原因</label>
-                <input value={leaveForm.reason} onChange={e => setLeaveForm(p => ({ ...p, reason: e.target.value }))} placeholder="请假原因..."
+                <input value={leaveForm.reason} onChange={e=>setLeaveForm(p=>({...p,reason:e.target.value}))} placeholder="请假原因..."
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs font-medium">附件上传</label>
+              <div className="mt-1 flex flex-wrap gap-2 items-center">
+                {leaveImages.map((img,idx)=>(
+                  <div key={idx} className="relative group w-16 h-16 rounded border border-[var(--border)] overflow-hidden bg-[var(--muted)] shrink-0">
+                    <img src={fileUrl(img)} alt="" className="w-full h-full object-cover" />
+                    <button onClick={()=>removeLeaveImage(idx)} className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X className="size-3" /></button>
+                  </div>
+                ))}
+                <label className="w-16 h-16 rounded border-2 border-dashed border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--ring)] transition-colors shrink-0">
+                  {leaveUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className="size-5 text-[var(--muted-foreground)]" />}
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleLeaveImageUpload} disabled={leaveUploading} />
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB</p>
             </div>
             {leaveErr && <p className="mt-2 text-xs text-[var(--destructive)]">{leaveErr}</p>}
             <div className="mt-3 flex gap-2">
               <Button size="sm" onClick={handleCreateLeave}>提交申请</Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowLeaveForm(false)}>取消</Button>
+              <Button variant="ghost" size="sm" onClick={()=>setShowLeaveForm(false)}>取消</Button>
             </div>
           </div>
         )}
 
-        {/* Pending leaves - always shown */}
-        {leaves.filter(l => l.status === "待审批").length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">{isAdmin ? "暂无待审批的请假" : "暂无请假记录"}</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
-                  {isAdmin && <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {leaves.filter(l => l.status === "待审批").map(l => (
-                  <tr key={l.id} className="border-b border-[var(--border)]">
-                    <td className="py-2.5 px-4 font-medium">{l.employee_name}</td>
-                    <td className="py-2.5 px-4">{l.leave_type}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</td>
-                    <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{l.reason || "—"}</td>
-                    {isAdmin && (
-                      <td className="py-2.5 px-4 flex gap-1.5">
-                        <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveLeave(l.id, "已通过")}>通过</Button>
-                        <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleApproveLeave(l.id, "已驳回")}>驳回</Button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* History toggle for approved/rejected leaves */}
-        {leaves.filter(l => l.status !== "待审批").length > 0 && (
-          <div className="border-t border-[var(--border)]">
-            {!showLeaveHistory ? (
-              <button
-                className="w-full px-5 py-3 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors text-left"
-                onClick={() => setShowLeaveHistory(true)}
-              >
-                历史记录 ({leaves.filter(l => l.status !== "待审批").length})
-              </button>
-            ) : (
-              <div className="px-5 py-3">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1.5">
-                    {(["7d", "30d", "all"] as const).map(f => (
-                      <button
-                        key={f}
-                        onClick={() => setLeaveHistoryFilter(f)}
-                        className={cn(
-                          "px-2.5 py-1 text-xs rounded transition-colors",
-                          leaveHistoryFilter === f ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                        )}
-                      >
-                        {f === "7d" ? "最近七天" : f === "30d" ? "最近三十天" : "全部"}
-                      </button>
-                    ))}
-                  </div>
-                  <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onClick={() => setShowLeaveHistory(false)}>收起</button>
+        {(() => {
+          const now=Date.now();const today=new Date().toDateString();
+          const filtered=leaves.filter(l=>{
+            const d=new Date(l.created_at);
+            if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
+            if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
+            if(leaveDateFilter==="30"&&d<new Date(now-30*86400000))return false;
+            if(leaveDateFilter==="custom"&&leaveCustomFrom&&d<new Date(leaveCustomFrom))return false;
+            if(leaveDateFilter==="custom"&&leaveCustomTo&&d>new Date(leaveCustomTo+"T23:59:59"))return false;
+            if(leaveEmployeeFilter&&l.employee_name!==leaveEmployeeFilter)return false;
+            if(leaveStatusFilter&&l.status!==leaveStatusFilter)return false;
+            return true;
+          });
+          const pending=filtered.filter(l=>l.status==="待审批");
+          const history=filtered.filter(l=>l.status!=="待审批");
+          if(filtered.length===0)return(<div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>);
+          const renderLeaveTable=(list: any[])=>(
+            <table className="w-full text-sm"><thead><tr className="border-b border-[var(--border)]">
+              {isAdmin&&<th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>}
+              <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+            </tr></thead><tbody>{list.map(l=>(
+              <tr key={l.id} className="border-b border-[var(--border)]">
+                {isAdmin&&<td className="py-2.5 px-4 font-medium">{l.employee_name}</td>}
+                <td className="py-2.5 px-4">{l.leave_type}</td>
+                <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date} ~ {l.end_date}</td>
+                <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason||"—"}</td>
+                <td className="py-2.5 px-4">
+                  <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium "+(l.status==="已通过"?"bg-green-100 text-green-700":l.status==="已驳回"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700")}>{l.status}</span>
+                </td>
+                <td className="py-2.5 px-4">
+                  {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
+                    <button onClick={()=>{setLightboxImages(imgs.map((f:string)=>"/api/files/"+f));setLightboxIdx(0);}} className="inline-flex items-center gap-0.5 text-blue-600 hover:underline cursor-pointer">
+                      <Image className="size-4" /><span className="text-xs">{imgs.length}</span>
+                    </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
+                </td>
+                <td className="py-2.5 px-4">
+                  {l.status==="待审批"&&isAdmin&&(
+                    <div className="flex gap-1.5">
+                      <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
+                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={()=>handleApproveLeave(l.id,"已驳回")}>驳回</Button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}</tbody></table>
+          );
+          return(
+            <div>
+              {pending.length>0?(
+                <div className="overflow-x-auto">{renderLeaveTable(pending)}</div>
+              ):(
+                <div className="py-6 text-center text-sm text-[var(--muted-foreground)]">{isAdmin?"暂无待审批的请假":"暂无待审批记录"}</div>
+              )}
+              {history.length>0&&(
+                <div className="border-t border-[var(--border)]">
+                  <button onClick={()=>setShowLeaveHistory(!showLeaveHistory)} className="w-full px-5 py-3 flex items-center justify-between text-sm hover:bg-[var(--muted)]/30 transition-colors">
+                    <span className="font-medium text-[var(--muted-foreground)]">{isAdmin?"已审批记录":"历史记录"} ({history.length})</span>
+                    <span className={"text-xs transition-transform "+(showLeaveHistory?"rotate-180":"")}>&#9660;</span>
+                  </button>
+                  {showLeaveHistory&&<div className="overflow-x-auto">{renderLeaveTable(history)}</div>}
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--border)]">
-                        <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
-                        <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
-                        <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
-                        <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
-                        <th className="py-2.5 px-4 text-left text-xs font-medium">审批人</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(leaveHistoryFilter === "7d"
-                        ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 7))
-                        : leaveHistoryFilter === "30d"
-                        ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 30))
-                        : leaves.filter(l => l.status !== "待审批")
-                      ).length === 0 ? (
-                        <tr><td colSpan={5} className="py-4 text-center text-xs text-[var(--muted-foreground)]">该时间段内无记录</td></tr>
-                      ) : (
-                        (leaveHistoryFilter === "7d"
-                          ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 7))
-                          : leaveHistoryFilter === "30d"
-                          ? leaves.filter(l => l.status !== "待审批" && isWithinDays(l.created_at, 30))
-                          : leaves.filter(l => l.status !== "待审批")
-                        ).map(l => (
-                          <tr key={l.id} className="border-b border-[var(--border)]">
-                            <td className="py-2.5 px-4 font-medium">{l.employee_name}</td>
-                            <td className="py-2.5 px-4">{l.leave_type}</td>
-                            <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</td>
-                            <td className="py-2.5 px-4">
-                              <span className={cn(l.status === "已通过" ? "text-green-600" : "text-red-500", "text-xs")}>{l.status}</span>
-                            </td>
-                            <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{l.approved_by || "—"}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
       </div>
+
     </div>
   );
 }
