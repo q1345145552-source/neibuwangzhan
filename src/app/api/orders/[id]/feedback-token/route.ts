@@ -31,12 +31,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const existing = db.prepare("SELECT * FROM feedback_tokens WHERE order_id = ?").get(id) as any;
   if (!existing) return NextResponse.json({ link: null, submitted: false });
 
-  const feedback = db.prepare("SELECT score, comment FROM client_feedback WHERE order_id = ? ORDER BY created_at DESC LIMIT 1").get(id) as any;
+  const feedback = db.prepare(
+    "SELECT overall, attitude, speed, professionalism, comment FROM client_feedback WHERE order_id = ? ORDER BY created_at DESC LIMIT 1"
+  ).get(id) as any;
   return NextResponse.json({
     token: existing.token,
     link: `${req.nextUrl.origin}/feedback/${existing.token}`,
     submitted: Boolean(existing.submitted),
-    score: feedback?.score || "",
+    overall: feedback?.overall || 0,
+    attitude: feedback?.attitude || 0,
+    speed: feedback?.speed || 0,
+    professionalism: feedback?.professionalism || 0,
     comment: feedback?.comment || "",
   });
 }
