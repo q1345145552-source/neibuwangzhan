@@ -28,13 +28,18 @@ spawn ssh -o StrictHostKeyChecking=no root@187.127.108.58 '
     git fetch origin main
     git reset --hard origin/main
     
-    # 3. 重启容器
+    # 3. 重新构建
+    echo ===BUILD===
+    docker exec neibuxitong sh -c "npm run build 2>&1"
+    echo ===BUILD_DONE===
+
+    # 4. 重启容器
     docker restart neibuxitong
     sleep 8
     docker ps --filter name=neibuxitong --format {{.Status}}
     echo ---DEPLOY_DONE---
 '
-expect \"password:\" { send \"RL2XuiQVsZP/\r\" }
+expect "password:" { send "RL2XuiQVsZP/" }
 expect eof
 " 2>&1
 

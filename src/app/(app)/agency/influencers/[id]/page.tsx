@@ -465,10 +465,21 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
   const handleDeleteNote = async () => {
     if (!deleteNoteTarget) return;
-    await fetchWithAuth(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes?id=${deleteNoteTarget.noteId}`, { method: "DELETE" });
-    setDeleteNoteTarget(null);
-    const nr = await fetchWithAuth(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes`, { cache: "no-store" });
-    const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [deleteNoteTarget.stepId]: notes }));
+    try {
+      const dr = await fetchWithAuth(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes?id=${deleteNoteTarget.noteId}`, { method: "DELETE" });
+      if (!dr.ok) {
+        let errDetail = "";
+        try { const e = await dr.json(); errDetail = e.error || ""; } catch {}
+        throw new Error(errDetail || "删除失败");
+      }
+      setDeleteNoteTarget(null);
+      const nr = await fetchWithAuth(`/api/influencers/${id}/steps/${deleteNoteTarget.stepId}/notes`, { cache: "no-store" });
+      const notes = await nr.json(); if (nr.ok) setStepNotes(p => ({ ...p, [deleteNoteTarget.stepId]: notes }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      setDeleteNoteTarget(null);
+    }
   };
 
 
