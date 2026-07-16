@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
+import { bangkokDateStr } from "@/lib/time";
 import { useAuth } from "@/components/auth-provider";
 import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ function getGmvDisplay(inf: any): string {
 
 function getOverdueLabel(createdAt: string): { label: string; cls: string } | null {
   if (!createdAt) return null;
-  const created = new Date(createdAt);
+  const created = new Date(createdAt + "Z");
   const now = new Date();
   const days = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
   if (days >= 5) return { label: "已超时", cls: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" };
@@ -211,7 +212,7 @@ export default function ContractsPage() {
     const filtered_ = search
       ? contracts.filter(c => (c.influencer_name || "").toLowerCase().includes(search.toLowerCase()))
       : contracts;
-    exportToExcel(filtered_, cols, `合同列表_${new Date().toISOString().slice(0, 10)}`);
+    exportToExcel(filtered_, cols, `合同列表_${bangkokDateStr()}`);
   };
 
   return (

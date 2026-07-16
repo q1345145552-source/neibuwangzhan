@@ -11,6 +11,7 @@ import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
+import { bangkokDateStr, toThaiDate } from "@/lib/time";
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -102,7 +103,7 @@ export default function OrdersPage() {
       { header: "状态", render: (r) => statusLabels[r.status] || r.status },
       { header: "创建时间", render: (r) => toThaiTime(r.created_at) },
     ];
-    exportToExcel(filtered_, cols, `订单列表_${new Date().toISOString().slice(0, 10)}`);
+    exportToExcel(filtered_, cols, `订单列表_${bangkokDateStr()}`);
   };
 
   return (

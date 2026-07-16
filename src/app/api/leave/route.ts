@@ -29,11 +29,12 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { employee_name, leave_type, start_date, end_date, reason } = body;
+  const { employee_name, leave_type, start_date, end_date, reason, images } = body;
   if (!employee_name || !start_date || !end_date) return NextResponse.json({ error: "请填写必填字段" }, { status: 400 });
+  const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
   const result = db.prepare(
-    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)"
-  ).run(employee_name, leave_type || "事假", start_date, end_date, reason || "");
+    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, reason, images) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(employee_name, leave_type || "事假", start_date, end_date, reason || "", imagesJson);
   const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
   for (const admin of admins) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -48,9 +49,10 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { id, status, approved_by } = body;
+  const { id, status, approved_by, images } = body;
   if (!id || !status) return NextResponse.json({ error: "缺少参数" }, { status: 400 });
   const sets = ["status = ?"]; const vals: any[] = [status];
+  if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
   if (status === "已通过" || status === "已驳回") { sets.push("approved_at = datetime('now')"); if (approved_by) { sets.push("approved_by = ?"); vals.push(approved_by); } }
   vals.push(id);
   db.prepare(`UPDATE leave_requests SET ${sets.join(", ")} WHERE id = ?`).run(...vals);

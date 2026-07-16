@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2, Download, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toThaiDate, bangkokDateStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { fetchWithAuth } from "@/lib/api";
@@ -267,7 +268,7 @@ function getPreviewGrade() {
       const getRes = await fetchWithAuth("/api/influencers/" + cancelModal, { cache: "no-store" });
       const inf = getRes.ok ? await getRes.json() : { notes: "" };
       const prevNotes = inf.notes || "";
-      const cancelNote = "取消原因: " + cancelReason.trim() + " (" + new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }) + ")";
+      const cancelNote = "取消原因: " + cancelReason.trim() + " (" + new Date(Date.now() + 7*60*60*1000).toLocaleString("th-TH") + ")";
       const mergedNotes = prevNotes ? prevNotes + "\n" + cancelNote : cancelNote;
       await fetchWithAuth("/api/influencers", {
         method: "PATCH",
@@ -331,7 +332,7 @@ function getPreviewGrade() {
     const filtered_ = search
       ? influencers.filter(i => i.name.toLowerCase().includes(search.toLowerCase()) || (i.code || "").toLowerCase().includes(search.toLowerCase()))
       : influencers;
-    exportToExcel(filtered_, cols, `达人列表_${new Date().toISOString().slice(0, 10)}`);
+    exportToExcel(filtered_, cols, `达人列表_${bangkokDateStr()}`);
   };
 
   return (

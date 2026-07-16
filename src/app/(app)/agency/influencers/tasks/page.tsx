@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toThaiDate } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Plus, Search, Send, Clock, CheckCircle2, Users, Trash2, TrendingUp } from "lucide-react";
@@ -272,8 +273,8 @@ export default function DiscoveryTasksPage() {
               </div>
               <div className="mt-1 text-xs text-[var(--muted-foreground)] flex items-center gap-1">
                 <Clock className="size-3" />
-                {task.created_at ? new Date(task.created_at).toLocaleDateString("th-TH") : "-"}
-                {task.completed_at && <span className="ml-2 text-green-600">→ {new Date(task.completed_at).toLocaleDateString("th-TH")}</span>}
+                {task.created_at ? toThaiDate(task.created_at) : "-"}
+                {task.completed_at && <span className="ml-2 text-green-600">→ {toThaiDate(task.completed_at)}</span>}
               </div>
 
               {/* Actions */}

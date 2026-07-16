@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { bangkokMonthKey, bangkokLastDayOfMonth, bangkokDayOfWeek, bangkokToday } from "@/lib/time";
 
 // ── GET: 积分引擎 + 排名榜 + 记录 + 申诉 + 互评 + 季度 ──
 export async function GET(req: NextRequest) {
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const isAdmin = auth.role === "admin";
   const employee = req.nextUrl.searchParams.get("employee") || "";
-  const month = req.nextUrl.searchParams.get("month") || new Date().toISOString().slice(0, 7);
+  const month = req.nextUrl.searchParams.get("month") || bangkokMonthKey();
   const doRefresh = req.nextUrl.searchParams.get("refresh") === "1";
   const quarter = req.nextUrl.searchParams.get("quarter") || "";
 
@@ -22,12 +23,12 @@ export async function GET(req: NextRequest) {
     const qStart = (q - 1) * 3;
     const qEnd = qStart + 2;
     dateFrom = `${qy}-${String(qStart + 1).padStart(2, "0")}-01`;
-    const lastDay = new Date(+qy, qEnd + 1, 0).getDate();
+    const lastDay = bangkokLastDayOfMonth(+qy, qEnd + 1);
     dateTo = `${qy}-${String(qEnd + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")} 23:59:59`;
   } else {
     const [y, m] = month.split("-");
     dateFrom = `${month}-01`;
-    const lastDay = new Date(+y, +m, 0).getDate();
+    const lastDay = bangkokLastDayOfMonth(+y, +m);
     dateTo = `${month}-${String(lastDay).padStart(2, "0")} 23:59:59`;
   }
 
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
   if (body.action === "peer_vote") {
     const { nominee, reason } = body;
     const voter = auth.name || "";
-    const month = new Date().toISOString().slice(0, 7);
+    const month = bangkokMonthKey();
 
     // 检查本月是否已投票
     const existing = db.prepare("SELECT COUNT(*) as c FROM peer_votes WHERE voter = ? AND month = ?").get(voter, month) as { c: number };
@@ -163,9 +164,9 @@ function computeAutoPoints(db: any, month: string) {
   const startDate = new Date(ym, mm, 1);
   const endDate = new Date(ym, mm, lastDay);
   let workDays = 0;
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) { if (d.getDay() !== 0) workDays++; }
+  for (let d2 = 1; d2 <= lastDay; d2++) { const ds = `${ym}-${String(mm).padStart(2,"0")}-${String(d2).padStart(2,"0")}`; if (bangkokDayOfWeek(ds) !== 0) workDays++; }
 
-  const now = new Date().toISOString().slice(0, 10);
+  const now = bangkokToday();
   const insertAuto = db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, status) VALUES (?, ?, ?, ?, '有效')");
 
   for (const emp of employees) {

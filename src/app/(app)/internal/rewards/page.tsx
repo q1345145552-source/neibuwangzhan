@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Trophy, TrendingUp, RefreshCw, X, Medal, Crown, AlertCircle, MessageSquare, Heart, ThumbsUp, ThumbsDown, Calendar } from "lucide-react";
+import { bangkokMonthKey, bangkokDateStr } from "@/lib/time";
 
 interface Ranking {
   name: string; total_points: number; bonus: number; penalty: number;
@@ -37,7 +38,7 @@ export default function RewardsPage() {
   const [clientFeedback, setClientFeedback] = useState<ClientFeedback[]>([]);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [filterEmployee, setFilterEmployee] = useState("");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(bangkokMonthKey());
   const [quarter, setQuarter] = useState("");
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);

@@ -42,7 +42,7 @@ const staffColors: Record<string, string> = {
 };
 
 function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - new Date(dateStr + (dateStr.includes('Z') ? '' : 'Z')).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}分钟前`;
   const hours = Math.floor(mins / 60);
@@ -117,9 +117,9 @@ export default function AgencyPage() {
       from = customFrom;
       to = customTo || customFrom;
     } else if (quickDays === 0) {
-      from = to = formatDate(new Date());
+      from = to = formatDate(new Date(Date.now() + 7*60*60*1000));
     } else if (quickDays != null) {
-      const end = new Date();
+      const end = new Date(Date.now() + 7*60*60*1000);
       const start = new Date(end.getTime() - (quickDays - 1) * 86400000);
       from = formatDate(start);
       to = formatDate(end);
@@ -367,7 +367,7 @@ export default function AgencyPage() {
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700">
-                    {Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86400000)}天
+                    {Math.floor((Date.now() - new Date(c.created_at + (c.created_at.includes('Z') ? '' : 'Z')).getTime()) / 86400000)}天
                   </span>
                 </Link>
               ))}
