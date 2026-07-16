@@ -201,6 +201,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         await addStepNote(id, stepId, noteContent, user?.name || "系统");
       }
       await updateStep(id, stepId, { status: "已完成" });
+      // 自动启动下一步
+      const idx = steps.findIndex(s => s.id === stepId);
+      const next = idx >= 0 && idx < steps.length - 1 ? steps[idx + 1] : null;
+      if (next && next.status === "待处理") {
+        await updateStep(id, next.id, { status: "进行中" });
+      }
       reload();
     } catch (e) { console.error("[订单] 步骤完成失败", e); setError("更新失败"); }
   };
