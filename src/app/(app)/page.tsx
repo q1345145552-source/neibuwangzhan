@@ -118,7 +118,7 @@ export default function DashboardPage() {
 
       <BusinessChart data={businessCounts} />
 
-      <TodoList orders={orders.filter((o) => o.status === "进行中")} />
+      <TodoList orders={orders.filter((o) => o.status !== "已完成")} />
     </div>
   );
 }
