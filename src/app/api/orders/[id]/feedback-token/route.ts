@@ -13,13 +13,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (existing) {
     return NextResponse.json({
       token: existing.token,
-      link: `${req.nextUrl.origin}/feedback/${existing.token}`,
+      link: `${req.headers.get('x-forwarded-proto') || 'http'}://${req.headers.get('host') || 'localhost:3000'}/feedback/${existing.token}`,
     });
   }
 
   const token = crypto.randomBytes(16).toString("hex");
   db.prepare("INSERT INTO feedback_tokens (token, order_id) VALUES (?, ?)").run(token, id);
-  return NextResponse.json({ token, link: `${req.nextUrl.origin}/feedback/${token}` }, { status: 201 });
+  return NextResponse.json({ token, link: `${req.headers.get('x-forwarded-proto') || 'http'}://${req.headers.get('host') || 'localhost:3000'}/feedback/${token}` }, { status: 201 });
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   ).get(id) as any;
   return NextResponse.json({
     token: existing.token,
-    link: `${req.nextUrl.origin}/feedback/${existing.token}`,
+    link: `${req.headers.get('x-forwarded-proto') || 'http'}://${req.headers.get('host') || 'localhost:3000'}/feedback/${existing.token}`,
     submitted: Boolean(existing.submitted),
     overall: feedback?.overall || 0,
     attitude: feedback?.attitude || 0,
