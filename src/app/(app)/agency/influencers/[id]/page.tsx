@@ -360,7 +360,8 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const canComplete = (step: InfStep): boolean => {
     if (step.status === "已完成" || step.status === "阻塞" || step.status === "已停止") return false;
     if (step.step_order === 1) return true;
-    const prev = steps.find(s => s.step_order === step.step_order - 1);
+    // 只查同阶段的步骤，避免不同阶段 step_order 重叠误判
+    const prev = steps.find(s => s.phase === step.phase && s.step_order === step.step_order - 1);
     return !prev || prev.status === "已完成";
   };
 
