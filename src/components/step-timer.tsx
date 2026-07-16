@@ -10,8 +10,10 @@ interface StepTimerProps {
   completed_at?: string | null;
   status?: string;
   className?: string;
-  /** 上一步完成时间，计时起点 = 上一步完成时。为 null 表示上一步未完成，不启动计时 */
+  /** 上一环节完成时间，计时起点 = max(started_at, 上一步完成时间) */
   prev_completed_at?: string | null;
+  /** 员工点"开始"的时间，替代 created_at 作为计时起点 */
+  started_at?: string | null;
 }
 
 /**
@@ -21,22 +23,26 @@ interface StepTimerProps {
  * - 已完成：静态不动
  * - 撤回后 completed_at 清空 → 恢复走字
  */
-export function StepTimer({ created_at, completed_at, status, prev_completed_at, className }: StepTimerProps) {
+export function StepTimer({ created_at, completed_at, status, prev_completed_at, started_at, className }: StepTimerProps) {
   const [seconds, setSeconds] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isCompleted = status === "已完成" || (typeof completed_at === "string" && completed_at.length > 0);
 
-  // 上一步没完成 → 不启动
-  const startAt = prev_completed_at || null;
+  // 有效起点：必须有 started_at 才开始计时
+  // 如果是第一步(started_at === created_at 作为 fallback)，用 started_at
+  // 否则用 max(started_at, prev_completed_at)
+  const effectiveStart = (started_at || prev_completed_at)
+    ? (prev_completed_at && started_at && prev_completed_at > started_at ? prev_completed_at : (started_at || prev_completed_at))
+    : null;
 
-  // 交接间隔（上一步完成 → 本步完成）
-  const handoverSec = startAt && completed_at
-    ? calcWorkSeconds(startAt, completed_at)
+  // 交接间隔
+  const handoverSec = effectiveStart && completed_at
+    ? calcWorkSeconds(effectiveStart, completed_at)
     : 0;
 
   useEffect(() => {
-    // 上一步没完成就不计时，也不显示
-    if (!startAt) {
+    // 没开始就不计时
+    if (!effectiveStart) {
       setSeconds(0);
       return;
     }
@@ -44,7 +50,7 @@ export function StepTimer({ created_at, completed_at, status, prev_completed_at,
     const compute = () => {
       try {
         const end = (isCompleted && completed_at) ? completed_at : new Date().toISOString();
-        setSeconds(calcWorkSeconds(startAt, end));
+        setSeconds(calcWorkSeconds(effectiveStart, end));
       } catch {
         setSeconds(0);
       }
@@ -59,14 +65,14 @@ export function StepTimer({ created_at, completed_at, status, prev_completed_at,
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [startAt, completed_at, isCompleted]);
+  }, [effectiveStart, completed_at, isCompleted]);
 
-  // 上一步未完成：灰字占位
-  if (!startAt) {
+  // 未开始：灰色占位
+  if (!effectiveStart) {
     return (
       <span className={cn("inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]/40 font-mono tabular-nums", className)}>
         <Clock className="size-3" />
-        等待上一步
+        待开始
       </span>
     );
   }
@@ -108,16 +114,16 @@ export function StepTimer({ created_at, completed_at, status, prev_completed_at,
 /**
  * 纯展示组件（列表/汇总页，不实时走字）
  */
-export function StepTimerStatic({ created_at, completed_at, prev_completed_at }: StepTimerProps) {
-  const startAt = prev_completed_at || null;
-  if (!startAt) {
+export function StepTimerStatic({ created_at, completed_at, started_at, prev_completed_at }: StepTimerProps) {
+  const effectiveStart = (started_at || prev_completed_at) || null;
+  if (!effectiveStart) {
     return <span className="text-[0.65rem] text-[var(--muted-foreground)]/40">—</span>;
   }
   const elapsedSec = completed_at
-    ? calcWorkSeconds(startAt, completed_at)
-    : calcWorkSeconds(startAt, new Date().toISOString());
+    ? calcWorkSeconds(effectiveStart, completed_at)
+    : calcWorkSeconds(effectiveStart, new Date().toISOString());
   const handoverSec = completed_at
-    ? calcWorkSeconds(startAt, completed_at)
+    ? calcWorkSeconds(effectiveStart, completed_at)
     : 0;
 
   return (

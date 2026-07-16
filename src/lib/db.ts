@@ -335,6 +335,7 @@ function initTables(database: Database.Database) {
       logistics_status TEXT DEFAULT '',
       step_data TEXT DEFAULT '{}',
       completed_at TEXT,
+      started_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -728,6 +729,8 @@ function initTables(database: Database.Database) {
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, influencer_id INTEGER NOT NULL REFERENCES influencers(id), step_name TEXT NOT NULL, step_order INTEGER NOT NULL, phase TEXT DEFAULT 'discovery' CHECK(phase IN ('discovery','contract','incubation')), status TEXT NOT NULL DEFAULT '待处理', assignee TEXT DEFAULT '', notes TEXT DEFAULT '', stop_reason TEXT DEFAULT '', completed_at TEXT, created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("CREATE TABLE IF NOT EXISTS influencer_step_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, step_id INTEGER NOT NULL REFERENCES influencer_steps(id), influencer_id INTEGER NOT NULL REFERENCES influencers(id), content TEXT NOT NULL, created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))"); } catch {}
   try { database.exec("ALTER TABLE influencer_steps ADD COLUMN stop_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE order_steps ADD COLUMN started_at TEXT"); } catch {}
+  try { database.exec("ALTER TABLE influencer_steps ADD COLUMN started_at TEXT"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN line_id TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN monthly_gmv TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN live_stream_ratio TEXT DEFAULT ''"); } catch {}

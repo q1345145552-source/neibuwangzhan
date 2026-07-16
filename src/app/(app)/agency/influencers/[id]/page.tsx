@@ -62,6 +62,7 @@ interface InfStep {
   id: number; influencer_id: number; step_name: string; step_order: number;
   phase: string; status: string; assignee: string; notes: string;
   stop_reason: string; completed_at: string | null; created_at: string;
+  started_at?: string | null;
 }
 
 interface InfStepNote {
@@ -305,11 +306,8 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     // steps 已按 step_order 排序
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
-      if (s.status === "已完成" && s.completed_at && s.assignee) {
-        const start = i > 0 && steps[i - 1].completed_at
-          ? (steps[i - 1].completed_at! > s.created_at ? steps[i - 1].completed_at! : s.created_at)
-          : s.created_at;
-        personHours[s.assignee] = (personHours[s.assignee] || 0) + calcWorkSeconds(start, s.completed_at);
+      if (s.status === "已完成" && s.completed_at && s.assignee && s.started_at) {
+        personHours[s.assignee] = (personHours[s.assignee] || 0) + calcWorkSeconds(s.started_at, s.completed_at);
       }
     }
     return Object.entries(personHours).sort((a, b) => b[1] - a[1]);
@@ -884,6 +882,10 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
             {inf.category && <span className="text-xs text-[var(--muted-foreground)]">{inf.category}</span>}
             {inf.followers && <span className="text-xs text-[var(--muted-foreground)]">{inf.followers} 粉丝</span>}
             <span className="text-xs text-[var(--muted-foreground)]">· 阶段: {inf.phase?.replace("completed_", "").replace("_", " ")} · 已完成 {completedCount}/{totalSteps}</span>
+            {/* 任务级"开始"按钮：当前阶段第一步待处理时显示 */}
+            {displaySteps.length > 0 && displaySteps[0].status === "待处理" && !isClient && (
+              <button onClick={() => handleStepUpdate(displaySteps[0].id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-3 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] transition-colors">开始任务</button>
+            )}
           </div>
           {inf.tiktok_link && (
             <a href={inf.tiktok_link} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--primary)] hover:underline break-all">
@@ -1016,7 +1018,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
                           {/* Work hours timer */}
                           <div className="mt-1">
-                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} prev_completed_at={i === 0 ? step.created_at : phaseSteps[i-1].completed_at} />
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at || null} status={step.status} prev_completed_at={i === 0 ? step.created_at : phaseSteps[i-1].completed_at} started_at={step.started_at} />
                           </div>
                           {isOverdue && step.stop_reason && (
                             <p className="text-xs text-[var(--destructive)]">🛑 {step.stop_reason}</p>
@@ -1040,6 +1042,10 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                                 </>
                               ) : (
                                 <>
+                                  {/* 待处理：先点"开始" */}
+                                  {step.status === "待处理" && (
+                                    <button onClick={() => handleStepUpdate(step.id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_70%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-2 py-1 text-xs text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_85%)] transition-colors font-medium">开始</button>
+                                  )}
                                   {completable ? (
                                     <button onClick={() => { setConfirmingStepId(step.id); setConfirmNote(""); }} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
                                   ) : (

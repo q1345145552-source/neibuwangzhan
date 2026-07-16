@@ -61,6 +61,10 @@ export async function PATCH(
   if (status !== undefined) {
     if (status === "已完成") {
       updates.push("completed_at = datetime('now')");
+    } else if (status === "进行中") {
+      // 点"开始"：记录开始时间（首次点开始才记，避免撤回后重新开始覆盖）
+      updates.push("started_at = COALESCE(started_at, datetime('now'))");
+      updates.push("completed_at = NULL");
     } else {
       // 撤回：清空完成时间
       updates.push("completed_at = NULL");
