@@ -22,7 +22,7 @@ interface PeerVote {
   id: number; voter: string; nominee: string; reason: string; month: string; created_at: string;
 }
 interface ClientFeedback {
-  id: number; order_id: string; responsible_person: string; score: string; created_at: string;
+  id: number; order_id: string; responsible_person: string; score: string; comment: string; created_at: string;
 }
 interface Quarter { label: string; value: string; }
 
@@ -386,6 +386,7 @@ export default function RewardsPage() {
                 <th className="py-2.5 px-4 text-left text-xs font-medium">订单</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">负责人</th>
                 <th className="py-2.5 px-4 text-center text-xs font-medium">评价</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">意见</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">时间</th>
               </tr></thead>
               <tbody>
@@ -400,6 +401,7 @@ export default function RewardsPage() {
                         {fb.score}
                       </span>
                     </td>
+                    <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{fb.comment || "—"}</td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{fb.created_at?.slice(0, 16)}</td>
                   </tr>
                 ))}
