@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "缺少参数" }, { status: 400 });
   }
 
+  const likeName = `%${employee}%`;
+
   let data: any[] = [];
 
   if (type === "order_steps") {
@@ -22,18 +24,18 @@ export async function GET(req: NextRequest) {
              o.id as order_id, o.customer_name, o.status as order_status
       FROM order_steps os
       JOIN orders o ON os.order_id = o.id
-      WHERE os.assignee = ? AND os.status NOT IN ('已完成','已停止')
+      WHERE os.assignee LIKE ? AND os.status NOT IN ('已完成','已停止')
       ORDER BY os.deadline ASC, os.step_order ASC
-    `).all(employee);
+    `).all(likeName);
   } else if (type === "influencer_steps") {
     data = db.prepare(`
       SELECT ist.id, ist.step_name, ist.step_order, ist.phase, ist.status, ist.created_at, ist.completed_at,
              i.id as influencer_id, i.name as influencer_name, i.code, i.status as influencer_status
       FROM influencer_steps ist
       JOIN influencers i ON ist.influencer_id = i.id
-      WHERE ist.assignee = ? AND ist.status NOT IN ('已完成','已停止')
+      WHERE ist.assignee LIKE ? AND ist.status NOT IN ('已完成','已停止')
       ORDER BY ist.step_order ASC
-    `).all(employee);
+    `).all(likeName);
   } else if (type === "contract_infs") {
     data = db.prepare(`
       SELECT DISTINCT i.id, i.name, i.code, i.phase, i.status,
@@ -45,10 +47,10 @@ export async function GET(req: NextRequest) {
         AND i.status NOT IN ('已完成','已停止')
         AND i.id IN (
           SELECT influencer_id FROM influencer_steps
-          WHERE assignee = ? AND status NOT IN ('已完成','已停止')
+          WHERE assignee LIKE ? AND status NOT IN ('已完成','已停止')
         )
       ORDER BY i.name ASC
-    `).all(employee);
+    `).all(likeName);
   }
 
   return NextResponse.json({ type, employee, data });
