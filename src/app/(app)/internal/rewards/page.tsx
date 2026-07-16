@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Trophy, TrendingUp, RefreshCw, X, Medal, Crown, AlertCircle, MessageSquare, Heart, ThumbsUp, ThumbsDown, Calendar } from "lucide-react";
+import Link from "next/link";
 import { bangkokMonthKey, bangkokDateStr } from "@/lib/time";
 
 interface Ranking {
@@ -406,7 +407,7 @@ export default function RewardsPage() {
               <tbody>
                 {clientFeedback.map(fb => (
                   <tr key={fb.id} className="border-b border-[var(--border)]">
-                    <td className="py-2.5 px-4 font-mono text-xs">{fb.order_id}</td>
+                    <td className="py-2.5 px-4 font-mono text-xs"><Link href={"/orders/" + fb.order_id} className="text-blue-600 hover:underline">{fb.order_id}</Link></td>
                     <td className="py-2.5 px-4">{fb.responsible_person}</td>
                     <td className="py-2.5 px-4 text-center">
                       <Stars n={fb.overall} />
