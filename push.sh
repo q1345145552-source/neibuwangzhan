@@ -17,7 +17,7 @@ echo ""
 echo "📋 部署到服务器..."
 
 expect -c "
-set timeout 60
+set timeout 120
 spawn ssh -o StrictHostKeyChecking=no root@187.127.108.58 '
     # 1. 部署前备份当前数据库
     python3 /root/backup_db.py
@@ -28,15 +28,16 @@ spawn ssh -o StrictHostKeyChecking=no root@187.127.108.58 '
     git fetch origin main
     git reset --hard origin/main
     
-    # 3. 重新构建
-    echo ===BUILD===
-    docker exec neibuxitong sh -c "npm run build 2>&1"
-    echo ===BUILD_DONE===
-
-    # 4. 重启容器
-    docker restart neibuxitong
-    sleep 8
-    docker ps --filter name=neibuxitong --format {{.Status}}
+    # 3. 停容器 → 清 .next 缓存 → 启动容器（CMD 自带 npm run build && npm start）
+    docker stop neibuxitong
+    rm -rf .next
+    echo ---CLEARED_OLD_BUILD---
+    docker start neibuxitong
+    echo ---CONTAINER_STARTED---
+    
+    # 4. 等待构建完成（容器 CMD: npm run build && npm start）
+    sleep 35
+    docker logs neibuxitong --tail 5
     echo ---DEPLOY_DONE---
 '
 expect "password:" { send "RL2XuiQVsZP/" }
