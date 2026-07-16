@@ -31,6 +31,7 @@ export interface OrderStep {
   step_data: string;
   completed_at: string | null;
   created_at: string;
+  started_at?: string | null;
 }
 
 export interface BusinessType {

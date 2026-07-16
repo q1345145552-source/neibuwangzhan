@@ -32,7 +32,11 @@ export async function PATCH(req: NextRequest) {
   if (assignee !== undefined) { sets.push("assignee = ?"); vals.push(assignee); }
   if (stop_reason !== undefined) { sets.push("stop_reason = ?"); vals.push(stop_reason); }
   if (status === "已完成") { sets.push("completed_at = datetime('now')"); }
-  if (status === "进行中" || status === "待处理") { sets.push("completed_at = NULL"); }
+  if (status === "进行中") {
+    sets.push("started_at = COALESCE(started_at, datetime('now'))");
+    sets.push("completed_at = NULL");
+  }
+  if (status === "待处理") { sets.push("completed_at = NULL"); }
 
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   vals.push(step_id);

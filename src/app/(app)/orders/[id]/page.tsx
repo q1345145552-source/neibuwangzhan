@@ -54,11 +54,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const personHours: Record<string, number> = {};
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
-      if (s.status === "已完成" && s.completed_at && s.assignee) {
-        const start = i > 0 && steps[i - 1].completed_at
-          ? (steps[i - 1].completed_at! > s.created_at ? steps[i - 1].completed_at! : s.created_at)
-          : s.created_at;
-        personHours[s.assignee] = (personHours[s.assignee] || 0) + calcWorkSeconds(start, s.completed_at);
+      if (s.status === "已完成" && s.completed_at && s.assignee && s.started_at) {
+        personHours[s.assignee] = (personHours[s.assignee] || 0) + calcWorkSeconds(s.started_at, s.completed_at);
       }
     }
     return Object.entries(personHours).sort((a, b) => b[1] - a[1]);
@@ -367,6 +364,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {order.address_type === "client" && order.business_type_id === 7 && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]">客户地址</span>}
               <span className="text-xs text-[var(--muted-foreground)]">{formatCurrency(order.total_amount, order.currency)}</span>
               <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
+              {/* 任务级"开始"按钮：仅第一步待处理时显示 */}
+              {steps.length > 0 && steps[0].status === "待处理" && !isClient && (
+                <button onClick={() => handleStepUpdate(steps[0].id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-3 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] transition-colors">开始任务</button>
+              )}
             </div>
           </div>
           {!isClient && (
@@ -600,6 +601,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               </>
                             ) : (
                               <>
+                                {/* 待处理：先点"开始" */}
+                                {step.status === "待处理" && (
+                                  <button onClick={() => handleStepUpdate(step.id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_70%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-2 py-1 text-xs text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_85%)] transition-colors font-medium">开始</button>
+                                )}
                                 {(() => {
                                   const isCompanyReg = order?.business_type_id === 1;
                                   const prevStep = steps.find(s => s.step_order === step.step_order - 1);
@@ -616,14 +621,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 )}
                               </>
                             )}
-                            <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} className="ml-1" />
+                            <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} started_at={step.started_at} className="ml-1" />
                           </div>
                         )}
                         {(step.status === "已完成" || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
                               <div className="flex items-center gap-3">
-                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} />
+                                <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" prev_completed_at={i === 0 ? step.created_at : steps[i-1].completed_at} started_at={step.started_at} />
                               </div>
                             )}
                             {!isClient && (
