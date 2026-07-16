@@ -1145,7 +1145,17 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                                   {notes.map(n => (
                                     <li key={n.id} className="rounded bg-[var(--muted)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
                                       <div className="flex items-start justify-between gap-2">
-                                        <p className="flex-1 whitespace-pre-wrap break-all">{n.content}</p>
+                                        {(() => {
+                                          const ftMatch = n.content.match(/上传文件:\s*(.+?)\s*\(\/api\/files\/([^)]+)\)/);
+                                          if (ftMatch) {
+                                            const [, ftName, ftPath] = ftMatch;
+                                            return <a href={"/api/files/" + ftPath + "?token=" + (typeof window !== "undefined" ? localStorage.getItem("authToken") || "" : "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
+                                              <FileText className="size-3.5 shrink-0" />
+                                              <span className="truncate max-w-[200px]">{ftName}</span>
+                                            </a>;
+                                          }
+                                          return <span className="flex-1 whitespace-pre-wrap break-all">{n.content}</span>;
+                                        })()}
                                         {!isClient && (
                                           <button onClick={() => setDeleteNoteTarget({ stepId: step.id, noteId: n.id, content: n.content })}
                                             className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除备注">

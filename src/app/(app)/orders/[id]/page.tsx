@@ -33,6 +33,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [stepDocs, setStepDocs] = useState<Record<number, StepDocument[]>>({});
   const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
+  const [stepUploading, setStepUploading] = useState<Record<number, boolean>>({});
+  const [stepFileNames, setStepFileNames] = useState<Record<number, string>>({});
+  const [stepUploadErrors, setStepUploadErrors] = useState<Record<number, string>>({});
   const [newNotes, setNewNotes] = useState<Record<number, string>>({});
   const [noteErrorMsg, setNoteErrorMsg] = useState<Record<number, string>>({});
   const [deleteNoteTarget, setDeleteNoteTarget] = useState<{stepId:number, noteId:number, content:string} | null>(null);
@@ -641,6 +644,57 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           </div>
                         )}
 
+                        {/* Step file upload */}
+                        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                          <label className="cursor-pointer inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
+                            <Upload className="size-3" />
+                            {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
+                            <input type="file" className="hidden" onChange={async e => {
+                              const file = e.target.files?.[0]; if (!file) return;
+                              e.target.value = '';
+                              const stepId = step.id;
+                              setStepUploading(p => ({ ...p, [stepId]: true }));
+                              setStepFileNames(p => ({ ...p, [stepId]: file.name }));
+                              setStepUploadErrors(p => ({ ...p, [stepId]: "" }));
+                              try {
+                                const fd = new FormData(); fd.append("file", file);
+                                const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+                                if (!ur.ok) {
+                                  let errDetail = "";
+                                  try { const e2 = await ur.json(); errDetail = e2.error || ur.statusText; } catch { errDetail = ur.statusText || String(ur.status); }
+                                  throw new Error("上传失败: " + (errDetail || "HTTP " + ur.status));
+                                }
+                                const { url } = await ur.json();
+                                const note = "上传文件: " + file.name + " (" + url + ")";
+                                const nr = await fetchWithAuth("/api/orders/" + id + "/steps/" + stepId + "/notes", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ content: note }),
+                                });
+                                if (!nr.ok) {
+                                  let noteErr = "";
+                                  try { const e3 = await nr.json(); noteErr = e3.error || nr.statusText; } catch { noteErr = nr.statusText || String(nr.status); }
+                                  throw new Error("上传成功但保存失败: " + (noteErr || "HTTP " + nr.status));
+                                }
+                                setStepUploadErrors(p => ({ ...p, [stepId]: "" }));
+                                reload();
+                              } catch (err) {
+                                const msg = err instanceof Error ? err.message : String(err);
+                                console.error("[订单步骤附件上传失败]", { stepId, fileName: file.name, error: msg });
+                                setStepUploadErrors(p => ({ ...p, [stepId]: msg }));
+                                setError(msg);
+                              } finally {
+                                setStepUploading(p => ({ ...p, [stepId]: false }));
+                                setStepFileNames(p => ({ ...p, [stepId]: "" }));
+                              }
+                            }}
+                              accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" />
+                          </label>
+                          {stepUploadErrors[step.id] && (
+                            <span className="text-xs text-[var(--destructive)]">{stepUploadErrors[step.id]}</span>
+                          )}
+                        </div>
+
                         {/* Expand/collapse for notes + docs */}
                         <button onClick={() => toggleExpand(step.id)} className="mt-1 flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                           <MessageSquare className="size-3" />
@@ -660,7 +714,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                   {notes.map((n) => (
                                     <li key={n.id} className="rounded bg-[var(--muted)] px-2.5 py-1.5 text-xs text-[var(--foreground)]">
                                       <div className="flex items-start justify-between gap-2">
-                                        <p className="flex-1">{n.content}</p>
+                                        {(() => {
+                                          const ftMatch = n.content.match(/上传文件:\s*(.+?)\s*\(\/api\/files\/([^)]+)\)/);
+                                          if (ftMatch) {
+                                            const [, ftName, ftPath] = ftMatch;
+                                            return <a href={"/api/files/" + ftPath + "?token=" + (typeof window !== "undefined" ? localStorage.getItem("authToken") || "" : "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
+                                              <FileText className="size-3.5 shrink-0" />
+                                              <span className="truncate max-w-[200px]">{ftName}</span>
+                                            </a>;
+                                          }
+                                          return <p className="flex-1">{n.content}</p>;
+                                        })()}
                                         {!isClient && (
                                           <button onClick={() => setDeleteNoteTarget({stepId: step.id, noteId: n.id, content: n.content})} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除备注"><Trash2 className="size-3" /></button>
                                         )}
