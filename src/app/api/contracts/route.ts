@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const body = await req.json();
-  const { influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes, created_by } = body;
+  const { influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes } = body;
+  const created_by = auth.name || "";
   if (!influencer_id) return NextResponse.json({ error: "请选择达人" }, { status: 400 });
   const result = db.prepare(
     "INSERT INTO contracts (influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"

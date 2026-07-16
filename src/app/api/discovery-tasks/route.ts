@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const body = await req.json();
-  const { task_number, category, creator } = body;
+  const { task_number, category } = body;
+  const creator = auth.name || "";
   if (!task_number) return NextResponse.json({ error: "请填写任务编号" }, { status: 400 });
 
   const result = db.prepare(
