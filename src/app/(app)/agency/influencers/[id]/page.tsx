@@ -1078,54 +1078,45 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
 
                           {/* File upload per step */}
                           <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            <div className="relative inline-flex">
-                              <span className={cn(
-                                "inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] transition-colors",
-                                !stepUploading[step.id] && "hover:bg-[var(--muted)]",
-                                stepUploading[step.id] && "opacity-50"
-                              )}>
-                                <Upload className="size-3" />
-                                {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
-                              </span>
-                              <input
-                                type="file"
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx"
-                                disabled={stepUploading[step.id]}
-                                onChange={async e => {
-                                  const file = e.target.files?.[0]; if (!file) return;
-                                  const stepId = step.id;
-                                  setStepUploading(p => ({ ...p, [stepId]: true }));
-                                  setStepFileNames(p => ({ ...p, [stepId]: file.name }));
+                            <label className={cn(
+                              "shrink-0 cursor-pointer rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors inline-flex items-center gap-1",
+                              stepUploading[step.id] && "opacity-50 pointer-events-none"
+                            )}>
+                              <Upload className="size-3" />
+                              {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
+                              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx" onChange={async e => {
+                                const file = e.target.files?.[0]; if (!file) return;
+                                const stepId = step.id;
+                                setStepUploading(p => ({ ...p, [stepId]: true }));
+                                setStepFileNames(p => ({ ...p, [stepId]: file.name }));
+                                setStepErrors(p => ({ ...p, [stepId]: "" }));
+                                try {
+                                  const fd = new FormData(); fd.append("file", file);
+                                  const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+                                  if (!ur.ok) throw new Error("上传失败");
+                                  const { url } = await ur.json();
+                                  const note = "上传文件: " + file.name + " (" + url + ")";
+                                  const current = steps.find(s => s.id === stepId);
+                                  const updated = current?.notes ? current.notes + "\n" + note : note;
+                                  const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ step_id: stepId, notes: updated }),
+                                  });
+                                  if (!patchRes.ok) throw new Error("保存失败");
                                   setStepErrors(p => ({ ...p, [stepId]: "" }));
-                                  try {
-                                    const fd = new FormData(); fd.append("file", file);
-                                    const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
-                                    if (!ur.ok) throw new Error("上传失败");
-                                    const { url } = await ur.json();
-                                    const note = "上传文件: " + file.name + " (" + url + ")";
-                                    const current = steps.find(s => s.id === stepId);
-                                    const updated = current?.notes ? current.notes + "\n" + note : note;
-                                    const patchRes = await fetchWithAuth("/api/influencers/" + id + "/steps", {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ step_id: stepId, notes: updated }),
-                                    });
-                                    if (!patchRes.ok) throw new Error("保存失败");
-                                    setStepErrors(p => ({ ...p, [stepId]: "" }));
-                                    reload();
-                                  } catch (err) {
-                                    const msg = err instanceof Error ? err.message : String(err);
-                                    console.error("[步骤附件上传失败]", { stepId, fileName: file.name, error: msg });
-                                    setStepErrors(p => ({ ...p, [stepId]: msg }));
-                                    setError(msg);
-                                  } finally {
-                                    setStepUploading(p => ({ ...p, [stepId]: false }));
-                                    setStepFileNames(p => ({ ...p, [stepId]: "" }));
-                                  }
-                                }}
-                              />
-                            </div>
+                                  reload();
+                                } catch (err) {
+                                  const msg = err instanceof Error ? err.message : String(err);
+                                  console.error("[步骤附件上传失败]", { stepId, fileName: file.name, error: msg });
+                                  setStepErrors(p => ({ ...p, [stepId]: msg }));
+                                  setError(msg);
+                                } finally {
+                                  setStepUploading(p => ({ ...p, [stepId]: false }));
+                                  setStepFileNames(p => ({ ...p, [stepId]: "" }));
+                                }
+                              }} />
+                            </label>
                             {stepErrors[step.id] && (
                               <span className="text-xs text-[var(--destructive)]">{stepErrors[step.id]}</span>
                             )}
