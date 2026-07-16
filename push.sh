@@ -16,33 +16,88 @@ git push
 echo ""
 echo "📋 部署到服务器..."
 
-expect -c "
-set timeout 120
-spawn ssh -o StrictHostKeyChecking=no root@187.127.108.58 '
-    # 1. 部署前备份当前数据库
-    python3 /root/backup_db.py
-    echo ---BACKUP_DONE---
-    
-    # 2. 拉取最新代码
-    cd /var/lib/docker/volumes/neibuxitong_app_data/_data
-    git fetch origin main
-    git reset --hard origin/main
-    
-    # 3. 停容器 → 清 .next 缓存 → 启动容器（CMD 自带 npm run build && npm start）
-    docker stop neibuxitong
-    rm -rf .next
-    echo ---CLEARED_OLD_BUILD---
-    docker start neibuxitong
-    echo ---CONTAINER_STARTED---
-    
-    # 4. 等待构建完成（容器 CMD: npm run build && npm start）
-    sleep 35
-    docker logs neibuxitong --tail 5
-    echo ---DEPLOY_DONE---
-'
-expect "password:" { send "RL2XuiQVsZP/" }
-expect eof
+# 使用 Python paramiko 部署（更可靠）
+python3 -c "
+import paramiko, sys, time
+
+host = '187.127.108.58'
+user = 'root'
+password = 'RL2XuiQVsZP/'
+vol = '/var/lib/docker/volumes/neibuxitong_app_data/_data'
+
+ssh = paramiko.SSHClient()
+ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+try:
+    ssh.connect(host, username=user, password=password, timeout=15)
+except Exception as e:
+    print(f'❌ SSH 连接失败: {e}')
+    sys.exit(1)
+
+def run(cmd, label=''):
+    if label: print(f'  {label}...')
+    stdin, stdout, stderr = ssh.exec_command(cmd)
+    out = stdout.read().decode().strip()
+    err = stderr.read().decode().strip()
+    if err and 'WARNING' not in err and 'DEPRECATION' not in err:
+        for line in err.split('\n')[:3]:
+            if line.strip(): print(f'    ⚠️ {line.strip()[:120]}')
+    return out
+
+print('1. 备份数据库...')
+run(f'python3 /root/backup_db.py 2>/dev/null || cp {vol}/data.db {vol}/data.db.bak.\$(date +%Y%m%d_%H%M%S)')
+
+print('2. 拉取最新代码...')
+run(f'cd {vol} && git fetch origin main && git reset --hard origin/main')
+
+print('3. 停止容器...')
+run('docker stop neibuxitong')
+time.sleep(2)
+
+print('4. 清除构建缓存...')
+run(f'rm -rf {vol}/.next {vol}/node_modules/.cache 2>/dev/null')
+
+print('5. 启动容器（自动执行 npm run build && npm start）...')
+run('docker start neibuxitong')
+
+print('6. 等待构建完成...')
+for i in range(8):
+    time.sleep(5)
+    status = run('docker ps --filter name=neibuxitong --format \"{{.Status}}\"')
+    if 'Up' in status:
+        break
+
+print('7. 验证服务...')
+code = run('python3 -c \"import urllib.request; print(urllib.request.urlopen(\\\"http://localhost:3000/\\\").status)\"')
+print(f'  HTTP 状态码: {code}')
+if code == '200':
+    print('  ✅ 网站正常')
+else:
+    print(f'  ⚠️ 返回 {code}')
+
+# 数据库自动迁移
+print('8. 验证数据库表...')
+tables = run(f'sqlite3 {vol}/data.db \"SELECT name FROM sqlite_master WHERE type=\\\"table\\\" ORDER BY name;\"')
+missing = []
+for t in ['peer_votes', 'client_feedback', 'feedback_tokens', 'points_records', 'issue_tickets']:
+    if t not in tables:
+        missing.append(t)
+if missing:
+    print(f'  ⚠️ 仍然缺少: {missing}')
+else:
+    print(f'  ✅ 所有关键表存在')
+
+cmd = run('docker logs neibuxitong --tail 5 2>&1')
+if 'SQLITE_ERROR' in cmd or 'SyntaxError' in cmd:
+    print(f'  ⚠️ 日志有错误: {cmd[-200:]}')
+else:
+    print(f'  ✅ 日志无错误')
+
+ssh.close()
+print()
+print('🎉 部署完成！')
+print(f'🌐 http://{host}:3000')
 " 2>&1
 
 echo ""
-echo "✅ 搞定！已备份、推送、部署完成"
+echo "✅ 全部完成"

@@ -670,6 +670,51 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // ── 以下表在开发过程中逐步新增，补充在此确保部署时自动建表 ──
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS peer_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voter TEXT NOT NULL,
+      nominee TEXT NOT NULL,
+      reason TEXT DEFAULT '',
+      month TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS client_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT NOT NULL,
+      responsible_person TEXT DEFAULT '',
+      overall INTEGER NOT NULL DEFAULT 3 CHECK(overall BETWEEN 1 AND 5),
+      attitude INTEGER NOT NULL DEFAULT 3 CHECK(attitude BETWEEN 1 AND 5),
+      speed INTEGER NOT NULL DEFAULT 3 CHECK(speed BETWEEN 1 AND 5),
+      professionalism INTEGER NOT NULL DEFAULT 3 CHECK(professionalism BETWEEN 1 AND 5),
+      comment TEXT DEFAULT '',
+      feedback_type TEXT DEFAULT 'client' CHECK(feedback_type IN ('client','internal')),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 迁移旧 client_feedback 表（如果是从旧结构升级）
+  try { database.exec("ALTER TABLE client_feedback ADD COLUMN comment TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE client_feedback ADD COLUMN overall INTEGER NOT NULL DEFAULT 3 CHECK(overall BETWEEN 1 AND 5)"); } catch {}
+  try { database.exec("ALTER TABLE client_feedback ADD COLUMN attitude INTEGER NOT NULL DEFAULT 3 CHECK(attitude BETWEEN 1 AND 5)"); } catch {}
+  try { database.exec("ALTER TABLE client_feedback ADD COLUMN speed INTEGER NOT NULL DEFAULT 3 CHECK(speed BETWEEN 1 AND 5)"); } catch {}
+  try { database.exec("ALTER TABLE client_feedback ADD COLUMN professionalism INTEGER NOT NULL DEFAULT 3 CHECK(professionalism BETWEEN 1 AND 5)"); } catch {}
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS feedback_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT NOT NULL UNIQUE,
+      order_id TEXT NOT NULL UNIQUE,
+      created_at TEXT DEFAULT (datetime('now')),
+      submitted INTEGER NOT NULL DEFAULT 0,
+      submitted_at TEXT DEFAULT ''
+    );
+  `);
+
   // 触发自动积分规则
   try { seedPointsRulesZ(database); } catch {}
 
