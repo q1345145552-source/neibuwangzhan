@@ -479,6 +479,60 @@ export default function AgencyPage() {
           </Link>
         </div>
       </div>
+
+      {/* 工作量明细弹窗 */}
+      {wlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setWlModal(null)}>
+          <div className="w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">{wlModal.label}</h3>
+              <button onClick={() => setWlModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                <X className="size-4" />
+              </button>
+            </div>
+            {wlLoading ? (
+              <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">
+                <Loader2 className="size-5 mx-auto mb-2 animate-spin" />加载中...
+              </div>
+            ) : wlErr ? (
+              <p className="py-8 text-center text-sm text-[var(--destructive)]">{wlErr}</p>
+            ) : wlData.length === 0 ? (
+              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无明细数据</p>
+            ) : (
+              <div className="space-y-2">
+                {wlData.map((item: any, idx: number) => (
+                  <div key={idx} className="rounded-lg border border-[var(--border)] p-3 text-sm">
+                    {wlModal.type === "tasks" && (
+                      <Link href={`/agency/influencers/tasks/${item.id}`} className="block hover:bg-[var(--secondary)] -m-3 p-3 rounded-lg transition-colors">
+                        <p className="font-medium">{item.task_number || `#${item.id}`}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">{item.category || "未分类"} · {item.status}</p>
+                      </Link>
+                    )}
+                    {wlModal.type === "influencers" && (
+                      <Link href={`/agency/influencers/${item.id}`} className="block hover:bg-[var(--secondary)] -m-3 p-3 rounded-lg transition-colors">
+                        <p className="font-medium">{item.name}{item.code ? <span className="text-xs text-[var(--muted-foreground)] ml-1">[{item.code}]</span> : ""}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">{item.category || "未分类"} · {item.phase === "discovery" ? "发现阶段" : item.phase === "contract" ? "签约阶段" : item.phase}</p>
+                      </Link>
+                    )}
+                    {wlModal.type === "evaluations" && (
+                      <Link href={`/agency/influencers/${item.influencer_id}`} className="block hover:bg-[var(--secondary)] -m-3 p-3 rounded-lg transition-colors">
+                        <p className="font-medium">{item.influencer_name} <span className={`inline-flex rounded-full px-1.5 py-0.5 text-xs font-bold text-white ${item.final_rating?.startsWith("A") ? "bg-emerald-500" : item.final_rating?.startsWith("B") ? "bg-blue-500" : "bg-amber-500"}`}>{item.final_rating || item.rating || "-"}</span></p>
+                        <p className="text-xs text-[var(--muted-foreground)]">总分 {item.total_score || "-"} / 65</p>
+                      </Link>
+                    )}
+                    {wlModal.type === "contracts" && (
+                      <Link href={`/agency/influencers/${item.influencer_id}`} className="block hover:bg-[var(--secondary)] -m-3 p-3 rounded-lg transition-colors">
+                        <p className="font-medium">{item.influencer_name}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">底薪 {item.base_salary || "-"} · 佣金 {item.commission || "-"} · {item.payment_status}</p>
+                      </Link>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
