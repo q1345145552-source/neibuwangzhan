@@ -6,7 +6,13 @@ import { Users, FileSignature, TrendingUp, Search, FlaskConical, PackageCheck, S
 import { cn } from "@/lib/utils";
 import { fetchWithAuth } from "@/lib/api";
 
-const STAFF = ["Ploy", "元丽", "Prae", "Namcha"];
+const STAFF = [
+  { id: "ploy", label: "Ploy" },
+  { id: "yuanli", label: "元丽" },
+  { id: "pare", label: "Prae" },
+  { id: "namcha", label: "Namcha" },
+];
+const STAFF_LABELS: Record<string, string> = Object.fromEntries(STAFF.map(s => [s.id, s.label]));
 
 interface StaffRow {
   name: string; tasks: number; influencers: number; evaluations: number; contracts: number;
@@ -37,8 +43,8 @@ const ratingColor = (r: string) => {
 };
 
 const staffColors: Record<string, string> = {
-  "Ploy": "border-l-pink-400", "元丽": "border-l-amber-400",
-  "Prae": "border-l-blue-400", "Namcha": "border-l-emerald-400",
+  "ploy": "border-l-pink-400", "yuanli": "border-l-amber-400",
+  "pare": "border-l-blue-400", "namcha": "border-l-emerald-400",
 };
 
 function timeAgo(dateStr: string) {
@@ -96,7 +102,19 @@ export default function AgencyPage() {
     setWlData([]);
     setWlErr(null);
     try {
-      const res = await fetchWithAuth("/api/agency/workload-details?employee=" + encodeURIComponent(name) + "&type=" + type, { cache: "no-store" });
+      let url = "/api/agency/workload-details?employee=" + encodeURIComponent(name) + "&type=" + type;
+      // 传递当前日期筛选条件
+      if (quickDays === 0) {
+        const today = formatDate(new Date(Date.now() + 7*60*60*1000));
+        url += "&from=" + today + "&to=" + today;
+      } else if (quickDays != null) {
+        const end = new Date(Date.now() + 7*60*60*1000);
+        const start = new Date(end.getTime() - (quickDays - 1) * 86400000);
+        url += "&from=" + formatDate(start) + "&to=" + formatDate(end);
+      } else if (showCustom && customFrom) {
+        url += "&from=" + customFrom + "&to=" + (customTo || customFrom);
+      }
+      const res = await fetchWithAuth(url, { cache: "no-store" });
       if (!res.ok) {
         setWlErr("请求失败(" + res.status + ")");
         return;
@@ -202,7 +220,7 @@ export default function AgencyPage() {
               className="appearance-none h-8 rounded border border-[var(--border)] bg-[var(--background)] pl-3 pr-7 text-xs outline-none focus:border-[var(--ring)] cursor-pointer"
             >
               <option value="">全部成员</option>
-              {STAFF.map(s => <option key={s} value={s}>{s}</option>)}
+              {STAFF.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3 pointer-events-none text-[var(--muted-foreground)]" />
           </div>
@@ -305,7 +323,7 @@ export default function AgencyPage() {
                   staffColors[row.name] || "border-l-transparent",
                   employee && employee !== row.name && "opacity-40"
                 )}>
-                  <td className="py-2.5 px-5 font-medium text-[var(--foreground)]">{row.name}</td>
+                  <td className="py-2.5 px-5 font-medium text-[var(--foreground)]">{STAFF_LABELS[row.name] || row.name}</td>
                   <td className="py-2.5 px-4 text-center tabular-nums">
                     {row.tasks > 0 ? (
                       <button onClick={() => handleWlDetail(row.name, "tasks", row.name + " 的发现任务")} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
