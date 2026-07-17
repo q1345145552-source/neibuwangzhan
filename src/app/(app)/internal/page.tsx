@@ -210,6 +210,19 @@ export default function InternalPage() {
     return () => clearInterval(id);
   }, []);
 
+  // 加载员工列表（供工单指派人下拉框使用）
+  useEffect(() => {
+    const loadStaff = async () => {
+      try {
+        const res = await fetchWithAuth("/api/employees", { cache: "no-store" });
+        const data = await res.json();
+        const names: string[] = (Array.isArray(data) ? data : []).map((e: any) => e.name).filter(Boolean);
+        setStaffNames(names);
+      } catch (e) { console.error("[内部管理] 加载员工列表失败", e); }
+    };
+    loadStaff();
+  }, []);
+
   const loadCalendar = async () => {
     try {
       const [y, m] = calendarMonth.split("-");
@@ -337,6 +350,7 @@ export default function InternalPage() {
 
   const handleCreateIssue = async () => {
     if (!issueForm.description.trim()) { setIssueErr("请填写问题描述"); return; }
+    if (!issueForm.assignee) { setIssueErr("请指定解决人"); return; }
     setIssueSaving(true);
     try {
       await fetchWithAuth("/api/issues", {
@@ -1369,9 +1383,9 @@ export default function InternalPage() {
                 </select>
               </div>
               <div className="sm:col-span-2">
-                <label className="text-xs font-medium">指定解决人</label>
+                <label className="text-xs font-medium">指定解决人 <span className="text-[var(--destructive)]">*</span></label>
                 <select value={issueForm.assignee} onChange={e=>setIssueForm(p=>({...p,assignee:e.target.value}))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
-                  <option value="">不指定</option>
+                  <option value="">请选择员工</option>
                   {staffNames.map(n=><option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
