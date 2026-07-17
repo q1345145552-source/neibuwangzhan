@@ -11,7 +11,9 @@ export async function GET(
 
   const { id } = await params;
   const db = getDb();
-  const influencer = db.prepare("SELECT * FROM influencers WHERE id = ?").get(id);
+  const influencer = db.prepare(
+    "SELECT i.*, dt.task_number as task_number, dt.creator as task_creator FROM influencers i LEFT JOIN discovery_tasks dt ON i.discovery_task_id = dt.id WHERE i.id = ?"
+  ).get(id);
   if (!influencer) return NextResponse.json({ error: "达人不存在" }, { status: 404 });
   const steps = db.prepare("SELECT * FROM influencer_steps WHERE influencer_id = ? ORDER BY step_order").all(id);
   const evaluations = db.prepare("SELECT * FROM influencer_evaluations WHERE influencer_id = ? ORDER BY created_at DESC").all(id);
@@ -39,7 +41,9 @@ export async function PATCH(
   sets.push("updated_at = datetime('now')");
   vals.push(id);
   db.prepare(`UPDATE influencers SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
-  const influencer = db.prepare("SELECT * FROM influencers WHERE id = ?").get(id);
+  const influencer = db.prepare(
+    "SELECT i.*, dt.task_number as task_number, dt.creator as task_creator FROM influencers i LEFT JOIN discovery_tasks dt ON i.discovery_task_id = dt.id WHERE i.id = ?"
+  ).get(id);
   return NextResponse.json(influencer);
 }
 

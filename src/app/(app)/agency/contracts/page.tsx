@@ -30,6 +30,7 @@ interface Contract {
   influencer_line: string;
   influencer_status: string;
   influencer_phase: string;
+  influencer_created_by?: string;
   latest_gmv: string;
   base_salary: string;
   commission: string;
@@ -507,6 +508,7 @@ export default function ContractsPage() {
               <thead>
                 <tr className="border-b border-[var(--border)]">
                   <th className="py-2.5 px-2 text-left text-xs font-medium">编号</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium max-xl:hidden">来源</th>
                   <th className="py-2.5 px-2 text-left text-xs font-medium">达人</th>
                   <th className="py-2.5 px-2 text-left text-xs font-medium max-xl:hidden">品类</th>
                   <th className="py-2.5 px-2 text-left text-xs font-medium max-xl:hidden">GMV</th>
@@ -528,6 +530,7 @@ export default function ContractsPage() {
                   return (
                   <tr key={c.id} className={cn("border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors", rowClass)}>
                     <td className="py-2.5 px-2 text-[var(--muted-foreground)] tabular-nums">{c.influencer_code || "-"}</td>
+                    <td className="py-2.5 px-2 text-[var(--muted-foreground)] text-xs max-xl:hidden">{c.influencer_created_by || "—"}</td>
                     <td className="py-2.5 px-2">
                       <Link href={`/agency/influencers/${c.influencer_id}`} className="font-medium hover:underline">{c.influencer_name || "-"}</Link>
                     </td>
