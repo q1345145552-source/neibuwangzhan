@@ -173,7 +173,7 @@ export default function InternalPage() {
       setWl(await wlRes.json());
       setIssues(await isRes.json());
       setLeaves(await lvRes.json());
-      const notifRes = await fetchWithAuth(`/api/notifications?recipient=${user?.name || ""}&limit=30`, { cache: "no-store" });
+      const notifRes = await fetchWithAuth(`/api/notifications?recipient=${encodeURIComponent(user?.name || "")}&limit=30`, { cache: "no-store" });
       setNotifications(await notifRes.json());
     } catch (e) { console.error("[内部管理] 加载通知/工单/请假失败", e); }
   };
