@@ -6,7 +6,7 @@ import { getDb } from "@/lib/db";
 const GMV_TIER_SCORES: Record<string, number> = { ">30万": 29, "20-30万": 25, "10-20万": 19, "5-10万": 11 };
 const DURATION_TIER_SCORES: Record<string, number> = { ">3小时": 14, "2-3小时": 11, "1-2小时": 8, "<1小时": 5 };
 const FREQUENCY_TIER_SCORES: Record<string, number> = { ">5次/周": 14, "4-5次/周": 11, "2-3次/周": 8, "<2次/周": 5 };
-const PROF_TIER_SCORES: Record<string, number> = { "高": 5, "中": 3, "低": 1 };
+const PROF_TIER_SCORES: Record<string, number> = { "เยี่ยมมาก": 5, "ดีมาก": 4, "ดี": 3, "ค่อนข้างดี": 2, "พอใช้": 1 };
 
 function calcFinalRating(totalScore: number, liveRatioPct: number): string {
   let grade: string;
