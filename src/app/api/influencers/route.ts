@@ -18,17 +18,17 @@ export async function GET(req: NextRequest) {
     LEFT JOIN discovery_tasks dt ON i.discovery_task_id = dt.id`;
   const conditions: string[] = [];
   const params: string[] = [];
-  if (status) { const statuses = status.split(",").map(s => s.trim()); conditions.push("status IN (" + statuses.map(() => "?").join(",") + ")"); params.push(...statuses); }
+  if (status) { const statuses = status.split(",").map(s => s.trim()); conditions.push("i.status IN (" + statuses.map(() => "?").join(",") + ")"); params.push(...statuses); }
   if (phase) {
     if (phase === "contract") {
-      conditions.push("phase IN ('completed_discovery','contract','completed_contract')");
+      conditions.push("i.phase IN ('completed_discovery','contract','completed_contract')");
     } else if (phase === "incubation") {
-      conditions.push("phase IN ('completed_discovery','contract','completed_contract','incubation','completed_incubation')");
+      conditions.push("i.phase IN ('completed_discovery','contract','completed_contract','incubation','completed_incubation')");
     } else {
-      conditions.push("phase = ?"); params.push(phase);
+      conditions.push("i.phase = ?"); params.push(phase);
     }
   }
-  if (search) { conditions.push("(name LIKE ? OR category LIKE ? OR contact LIKE ? OR code LIKE ?)"); const q = `%${search}%`; params.push(q, q, q, q); }
+  if (search) { conditions.push("(i.name LIKE ? OR i.category LIKE ? OR i.contact LIKE ? OR i.code LIKE ?)"); const q = `%${search}%`; params.push(q, q, q, q); }
   if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
   sql += " ORDER BY created_at DESC";
   const rows = db.prepare(sql).all(...params);
