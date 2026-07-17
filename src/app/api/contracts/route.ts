@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("payment_status");
+  const trash = searchParams.get("trash") === "1";
   let sql = `SELECT c.*, i.name AS influencer_name, i.code AS influencer_code,
     i.category AS influencer_category, i.followers AS influencer_followers,
     i.contact_phone AS influencer_phone, i.line_id AS influencer_line,
@@ -17,7 +18,9 @@ export async function GET(req: NextRequest) {
     (SELECT COUNT(*) FROM influencer_documents d WHERE d.influencer_id = c.influencer_id) AS file_count
     FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id`;
   const params: string[] = [];
-  if (status) { sql += " WHERE c.payment_status = ?"; params.push(status); }
+  if (trash) { sql += " WHERE c.deleted = 1"; }
+  else { sql += " WHERE c.deleted = 0"; }
+  if (status) { sql += " AND c.payment_status = ?"; params.push(status); }
   sql += " ORDER BY c.created_at DESC";
   const rows = db.prepare(sql).all(...params);
   const res = NextResponse.json(rows);
@@ -69,6 +72,12 @@ export async function PATCH(req: NextRequest) {
       }
     }
   }
+  // 恢复：从回收站还原
+  if (body.restore === true) {
+    db.prepare("UPDATE contracts SET deleted = 0, deleted_at = NULL, deleted_by = '', updated_at = datetime('now') WHERE id = ?").run(id);
+    const row = db.prepare("SELECT c.*, i.name AS influencer_name, i.code AS influencer_code FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(id);
+    return NextResponse.json(row);
+  }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   sets.push("updated_at = datetime('now')");
   vals.push(id);
@@ -85,6 +94,14 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
-  db.prepare("DELETE FROM contracts WHERE id = ?").run(id);
+
+  const permanent = searchParams.get("permanent") === "1";
+  if (permanent) {
+    // 彻底删除
+    db.prepare("DELETE FROM contracts WHERE id = ?").run(id);
+  } else {
+    // 软删除：移入回收站
+    db.prepare("UPDATE contracts SET deleted = 1, deleted_at = datetime('now'), deleted_by = ? WHERE id = ?").run(auth.name, id);
+  }
   return NextResponse.json({ success: true });
 }

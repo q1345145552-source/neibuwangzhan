@@ -446,6 +446,9 @@ function initTables(database: Database.Database) {
       notes TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','评估中','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
       created_by TEXT DEFAULT '',
+      deleted INTEGER DEFAULT 0,
+      deleted_at TEXT,
+      deleted_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation'))
@@ -502,6 +505,9 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_duration TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE contracts ADD COLUMN actual_video_count TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE contracts ADD COLUMN created_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE contracts ADD COLUMN deleted INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE contracts ADD COLUMN deleted_at TEXT"); } catch {}
+  try { database.exec("ALTER TABLE contracts ADD COLUMN deleted_by TEXT DEFAULT ''"); } catch {}
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS influencer_factories (
