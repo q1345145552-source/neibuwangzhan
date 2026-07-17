@@ -19,7 +19,8 @@ interface WorkloadData { employees: Workload[]; thresholds: { warn: number; crit
 interface IssueTicket {
   id: number; ticket_number: string; ref_id: string; ref_type: string;
   description: string; priority: string; status: string; assignee: string;
-  created_by: string; resolved_by: string; created_at: string;
+  created_by: string; resolved_by: string; withdrawn_by?: string; withdrawn_at?: string;
+  created_at: string;
   images?: string;
 }
 
@@ -373,6 +374,23 @@ export default function InternalPage() {
       body: JSON.stringify({ id, status: "已解决", resolved_by: user?.name }),
     });
     loadAll();
+  };
+
+  const handleWithdrawIssue = async (t: IssueTicket) => {
+    // 只有解决人、创建人或管理员能撤回
+    if (user?.role !== "admin" && user?.name !== t.resolved_by && user?.name !== t.created_by) {
+      alert("只有解决人、创建人或管理员才能撤回");
+      return;
+    }
+    if (!confirm("确认撤回此工单？状态将回到处理中。")) return;
+    try {
+      await fetchWithAuth("/api/issues", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, status: "处理中", withdrawn_by: user?.name }),
+      });
+      loadAll();
+    } catch (e) { console.error("[内部管理] 撤回工单失败", e); }
   };
 
   const handleDeleteIssue = async (id: number) => {
@@ -1469,9 +1487,13 @@ export default function InternalPage() {
                       </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
                   </td>
                   <td className="py-2.5 px-4">
-                    {t.status!=="已解决"&&(
+                    {t.status!=="已解决" ? (
                       <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t.id)}>
                         <CheckCircle2 className="size-3 mr-1" />解决
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleWithdrawIssue(t)}>
+                        <AlertTriangle className="size-3 mr-1" />撤回
                       </Button>
                     )}
                     <button onClick={()=>handleDeleteIssue(t.id)} className="ml-1.5 text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="删除工单">

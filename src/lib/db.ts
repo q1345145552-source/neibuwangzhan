@@ -551,6 +551,8 @@ function initTables(database: Database.Database) {
       created_by TEXT DEFAULT '',
       resolved_by TEXT DEFAULT '',
       resolved_at TEXT,
+      withdrawn_by TEXT DEFAULT '',
+      withdrawn_at TEXT,
       images TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
