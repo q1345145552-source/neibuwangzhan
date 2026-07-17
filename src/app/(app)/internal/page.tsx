@@ -52,10 +52,10 @@ interface MonthlySummary {
   supplementDays: number; workDays: number;
 }
 
-const [staffNames, setStaffNames] = useState<string[]>([]);
 
 export default function InternalPage() {
   const { user } = useAuth();
+  const [staffNames, setStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
   const [issues, setIssues] = useState<IssueTicket[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
