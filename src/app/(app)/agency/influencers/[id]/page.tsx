@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Upload as UploadIcon, Building, ExternalLink, Search, Play, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -57,6 +58,7 @@ interface Influencer {
   contact_time: string; reply_status: string; followers: string; avg_views: string;
   gmv_range: string; notes: string; created_at: string; updated_at: string;
   steps: InfStep[]; evaluations: any[]; contracts: any[];
+  created_by?: string; discovery_task_id?: number; task_number?: string; task_creator?: string;
 }
 
 interface InfStep {
@@ -929,6 +931,12 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
             <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", stepStatusClass[inf.status] || "bg-gray-100")}>{inf.status}</span>
             {inf.category && <span className="text-xs text-[var(--muted-foreground)]">{inf.category}</span>}
             {inf.followers && <span className="text-xs text-[var(--muted-foreground)]">{inf.followers} 粉丝</span>}
+            {inf.created_by && (
+              <span className="text-xs text-[var(--muted-foreground)]">
+                · 由 {inf.created_by} 发现
+                {inf.task_number ? <> · <Link href={`/agency/influencers/tasks/${inf.discovery_task_id}`} className="text-[var(--primary)] hover:underline">任务 F-{inf.task_number}</Link></> : ""}
+              </span>
+            )}
             <span className="text-xs text-[var(--muted-foreground)]">· 阶段: {inf.phase?.replace("completed_", "").replace("_", " ")} · 已完成 {completedCount}/{totalSteps}</span>
             {/* 任务级"开始"按钮：当前阶段第一步待处理时显示 */}
             {displaySteps.length > 0 && displaySteps[0].status === "待处理" && !isClient && (

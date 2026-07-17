@@ -53,6 +53,7 @@ interface Influencer {
   avg_views: string; gmv_range: string; notes: string;
   code: string; status: string; phase: string; monthly_gmv: string; live_stream_ratio: string;
   latest_rating: string | null; created_at: string; updated_at?: string; created_by?: string;
+  task_number?: string; discovery_task_id?: number;
 }
 
 export default function InfluencersPage() {
@@ -410,6 +411,7 @@ function getPreviewGrade() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">达人名称</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">编号</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">品类</th>
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">来源</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">粉丝量</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-lg:hidden">GMV区间</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">LINE</th>

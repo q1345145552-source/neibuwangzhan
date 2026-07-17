@@ -20,6 +20,7 @@ const statusClass: Record<string, string> = {
 interface Influencer {
   id: number; name: string; phase: string; status: string; category: string;
   tiktok_link: string; contact_phone: string; followers: string; gmv_range: string; created_at: string;
+  created_by?: string; task_number?: string; discovery_task_id?: number;
 }
 
 export default function IncubationPage() {
@@ -121,7 +122,7 @@ export default function IncubationPage() {
                     <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-lg:hidden">{inf.followers || "-"}</td>
                     <td className="py-2.5 px-4">
                       <span className="text-xs text-[var(--muted-foreground)]">
-                        {inf.phase === "completed_contract" ? "签约完成" : "发现完成"}
+                        {inf.created_by ? inf.created_by : <span className="text-[var(--muted-foreground)]/50">未记录</span>}
                       </span>
                     </td>
                     <td className="py-2.5 px-4">

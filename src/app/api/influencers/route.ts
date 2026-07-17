@@ -12,8 +12,10 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search");
   const phase = searchParams.get("phase");
   let sql = `SELECT i.*, 
-    (SELECT ie.final_rating FROM influencer_evaluations ie WHERE ie.influencer_id = i.id ORDER BY ie.created_at DESC LIMIT 1) as latest_rating
-    FROM influencers i`;
+    (SELECT ie.final_rating FROM influencer_evaluations ie WHERE ie.influencer_id = i.id ORDER BY ie.created_at DESC LIMIT 1) as latest_rating,
+    dt.task_number as task_number, dt.creator as task_creator
+    FROM influencers i
+    LEFT JOIN discovery_tasks dt ON i.discovery_task_id = dt.id`;
   const conditions: string[] = [];
   const params: string[] = [];
   if (status) { const statuses = status.split(",").map(s => s.trim()); conditions.push("status IN (" + statuses.map(() => "?").join(",") + ")"); params.push(...statuses); }
