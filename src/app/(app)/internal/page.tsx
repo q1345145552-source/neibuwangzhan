@@ -527,10 +527,10 @@ export default function InternalPage() {
                 {(todayRecord.check_in_photo || todayRecord.check_out_photo) && (
                   <div className="flex gap-2 mt-1">
                     {todayRecord.check_in_photo && (
-                      <a href={todayRecord.check_in_photo} target="_blank" className="text-xs text-blue-500 underline">签到照片</a>
+                      <a href={fileUrl(todayRecord.check_in_photo)} target="_blank" className="text-xs text-blue-500 underline">签到照片</a>
                     )}
                     {todayRecord.check_out_photo && (
-                      <a href={todayRecord.check_out_photo} target="_blank" className="text-xs text-blue-500 underline">签退照片</a>
+                      <a href={fileUrl(todayRecord.check_out_photo)} target="_blank" className="text-xs text-blue-500 underline">签退照片</a>
                     )}
                   </div>
                 )}
@@ -847,14 +847,14 @@ export default function InternalPage() {
                 {(calDetailDay.check_in_photo || calDetailDay.check_out_photo) && (
                   <div className="flex gap-3 pt-2">
                     {calDetailDay.check_in_photo && (
-                      <a href={calDetailDay.check_in_photo} target="_blank" className="flex-1">
-                        <img src={calDetailDay.check_in_photo} alt="签到照" className="w-full h-32 object-cover rounded-lg border" />
+                      <a href={fileUrl(calDetailDay.check_in_photo)} target="_blank" className="flex-1">
+                        <img src={fileUrl(calDetailDay.check_in_photo)} alt="签到照" className="w-full h-32 object-cover rounded-lg border" />
                         <span className="block text-center text-xs text-blue-500 mt-1">签到照片</span>
                       </a>
                     )}
                     {calDetailDay.check_out_photo && (
-                      <a href={calDetailDay.check_out_photo} target="_blank" className="flex-1">
-                        <img src={calDetailDay.check_out_photo} alt="签退照" className="w-full h-32 object-cover rounded-lg border" />
+                      <a href={fileUrl(calDetailDay.check_out_photo)} target="_blank" className="flex-1">
+                        <img src={fileUrl(calDetailDay.check_out_photo)} alt="签退照" className="w-full h-32 object-cover rounded-lg border" />
                         <span className="block text-center text-xs text-blue-500 mt-1">签退照片</span>
                       </a>
                     )}
