@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 
+// 员工英文名到步骤中文名/泰文名的对照
+const NAME_ALIASES: Record<string, string[]> = {
+  yuanli: ["元丽"],
+  ploy: ["Ploy"],
+  namcha: ["Namcha"],
+  pare: ["Prae"],
+};
+
+function buildLikeClause(name: string): { clause: string; params: string[] } {
+  const lower = name.toLowerCase();
+  const aliases = NAME_ALIASES[lower] || [];
+  const patterns = [name, ...aliases];
+  const clauses = patterns.map(() => `assignee LIKE ?`);
+  const params = patterns.map(p => `%${p}%`);
+  return { clause: clauses.join(" OR "), params };
+}
+
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -14,7 +31,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "缺少参数" }, { status: 400 });
   }
 
-  const likeName = `%${employee}%`;
+  const { clause, params } = buildLikeClause(employee);
 
   let data: any[] = [];
 
@@ -24,18 +41,18 @@ export async function GET(req: NextRequest) {
              o.id as order_id, o.customer_name, o.status as order_status
       FROM order_steps os
       JOIN orders o ON os.order_id = o.id
-      WHERE os.assignee LIKE ? AND os.status NOT IN ('已完成','已停止')
+      WHERE (${clause}) AND os.status NOT IN ('已完成','已停止')
       ORDER BY os.deadline ASC, os.step_order ASC
-    `).all(likeName);
+    `).all(...params);
   } else if (type === "influencer_steps") {
     data = db.prepare(`
       SELECT ist.id, ist.step_name, ist.step_order, ist.phase, ist.status, ist.created_at, ist.completed_at,
              i.id as influencer_id, i.name as influencer_name, i.code, i.status as influencer_status
       FROM influencer_steps ist
       JOIN influencers i ON ist.influencer_id = i.id
-      WHERE ist.assignee LIKE ? AND ist.status NOT IN ('已完成','已停止')
+      WHERE (${clause}) AND ist.status NOT IN ('已完成','已停止')
       ORDER BY ist.step_order ASC
-    `).all(likeName);
+    `).all(...params);
   } else if (type === "contract_infs") {
     data = db.prepare(`
       SELECT DISTINCT i.id, i.name, i.code, i.phase, i.status,
@@ -47,10 +64,10 @@ export async function GET(req: NextRequest) {
         AND i.status NOT IN ('已完成','已停止')
         AND i.id IN (
           SELECT influencer_id FROM influencer_steps
-          WHERE assignee LIKE ? AND status NOT IN ('已完成','已停止')
+          WHERE (${clause}) AND status NOT IN ('已完成','已停止')
         )
       ORDER BY i.name ASC
-    `).all(likeName);
+    `).all(...params);
   }
 
   return NextResponse.json({ type, employee, data });
