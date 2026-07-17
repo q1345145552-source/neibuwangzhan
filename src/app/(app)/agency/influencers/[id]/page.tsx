@@ -423,6 +423,9 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [stopReason, setStopReason] = useState("");
   const [stopReasonErr, setStopReasonErr] = useState("");
   const [poolConfirming, setPoolConfirming] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectSaving, setRejectSaving] = useState(false);
+  const [showRejectInput, setShowRejectInput] = useState(false);
   const [stopping, setStopping] = useState(false);
 
   const confirmStop = async () => {
@@ -647,6 +650,29 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
     }
   };
 
+  const handleRejectRecommend = async () => {
+    if (!rejectReason.trim()) { alert("请填写不推荐的原因"); return; }
+    if (!inf) return;
+    setRejectSaving(true);
+    try {
+      const cancelNote = "老板不推荐原因: " + rejectReason.trim() + " (" + new Date(Date.now() + 7*60*60*1000).toLocaleString("th-TH") + ")";
+      const prevNotes = inf.notes || "";
+      const mergedNotes = prevNotes ? prevNotes + "\n" + cancelNote : cancelNote;
+      await fetchWithAuth(`/api/influencers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "不推荐", notes: mergedNotes }),
+      });
+      setShowRejectInput(false);
+      setRejectReason("");
+      router.push("/agency/influencers?tab=rejected");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败");
+    } finally {
+      setRejectSaving(false);
+    }
+  };
+
   const handleStartPhase = async (phase: string) => {
     if (!inf) return;
     try {
@@ -783,9 +809,31 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
         {/* 确认入池 */}
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6">
           <p className="text-sm text-[var(--foreground)] mb-4">确认该达人通过评估，将其纳入达人池？入池后达人将出现在签约跟进和品牌孵化列表。</p>
-          <Button size="sm" onClick={handleConfirmPool} disabled={poolConfirming} className="gap-1">
-            {poolConfirming ? "处理中..." : "确认入池"}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button size="sm" onClick={handleConfirmPool} disabled={poolConfirming} className="gap-1">
+              {poolConfirming ? "处理中..." : "确认入池"}
+            </Button>
+            {!showRejectInput ? (
+              <Button size="sm" variant="outline" onClick={() => setShowRejectInput(true)} className="gap-1 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-red-50 dark:hover:bg-red-950/20">
+                <X className="size-3.5" />不推荐
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  placeholder="请填写不推荐的原因"
+                  className="h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] min-w-[240px]"
+                />
+                <Button size="sm" variant="destructive" onClick={handleRejectRecommend} disabled={rejectSaving} className="gap-1">
+                  {rejectSaving ? "处理中..." : "确认"}
+                </Button>
+                <button onClick={() => { setShowRejectInput(false); setRejectReason(""); }} className="text-[var(--muted-foreground)] p-1">
+                  <X className="size-4" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
