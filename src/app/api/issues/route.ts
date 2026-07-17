@@ -56,6 +56,7 @@ export async function PATCH(req: NextRequest) {
   const sets: string[] = []; const vals: any[] = [];
   if (status) { sets.push("status = ?"); vals.push(status); if (status === "已解决") { sets.push("resolved_at = datetime('now')"); if (resolved_by) { sets.push("resolved_by = ?"); vals.push(resolved_by); } } }
   if (assignee) { sets.push("assignee = ?"); vals.push(assignee); }
+  if (body.withdrawn_by) { sets.push("withdrawn_by = ?"); vals.push(body.withdrawn_by); sets.push("withdrawn_at = datetime('now')"); }
   if (description) { sets.push("description = ?"); vals.push(description); }
   if (priority) { sets.push("priority = ?"); vals.push(priority); }
   if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
