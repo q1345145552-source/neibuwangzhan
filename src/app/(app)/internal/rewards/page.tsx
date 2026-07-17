@@ -17,6 +17,7 @@ interface PointsRecord {
   rule_key: string; is_manual: number; is_appealed: number;
   appeal_reason: string; appeal_status: string; status: string;
   created_by: string; created_at: string;
+  undone_by?: string; undone_at?: string;
 }
 interface Employee { name: string; }
 interface PeerVote {
@@ -120,9 +121,15 @@ export default function RewardsPage() {
     } catch { setFormErr("提交失败"); }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("确定删除？")) return;
-    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id }) });
+  const handleUndo = async (id: number) => {
+    if (!confirm("确定撤销这条积分记录吗？撤销后对应分数将从总分中扣除，排名也会更新。")) return;
+    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "undo", id }) });
+    load();
+  };
+
+  const handleRestore = async (id: number) => {
+    if (!confirm("确定恢复这条已撤销的积分记录吗？分数将重新加到总分中。")) return;
+    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", id }) });
     load();
   };
 
@@ -346,6 +353,7 @@ export default function RewardsPage() {
                   if (r.rule_key === "client_feedback") badges.push("客户反馈");
                   if (r.is_appealed === 1 && r.appeal_status === "申诉中") badges.push("申诉中");
                   if (r.appeal_status === "已驳回") badges.push("申诉已驳回");
+                  if (r.status === "已撤销" && r.undone_by) badges.push(`${r.undone_by} 于 ${(r.undone_at || '').slice(0, 16)} 撤销`);
 
                   return (
                     <tr key={r.id} className={cn("border-b border-[var(--border)]", tagClass)}>
@@ -372,8 +380,14 @@ export default function RewardsPage() {
                               <MessageSquare className="size-3" />申诉
                             </button>
                           )}
-                          {isAdmin && r.is_manual === 1 && r.status !== "已撤销" && (
-                            <button onClick={() => handleDelete(r.id)} className="text-red-400 hover:text-red-600 text-xs"><X className="size-3.5" /></button>
+                          {/* 管理员撤销/恢复 */}
+                          {isAdmin && r.status !== "已撤销" && (
+                            <button onClick={() => handleUndo(r.id)} className="text-red-400 hover:text-red-700 text-xs border border-red-200 rounded px-2 py-0.5"
+                              title="撤销此积分记录">撤销</button>
+                          )}
+                          {isAdmin && r.status === "已撤销" && (
+                            <button onClick={() => handleRestore(r.id)} className="text-green-500 hover:text-green-700 text-xs border border-green-200 rounded px-2 py-0.5"
+                              title="恢复此积分记录">恢复</button>
                           )}
                         </div>
                       </td>

@@ -811,6 +811,8 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_gmv TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE influencers ADD COLUMN code TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE points_records ADD COLUMN status TEXT DEFAULT '有效' CHECK(status IN ('有效','已救回','已撤销'))"); } catch {}
+  try { database.exec("ALTER TABLE points_records ADD COLUMN undone_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
 }
 

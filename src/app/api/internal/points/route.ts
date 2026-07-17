@@ -130,15 +130,25 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// ── PATCH: 删除 / 申诉 / 客户反馈 ──
+// ── PATCH: 撤销 / 恢复 / 申诉 / 客户反馈 ──
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const body = await req.json();
   const db = getDb();
 
-  if (body.action === "delete" && auth.role === "admin") {
-    db.prepare("DELETE FROM points_records WHERE id = ? AND is_manual = 1").run(body.id);
+  // 管理员撤销积分记录
+  if (body.action === "undo" && auth.role === "admin") {
+    const record = db.prepare("SELECT * FROM points_records WHERE id = ? AND status != '已撤销'").get(body.id);
+    if (!record) return NextResponse.json({ error: "记录不存在或已撤销" }, { status: 404 });
+    db.prepare("UPDATE points_records SET status = '已撤销', undone_by = ?, undone_at = datetime('now') WHERE id = ?").run(auth.name || "", body.id);
+    return NextResponse.json({ success: true });
+  }
+  // 管理员恢复已撤销的记录
+  if (body.action === "restore" && auth.role === "admin") {
+    const record = db.prepare("SELECT * FROM points_records WHERE id = ? AND status = '已撤销'").get(body.id);
+    if (!record) return NextResponse.json({ error: "记录不存在或未被撤销" }, { status: 404 });
+    db.prepare("UPDATE points_records SET status = '有效', undone_by = '', undone_at = '' WHERE id = ?").run(body.id);
     return NextResponse.json({ success: true });
   }
   if (body.action === "appeal") {
