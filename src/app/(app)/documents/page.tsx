@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Upload, Download, FileText, ArrowLeft } from "lucide-react";
-import { fetchAllDocuments, uploadGlobalDocument, fetchOrders, fetchBusinessTypes } from "@/lib/api";
+import { Search, Upload, Download, FileText, ArrowLeft, Trash2 } from "lucide-react";
+import { fetchAllDocuments, uploadGlobalDocument, fetchOrders, fetchBusinessTypes, deleteGlobalDocument } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
 import type { Order } from "@/lib/api";
 import { cn, fileUrl } from "@/lib/utils";
 
@@ -46,8 +47,12 @@ export default function DocumentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const businessFilter = searchParams.get("biz");
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
   const [allDocs, setAllDocs] = useState<DocRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<DocRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -85,6 +90,21 @@ export default function DocumentsPage() {
 
   const reload = () => {
     fetchAllDocuments().then(setAllDocs).catch((err) => console.error("Reload docs error:", err));
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleting(true);
+    try {
+      await deleteGlobalDocument(deleteTarget.id);
+      setDeleteTarget(null);
+      reload();
+    } catch (err) {
+      console.error("[删除文档] 失败:", err);
+      setUploadError("删除失败，请重试");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -223,9 +243,16 @@ export default function DocumentsPage() {
                   </span>
                 </td>
                 <td className="py-3 px-4">
-                  <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(fileUrl(doc.file_url), "_blank"); else setUploadError("该文档无可下载文件"); }}>
-                    <Download className="size-3.5" aria-hidden="true" />
-                  </Button>
+                  <div className="flex items-center gap-0.5">
+                    <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(fileUrl(doc.file_url), "_blank"); else setUploadError("该文档无可下载文件"); }}>
+                      <Download className="size-3.5" aria-hidden="true" />
+                    </Button>
+                    {!isClient && (
+                      <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => setDeleteTarget(doc)}>
+                        <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -235,6 +262,24 @@ export default function DocumentsPage() {
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">没有匹配的文档</div>
         )}
       </div>
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除文档</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              确定要删除文档「{deleteTarget.name}」吗？此操作不可恢复。
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleDelete} disabled={deleting} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deleting ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
