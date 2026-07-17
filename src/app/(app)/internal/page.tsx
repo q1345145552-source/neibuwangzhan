@@ -1274,8 +1274,8 @@ export default function InternalPage() {
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">订单步骤</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">达人步骤</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">订单笔数</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">达人个数</th>
                 <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">签约跟进</th>
                 <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">合计</th>
               </tr>
@@ -1294,14 +1294,14 @@ export default function InternalPage() {
                   </td>
                   <td className="py-2.5 px-4 text-center tabular-nums">
                     {e.orderSteps > 0 ? (
-                      <button onClick={() => handleWlDetail(e.name, "order_steps", `${e.name} 的订单步骤`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                      <button onClick={() => handleWlDetail(e.name, "order_steps", `${e.name} 的订单`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
                         {e.orderSteps}<ExternalLink className="size-2.5 opacity-60" />
                       </button>
                     ) : "0"}
                   </td>
                   <td className="py-2.5 px-4 text-center tabular-nums">
                     {e.influencerSteps > 0 ? (
-                      <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人步骤`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                      <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
                         {e.influencerSteps}<ExternalLink className="size-2.5 opacity-60" />
                       </button>
                     ) : "0"}
@@ -1366,11 +1366,11 @@ export default function InternalPage() {
                               <span className="text-xs text-[var(--muted-foreground)] shrink-0">{item.order_id}</span>
                             </div>
                             <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
-                              <span>步骤: {item.step_name}</span>
-                              <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
-                              {item.created_at && (item.status === "进行中" || item.status === "已完成") && (
-                                <StepTimerStatic created_at={item.created_at} completed_at={item.completed_at || null} />
-                              )}
+                              <span>{item.business_type_name || "—"}</span>
+                              <span>进行中 {item.in_progress_count || 0} / 待处理 {item.pending_count || 0}</span>
+                              <span className={item.order_status === "进行中" ? "text-blue-600" : "text-[var(--muted-foreground)]"}>
+                                {item.order_status === "进行中" ? "进行中" : item.order_status === "已完成" ? "已完成" : item.order_status || "—"}
+                              </span>
                             </div>
                           </div>
                           <a href={`/orders/${item.order_id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>
@@ -1391,11 +1391,10 @@ export default function InternalPage() {
                             </div>
                             <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
                               <span>阶段: {item.phase === "discovery" ? "达人发现" : item.phase === "contract" ? "签约跟进" : "品牌孵化"}</span>
-                              <span>步骤: {item.step_name}</span>
-                              <span className={item.status === "已完成" ? "text-green-600" : "text-amber-600"}>{item.status}</span>
-                              {item.created_at && (item.status === "进行中" || item.status === "已完成") && (
-                                <StepTimerStatic created_at={item.created_at} completed_at={item.completed_at || null} />
-                              )}
+                              <span>进行中 {item.in_progress_count || 0} / 待处理 {item.pending_count || 0}</span>
+                              <span className={item.influencer_status === "进行中" || item.influencer_status === "已入池" ? "text-blue-600" : "text-[var(--muted-foreground)]"}>
+                                {item.influencer_status || "—"}
+                              </span>
                             </div>
                           </div>
                           <a href={`/agency/influencers/${item.influencer_id}`} target="_blank" className="ml-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] shrink-0" onClick={e => e.stopPropagation()}>

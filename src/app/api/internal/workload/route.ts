@@ -11,7 +11,6 @@ const NAME_ALIASES: Record<string, string[]> = {
   ploy: ["Ploy"],
   namcha: ["Namcha"],
   pare: ["Prae"],
-  // 其他员工直接用英文名 LIKE 匹配
 };
 
 function buildMatchCondition(name: string): string {
@@ -36,14 +35,17 @@ export async function GET(req: NextRequest) {
   for (const emp of employees) {
     const cond = buildMatchCondition(emp.name);
 
-    // 订单步骤
+    // 订单笔数：该员工参与且未完成的订单（去重计数，不是步骤数）
     const orderSteps = (db.prepare(
-      `SELECT COUNT(*) as c FROM order_steps WHERE (${cond}) AND status NOT IN ('已完成','已停止')`
+      `SELECT COUNT(DISTINCT os.order_id) as c FROM order_steps os
+       JOIN orders o ON os.order_id = o.id
+       WHERE (${cond}) AND os.status NOT IN ('已完成','已停止')`
     ).all() as { c: number }[])[0]?.c || 0;
 
-    // 达人步骤（含签约阶段的）
+    // 达人个数：该员工参与且未完成的达人（去重计数，不是步骤数）
     const influencerSteps = (db.prepare(
-      `SELECT COUNT(*) as c FROM influencer_steps WHERE (${cond}) AND status NOT IN ('已完成','已停止')`
+      `SELECT COUNT(DISTINCT ist.influencer_id) as c FROM influencer_steps ist
+       WHERE (${cond}) AND ist.status NOT IN ('已完成','已停止')`
     ).all() as { c: number }[])[0]?.c || 0;
 
     // 签约中的达人（该员工有未完成步骤的签约达人）

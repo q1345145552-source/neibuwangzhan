@@ -167,6 +167,23 @@ export const nbtcDocs: Record<number, string[]> = {
   12: [],
 };
 
+/* ── 社保开户 ── */
+export const socialSecurityDocs: Record<number, string[]> = {
+  1: ["公司注册证明书（6个月内有效）", "董事身份证复印件", "董事户口本复印件", "BOJ5 股东名册", "BOJ2 公司设立文件", "BOJ3 公司设立文件", "公司地址地图", "公司实景照片（清楚拍到招牌和门牌号）"],
+  2: ["雇员信息表（Excel：姓名、工资金额、入职日期）"],
+  3: ["SPS 1-01 雇主登记表", "SPS 1-02 雇主登记表", "SPS 1-03/1 雇员入职申报表", "雇员名单表", "授权委托书"],
+  4: [],
+  5: [],
+  6: [],
+  7: [],
+  8: [],
+  9: [],
+};
+
+export const socialSecuritySubServices = [
+  { key: "social-security", label: "社保开户", businessTypeId: 10 },
+];
+
 export const tisiSubServices = [
   { key: "tisi-main", label: "TISI认证", businessTypeId: 4 },
 ];
@@ -319,14 +336,15 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
     return mallShopeeDocs;
   }
   if (businessTypeId === 9) return nbtcDocs;
+  if (businessTypeId === 10) return socialSecurityDocs;
   return {};
 }
 
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {
-  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs,
+  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs, 10: socialSecurityDocs,
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {
-  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [],
+  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [], 10: socialSecuritySubServices,
 };
 

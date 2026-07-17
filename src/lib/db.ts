@@ -105,6 +105,17 @@ const businessSteps: Record<number, StepTemplate[]> = {
     { name: "等待检测结果，Khun Ja通知下一步", assignee: "" },
     { name: "收到NBTC证书，总周期约3-4个月", assignee: "Fern" },
   ],
+  10: [
+    { name: "收集公司资料（注册证明书、董事身份证复印件、户口本复印件、BOJ5股东名册、BOJ2&3设立文件、公司地址地图、公司实景照片含招牌门牌号、参保雇员身份证复印件带签字）", assignee: "Eve" },
+    { name: "准备雇员信息表（Excel整理姓名、工资金额、入职日期）", assignee: "Eve" },
+    { name: "填写社保局表格（SPS 1-01雇主登记、SPS 1-02雇主登记、SPS 1-03/1雇员入职申报、雇员名单表、授权委托书）", assignee: "Eve" },
+    { name: "签字盖章（所有表格和公司文件复印件每页董事签字加公司公章）", assignee: "Eve" },
+    { name: "垫付社保预缴金", assignee: "Pop" },
+    { name: "前往社保局提交登记", assignee: "Eve" },
+    { name: "当天审核拿雇主登记号", assignee: "Eve" },
+    { name: "开通网上业务 e-Service（用雇主登记号申请，社保局发用户名密码到公司邮箱）", assignee: "Eve" },
+    { name: "交付客户（收据和社保号码交客户，归档结案）", assignee: "Eve" },
+  ],
 };
 
 export function getBusinessSteps(businessTypeId: number, subServiceType?: string): StepTemplate[] {
@@ -862,7 +873,7 @@ function seedData(database: Database.Database) {
   const btCount = database.prepare("SELECT COUNT(*) as c FROM business_types").get() as { c: number };
   if (btCount.c === 0) {
     const insert = database.prepare("INSERT INTO business_types (name) VALUES (?)");
-    for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC"]) insert.run(name);
+    for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC","社保开户"]) insert.run(name);
   }
 
 

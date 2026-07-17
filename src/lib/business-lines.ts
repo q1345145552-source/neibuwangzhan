@@ -1,5 +1,6 @@
 export const businessLines = [
   { route: "/company-registration", label: "公司注册", key: "公司注册" },
+  { route: "/social-security", label: "社保开户", key: "社保开户" },
   { route: "/trademark", label: "商标", key: "商标" },
   { route: "/fda-certification", label: "FDA认证", key: "FDA产品认证" },
   { route: "/tisi", label: "TISI", key: "TISI" },
