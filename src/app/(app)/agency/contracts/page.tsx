@@ -126,10 +126,10 @@ export default function ContractsPage() {
       setPoolInfs(infs.filter((i: Influencer) => i.phase === "completed_discovery"));
       // 签约中：排除已有合同的达人（合同已在合同列表中显示）
       const contractIds = new Set((Array.isArray(cd) ? cd : []).map((c: Contract) => c.influencer_id));
-      setActiveInfs(infs.filter((i: Influencer) => i.phase === "contract" && !contractIds.has(i.id) && i.status !== "不签约"));
+      setActiveInfs(infs.filter((i: Influencer) => i.phase === "contract" && !contractIds.has(i.id)));
       setCompletedInfs(infs.filter((i: Influencer) => i.phase === "completed_contract"));
-      // 不签约的达人
-      setNosignInfs(infs.filter((i: Influencer) => i.phase === "contract" && i.status === "不签约"));
+      // 不签约的达人（已入池但被取消的）
+      setNosignInfs(infs.filter((i: Influencer) => i.phase === "completed_discovery" && i.status === "不签约"));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -203,7 +203,7 @@ export default function ContractsPage() {
       await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: nosignModal.id, status: "不签约", notes: mergedNotes }),
+        body: JSON.stringify({ id: nosignModal.id, status: "不签约", phase: "completed_discovery", notes: mergedNotes }),
       });
       setNosignModal(null);
       setNosignReason("");
@@ -218,7 +218,7 @@ export default function ContractsPage() {
       await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: inf.id, status: "签约中", notes: inf.notes }),
+        body: JSON.stringify({ id: inf.id, status: "已入池", notes: inf.notes }),
       });
       load();
     } catch (e) { console.error("恢复失败", e); }
@@ -380,12 +380,17 @@ export default function ContractsPage() {
                     <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.contact_phone || "-"}</td>
                     <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.line_id || "-"}</td>
                     <td className="py-2.5 px-3">
-                      <Button size="sm" className="h-7 text-xs gap-1"
-                        onClick={() => openContractForm(inf)}
-                        disabled={startingPhases[inf.id]}>
-                        <Play className="size-3" />
-                        {startingPhases[inf.id] ? "启动中..." : "开始签约"}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" className="h-7 text-xs gap-1"
+                          onClick={() => openContractForm(inf)}
+                          disabled={startingPhases[inf.id]}>
+                          <Play className="size-3" />
+                          {startingPhases[inf.id] ? "启动中..." : "开始签约"}
+                        </Button>
+                        <button onClick={() => { setNosignModal(inf); setNosignReason(""); }} className="text-[var(--muted-foreground)] hover:text-red-500 p-0.5 text-xs inline-flex items-center gap-1" title="不签约">
+                          <X className="size-3" />不签约
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -415,7 +420,6 @@ export default function ContractsPage() {
                   <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">电话</th>
                   <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">LINE</th>
                   <th className="py-2.5 px-3 text-left text-xs font-medium">状态</th>
-                  <th className="py-2.5 px-2 text-left text-xs font-medium w-16">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -432,11 +436,6 @@ export default function ContractsPage() {
                     <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{inf.line_id || "-"}</td>
                     <td className="py-2.5 px-3">
                       <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300">签约中</span>
-                    </td>
-                    <td className="py-2.5 px-2">
-                      <button onClick={() => { setNosignModal(inf); setNosignReason(""); }} className="text-[var(--muted-foreground)] hover:text-red-500 p-0.5 text-xs inline-flex items-center gap-1" title="不签约">
-                        <X className="size-3" />不签约
-                      </button>
                     </td>
                   </tr>
                 ))}
@@ -688,7 +687,7 @@ export default function ContractsPage() {
         <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
           <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2">不签约确认</h3>
           <p className="text-xs text-[var(--muted-foreground)] mb-4">
-            达人 <span className="font-medium text-[var(--foreground)]">{nosignModal.name}</span> 将移出不签约，请填写原因：
+            达人 <span className="font-medium text-[var(--foreground)]">{nosignModal.name}</span> 将从待签约列表移除，请填写原因：
           </p>
           <textarea
             value={nosignReason}
