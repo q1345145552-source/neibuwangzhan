@@ -51,7 +51,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { id, status, resolved_by, assignee, description, priority, images } = body;
+  const { id, status, resolved_by, assignee, description, priority, images, resolve_screenshot } = body;
   if (!id) return NextResponse.json({ error: "缺少工单ID" }, { status: 400 });
   const sets: string[] = []; const vals: any[] = [];
   if (status) { sets.push("status = ?"); vals.push(status); if (status === "已解决") { sets.push("resolved_at = datetime('now')"); if (resolved_by) { sets.push("resolved_by = ?"); vals.push(resolved_by); } } }
@@ -60,6 +60,7 @@ export async function PATCH(req: NextRequest) {
   if (description) { sets.push("description = ?"); vals.push(description); }
   if (priority) { sets.push("priority = ?"); vals.push(priority); }
   if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
+  if (resolve_screenshot !== undefined) { sets.push("resolve_screenshot = ?"); vals.push(resolve_screenshot || ""); }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   sets.push("updated_at = datetime('now')");
   vals.push(id);

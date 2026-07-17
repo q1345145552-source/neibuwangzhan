@@ -22,6 +22,7 @@ interface IssueTicket {
   created_by: string; resolved_by: string; withdrawn_by?: string; withdrawn_at?: string;
   created_at: string;
   images?: string;
+  resolve_screenshot?: string;
 }
 
 interface LeaveRequest {
@@ -87,6 +88,14 @@ export default function InternalPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Resolve issue with screenshot modal
+  const [resolveModal, setResolveModal] = useState<IssueTicket | null>(null);
+  const [resolveScreenshotFile, setResolveScreenshotFile] = useState<File | null>(null);
+  const [resolveScreenshotPreview, setResolveScreenshotPreview] = useState<string | null>(null);
+  const [resolveUploading, setResolveUploading] = useState(false);
+  const [resolveErr, setResolveErr] = useState("");
+  const resolveScreenshotInputRef = useRef<HTMLInputElement>(null);
 
   // Issue form
   const [issueForm, setIssueForm] = useState({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
@@ -367,13 +376,54 @@ export default function InternalPage() {
     } catch (e) { console.error("[内部管理] 创建工单失败", e); } finally { setIssueSaving(false); }
   };
 
-  const handleResolveIssue = async (id: number) => {
-    await fetchWithAuth("/api/issues", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: "已解决", resolved_by: user?.name }),
-    });
-    loadAll();
+  // 打开解决截图上传弹窗
+  const handleResolveIssue = (t: IssueTicket) => {
+    setResolveModal(t);
+    setResolveScreenshotFile(null);
+    setResolveScreenshotPreview(null);
+    setResolveErr("");
+  };
+
+  const handleResolveScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResolveScreenshotFile(file);
+    setResolveScreenshotPreview(URL.createObjectURL(file));
+    setResolveErr("");
+    e.target.value = "";
+  };
+
+  const handleResolveScreenshotRemove = () => {
+    setResolveScreenshotFile(null);
+    setResolveScreenshotPreview(null);
+  };
+
+  const handleConfirmResolve = async () => {
+    if (!resolveModal) return;
+    if (!resolveScreenshotFile) { setResolveErr("请上传解决截图作为证明"); return; }
+    setResolveUploading(true);
+    setResolveErr("");
+    try {
+      // 1) 上传截图
+      const fd = new FormData();
+      fd.append("file", resolveScreenshotFile);
+      const upRes = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      if (!upRes.ok) throw new Error("图片上传失败");
+      const upData = await upRes.json();
+      const screenshotFilename = upData.filename || upData.file || "";
+
+      // 2) 更新工单状态 + 截图
+      await fetchWithAuth("/api/issues", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: resolveModal.id, status: "已解决", resolved_by: user?.name, resolve_screenshot: screenshotFilename }),
+      });
+      setResolveModal(null);
+      loadAll();
+    } catch (e: any) {
+      setResolveErr(e?.message || "操作失败，请重试");
+    }
+    setResolveUploading(false);
   };
 
   const handleWithdrawIssue = async (t: IssueTicket) => {
@@ -904,7 +954,52 @@ export default function InternalPage() {
 
 
       {/* ── 异常明细弹窗 ── */}
-      {anomalyModal && (
+      {/* 解决工单截图上传弹窗 */}
+    {resolveModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setResolveModal(null)}>
+        <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+          <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2">解决工单</h3>
+          <p className="text-xs text-[var(--muted-foreground)] mb-4 line-clamp-2">{resolveModal.description}</p>
+          
+          {resolveErr && <p className="mb-3 text-xs text-[var(--destructive)]">{resolveErr}</p>}
+
+          <label className="block text-xs font-medium text-[var(--foreground)] mb-2">解决截图 <span className="text-[var(--destructive)]">*</span></label>
+          
+          {resolveScreenshotPreview ? (
+            <div className="relative inline-block mb-3">
+              <img src={resolveScreenshotPreview} alt="截图预览" className="max-h-48 rounded border border-[var(--border)]" />
+              <button onClick={handleResolveScreenshotRemove} className="absolute -top-2 -right-2 size-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs hover:bg-red-600">
+                <X className="size-3" />
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => resolveScreenshotInputRef.current?.click()}
+              className="mb-3 border-2 border-dashed border-[var(--border)] rounded-lg p-6 text-center cursor-pointer hover:border-[var(--primary)]/50 transition-colors"
+            >
+              <Camera className="size-6 mx-auto text-[var(--muted-foreground)] mb-1" />
+              <p className="text-xs text-[var(--muted-foreground)]">点击上传截图</p>
+            </div>
+          )}
+          <input ref={resolveScreenshotInputRef} type="file" accept="image/*" className="hidden" onChange={handleResolveScreenshotSelect} />
+
+          <div className="mt-4 flex gap-2 justify-end">
+            <button onClick={() => setResolveModal(null)} className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]">
+              取消
+            </button>
+            <button
+              onClick={handleConfirmResolve}
+              disabled={resolveUploading}
+              className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+            >
+              {resolveUploading ? "上传中..." : "确认解决"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {anomalyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAnomalyModal(null)}>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between shrink-0">
@@ -1463,6 +1558,7 @@ export default function InternalPage() {
                 <th className="py-2.5 px-4 text-left text-xs font-medium">问题</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">指定人</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">解决截图</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
@@ -1479,6 +1575,18 @@ export default function InternalPage() {
                       t.status==="处理中"&&"bg-blue-100 text-blue-700",
                       "bg-gray-100 text-gray-700")}>{t.status}</span>
                   </td>
+                  <td className="py-2.5 px-4">
+                    {t.status !== "待处理" && t.resolve_screenshot ? (
+                      <button onClick={() => {
+                        const url = t.resolve_screenshot ? fileUrl(`/api/files/${t.resolve_screenshot}`) : "";
+                        if (url) { setLightboxImages([url]); setLightboxIdx(0); }
+                      }} className="inline-flex items-center gap-0.5 text-green-600 hover:underline cursor-pointer">
+                        <Image className="size-4" /><span className="text-xs">查看</span>
+                      </button>
+                    ) : (
+                      <span className="text-[var(--muted-foreground)]/30">—</span>
+                    )}
+                  </td>
                   <td className="py-2.5 px-4">{t.created_by}</td>
                   <td className="py-2.5 px-4">
                     {(()=>{const imgs=safeJsonParseArray(t.images);return imgs.length>0?(
@@ -1488,7 +1596,7 @@ export default function InternalPage() {
                   </td>
                   <td className="py-2.5 px-4">
                     {t.status!=="已解决" ? (
-                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t.id)}>
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}>
                         <CheckCircle2 className="size-3 mr-1" />解决
                       </Button>
                     ) : (
