@@ -36,22 +36,32 @@ export async function GET(req: NextRequest) {
   let data: any[] = [];
 
   if (type === "order_steps") {
+    // 按订单分组，一笔订单一条记录
     data = db.prepare(`
-      SELECT os.id, os.step_name, os.step_order, os.status, os.deadline, os.created_at, os.completed_at,
-             o.id as order_id, o.customer_name, o.status as order_status
-      FROM order_steps os
-      JOIN orders o ON os.order_id = o.id
+      SELECT o.id as order_id, o.customer_name, o.status as order_status,
+             o.business_type_id, bt.name as business_type_name,
+             COUNT(*) as step_count,
+             SUM(CASE WHEN os.status = '进行中' THEN 1 ELSE 0 END) as in_progress_count,
+             SUM(CASE WHEN os.status = '待处理' THEN 1 ELSE 0 END) as pending_count
+      FROM orders o
+      JOIN order_steps os ON os.order_id = o.id
+      LEFT JOIN business_types bt ON o.business_type_id = bt.id
       WHERE (${clause}) AND os.status NOT IN ('已完成','已停止')
-      ORDER BY os.deadline ASC, os.step_order ASC
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
     `).all(...params);
   } else if (type === "influencer_steps") {
+    // 按达人分组，一个达人一条记录
     data = db.prepare(`
-      SELECT ist.id, ist.step_name, ist.step_order, ist.phase, ist.status, ist.created_at, ist.completed_at,
-             i.id as influencer_id, i.name as influencer_name, i.code, i.status as influencer_status
-      FROM influencer_steps ist
-      JOIN influencers i ON ist.influencer_id = i.id
+      SELECT i.id as influencer_id, i.name as influencer_name, i.code, i.phase, i.status as influencer_status,
+             COUNT(*) as step_count,
+             SUM(CASE WHEN ist.status = '进行中' THEN 1 ELSE 0 END) as in_progress_count,
+             SUM(CASE WHEN ist.status = '待处理' THEN 1 ELSE 0 END) as pending_count
+      FROM influencers i
+      JOIN influencer_steps ist ON ist.influencer_id = i.id
       WHERE (${clause}) AND ist.status NOT IN ('已完成','已停止')
-      ORDER BY ist.step_order ASC
+      GROUP BY i.id
+      ORDER BY i.name ASC
     `).all(...params);
   } else if (type === "contract_infs") {
     data = db.prepare(`
