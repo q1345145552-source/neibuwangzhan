@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { Plus, ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchAssignedSteps, deleteTask } from "@/lib/api";
+import { fetchTasks, createTask as apiCreateTask, updateTaskStatus, fetchAssignedSteps, deleteTask, fetchWithAuth } from "@/lib/api";
 import type { Task } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -49,23 +49,41 @@ export default function TasksPage() {
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<{id:string,title:string}|null>(null);
   const [deletingTask, setDeletingTask] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string }>>([]);
+  const [employees, setEmployees] = useState<string[]>([]);
+  const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string; influencerId?: number; phase?: string }>>([]);
 
   useEffect(() => {
     async function load() {
       try {
+        // 加载员工列表（供负责人下拉使用）
+        fetchWithAuth("/api/employees", { cache: "no-store" })
+          .then(r => r.json())
+          .then((data: any[]) => {
+            const names = (Array.isArray(data) ? data : []).map((e: any) => e.name).filter(Boolean);
+            setEmployees(names);
+          })
+          .catch(() => {});
+
         const data = await fetchTasks(businessFilter ? { business: businessFilter } : undefined);
         setTaskList(data);
 
-        // 加载当前用户的待办步骤
+        // 加载当前用户的待办步骤（订单 + 达人两边）
         if (user?.name) {
-          const steps = await fetchAssignedSteps(user.name);
-          setAssignedSteps(steps.map((s: { order_id: string; step_name: string; status: string; business_type_name: string }) => ({
-            orderId: s.order_id,
-            stepName: s.step_name,
-            status: s.status,
-            businessType: s.business_type_name,
-          })));
+          const [orderSteps, infSteps] = await Promise.all([
+            fetchAssignedSteps(user.name),
+            fetchWithAuth(`/api/steps/assigned?user=${encodeURIComponent(user.name)}&type=influencer`, { cache: "no-store" })
+              .then(r => r.ok ? r.json() : [])
+              .catch(() => []),
+          ]);
+          const merged = [
+            ...(Array.isArray(orderSteps) ? orderSteps : []).map((s: any) => ({
+              orderId: s.order_id, stepName: s.step_name, status: s.status, businessType: s.business_type_name || "订单"
+            })),
+            ...(Array.isArray(infSteps) ? infSteps : []).map((s: any) => ({
+              orderId: `INF-${s.influencer_id}`, stepName: s.step_name, status: s.status, businessType: s.phase || "达人", influencerId: s.influencer_id
+            })),
+          ];
+          setAssignedSteps(merged);
         }
       } catch (err) {
         console.error("Tasks load error:", err);
@@ -74,7 +92,7 @@ export default function TasksPage() {
       }
     }
     load();
-  }, [businessFilter]);
+  }, [businessFilter, user?.name]);
 
   const handleDeleteTask = async () => {
     if (!deleteTaskTarget) return;
@@ -120,21 +138,19 @@ export default function TasksPage() {
   const assignees = useMemo(() => [...new Set(taskList.map((t) => t.assignee || ""))], [taskList]);
   const businessLines = useMemo(() => [...new Set(taskList.map((t) => t.business_line || ""))], [taskList]);
 
-  const handleAddTask = () => {
+  const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !newTaskAssignee) return;
-    const newTask: Task = {
-      id: `TASK-${String(Date.now()).slice(-6)}`,
-      title: newTaskTitle.trim(),
-      description: "",
-      assignee: newTaskAssignee,
-      priority: newTaskPriority,
-      status: "pending",
-      business_line: businessFilter || newTaskBusinessLine,
-      deadline: (() => { const d = new Date(Date.now() + 7*86400000); return d.toISOString().slice(0,10); })(),
-    };
-    apiCreateTask(newTask).then(() => {
-      setTaskList((prev) => [...prev, newTask]);
-    });
+    try {
+      const created = await apiCreateTask({
+        title: newTaskTitle.trim(),
+        assignee: newTaskAssignee,
+        priority: newTaskPriority,
+        business_line: businessFilter || newTaskBusinessLine,
+      });
+      setTaskList(prev => [created, ...prev]);
+    } catch (err) {
+      console.error("创建任务失败:", err);
+    }
     setShowNewForm(false);
     setNewTaskTitle("");
     setNewTaskAssignee("");
@@ -177,7 +193,7 @@ export default function TasksPage() {
               className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
             >
               <option value="">选择负责人</option>
-              {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+              {employees.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
             <select
               value={newTaskPriority}
@@ -216,7 +232,7 @@ export default function TasksPage() {
           className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
         >
           <option value="all">全部</option>
-          {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+          {employees.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </div>
 
@@ -241,7 +257,10 @@ export default function TasksPage() {
                     {colSteps.map((item, i) => (
                       <button
                         key={i}
-                        onClick={() => router.push(`/orders/${item.orderId}`)}
+                        onClick={() => {
+                          if (item.influencerId) router.push(`/agency/influencers/${item.influencerId}`);
+                          else router.push(`/orders/${item.orderId}`);
+                        }}
                         className="flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3 text-left transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
                       >
                         <div className="flex items-center gap-2">
@@ -315,7 +334,21 @@ export default function TasksPage() {
                           <button onClick={() => setDeleteTaskTarget({id: task.id, title: task.title})} className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除任务"><Trash2 className="size-3" /></button>
                         )}
                       </div>
-                      <span className="font-mono text-xs tabular-nums text-[var(--muted-foreground)]">{task.deadline}</span>
+                      <div className="flex items-center gap-1">
+                        {task.status !== "completed" && !isClient && (
+                          <button
+                            onClick={async () => {
+                              const nextStatus = task.status === "pending" ? "in_progress" : "completed";
+                              await updateTaskStatus(task.id, nextStatus);
+                              setTaskList(prev => prev.map(t => t.id === task.id ? {...t, status: nextStatus} : t));
+                            }}
+                            className="rounded px-2 py-0.5 text-[0.625rem] font-medium border border-[var(--border)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] transition-colors"
+                          >
+                            {task.status === "pending" ? "▶ 开始" : "✓ 完成"}
+                          </button>
+                        )}
+                        <span className="font-mono text-xs tabular-nums text-[var(--muted-foreground)]">{task.deadline}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
