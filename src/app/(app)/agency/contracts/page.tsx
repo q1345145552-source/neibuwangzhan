@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
 import { bangkokDateStr } from "@/lib/time";
 import { useAuth } from "@/components/auth-provider";
-import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink, Download } from "lucide-react";
+import { Search, FileText, Clock, AlertCircle, Play, ArrowLeft, FileEdit, ExternalLink, Download, Trash2, RotateCcw, Trash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { startPhase } from "@/lib/api";
@@ -43,6 +43,9 @@ interface Contract {
   end_date: string;
   notes: string;
   created_at: string;
+  deleted?: number;
+  deleted_at?: string;
+  deleted_by?: string;
 }
 
 interface Influencer {
@@ -94,6 +97,8 @@ export default function ContractsPage() {
   const [completedInfs, setCompletedInfs] = useState<Influencer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [trashContracts, setTrashContracts] = useState<Contract[]>([]);
+  const [showTrash, setShowTrash] = useState(false);
   const [startingPhases, setStartingPhases] = useState<Record<number, boolean>>({});
   const [contractModal, setContractModal] = useState<{ influencer: Influencer } | null>(null);
   const [contractForm, setContractForm] = useState({ base_salary: "", commission: "", live_sessions: "", live_duration: "", video_count: "" });
@@ -122,6 +127,61 @@ export default function ContractsPage() {
   };
 
   useEffect(() => { load(); }, [token]);
+
+  const loadTrash = async () => {
+    if (!token) return;
+    try {
+      const res = await fetchWithAuth("/api/contracts?trash=1", { cache: "no-store" });
+      const data = await res.json();
+      setTrashContracts(Array.isArray(data) ? data : []);
+    } catch (e) { console.error("加载回收站失败", e); }
+  };
+
+  const handleSoftDelete = async (c: Contract) => {
+    if (!confirm(`确认将「${c.influencer_name}」的合同移入回收站？`)) return;
+    try {
+      await fetchWithAuth(`/api/contracts?id=${c.id}`, { method: "DELETE" });
+      load();
+    } catch (e) { console.error("删除合同失败", e); }
+  };
+
+  const handleRestore = async (c: Contract) => {
+    if (!confirm(`确认恢复「${c.influencer_name}」的合同？`)) return;
+    try {
+      await fetchWithAuth("/api/contracts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: c.id, restore: true }),
+      });
+      load();
+      loadTrash();
+    } catch (e) { console.error("恢复合同失败", e); }
+  };
+
+  const handlePermanentDelete = async (c: Contract) => {
+    if (!confirm(`⚠️ 彻底删除「${c.influencer_name}」的合同？
+
+此操作不可撤销，数据无法恢复。`)) return;
+    try {
+      await fetchWithAuth(`/api/contracts?id=${c.id}&permanent=1`, { method: "DELETE" });
+      loadTrash();
+    } catch (e) { console.error("彻底删除合同失败", e); }
+  };
+
+  // 从签约已完成列表删除（按 influencer_id 找到对应合同再软删除）
+  const handleDeleteCompleted = async (inf: Influencer) => {
+    if (!confirm(`确认将「${inf.name}」的合同移入回收站？`)) return;
+    try {
+      // 查找该达人对应的合同
+      const res = await fetchWithAuth(`/api/contracts?trash=0`, { cache: "no-store" });
+      const allContracts = Array.isArray(await res.json()) ? await res.json() : [];
+      const contract = allContracts.find((c: Contract) => c.influencer_id === inf.id);
+      if (contract) {
+        await fetchWithAuth(`/api/contracts?id=${contract.id}`, { method: "DELETE" });
+      }
+      load();
+    } catch (e) { console.error("删除已完成合同失败", e); }
+  };
 
   const openContractForm = (inf: Influencer) => {
     setContractModal({ influencer: inf });
@@ -357,6 +417,7 @@ export default function ContractsPage() {
                   <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">电话</th>
                   <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">LINE</th>
                   <th className="py-2.5 px-3 text-left text-xs font-medium">状态</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -373,6 +434,11 @@ export default function ContractsPage() {
                     <td className="py-2.5 px-3 text-green-700/60 dark:text-green-400/60 max-xl:hidden">{inf.line_id || "-"}</td>
                     <td className="py-2.5 px-3">
                       <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-700">已完成</span>
+                    </td>
+                    <td className="py-2.5 px-2">
+                      <button onClick={() => handleDeleteCompleted(inf)} className="text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="移入回收站">
+                        <Trash2 className="size-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -406,6 +472,7 @@ export default function ContractsPage() {
                   <th className="py-2.5 px-2 text-left text-xs font-medium max-md:hidden">合同</th>
                   <th className="py-2.5 px-2 text-left text-xs font-medium">付款</th>
                   <th className="py-2.5 px-2 text-left text-xs font-medium">提醒</th>
+                  <th className="py-2.5 px-2 text-left text-xs font-medium w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -453,6 +520,11 @@ export default function ContractsPage() {
                         </span>
                       ) : <span className="text-xs text-[var(--muted-foreground)]">—</span>}
                     </td>
+                    <td className="py-2.5 px-2">
+                      <button onClick={() => handleSoftDelete(c)} className="text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="移入回收站">
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 )})}
               </tbody>
@@ -460,6 +532,57 @@ export default function ContractsPage() {
           </div>
         )}
       </div>
+      {/* 回收站 */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <button
+          onClick={() => { setShowTrash(!showTrash); if (!showTrash) loadTrash(); }}
+          className="w-full px-4 py-3 flex items-center justify-between text-sm hover:bg-[var(--muted)]/30 transition-colors"
+        >
+          <span className="font-medium text-[var(--muted-foreground)] inline-flex items-center gap-2">
+            <Trash className="size-4" />
+            回收站
+          </span>
+          <span className="text-xs text-[var(--muted-foreground)]">{showTrash ? "收起" : "展开"}</span>
+        </button>
+        {showTrash && (
+          trashContracts.length === 0 ? (
+            <div className="py-6 text-center text-sm text-[var(--muted-foreground)]">回收站为空</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="py-2.5 px-3 text-left text-xs font-medium">达人</th>
+                    <th className="py-2.5 px-3 text-left text-xs font-medium">底薪/佣金</th>
+                    <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">删除时间</th>
+                    <th className="py-2.5 px-3 text-left text-xs font-medium max-xl:hidden">删除人</th>
+                    <th className="py-2.5 px-3 text-left text-xs font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trashContracts.map((c) => (
+                    <tr key={c.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
+                      <td className="py-2.5 px-3 font-medium">{c.influencer_name || "-"}</td>
+                      <td className="py-2.5 px-3 text-[var(--muted-foreground)]">{c.base_salary || "-"} / {c.commission || "-"}</td>
+                      <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{c.deleted_at || "-"}</td>
+                      <td className="py-2.5 px-3 text-[var(--muted-foreground)] max-xl:hidden">{c.deleted_by || "-"}</td>
+                      <td className="py-2.5 px-3 flex items-center gap-1">
+                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleRestore(c)}>
+                          <RotateCcw className="size-3 mr-1" />恢复
+                        </Button>
+                        <button onClick={() => handlePermanentDelete(c)} className="text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="彻底删除">
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </div>
+
     {contractModal && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setContractModal(null)}>
         <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
