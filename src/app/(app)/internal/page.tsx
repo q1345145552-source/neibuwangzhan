@@ -52,7 +52,7 @@ interface MonthlySummary {
   supplementDays: number; workDays: number;
 }
 
-const staffNames = ["Ploy", "元丽", "Prae", "Namcha", "Bam", "Fern", "Ing", "Pop", "Eve"];
+const [staffNames, setStaffNames] = useState<string[]>([]);
 
 export default function InternalPage() {
   const { user } = useAuth();
