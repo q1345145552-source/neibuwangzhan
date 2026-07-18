@@ -258,10 +258,10 @@ export function getInfluencerSteps(): InfluencerStepTemplate[] {
     { name: "老板确认联系 or 否决", assignee: "老板", phase: "discovery" },
     // 二、签约跟进 (12 步)
     { name: "联系达人沟通报价方案", assignee: "Prae / Namcha", phase: "contract" },
-    { name: "老板审批后开具发票", assignee: "元丽", phase: "contract" },
+    { name: "老板审批后开具发票", assignee: "Yuanli", phase: "contract" },
     { name: "确认达人尺码、身高、地址等细节", assignee: "Prae / Namcha", phase: "contract" },
-    { name: "客户寄样品并创建 TAP 推广方案", assignee: "元丽 / Ploy", phase: "contract" },
-    { name: "确定佣金比例并指导客户操作", assignee: "Ploy / 元丽", phase: "contract" },
+    { name: "客户寄样品并创建 TAP 推广方案", assignee: "Yuanli / Ploy", phase: "contract" },
+    { name: "确定佣金比例并指导客户操作", assignee: "Ploy / Yuanli", phase: "contract" },
     { name: "收样检查并登记产品信息", assignee: "Ploy", phase: "contract" },
     { name: "起草合同安排达人线上签署", assignee: "Prae / Namcha", phase: "contract" },
     { name: "寄送样品并催产出", assignee: "Ploy", phase: "contract" },
@@ -270,11 +270,11 @@ export function getInfluencerSteps(): InfluencerStepTemplate[] {
     { name: "跟进第二期的直播和视频数据", assignee: "Namcha / Ploy", phase: "contract" },
     { name: "向达人支付第二期款项", assignee: "Namcha", phase: "contract" },
     // 三、品牌孵化 (5 步)
-    { name: "从达人池筛选适合做品牌的达人", assignee: "Namcha / 元丽", phase: "incubation" },
+    { name: "从达人池筛选适合做品牌的达人", assignee: "Namcha / Yuanli", phase: "incubation" },
     { name: "趁送样时机口聊品牌合作意向，留联系方式", assignee: "Prae / Namcha", phase: "incubation" },
-    { name: "对接中国工厂洽谈低 MOQ 条件", assignee: "元丽", phase: "incubation" },
-    { name: "打样确认，拿参考品，跟达人一起看实物", assignee: "元丽 / Namcha", phase: "incubation" },
-    { name: "正式下生产单，跟踪生产、质检、物流全过程", assignee: "元丽 / Namcha", phase: "incubation" },
+    { name: "对接中国工厂洽谈低 MOQ 条件", assignee: "Yuanli", phase: "incubation" },
+    { name: "打样确认，拿参考品，跟达人一起看实物", assignee: "Yuanli / Namcha", phase: "incubation" },
+    { name: "正式下生产单，跟踪生产、质检、物流全过程", assignee: "Yuanli / Namcha", phase: "incubation" },
   ];
 }
 
@@ -877,7 +877,7 @@ function seedData(database: Database.Database) {
     const teamEmps: [string, string][] = [
       ["Bam","bam@xiangtai.com"], ["Fern","fern@xiangtai.com"], ["Ing","ing@xiangtai.com"],
       ["Pop","pop@xiangtai.com"], ["Eve","eve@xiangtai.com"],
-      ["Ploy","ploy@xiangtai.com"], ["元丽","yuanli@xiangtai.com"],
+      ["Ploy","ploy@xiangtai.com"], ["Yuanli","yuanli@xiangtai.com"],
       ["Prae","prae@xiangtai.com"], ["Namcha","namcha@xiangtai.com"]
     ];
     for (const [name, email] of teamEmps) insert.run(name, email, "employee", bcrypt.hashSync("123456", 10));
@@ -897,6 +897,37 @@ function seedData(database: Database.Database) {
     if (!workVisaExists) {
       database.prepare("INSERT INTO business_types (name) VALUES ('工作签证')").run();
       console.log("[DB] 已插入工作签证业务线");
+    }
+  } catch {}
+
+  // 迁移：员工名字统一化 — 元丽 → Yuanli
+  try {
+    const emp = database.prepare("SELECT 1 FROM employees WHERE name = '元丽'").get();
+    if (emp) {
+      database.prepare("UPDATE employees SET name = 'Yuanli' WHERE name = '元丽'").run();
+      // order_steps: assignee 字段可能含 "元丽"（单独或组合如 "元丽 / Namcha"）
+      database.prepare("UPDATE order_steps SET assignee = REPLACE(assignee, '元丽', 'Yuanli') WHERE assignee LIKE '%元丽%'").run();
+      // influencer_steps
+      database.prepare("UPDATE influencer_steps SET assignee = REPLACE(assignee, '元丽', 'Yuanli') WHERE assignee LIKE '%元丽%'").run();
+      // influencer_step_notes: created_by
+      database.prepare("UPDATE influencer_step_notes SET created_by = 'Yuanli' WHERE created_by = '元丽'").run();
+      // influencer_evaluations: evaluated_by
+      database.prepare("UPDATE influencer_evaluations SET evaluated_by = 'Yuanli' WHERE evaluated_by = '元丽'").run();
+      // influencers: created_by
+      database.prepare("UPDATE influencers SET created_by = 'Yuanli' WHERE created_by = '元丽'").run();
+      // contracts: created_by
+      database.prepare("UPDATE contracts SET created_by = 'Yuanli' WHERE created_by = '元丽'").run();
+      // step_notes: created_by
+      database.prepare("UPDATE step_notes SET created_by = 'Yuanli' WHERE created_by = '元丽'").run();
+      // audit_logs: actor
+      database.prepare("UPDATE audit_logs SET actor = 'Yuanli' WHERE actor = '元丽'").run();
+      // issue_tickets: created_by, assignee, resolved_by
+      database.prepare("UPDATE issue_tickets SET created_by = 'Yuanli' WHERE created_by = '元丽'").run();
+      database.prepare("UPDATE issue_tickets SET assignee = REPLACE(assignee, '元丽', 'Yuanli') WHERE assignee LIKE '%元丽%'").run();
+      database.prepare("UPDATE issue_tickets SET resolved_by = 'Yuanli' WHERE resolved_by = '元丽'").run();
+      // attendance: created_by
+      database.prepare("UPDATE attendance SET created_by = 'Yuanli' WHERE created_by = '元丽'").run();
+      console.log("[DB] 已将员工 元丽 更新为 Yuanli，并同步所有关联表");
     }
   } catch {}
 

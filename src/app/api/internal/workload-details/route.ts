@@ -4,7 +4,7 @@ import { verifyAuth } from "@/lib/auth";
 
 // 员工英文名到步骤中文名/泰文名的对照
 const NAME_ALIASES: Record<string, string[]> = {
-  yuanli: ["元丽"],
+  yuanli: ["Yuanli"],
   ploy: ["Ploy"],
   namcha: ["Namcha"],
   pare: ["Prae"],

@@ -7,7 +7,7 @@ const DEFAULT_CRITICAL = 8;
 
 // 员工英文名到步骤中文名/泰文名的对照（步骤 assignee 字段存的是中文/泰文）
 const NAME_ALIASES: Record<string, string[]> = {
-  yuanli: ["元丽"],
+  yuanli: ["Yuanli"],
   ploy: ["Ploy"],
   namcha: ["Namcha"],
   pare: ["Prae"],
