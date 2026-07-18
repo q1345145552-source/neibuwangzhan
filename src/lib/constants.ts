@@ -181,7 +181,7 @@ export const socialSecurityDocs: Record<number, string[]> = {
 };
 
 export const socialSecuritySubServices = [
-  { key: "social-security", label: "社保开户", businessTypeId: 10 },
+  { key: "social-security", label: "社保开户", businessTypeId: 11 },
 ];
 
 /* ── 工作签证 ── */
@@ -355,13 +355,13 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
     return mallShopeeDocs;
   }
   if (businessTypeId === 9) return nbtcDocs;
-  if (businessTypeId === 10) return socialSecurityDocs;
-  if (businessTypeId === 11) return workVisaDocs;
+  if (businessTypeId === 10) return workVisaDocs;
+  if (businessTypeId === 11) return socialSecurityDocs;
   return {};
 }
 
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {
-  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs, 10: socialSecurityDocs, 11: workVisaDocs,
+  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs, 10: workVisaDocs, 11: socialSecurityDocs,
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {

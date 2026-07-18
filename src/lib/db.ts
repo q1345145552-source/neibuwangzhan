@@ -106,17 +106,6 @@ const businessSteps: Record<number, StepTemplate[]> = {
     { name: "收到NBTC证书，总周期约3-4个月", assignee: "Fern" },
   ],
   10: [
-    { name: "收集公司资料（注册证明书、董事身份证复印件、户口本复印件、BOJ5股东名册、BOJ2&3设立文件、公司地址地图、公司实景照片含招牌门牌号、参保雇员身份证复印件带签字）", assignee: "Eve" },
-    { name: "准备雇员信息表（Excel整理姓名、工资金额、入职日期）", assignee: "Eve" },
-    { name: "填写社保局表格（SPS 1-01雇主登记、SPS 1-02雇主登记、SPS 1-03/1雇员入职申报、雇员名单表、授权委托书）", assignee: "Eve" },
-    { name: "签字盖章（所有表格和公司文件复印件每页董事签字加公司公章）", assignee: "Eve" },
-    { name: "垫付社保预缴金", assignee: "Pop" },
-    { name: "前往社保局提交登记", assignee: "Eve" },
-    { name: "当天审核拿雇主登记号", assignee: "Eve" },
-    { name: "开通网上业务 e-Service（用雇主登记号申请，社保局发用户名密码到公司邮箱）", assignee: "Eve" },
-    { name: "交付客户（收据和社保号码交客户，归档结案）", assignee: "Eve" },
-  ],
-  11: [
     { name: "Pop收集公司文件（注册证明书+董事身份证/护照+BOJ2+BOJ3+BOJ5+公司地图+PP.01+PP.20+PP.09（如有）+社保缴费记录≥1个月+ภ.ง.ด.1≥1个月）", assignee: "Pop", notes: "📋 新公司只需要一个月的社保和税务记录，老公司需要三个月。公司成立满一年或快满一年的，必须先做好年度财务结算才能申请。泰国员工比例要求：四个泰国人对一个外国人，且社保至少要交过一个月。" },
     { name: "Pop收集外国人文件（护照每一页扫描件+毕业证/工作经历证明）", assignee: "Pop" },
     { name: "Pop安排场地拍照（公司大楼外观+招牌+办公室环境+泰国员工照+外国人与董事/员工合影）", assignee: "Pop" },
@@ -130,6 +119,17 @@ const businessSteps: Record<number, StepTemplate[]> = {
     { name: "Pop提交续签申请至移民局", assignee: "Pop" },
     { name: "等待续签审批（约30天）", assignee: "" },
     { name: "取得一年签证章", assignee: "Pop", notes: "📋 工作证有效期可能是一次给一年、六个月或三个月，取决于合同期限和官员判断。拿到工作证后回移民局申请续签一年居留许可。如果初始工作证只给了不到一年，到期前需要再来一轮同样的续签流程。" },
+  ],
+  11: [
+    { name: "收集公司资料（注册证明书、董事身份证复印件、户口本复印件、BOJ5股东名册、BOJ2&3设立文件、公司地址地图、公司实景照片含招牌门牌号、参保雇员身份证复印件带签字）", assignee: "Eve" },
+    { name: "准备雇员信息表（Excel整理姓名、工资金额、入职日期）", assignee: "Eve" },
+    { name: "填写社保局表格（SPS 1-01雇主登记、SPS 1-02雇主登记、SPS 1-03/1雇员入职申报、雇员名单表、授权委托书）", assignee: "Eve" },
+    { name: "签字盖章（所有表格和公司文件复印件每页董事签字加公司公章）", assignee: "Eve" },
+    { name: "垫付社保预缴金", assignee: "Pop" },
+    { name: "前往社保局提交登记", assignee: "Eve" },
+    { name: "当天审核拿雇主登记号", assignee: "Eve" },
+    { name: "开通网上业务 e-Service（用雇主登记号申请，社保局发用户名密码到公司邮箱）", assignee: "Eve" },
+    { name: "交付客户（收据和社保号码交客户，归档结案）", assignee: "Eve" },
   ],
 };
 
@@ -888,7 +888,7 @@ function seedData(database: Database.Database) {
   const btCount = database.prepare("SELECT COUNT(*) as c FROM business_types").get() as { c: number };
   if (btCount.c === 0) {
     const insert = database.prepare("INSERT INTO business_types (name) VALUES (?)");
-    for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC","社保开户","工作签证"]) insert.run(name);
+    for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC","工作签证","社保开户"]) insert.run(name);
   }
 
   // 迁移：确保社保开户业务线存在（已有数据的服务器不会走到上面的种子逻辑）
