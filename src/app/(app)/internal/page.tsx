@@ -1817,7 +1817,6 @@ export default function InternalPage() {
                 </td>
                 <td className="py-2.5 px-4">
                   <div className="flex gap-1.5 items-center">
-                    {!isAdmin&&(
                       <button
                         onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}}
                         disabled={supplementUploading}
@@ -1826,7 +1825,6 @@ export default function InternalPage() {
                       >
                         {supplementUploading&&supplementLeaveId===l.id?<Loader2 className="size-3.5 animate-spin"/>:<Plus className="size-3.5"/>}附件
                       </button>
-                    )}
                     {l.status==="待审批"&&isAdmin&&(
                       <>
                         <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
