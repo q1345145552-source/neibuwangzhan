@@ -184,6 +184,27 @@ export const socialSecuritySubServices = [
   { key: "social-security", label: "社保开户", businessTypeId: 10 },
 ];
 
+/* ── 工作签证 ── */
+export const workVisaDocs: Record<number, string[]> = {
+  1: ["公司注册证明书", "董事身份证或护照", "BOJ2 公司设立文件", "BOJ3 公司设立文件", "BOJ5 股东名册", "公司地址地图", "PP.01 表格", "PP.20 表格", "PP.09 表格（如有）", "社保缴费记录（至少1个月）", "ภ.ง.ด.1（至少1个月）"],
+  2: ["外国人护照每一页扫描件", "毕业证（如有）", "工作经历证明（如有）"],
+  3: ["公司大楼外观照片", "公司招牌照片", "办公室工作环境照片", "泰国员工照片", "外国人与董事或泰国员工合影"],
+  4: ["WP3 申请表", "全套公司文件", "全套外国人文件", "场地照片"],
+  5: [],
+  6: ["WP3 批准函"],
+  7: [],
+  8: ["WP.1 申请表", "全套公司文件", "全套外国人文件", "体检报告", "雇佣合同", "WP3 批准函"],
+  9: [],
+  10: ["更新后的公司注册证明书", "更新后的场地照片", "工作证蓝本", "雇佣合同", "近3个月工资单", "个税单", "社保缴费记录"],
+  11: ["续签申请表（TM.7）", "全套更新公司文件", "全套更新外国人文件", "工作证蓝本"],
+  12: [],
+  13: [],
+};
+
+export const workVisaSubServices = [
+  { key: "work-visa", label: "工作签证", businessTypeId: 11 },
+];
+
 export const tisiSubServices = [
   { key: "tisi-main", label: "TISI认证", businessTypeId: 4 },
 ];
@@ -337,14 +358,15 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
   }
   if (businessTypeId === 9) return nbtcDocs;
   if (businessTypeId === 10) return socialSecurityDocs;
+  if (businessTypeId === 11) return workVisaDocs;
   return {};
 }
 
 export const stepRequiredDocs: Record<number, Record<number, string[]>> = {
-  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs, 10: socialSecurityDocs,
+  1: companyRegDocs, 2: trademarkDocs, 3: fdaCosmeticsDocs, 4: tisiDocs, 5: dldProductDocs, 6: customsDocs, 7: addressDocs, 8: mallShopeeDocs, 9: nbtcDocs, 10: socialSecurityDocs, 11: workVisaDocs,
 };
 
 export const subServices: Record<number, { key: string; label: string; businessTypeId: number }[]> = {
-  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [], 10: socialSecuritySubServices,
+  1: companySubServices, 2: trademarkSubServices, 3: fdaSubServices, 4: tisiSubServices, 5: dldSubServices, 6: [], 7: [], 8: mallSubServices, 9: [], 10: socialSecuritySubServices, 11: workVisaSubServices,
 };
 

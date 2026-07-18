@@ -60,13 +60,13 @@ export async function POST(req: NextRequest) {
 
       const steps = getOrderStepsWithDocs(Number(business_type_id), ssType, address_type);
       const insertStep = db.prepare(
-        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee) VALUES (?, ?, ?, '待处理', ?)"
+        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee, notes) VALUES (?, ?, ?, '待处理', ?, ?)"
       );
       const insertStepDoc = db.prepare(
         "INSERT INTO step_documents (step_id, order_id, document_name, status) VALUES (?, ?, ?, 'pending')"
       );
       steps.forEach((step, i) => {
-        const res = insertStep.run(id, step.name, i + 1, step.assignee);
+        const res = insertStep.run(id, step.name, i + 1, step.assignee, step.notes || "");
         // 按步骤模板同步生成"所需文件"清单，供订单详情页跟踪上传状态
         for (const docName of step.docs) {
           insertStepDoc.run(res.lastInsertRowid, id, docName);

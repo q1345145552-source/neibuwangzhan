@@ -783,6 +783,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
                         {expanded && (
                           <div className="mt-3 space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                            {/* 步骤说明（模板备注） */}
+                            {(step.notes || "") && (() => { const isWarning = (step.notes||"").startsWith("⚠️"); return (
+                              <div className={isWarning ? "rounded-md border border-amber-300 bg-amber-50 p-2.5 dark:border-amber-800 dark:bg-amber-950/30" : "rounded-md border border-[var(--border)] bg-[var(--muted)]/50 p-2.5"}>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="shrink-0 text-sm">{isWarning ? "⚠️" : "📋"}</span>
+                                  <p className={"text-xs leading-relaxed "+(isWarning ? "text-amber-800 dark:text-amber-200 font-medium" : "text-[var(--foreground)]")}>{(step.notes||"").replace(/^[⚠️📋]\s*/,"")}</p>
+                                </div>
+                              </div>
+                            ); })()}
                             {/* Notes */}
                             <div>
                               <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">备注记录</h4>
