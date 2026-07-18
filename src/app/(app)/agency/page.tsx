@@ -8,7 +8,7 @@ import { fetchWithAuth } from "@/lib/api";
 
 const STAFF = [
   { id: "ploy", label: "Ploy" },
-  { id: "yuanli", label: "元丽" },
+  { id: "yuanli", label: "Yuanli" },
   { id: "pare", label: "Prae" },
   { id: "namcha", label: "Namcha" },
 ];

@@ -5,7 +5,7 @@ import { verifyAuth } from "@/lib/auth";
 // 员工标识 → 数据库里可能出现的名字（大小写、中英文别名）
 const STAFF_ALIASES: Record<string, string[]> = {
   ploy: ["Ploy", "ploy"],
-  yuanli: ["元丽", "yuanli", "Yuanli"],
+  yuanli: ["Yuanli"],
   pare: ["Prae", "pare", "Pare"],
   namcha: ["Namcha", "namcha"],
 };
