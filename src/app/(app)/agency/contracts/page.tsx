@@ -177,20 +177,29 @@ export default function ContractsPage() {
     } catch (e) { console.error("彻底删除合同失败", e); }
   };
 
-  // 从签约已完成列表删除（按 influencer_id 找到对应合同再软删除）
+  // 从签约已完成列表删除（优先用已加载的 contracts state 匹配，避免重复请求 race condition）
   const handleDeleteCompleted = async (inf: Influencer) => {
     if (!confirm(`确认将「${inf.name}」的合同移入回收站？`)) return;
     try {
-      // 查找该达人对应的合同
-      const res = await fetchWithAuth(`/api/contracts?trash=0`, { cache: "no-store" });
-      const data = await res.json();
-      const allContracts: Contract[] = Array.isArray(data) ? data : [];
-      const contract = allContracts.find((c: Contract) => c.influencer_id === inf.id);
-      if (!contract) { alert("未找到对应合同记录，可能已被删除"); return; }
-      await fetchWithAuth(`/api/contracts?id=${contract.id}`, { method: "DELETE" });
-      // 立即从列表中移除，避免重复 load 时仍显示
+      // 优先从当前已加载的 contracts 中匹配（与 load() 同一数据源）
+      const contract = contracts.find((c: Contract) => c.influencer_id === inf.id);
+      if (contract) {
+        await fetchWithAuth(`/api/contracts?id=${contract.id}`, { method: "DELETE" });
+        setContracts(prev => prev.filter(c => c.id !== contract.id));
+      } else {
+        // contracts 里没有（可能从未创建合同行，或已被软删），直接查全量包括已删
+        const res = await fetchWithAuth(`/api/contracts?trash=1`, { cache: "no-store" });
+        const data = await res.json();
+        const allContracts: Contract[] = Array.isArray(data) ? data : [];
+        const trashedContract = allContracts.find((c: Contract) => c.influencer_id === inf.id);
+        if (trashedContract) {
+          // 已在回收站，只需从已完成列表移除
+          console.log("[contracts] 合同已在回收站，直接移除已完成显示", trashedContract.id);
+        } else {
+          console.log("[contracts] 未找到合同记录，仅从已完成列表移除 influencer", inf.id);
+        }
+      }
       setCompletedInfs(prev => prev.filter(i => i.id !== inf.id));
-      setContracts(prev => prev.filter(c => c.id !== contract.id));
       loadTrash();
     } catch (e) { console.error("删除已完成合同失败", e); alert("删除失败，请重试"); }
   };
