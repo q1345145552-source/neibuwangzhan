@@ -116,6 +116,21 @@ const businessSteps: Record<number, StepTemplate[]> = {
     { name: "开通网上业务 e-Service（用雇主登记号申请，社保局发用户名密码到公司邮箱）", assignee: "Eve" },
     { name: "交付客户（收据和社保号码交客户，归档结案）", assignee: "Eve" },
   ],
+  11: [
+    { name: "Pop收集公司文件（注册证明书+董事身份证/护照+BOJ2+BOJ3+BOJ5+公司地图+PP.01+PP.20+PP.09（如有）+社保缴费记录≥1个月+ภ.ง.ด.1≥1个月）", assignee: "Pop", notes: "📋 新公司只需要一个月的社保和税务记录，老公司需要三个月。公司成立满一年或快满一年的，必须先做好年度财务结算才能申请。泰国员工比例要求：四个泰国人对一个外国人，且社保至少要交过一个月。" },
+    { name: "Pop收集外国人文件（护照每一页扫描件+毕业证/工作经历证明）", assignee: "Pop" },
+    { name: "Pop安排场地拍照（公司大楼外观+招牌+办公室环境+泰国员工照+外国人与董事/员工合影）", assignee: "Pop" },
+    { name: "Pop提交WP3工作证预批申请（前往就业厅一站式服务中心）", assignee: "Pop", notes: "📋 外国人现在持有的旅游签或免签必须剩余至少十五天有效期，推荐二十一天以上。护照每一页都要扫描，不能用复印件。" },
+    { name: "等待WP3审批（约3-7个工作日）", assignee: "" },
+    { name: "取得WP3批准函，发给外国人前往泰国驻外大使馆申请Non-B签证", assignee: "Pop", notes: "⚠️ 在签证审批期间严禁离境！一旦离境，申请直接作废。" },
+    { name: "外国人持Non-B签证入境泰国（获得90天停留期）", assignee: "", notes: "📋 入境之后体检是客户自己去做的，不用公司陪。检查六种法定禁止疾病的医院必须是指定认可的，证明有效期一个月。" },
+    { name: "Pop提交工作证申请WP.1（全套文件+体检报告+雇佣合同）", assignee: "Pop", notes: "📋 体检证明要先拿到手才能递交工作证申请，这两个是前后依赖的。" },
+    { name: "取得工作证蓝本", assignee: "Pop" },
+    { name: "Pop准备一年续签文件（更新公司文件+照片+工作证原件+雇佣合同+工资单+个税单+社保记录）", assignee: "Pop", notes: "📋 续签必须在Non-B签证到期前二十到三十天递交，晚了会被拒。税务文件需最新三个月的：ภ.ง.ด.1、社保缴费记录、ภ.พ.30。" },
+    { name: "Pop提交续签申请至移民局", assignee: "Pop" },
+    { name: "等待续签审批（约30天）", assignee: "" },
+    { name: "取得一年签证章", assignee: "Pop", notes: "📋 工作证有效期可能是一次给一年、六个月或三个月，取决于合同期限和官员判断。拿到工作证后回移民局申请续签一年居留许可。如果初始工作证只给了不到一年，到期前需要再来一轮同样的续签流程。" },
+  ],
 };
 
 export function getBusinessSteps(businessTypeId: number, subServiceType?: string): StepTemplate[] {
@@ -873,7 +888,7 @@ function seedData(database: Database.Database) {
   const btCount = database.prepare("SELECT COUNT(*) as c FROM business_types").get() as { c: number };
   if (btCount.c === 0) {
     const insert = database.prepare("INSERT INTO business_types (name) VALUES (?)");
-    for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC","社保开户"]) insert.run(name);
+    for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC","社保开户","工作签证"]) insert.run(name);
   }
 
 

@@ -35,6 +35,7 @@ const businessNames: Record<number, string> = {
   8: "Mall开店",
   9: "NBTC",
   10: "社保开户",
+  11: "工作签证",
 };
 
 interface Props {
