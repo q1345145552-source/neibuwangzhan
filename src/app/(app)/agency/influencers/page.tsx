@@ -218,8 +218,9 @@ function getPreviewGrade() {
       });
 
       if (!patchRes.ok) {
-        const errText = await patchRes.text();
-        console.error("同步达人表失败:", patchRes.status, errText);
+        const errData = await patchRes.json().catch(() => ({}));
+        const errText = errData.error || `HTTP ${patchRes.status}`;
+        throw new Error("同步达人表失败: " + errText);
       }
 
       setEvalModal(null);
@@ -230,6 +231,21 @@ function getPreviewGrade() {
   };
 
   // ── CSV import ──
+  // 浏览器后退键：弹窗开着时先关弹窗不跳页
+  useEffect(() => {
+    const handler = () => {
+      if (evalModal) {
+        window.history.pushState(null, "", window.location.href);
+        setEvalModal(null);
+      }
+    };
+    if (evalModal) {
+      window.history.pushState(null, "", window.location.href);
+      window.addEventListener("popstate", handler);
+    }
+    return () => window.removeEventListener("popstate", handler);
+  }, [evalModal]);
+
   const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -547,7 +563,14 @@ function getPreviewGrade() {
 
       {/* Evaluation Modal */}
       {evalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setEvalModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => {
+            if (evalSaving) return;
+            const hasData = evalForm.gmv_amount || evalForm.live_duration_tier || evalForm.live_frequency_tier || evalForm.professionalism_tier || evalForm.notes;
+            if (hasData) {
+              if (!window.confirm("表单有未保存数据，确定关闭吗？")) return;
+            }
+            setEvalModal(null);
+          }}>
           <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-[var(--foreground)]">
@@ -692,7 +715,14 @@ function getPreviewGrade() {
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setEvalModal(null)}>取消</Button>
+              <Button variant="ghost" size="sm" onClick={() => {
+            if (evalSaving) return;
+            const hasData = evalForm.gmv_amount || evalForm.live_duration_tier || evalForm.live_frequency_tier || evalForm.professionalism_tier || evalForm.notes;
+            if (hasData) {
+              if (!window.confirm("表单有未保存数据，确定关闭吗？")) return;
+            }
+            setEvalModal(null);
+          }}>取消</Button>
               <Button size="sm" onClick={handleSaveEval} disabled={evalSaving}>
                 {evalSaving ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
                 保存评估
