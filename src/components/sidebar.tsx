@@ -41,8 +41,8 @@ const navigation = [
 
 const businessLines = [
   { name: "公司注册", href: "/company-registration", icon: Building2 },
-  { name: "社保开户", href: "/social-security", icon: Shield },
   { name: "工作签证", href: "/work-visa", icon: Briefcase },
+  { name: "社保开户", href: "/social-security", icon: Shield },
   { name: "商标", href: "/trademark", icon: Tag },
   { name: "FDA认证", href: "/fda-certification", icon: ShieldCheck },
   { name: "TISI", href: "/tisi", icon: FileCheck },
