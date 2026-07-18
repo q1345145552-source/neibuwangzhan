@@ -183,13 +183,16 @@ export default function ContractsPage() {
     try {
       // 查找该达人对应的合同
       const res = await fetchWithAuth(`/api/contracts?trash=0`, { cache: "no-store" });
-      const allContracts = Array.isArray(await res.json()) ? await res.json() : [];
+      const data = await res.json();
+      const allContracts: Contract[] = Array.isArray(data) ? data : [];
       const contract = allContracts.find((c: Contract) => c.influencer_id === inf.id);
-      if (contract) {
-        await fetchWithAuth(`/api/contracts?id=${contract.id}`, { method: "DELETE" });
-      }
-      load();
-    } catch (e) { console.error("删除已完成合同失败", e); }
+      if (!contract) { alert("未找到对应合同记录，可能已被删除"); return; }
+      await fetchWithAuth(`/api/contracts?id=${contract.id}`, { method: "DELETE" });
+      // 立即从列表中移除，避免重复 load 时仍显示
+      setCompletedInfs(prev => prev.filter(i => i.id !== inf.id));
+      setContracts(prev => prev.filter(c => c.id !== contract.id));
+      loadTrash();
+    } catch (e) { console.error("删除已完成合同失败", e); alert("删除失败，请重试"); }
   };
 
   const handleNosign = async () => {
