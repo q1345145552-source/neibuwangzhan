@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
+  const [editPassword, setEditPassword] = useState("");
 
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => {});
@@ -48,13 +49,14 @@ export default function SettingsPage() {
     setEditName(emp.name);
     setEditEmail(emp.email ?? "");
     setEditRole(emp.role ?? "");
+    setEditPassword("");
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
     setEmpError("");
     try {
-      const emp = await updateEmployee(editingId, { name: editName, email: editEmail, role: editRole });
+      const emp = await updateEmployee(editingId, { name: editName, email: editEmail, role: editRole, ...(editPassword.trim() ? { password: editPassword.trim() } : {}) });
       setEmployees(prev => prev.map(e => e.id === editingId ? emp : e));
       setEditingId(null);
     } catch (err) {
@@ -140,6 +142,7 @@ export default function SettingsPage() {
                             <option value="admin">管理员</option>
                             <option value="client">客户</option>
                           </select>
+                          <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} type="password" placeholder="新密码（留空则不修改）" className="h-7 text-sm" />
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
