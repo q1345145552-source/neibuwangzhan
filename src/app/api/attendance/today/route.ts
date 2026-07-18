@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const today = bangkokToday();
 
   const employees = db.prepare(
-    "SELECT name FROM employees WHERE role IN ('admin','employee')"
+    "SELECT name FROM employees WHERE role IN ('admin','employee') AND name NOT IN ('Pop', '张三')"
   ).all() as any[];
 
   const results = employees.map((emp) => {

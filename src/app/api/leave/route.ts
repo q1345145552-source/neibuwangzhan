@@ -49,8 +49,23 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await req.json();
-  const { id, status, approved_by, images } = body;
-  if (!id || !status) return NextResponse.json({ error: "缺少参数" }, { status: 400 });
+  const { id, status, approved_by, images, append_images } = body;
+
+  if (!id) return NextResponse.json({ error: "缺少参数 id" }, { status: 400 });
+
+  // 补传附件：只追加图片，不改状态
+  if (append_images !== undefined && Array.isArray(append_images)) {
+    const existing = db.prepare("SELECT images FROM leave_requests WHERE id = ?").get(id) as any;
+    if (!existing) return NextResponse.json({ error: "请假记录不存在" }, { status: 404 });
+    const oldImages: string[] = (() => { try { return JSON.parse(existing.images || "[]"); } catch { return []; } })();
+    const newImages = append_images.filter((s: string) => s && s.trim());
+    const merged = [...oldImages, ...newImages];
+    db.prepare("UPDATE leave_requests SET images = ? WHERE id = ?").run(JSON.stringify(merged), id);
+    return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
+  }
+
+  // 正常审批流程
+  if (!status) return NextResponse.json({ error: "缺少参数 status" }, { status: 400 });
   const sets = ["status = ?"]; const vals: any[] = [status];
   if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
   if (status === "已通过" || status === "已驳回") { sets.push("approved_at = datetime('now')"); if (approved_by) { sets.push("approved_by = ?"); vals.push(approved_by); } }

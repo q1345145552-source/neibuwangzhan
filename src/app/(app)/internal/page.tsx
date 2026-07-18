@@ -117,6 +117,9 @@ export default function InternalPage() {
   const [leaveErr, setLeaveErr] = useState("");
   const [leaveImages, setLeaveImages] = useState<string[]>([]);
   const [leaveUploading, setLeaveUploading] = useState(false);
+  const [supplementLeaveId, setSupplementLeaveId] = useState<number | null>(null);
+  const [supplementUploading, setSupplementUploading] = useState(false);
+  const supplementInputRef = useRef<HTMLInputElement>(null);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
   const [leaveCustomTo, setLeaveCustomTo] = useState("");
@@ -173,19 +176,18 @@ export default function InternalPage() {
   };
 
   const loadAll = async () => {
-    try {
-      const leaveUrl = isAdmin ? "/api/leave" : `/api/leave?employee=${encodeURIComponent(user?.name || "")}`;
-      const [wlRes, isRes, lvRes] = await Promise.all([
-        fetchWithAuth("/api/internal/workload", { cache: "no-store" }),
-        fetchWithAuth("/api/issues", { cache: "no-store" }),
-        fetchWithAuth(leaveUrl, { cache: "no-store" }),
-      ]);
-      setWl(await wlRes.json());
-      setIssues(await isRes.json());
-      setLeaves(await lvRes.json());
-      const notifRes = await fetchWithAuth(`/api/notifications?recipient=${encodeURIComponent(user?.name || "")}&limit=30`, { cache: "no-store" });
-      setNotifications(await notifRes.json());
-    } catch (e) { console.error("[内部管理] 加载通知/工单/请假失败", e); }
+    if (!user?.name) return; // 等待认证加载完成
+    // 每个接口独立请求，单个失败不影响其他数据更新
+    const leaveUrl = isAdmin ? "/api/leave" : `/api/leave?employee=${encodeURIComponent(user?.name || "")}`;
+    
+    fetchWithAuth("/api/internal/workload", { cache: "no-store" })
+      .then(r => r.json()).then(setWl).catch(e => console.error("[内部管理] 工作量加载失败", e));
+    fetchWithAuth("/api/issues", { cache: "no-store" })
+      .then(r => r.json()).then(setIssues).catch(e => console.error("[内部管理] 工单加载失败", e));
+    fetchWithAuth(leaveUrl, { cache: "no-store" })
+      .then(r => r.json()).then(setLeaves).catch(e => console.error("[内部管理] 请假加载失败", e));
+    fetchWithAuth(`/api/notifications?recipient=${encodeURIComponent(user?.name || "")}&limit=30`, { cache: "no-store" })
+      .then(r => r.json()).then(setNotifications).catch(e => console.error("[内部管理] 通知加载失败", e));
   };
 
   const isWithinDays = (dateStr: string, days: number) => {
@@ -254,7 +256,7 @@ export default function InternalPage() {
     setLoadingAnomaly(false);
   };
 
-  useEffect(() => { loadAll(); loadAttendance(); loadCalendar(); }, [summaryMonth, calendarMonth, calendarEmployee]);
+  useEffect(() => { loadAll(); loadAttendance(); loadCalendar(); }, [summaryMonth, calendarMonth, calendarEmployee, user?.name]);
 
   // ── Photo upload helpers ──
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -470,20 +472,64 @@ export default function InternalPage() {
 
   const removeLeaveImage = (idx: number) => { setLeaveImages(prev => prev.filter((_, i) => i !== idx)); };
 
+  // 请假补传附件
+  const handleSupplementLeaveImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || supplementLeaveId === null) return;
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append("file", files[i]);
+    }
+    setSupplementUploading(true);
+    try {
+      const uploadRes = await fetchWithAuth("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const uploadData = await uploadRes.json();
+      const newFilename = (uploadData.url || uploadData.filename || "").replace(/^\/api\/files\//, "");
+      // 调用 PATCH 追加图片
+      const patchRes = await fetchWithAuth("/api/leave", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: supplementLeaveId, append_images: [newFilename] }),
+      });
+      if (!patchRes.ok) throw new Error("补传失败");
+      // 刷新列表
+      loadAll();
+    } catch (err) {
+      console.error("[内部管理] 补传附件失败", err);
+    }
+    setSupplementUploading(false);
+    setSupplementLeaveId(null);
+  };
+
   const handleCreateLeave = async () => {
     if (!leaveForm.start_date || !leaveForm.end_date) { setLeaveErr("请选择日期"); return; }
+    setLeaveErr("");
     try {
-      await fetchWithAuth("/api/leave", {
+      const res = await fetchWithAuth("/api/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...leaveForm, employee_name: user?.name, images: leaveImages.map((url) => url.replace("/api/files/", "")) }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setLeaveErr(errData.error || "提交失败，请重试");
+        return;
+      }
+      const newRecord = await res.json();
+      // 直接追加到列表头部，不等全量刷新
+      setLeaves(prev => [newRecord, ...prev]);
       setShowLeaveForm(false);
       setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
       setLeaveImages([]);
-      setLeaveErr("");
-      loadAll();
-    } catch (e) { console.error("[内部管理] 创建请假失败", e); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "网络错误";
+      if (msg === "NO_TOKEN") setLeaveErr("登录已过期，请刷新页面重新登录");
+      else { console.error("[内部管理] 创建请假失败", e); setLeaveErr("提交失败，请检查网络后重试"); }
+    }
   };
 
   const handleApproveLeave = async (id: number, status: string) => {
@@ -814,6 +860,9 @@ export default function InternalPage() {
         </div>
       )}
 
+      {/* 补传附件的隐藏文件输入 — 放在页面顶层，始终在 DOM 中 */}
+      <input ref={supplementInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleSupplementLeaveImage} />
+
       {/* ── 考勤日历 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
@@ -822,7 +871,7 @@ export default function InternalPage() {
             {isAdmin && (
               <select value={calendarEmployee} onChange={e => setCalendarEmployee(e.target.value)}
                 className="h-7 rounded border border-[var(--border)] px-2 text-xs">
-                {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
+                {staffNames.filter(n => n !== "Pop" && n !== "张三").map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             )}
             <button
@@ -1762,17 +1811,29 @@ export default function InternalPage() {
                 </td>
                 <td className="py-2.5 px-4">
                   {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
-                    <button onClick={()=>{setLightboxImages(imgs.map((f:string)=>"/api/files/"+f));setLightboxIdx(0);}} className="inline-flex items-center gap-0.5 text-blue-600 hover:underline cursor-pointer">
+                    <a href={fileUrl((imgs[0] as string).startsWith("/api/files/") ? imgs[0] : "/api/files/" + imgs[0])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:underline cursor-pointer" onClick={(e) => { if (imgs.length > 1) { e.preventDefault(); const urls = imgs.map((f:string) => f.startsWith("/api/files/") ? f : "/api/files/" + f); setLightboxImages(urls); setLightboxIdx(0); } }}>
                       <Image className="size-4" /><span className="text-xs">{imgs.length}</span>
-                    </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
+                    </a>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
                 </td>
                 <td className="py-2.5 px-4">
-                  {l.status==="待审批"&&isAdmin&&(
-                    <div className="flex gap-1.5">
-                      <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
-                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={()=>handleApproveLeave(l.id,"已驳回")}>驳回</Button>
-                    </div>
-                  )}
+                  <div className="flex gap-1.5 items-center">
+                    {!isAdmin&&(
+                      <button
+                        onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}}
+                        disabled={supplementUploading}
+                        className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"
+                        title="补传附件"
+                      >
+                        {supplementUploading&&supplementLeaveId===l.id?<Loader2 className="size-3.5 animate-spin"/>:<Plus className="size-3.5"/>}附件
+                      </button>
+                    )}
+                    {l.status==="待审批"&&isAdmin&&(
+                      <>
+                        <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
+                        <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={()=>handleApproveLeave(l.id,"已驳回")}>驳回</Button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}</tbody></table>

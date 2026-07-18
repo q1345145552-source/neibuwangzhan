@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     if (empName) {
       employees = [{ name: empName }];
     } else {
-      employees = db.prepare("SELECT name FROM employees WHERE role IN ('admin','employee')").all() as any[];
+      employees = db.prepare("SELECT name FROM employees WHERE role IN ('admin','employee') AND name NOT IN ('Pop', '张三')").all() as any[];
     }
   } else {
     employees = [{ name: auth.name }];

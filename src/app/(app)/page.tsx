@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TodoList } from "@/components/dashboard/todo-list";
-import { fetchDashboardStats, fetchOrders, fetchAssignedSteps } from "@/lib/api";
+import { fetchDashboardStats, fetchOrders, fetchAssignedSteps, fetchWithAuth } from "@/lib/api";
 import type { Order } from "@/lib/api";
 
 const BusinessChart = dynamic(
@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
   const [stepsLoaded, setStepsLoaded] = useState(false);
+  const [leaveDashboard, setLeaveDashboard] = useState<{ todayOnLeave: Array<{ employee_name: string; leave_type: string; start_date: string; end_date: string }>; pendingCount: number; recent: any[] } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -54,6 +55,11 @@ export default function DashboardPage() {
       }
     }
     load();
+    // 管理员加载请假看板数据
+    if (user?.role === "admin") {
+      fetchWithAuth("/api/leave/dashboard", { cache: "no-store" })
+        .then(r => r.json()).then(setLeaveDashboard).catch(() => {});
+    }
   }, []);
 
   const businessCounts = useMemo(() => {
@@ -119,6 +125,33 @@ export default function DashboardPage() {
       <BusinessChart data={businessCounts} />
 
       <TodoList orders={orders.filter((o) => o.status !== "已完成")} />
+
+      {leaveDashboard && (leaveDashboard.todayOnLeave.length > 0 || leaveDashboard.pendingCount > 0) && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-medium text-[var(--foreground)]">今日请假</h2>
+            <Link href="/internal" className="text-xs text-[var(--primary)] hover:underline">查看全部</Link>
+          </div>
+          {leaveDashboard.todayOnLeave.length > 0 ? (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {leaveDashboard.todayOnLeave.map((l, i) => (
+                <span key={i} className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-950/30 px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+                  {l.employee_name} · {l.leave_type}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">今天无人请假</p>
+          )}
+          {leaveDashboard.pendingCount > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="inline-flex size-2 rounded-full bg-amber-500" />
+              <span className="text-[var(--muted-foreground)]">待审批</span>
+              <Link href="/internal" className="font-semibold text-amber-600 hover:underline">{leaveDashboard.pendingCount} 条</Link>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
