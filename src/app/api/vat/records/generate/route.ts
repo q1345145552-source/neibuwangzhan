@@ -3,6 +3,7 @@ import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 const PROGRESS_STEPS = ["收资料", "Excel 计算", "发客户确认", "e-Filing 提交", "付款纳税", "归档完成"];
+const DEFAULT_ASSIGNEES: Record<number, string> = { 1: "Eve", 2: "Eve", 3: "Eve", 4: "Pop", 5: "Pop", 6: "Pop" };
 
 // POST /api/vat/records/generate
 export async function POST(req: NextRequest) {
@@ -20,8 +21,8 @@ export async function POST(req: NextRequest) {
   if (customers.length === 0) return NextResponse.json({ error: "没有启用的客户" }, { status: 400 });
 
   let created = 0;
-  const insertRecord = db.prepare("INSERT INTO vat_records (customer_id, year_month, progress, assignee) VALUES (?, ?, '收资料', '')");
-  const insertStep = db.prepare("INSERT INTO vat_record_steps (record_id, step_name, step_order) VALUES (?, ?, ?)");
+  const insertRecord = db.prepare("INSERT INTO vat_records (customer_id, year_month, progress, assignee) VALUES (?, ?, '收资料', 'Eve')");
+  const insertStep = db.prepare("INSERT INTO vat_record_steps (record_id, step_name, step_order, assignee) VALUES (?, ?, ?, ?)");
 
   const txn = db.transaction(() => {
     for (const c of customers) {
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest) {
       const result = insertRecord.run(c.id, month);
       const recordId = result.lastInsertRowid;
       for (let i = 0; i < PROGRESS_STEPS.length; i++) {
-        insertStep.run(recordId, PROGRESS_STEPS[i], i + 1);
+        const order = i + 1;
+        insertStep.run(recordId, PROGRESS_STEPS[i], order, DEFAULT_ASSIGNEES[order] || "");
       }
       created++;
     }
