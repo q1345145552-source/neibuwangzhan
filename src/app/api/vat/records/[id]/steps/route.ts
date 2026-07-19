@@ -19,7 +19,7 @@ export async function PATCH(
     return NextResponse.json({ error: "请提供 step_id" }, { status: 400 });
   }
 
-  const validStatuses = ["待处理", "进行中", "已完成"];
+  const validStatuses = ["待处理", "进行中", "已完成", "阻塞"];
   if (status !== undefined && !validStatuses.includes(status)) {
     return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
   }
