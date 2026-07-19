@@ -163,6 +163,7 @@ export default function VatPage() {
       if (!res.ok) { setError(data.error || "生成失败"); return; }
       setShowManualCreate(false);
       setManualCreateSearch("");
+      setActiveTab("records");
       loadRecords(); loadDashboard();
     } catch { setError("生成失败"); }
     finally { setManualCreateLoading(false); }
