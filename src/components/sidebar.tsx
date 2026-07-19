@@ -31,6 +31,7 @@ import {
   Star,
   Shield,
   Briefcase,
+  Calculator,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -51,6 +52,11 @@ const businessLines = [
   { name: "地址认证", href: "/address-certification", icon: MapPin },
   { name: "Mall开店", href: "/mall-store", icon: Store },
   { name: "NBTC", href: "/nbtc", icon: Radio },
+];
+
+
+const vatNav = [
+  { name: "VAT申报", href: "/vat", icon: Calculator },
 ];
 
 const agencyNav = [
@@ -78,6 +84,7 @@ function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/agency") return pathname === "/agency";
   if (href === "/internal") return pathname === "/internal";
+  if (href === "/vat") return pathname.startsWith("/vat");
   return pathname.startsWith(href);
 }
 
@@ -158,6 +165,11 @@ export function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <NavSection items={navigation} pathname={pathname} onClose={close} />
+
+        <div className="mt-4 mb-2 px-3">
+          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
+        </div>
+        <NavSection items={vatNav} pathname={pathname} onClose={close} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">业务线</span>

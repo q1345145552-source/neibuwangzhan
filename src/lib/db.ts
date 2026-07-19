@@ -751,6 +751,61 @@ function initTables(database: Database.Database) {
     );
   `);
 
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS vat_customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT NOT NULL,
+      tax_id TEXT DEFAULT '',
+      contact TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '启用' CHECK(status IN ('启用','暂停','已终止')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS vat_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES vat_customers(id),
+      year_month TEXT NOT NULL,
+      progress TEXT NOT NULL DEFAULT '收资料',
+      amount REAL DEFAULT 0,
+      assignee TEXT DEFAULT '',
+      file_paths TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS vat_record_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES vat_records(id),
+      step_name TEXT NOT NULL,
+      step_order INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT '待处理',
+      assignee TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS vat_reconciliation (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES vat_customers(id),
+      year_month TEXT NOT NULL,
+      tax_payable REAL DEFAULT 0,
+      tax_paid REAL DEFAULT 0,
+      tax_unpaid REAL DEFAULT 0,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // 触发自动积分规则
   try { seedPointsRulesZ(database); } catch {}
 
