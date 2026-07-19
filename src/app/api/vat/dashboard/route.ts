@@ -11,56 +11,58 @@ export async function GET(req: NextRequest) {
   const month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
   const db = getDb();
 
-  // Total enabled customers
-  const totalEnabled = (db.prepare("SELECT COUNT(*) as c FROM vat_customers WHERE status = '启用'").get() as { c: number }).c;
+  // 本月应申报 = 当月有申报记录的启用客户数量
+  const totalEnabled = (db.prepare(
+    "SELECT COUNT(DISTINCT r.id) as c FROM vat_records r JOIN vat_customers c ON r.customer_id = c.id WHERE r.year_month = ? AND c.status = '启用'"
+  ).get(month) as { c: number }).c;
 
-  // Total records for this month
-  const totalRecords = (db.prepare("SELECT COUNT(*) as c FROM vat_records WHERE year_month = ?").get(month) as { c: number }).c;
+  // 本月申报记录总数（仅启用客户）
+  const totalRecords = (db.prepare(
+    "SELECT COUNT(r.id) as c FROM vat_records r JOIN vat_customers c ON r.customer_id = c.id WHERE r.year_month = ? AND c.status = '启用'"
+  ).get(month) as { c: number }).c;
 
-  // Records by progress
-  const byProgress = (name: string) => {
-    const r = db.prepare("SELECT COUNT(*) as c FROM vat_records WHERE year_month = ? AND progress = ?").get(month, name) as { c: number };
-    return r.c;
-  };
-
-  // Count records that have at least step 1 completed (资料已交)
-  const docsSubmitted = db.prepare(`
+  // 已交资料 = 第一步完成后
+  const docsSubmitted = (db.prepare(`
     SELECT COUNT(DISTINCT r.id) as c
     FROM vat_records r
+    JOIN vat_customers cust ON r.customer_id = cust.id AND cust.status = '启用'
     JOIN vat_record_steps s ON s.record_id = r.id AND s.step_order = 1
     WHERE r.year_month = ? AND s.status = '已完成'
-  `).get(month) as { c: number };
+  `).get(month) as { c: number }).c;
 
-  // Count records where steps 1-3 are done (已审核)
-  const reviewed = db.prepare(`
+  // 审核完毕 = 步骤 1-3 全部完成
+  const reviewed = (db.prepare(`
     SELECT COUNT(DISTINCT r.id) as c
     FROM vat_records r
+    JOIN vat_customers cust ON r.customer_id = cust.id AND cust.status = '启用'
     WHERE r.year_month = ?
     AND (SELECT COUNT(*) FROM vat_record_steps WHERE record_id = r.id AND step_order <= 3 AND status = '已完成') = 3
-  `).get(month) as { c: number };
+  `).get(month) as { c: number }).c;
 
-  // Count records where e-Filing submitted (step 4 done)
-  const filedSubmitted = db.prepare(`
+  // 已提交申报 = 第四步完成
+  const filedSubmitted = (db.prepare(`
     SELECT COUNT(DISTINCT r.id) as c
     FROM vat_records r
+    JOIN vat_customers cust ON r.customer_id = cust.id AND cust.status = '启用'
     JOIN vat_record_steps s ON s.record_id = r.id AND s.step_order = 4
     WHERE r.year_month = ? AND s.status = '已完成'
-  `).get(month) as { c: number };
+  `).get(month) as { c: number }).c;
 
-  // Archived = all steps done
-  const archived = db.prepare(`
+  // 已归档 = 全部步骤完成
+  const archived = (db.prepare(`
     SELECT COUNT(DISTINCT r.id) as c
     FROM vat_records r
+    JOIN vat_customers cust ON r.customer_id = cust.id AND cust.status = '启用'
     WHERE r.year_month = ? AND r.progress = '归档完成'
-  `).get(month) as { c: number };
+  `).get(month) as { c: number }).c;
 
   return NextResponse.json({
     totalEnabled,
     totalRecords,
-    docsSubmitted: docsSubmitted.c,
-    reviewed: reviewed.c,
-    filedSubmitted: filedSubmitted.c,
-    archived: archived.c,
+    docsSubmitted,
+    reviewed,
+    filedSubmitted,
+    archived,
     month,
   });
 }

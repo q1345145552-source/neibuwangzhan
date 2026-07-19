@@ -53,6 +53,41 @@ export async function PATCH(
   values.push(step_id, id);
   db.prepare(`UPDATE vat_record_steps SET ${updates.join(", ")} WHERE id = ? AND record_id = ?`).run(...values);
 
+  // ── 对账表同步 ──
+  const updatedStep = db.prepare("SELECT * FROM vat_record_steps WHERE id = ? AND record_id = ?").get(step_id, id) as any;
+  if (updatedStep) {
+    const record = db.prepare("SELECT * FROM vat_records WHERE id = ?").get(id) as any;
+    if (record) {
+      // 步骤2「Excel 计算」标记完成 → 更新应付税金
+      if (updatedStep.step_order === 2 && updatedStep.status === "已完成" && (record.amount || 0) > 0) {
+        // 确保对账记录存在
+        const exists = db.prepare("SELECT 1 FROM vat_reconciliation WHERE customer_id = ? AND year_month = ?").get(record.customer_id, record.year_month);
+        if (!exists) {
+          db.prepare("INSERT INTO vat_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, ?, 0, 0)").run(record.customer_id, record.year_month, record.amount);
+        }
+        // 更新应付税金
+        db.prepare(`
+          UPDATE vat_reconciliation SET tax_payable = ?, tax_unpaid = MAX(0, ? - COALESCE(tax_paid, 0)), updated_at = datetime('now')
+          WHERE customer_id = ? AND year_month = ?
+        `).run(record.amount, record.amount, record.customer_id, record.year_month);
+      }
+      // 步骤5「付款纳税」payment_status → 已付款
+      const newPs = payment_status !== undefined ? payment_status : updatedStep.payment_status;
+      if (updatedStep.step_order === 5 && newPs === "已付款" && (record.amount || 0) > 0) {
+        // 确保对账记录存在
+        const exists5 = db.prepare("SELECT 1 FROM vat_reconciliation WHERE customer_id = ? AND year_month = ?").get(record.customer_id, record.year_month);
+        if (!exists5) {
+          db.prepare("INSERT INTO vat_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, ?, ?, 0)").run(record.customer_id, record.year_month, record.amount, record.amount);
+        }
+        // 更新已付税金
+        db.prepare(`
+          UPDATE vat_reconciliation SET tax_paid = ?, tax_unpaid = MAX(0, COALESCE(tax_payable, 0) - ?), updated_at = datetime('now')
+          WHERE customer_id = ? AND year_month = ?
+        `).run(record.amount, record.amount, record.customer_id, record.year_month);
+      }
+    }
+  }
+
   // Sync record progress
   const steps = db.prepare("SELECT status, step_name FROM vat_record_steps WHERE record_id = ? ORDER BY step_order").all(id) as { status: string; step_name: string }[];
   const allDone = steps.every(s => s.status === "已完成");

@@ -46,7 +46,7 @@ const TABS = [
 const STATUS_OPTIONS = ["启用", "暂停", "已终止"] as const;
 
 const DASHBOARD_CARDS = [
-  { key: "totalRecords", label: "本月应申报", icon: Layers, color: "text-[var(--foreground)]", bg: "bg-[var(--card)]" },
+  { key: "totalEnabled", label: "本月应申报", icon: Layers, color: "text-[var(--foreground)]", bg: "bg-[var(--card)]" },
   { key: "docsSubmitted", label: "已交资料", icon: ClipboardCheck, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950" },
   { key: "reviewed", label: "审核完毕", icon: FileCheck, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950" },
   { key: "filedSubmitted", label: "已提交申报", icon: Send, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950" },
@@ -99,6 +99,15 @@ export default function VatPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("customers");
+
+  // 从详情页返回时读取 ?tab=records 切换到对应标签
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("tab");
+    if (t && ["customers","records","history","reconciliation","summary"].includes(t)) {
+      setActiveTab(t);
+    }
+  }, []);
   const [filterBy, setFilterBy] = useState<string | null>(null);
 
   // Customers
@@ -142,9 +151,6 @@ export default function VatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [profileCustomerId, setProfileCustomerId] = useState<number | null>(null);
-  const [showManualCreate, setShowManualCreate] = useState(false);
-  const [manualCreateSearch, setManualCreateSearch] = useState("");
-  const [manualCreateLoading, setManualCreateLoading] = useState(false);
 
   // ===== Load data =====
   const loadCustomers = useCallback(async () => {
@@ -154,22 +160,6 @@ export default function VatPage() {
     } catch { setCustomers([]); }
   }, []);
 
-  const handleManualCreate = async (customerId: number) => {
-    setManualCreateLoading(true);
-    try {
-      const res = await fetchWithAuth("/api/vat/records/generate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month: recordMonth, customer_id: customerId }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "生成失败"); return; }
-      setShowManualCreate(false);
-      setManualCreateSearch("");
-      setActiveTab("records");
-      loadRecords(); loadDashboard();
-    } catch { setError("生成失败"); }
-    finally { setManualCreateLoading(false); }
-  };
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -325,17 +315,11 @@ export default function VatPage() {
   };
 
   // ===== Filter records for dashboard click =====
-  const enabledCustomers = useMemo(() =>
-    customers.filter(c => c.status === "启用"), [customers]);
 
-  const filteredEnabledCustomers = useMemo(() =>
-    enabledCustomers.filter(c =>
-      !manualCreateSearch || c.company_name.toLowerCase().includes(manualCreateSearch.toLowerCase())
-    ), [enabledCustomers, manualCreateSearch]);
 
   const filteredRecords = useMemo(() => {
     if (!filterBy) return records;
-    if (filterBy === "totalRecords") return records;
+    if (filterBy === "totalEnabled") return records;
 
     // For more granular filtering, we need step-level data — approximate with progress
     const progressMap: Record<string, string[]> = {
@@ -350,8 +334,8 @@ export default function VatPage() {
   }, [records, filterBy]);
 
   // ===== Progress bar =====
-  const progressPct = dashboard && dashboard.totalRecords > 0
-    ? Math.round((dashboard.archived / dashboard.totalRecords) * 100)
+  const progressPct = dashboard && dashboard.totalEnabled > 0
+    ? Math.round((dashboard.archived / dashboard.totalEnabled) * 100)
     : 0;
 
   const statusBadge = (s: string) => {
@@ -430,7 +414,7 @@ export default function VatPage() {
             </div>
             <div className="flex justify-between mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">
               <span>0%</span>
-              <span>{dashboard.archived}/{dashboard.totalRecords} 已归档</span>
+              <span>{dashboard.archived}/{dashboard.totalEnabled} 已归档</span>
               <span>100%</span>
             </div>
           </div>
@@ -551,9 +535,6 @@ export default function VatPage() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-medium">本月申报</h2>
-              <Button size="xs" variant="outline" onClick={() => setShowManualCreate(true)}>
-                <Plus className="size-3 mr-1" />手动新建
-              </Button>
               {filterBy && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-xs text-[var(--primary)]">
                   {DASHBOARD_CARDS.find(c => c.key === filterBy)?.label || filterBy}
@@ -583,44 +564,6 @@ export default function VatPage() {
             </div>
           )}
 
-          {/* 手动新建弹窗 */}
-          {showManualCreate && (
-            <>
-              <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={() => { setShowManualCreate(false); setManualCreateSearch(""); }} />
-              <div className="fixed inset-0 z-50 flex items-center justify-center">
-                <div className="w-full max-w-sm rounded-xl border bg-[var(--background)] shadow-2xl p-5" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-base font-medium">手动新建申报记录</h3>
-                    <button onClick={() => { setShowManualCreate(false); setManualCreateSearch(""); }}
-                      className="rounded-md p-1 hover:bg-[var(--muted)]"><X className="size-4" /></button>
-                  </div>
-                  <p className="text-xs text-[var(--muted-foreground)] mb-3">选择客户，为 {recordMonth} 生成申报记录</p>
-                  <input
-                    className="w-full rounded border px-3 py-2 text-sm mb-3"
-                    placeholder="搜索启用客户..."
-                    value={manualCreateSearch}
-                    onChange={e => setManualCreateSearch(e.target.value)}
-                    autoFocus
-                  />
-                  <div className="max-h-48 overflow-y-auto rounded border">
-                    {filteredEnabledCustomers.length === 0 ? (
-                      <p className="px-3 py-4 text-sm text-center text-[var(--muted-foreground)]">
-                        {enabledCustomers.length === 0 ? "没有启用的客户" : "无匹配结果"}
-                      </p>
-                    ) : filteredEnabledCustomers.map(c => (
-                      <button key={c.id}
-                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-[var(--muted)] transition-colors border-b last:border-b-0 flex items-center justify-between"
-                        onClick={() => handleManualCreate(c.id)}
-                        disabled={manualCreateLoading}>
-                        <span>{c.company_name}</span>
-                        {c.tax_id && <span className="text-xs text-[var(--muted-foreground)]">{c.tax_id}</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
 
           <div className="rounded-lg border overflow-hidden">
             <table className="w-full text-sm">
@@ -741,9 +684,9 @@ export default function VatPage() {
                   <tr key={r.id} className="border-t">
                     <td className="px-4 py-3 font-medium">{r.company_name || "—"}</td>
                     <td className="px-4 py-3">{r.year_month}</td>
-                    <td className="px-4 py-3 text-right">¥{r.tax_payable.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-[var(--success)]">¥{r.tax_paid.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-medium text-[var(--destructive)]">¥{r.tax_unpaid.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">¥{(r.tax_payable || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-[var(--success)]">¥{(r.tax_paid || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-medium text-[var(--destructive)]">¥{(r.tax_unpaid || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-[var(--muted-foreground)]">{r.notes || "—"}</td>
                   </tr>
                 ))}

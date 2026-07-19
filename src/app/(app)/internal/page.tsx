@@ -130,8 +130,6 @@ export default function InternalPage() {
   // History toggles & date filters
   const [showAtdHistory, setShowAtdHistory] = useState(false);
   const [atdHistoryFilter, setAtdHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
-  const [showNotifHistory, setShowNotifHistory] = useState(false);
-  const [notifHistoryFilter, setNotifHistoryFilter] = useState<"7d" | "30d" | "all">("7d");
 
   // Workload detail modal
   const [wlDetailModal, setWlDetailModal] = useState<{ employee: string; type: string; label: string } | null>(null);
@@ -196,6 +194,35 @@ export default function InternalPage() {
     const now = new Date();
     const diff = now.getTime() - d.getTime();
     return diff <= days * 24 * 60 * 60 * 1000;
+  };
+
+  // ── 通知分组辅助函数 ──
+  const ntfTimeGroup = (dateStr: string): "today" | "week" | "older" => {
+    if (!dateStr) return "older";
+    const d = new Date(dateStr);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (d >= todayStart) return "today";
+    const dayOfWeek = now.getDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = new Date(todayStart); weekStart.setDate(todayStart.getDate() - mondayOffset);
+    if (d >= weekStart) return "week";
+    return "older";
+  };
+
+  const NTF_CATEGORIES = {
+    issue: { label: "工单", color: "blue" },
+    leave: { label: "请假 & 考勤", color: "purple" },
+    vat:   { label: "VAT 申报", color: "green" },
+    other: { label: "其他", color: "gray" },
+  } as const;
+
+  const ntfCatKey = (n: Notification): keyof typeof NTF_CATEGORIES => {
+    const rt = n.related_type || "";
+    if (rt === "issue") return "issue";
+    if (rt === "leave" || rt === "attendance_request") return "leave";
+    if (rt === "vat_notify") return "vat";
+    return "other";
   };
 
   const loadAttendance = async () => {
@@ -593,6 +620,8 @@ export default function InternalPage() {
   };
 
   const isAdmin = user?.role === "admin";
+  const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","other-today","other-week"]));
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -1231,7 +1260,7 @@ export default function InternalPage() {
         </div>
       )}
 
-      {/* ── 通知中心 ── */}
+      {/* ── 通知中心（按业务 + 时间分组）── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="text-sm font-medium flex items-center gap-2"><Bell className="size-4" />通知中心</h2>
@@ -1242,69 +1271,97 @@ export default function InternalPage() {
         {notifications.length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无通知</div>
         ) : (
-          <>
-          <div className="divide-y divide-[var(--border)] max-h-64 overflow-y-auto">
-            {notifications
-              .filter(n => {
-                if (showNotifHistory) return true;
-                if (notifHistoryFilter === "7d") return isWithinDays(n.created_at, 7);
-                if (notifHistoryFilter === "30d") return isWithinDays(n.created_at, 30);
-                return true;
-              })
-              .map(n => (
-              <div
-                key={n.id}
-                onClick={() => { if (n.is_read === 0) markNotifRead(n.id); }}
-                className={cn(
-                  "px-5 py-3 cursor-pointer transition-colors hover:bg-[var(--muted)]/50",
-                  n.is_read === 0 ? "border-l-2 border-l-blue-500 bg-blue-50/30 dark:bg-blue-950/10" : "text-[var(--muted-foreground)]"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{n.title}</span>
-                  <span className="text-xs text-[var(--muted-foreground)]">{n.created_at?.slice(0, 16)}</span>
-                </div>
-                <p className="mt-1 text-xs text-[var(--muted-foreground)]">{n.body}</p>
-              </div>
-            ))}
-          </div>
-          {(() => {
-            const hidden = notifications.filter(n => {
-              if (showNotifHistory) return false;
-              if (notifHistoryFilter === "7d") return !isWithinDays(n.created_at, 7);
-              if (notifHistoryFilter === "30d") return !isWithinDays(n.created_at, 30);
-              return false;
-            });
-            return hidden.length > 0 ? (
-              <div className="border-t border-[var(--border)]">
-                {!showNotifHistory ? (
-                  <button
-                    className="w-full px-5 py-3 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors text-left"
-                    onClick={() => setShowNotifHistory(true)}
-                  >
-                    查看历史 ({hidden.length})
-                  </button>
-                ) : (
-                  <div className="px-5 py-3 flex items-center gap-1.5">
-                    {(["7d", "30d", "all"] as const).map(f => (
-                      <button
-                        key={f}
-                        onClick={() => setNotifHistoryFilter(f)}
-                        className={cn(
-                          "px-2.5 py-1 text-xs rounded transition-colors",
-                          notifHistoryFilter === f ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                        )}
-                      >
-                        {f === "7d" ? "最近七天" : f === "30d" ? "最近三十天" : "全部"}
-                      </button>
-                    ))}
-                    <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] ml-auto" onClick={() => setShowNotifHistory(false)}>收起</button>
+          <div className="max-h-[480px] overflow-y-auto">
+            {(() => {
+              // 分组：category → timeGroup → notifications
+              const cats = ["issue","leave","vat","other"] as const;
+              const colorMap: Record<string, { border: string; bg: string; dot: string }> = {
+                blue:   { border: "border-l-blue-500",  bg: "bg-blue-50/60 dark:bg-blue-950/10",  dot: "bg-blue-500" },
+                purple: { border: "border-l-purple-500", bg: "bg-purple-50/60 dark:bg-purple-950/10", dot: "bg-purple-500" },
+                green:  { border: "border-l-emerald-500", bg: "bg-emerald-50/60 dark:bg-emerald-950/10", dot: "bg-emerald-500" },
+                gray:   { border: "border-l-gray-400",  bg: "bg-gray-50/60 dark:bg-gray-900/10",  dot: "bg-gray-400" },
+              };
+              const grouped: Record<string, Record<string, Notification[]>> = {};
+              for (const n of notifications) {
+                const cat = ntfCatKey(n);
+                const tg = ntfTimeGroup(n.created_at);
+                if (!grouped[cat]) grouped[cat] = {};
+                if (!grouped[cat][tg]) grouped[cat][tg] = [];
+                grouped[cat][tg].push(n);
+              }
+              const sections: { key: string; label: string; defaultOpen: boolean }[] = [
+                { key: "today", label: "今天", defaultOpen: true },
+                { key: "week", label: "本周", defaultOpen: true },
+                { key: "older", label: "更早", defaultOpen: false },
+              ];
+              return cats.map(cat => {
+                const catData = NTF_CATEGORIES[cat];
+                const cm = colorMap[catData.color] || colorMap.gray;
+                const groups = grouped[cat] || {};
+                const totalCount = Object.values(groups).reduce((s, arr) => s + arr.length, 0);
+                if (totalCount === 0) return null;
+                // State for collapse (per-cat, per-section)
+                return (
+                  <div key={cat} className="border-b border-[var(--border)] last:border-b-0">
+                    {/* 业务分类标题 */}
+                    <div className={cn("px-5 py-2.5 flex items-center gap-2", cm.bg)}>
+                      <span className={cn("size-2 rounded-full shrink-0", cm.dot)} />
+                      <span className="text-xs font-semibold text-[var(--foreground)]">{catData.label}</span>
+                      <span className="ml-auto text-[0.65rem] text-[var(--muted-foreground)] tabular-nums">{totalCount}</span>
+                    </div>
+                    {sections.map(sec => {
+                      const items = groups[sec.key] || [];
+                      if (items.length === 0) return null;
+                      const sectionKey = `${cat}-${sec.key}`;
+                      const open = ntfOpenSections.has(sectionKey);
+                      const toggleOpen = () => {
+                        setNtfOpenSections(prev => {
+                          const next = new Set(prev);
+                          if (next.has(sectionKey)) next.delete(sectionKey);
+                          else next.add(sectionKey);
+                          return next;
+                        });
+                      };
+                      return (
+                        <div key={sec.key}>
+                          <button
+                            onClick={() => toggleOpen()}
+                            className="w-full px-5 py-1.5 flex items-center gap-1.5 text-left text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 transition-colors"
+                          >
+                            <span className={cn("text-[0.6rem] transition-transform", open && "rotate-90")}>▶</span>
+                            <span>{sec.label}</span>
+                            <span className="tabular-nums text-[0.65rem] opacity-60">{items.length}</span>
+                          </button>
+                          {open && (
+                            <div className="divide-y divide-[var(--border)]">
+                              {items.map(n => (
+                                <div
+                                  key={n.id}
+                                  onClick={() => { if (n.is_read === 0) markNotifRead(n.id); }}
+                                  className={cn(
+                                    "px-5 py-2.5 cursor-pointer transition-colors hover:bg-[var(--muted)]/30",
+                                    n.is_read === 0
+                                      ? `border-l-2 ${cm.border} bg-blue-50/20 dark:bg-blue-950/5`
+                                      : "text-[var(--muted-foreground)] pl-[22px]"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className={cn("text-sm truncate", n.is_read === 0 ? "font-semibold text-[var(--foreground)]" : "")}>{n.title}</span>
+                                    <span className="text-[0.65rem] text-[var(--muted-foreground)] shrink-0">{n.created_at?.slice(0, 16)}</span>
+                                  </div>
+                                  <p className="mt-0.5 text-xs text-[var(--muted-foreground)] truncate">{n.body}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            ) : null;
-          })()}
-          </>
+                );
+              });
+            })()}
+          </div>
         )}
       </div>
 
