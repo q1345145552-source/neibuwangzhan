@@ -140,14 +140,33 @@ export default function VatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [profileCustomerId, setProfileCustomerId] = useState<number | null>(null);
+  const [showManualCreate, setShowManualCreate] = useState(false);
+  const [manualCreateSearch, setManualCreateSearch] = useState("");
+  const [manualCreateLoading, setManualCreateLoading] = useState(false);
 
   // ===== Load data =====
   const loadCustomers = useCallback(async () => {
     try {
       const res = await fetchWithAuth("/api/vat/customers");
-      setCustomers(Array.isArray(await res.json()) ? await res.json() : []);
+      const data = await res.json(); setCustomers(Array.isArray(data) ? data : []);
     } catch { setCustomers([]); }
   }, []);
+
+  const handleManualCreate = async (customerId: number) => {
+    setManualCreateLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/vat/records/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: recordMonth, customer_id: customerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "生成失败"); return; }
+      setShowManualCreate(false);
+      setManualCreateSearch("");
+      loadRecords(); loadDashboard();
+    } catch { setError("生成失败"); }
+    finally { setManualCreateLoading(false); }
+  };
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -201,7 +220,7 @@ export default function VatPage() {
   const loadReconciliations = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`/api/vat/reconciliation?month=${reconMonth}`);
-      setReconciliations(Array.isArray(await res.json()) ? await res.json() : []);
+      const data = await res.json(); setReconciliations(Array.isArray(data) ? data : []);
     } catch { setReconciliations([]); }
   }, [reconMonth]);
 
@@ -303,6 +322,14 @@ export default function VatPage() {
   };
 
   // ===== Filter records for dashboard click =====
+  const enabledCustomers = useMemo(() =>
+    customers.filter(c => c.status === "启用"), [customers]);
+
+  const filteredEnabledCustomers = useMemo(() =>
+    enabledCustomers.filter(c =>
+      !manualCreateSearch || c.company_name.toLowerCase().includes(manualCreateSearch.toLowerCase())
+    ), [enabledCustomers, manualCreateSearch]);
+
   const filteredRecords = useMemo(() => {
     if (!filterBy) return records;
     if (filterBy === "totalRecords") return records;
@@ -521,6 +548,9 @@ export default function VatPage() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-medium">本月申报</h2>
+              <Button size="xs" variant="outline" onClick={() => setShowManualCreate(true)}>
+                <Plus className="size-3 mr-1" />手动新建
+              </Button>
               {filterBy && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-xs text-[var(--primary)]">
                   {DASHBOARD_CARDS.find(c => c.key === filterBy)?.label || filterBy}
@@ -548,6 +578,45 @@ export default function VatPage() {
               </Button>
               <Button size="xs" variant="ghost" onClick={() => setSelectedIds(new Set())}><X className="size-3" /></Button>
             </div>
+          )}
+
+          {/* 手动新建弹窗 */}
+          {showManualCreate && (
+            <>
+              <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={() => { setShowManualCreate(false); setManualCreateSearch(""); }} />
+              <div className="fixed inset-0 z-50 flex items-center justify-center">
+                <div className="w-full max-w-sm rounded-xl border bg-[var(--background)] shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-medium">手动新建申报记录</h3>
+                    <button onClick={() => { setShowManualCreate(false); setManualCreateSearch(""); }}
+                      className="rounded-md p-1 hover:bg-[var(--muted)]"><X className="size-4" /></button>
+                  </div>
+                  <p className="text-xs text-[var(--muted-foreground)] mb-3">选择客户，为 {recordMonth} 生成申报记录</p>
+                  <input
+                    className="w-full rounded border px-3 py-2 text-sm mb-3"
+                    placeholder="搜索启用客户..."
+                    value={manualCreateSearch}
+                    onChange={e => setManualCreateSearch(e.target.value)}
+                    autoFocus
+                  />
+                  <div className="max-h-48 overflow-y-auto rounded border">
+                    {filteredEnabledCustomers.length === 0 ? (
+                      <p className="px-3 py-4 text-sm text-center text-[var(--muted-foreground)]">
+                        {enabledCustomers.length === 0 ? "没有启用的客户" : "无匹配结果"}
+                      </p>
+                    ) : filteredEnabledCustomers.map(c => (
+                      <button key={c.id}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-[var(--muted)] transition-colors border-b last:border-b-0 flex items-center justify-between"
+                        onClick={() => handleManualCreate(c.id)}
+                        disabled={manualCreateLoading}>
+                        <span>{c.company_name}</span>
+                        {c.tax_id && <span className="text-xs text-[var(--muted-foreground)]">{c.tax_id}</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           <div className="rounded-lg border overflow-hidden">

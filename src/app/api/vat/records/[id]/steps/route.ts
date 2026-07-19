@@ -54,7 +54,7 @@ export async function PATCH(
   db.prepare(`UPDATE vat_record_steps SET ${updates.join(", ")} WHERE id = ? AND record_id = ?`).run(...values);
 
   // Sync record progress
-  const steps = db.prepare("SELECT status FROM vat_record_steps WHERE record_id = ? ORDER BY step_order").all(id) as { status: string }[];
+  const steps = db.prepare("SELECT status, step_name FROM vat_record_steps WHERE record_id = ? ORDER BY step_order").all(id) as { status: string; step_name: string }[];
   const allDone = steps.every(s => s.status === "已完成");
   if (steps.length > 0 && allDone) {
     db.prepare("UPDATE vat_records SET progress = '归档完成', updated_at = datetime('now') WHERE id = ?").run(id);
@@ -62,7 +62,7 @@ export async function PATCH(
     // Find current active step
     const activeStep = steps.find(s => s.status !== "已完成");
     if (activeStep) {
-      db.prepare("UPDATE vat_records SET progress = ?, updated_at = datetime('now') WHERE id = ?").run(activeStep.status, id);
+      db.prepare("UPDATE vat_records SET progress = ?, updated_at = datetime('now') WHERE id = ?").run((activeStep as any).step_name || activeStep.status, id);
     }
   }
 
