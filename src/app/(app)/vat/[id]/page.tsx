@@ -7,9 +7,12 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl } from "@/lib/utils";
 import { StepTimer } from "@/components/step-timer";
-import { ArrowLeft, CheckCircle2, Clock, Timer, RotateCcw, Paperclip, MessageSquare, X, Loader2, AlertCircle, FileText, Download, Eye, Image, Upload } from "lucide-react";
+import {
+  ArrowLeft, CheckCircle2, Clock, RotateCcw, Paperclip,
+  MessageSquare, X, Loader2, Upload, Undo2, AlertTriangle, Ban, PauseCircle
+} from "lucide-react";
 
-// Types
+// ===== Types =====
 interface VatStep {
   id: number; record_id: number; step_name: string; step_order: number;
   status: string; assignee: string; notes: string; payment_status: string;
@@ -25,15 +28,10 @@ interface VatRecordDetail {
   steps: VatStep[];
 }
 
-const DEFAULT_ASSIGNEES: Record<number, string> = {
-  1: "Eve", 2: "Eve", 3: "Eve",
-  4: "Pop", 5: "Pop", 6: "Pop",
-};
-
 const PAYMENT_STATUSES = [
-  { value: "通知客户付款", label: "通知客户付款", color: "bg-[color-mix(in_oklch,var(--warning),var(--background)_20%)] text-[var(--warning-foreground)]" },
-  { value: "已付款", label: "已付款", color: "bg-[var(--success)] text-[var(--success-foreground)]" },
-  { value: "逾期未付", label: "逾期未付", color: "bg-[var(--destructive)] text-[var(--destructive-foreground)]" },
+  { value: "通知客户付款", label: "通知客户付款" },
+  { value: "已付款", label: "已付款" },
+  { value: "逾期未付", label: "逾期未付" },
 ];
 
 export default function VatRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,24 +44,29 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Step notes
   const [stepNotes, setStepNotes] = useState<Record<number, VatStepNote[]>>({});
   const [newNotes, setNewNotes] = useState<Record<number, string>>({});
-  const [showNotes, setShowNotes] = useState<Record<number, boolean>>({});
+  const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
 
-  // File upload
   const [stepUploading, setStepUploading] = useState<Record<number, boolean>>({});
   const [stepFileNames, setStepFileNames] = useState<Record<number, string>>({});
   const [stepUploadErrors, setStepUploadErrors] = useState<Record<number, string>>({});
 
-  // Step actions
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
-  const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
+  const [editingAssignee, setEditingAssignee] = useState<number | null>(null);
+  const [employeeList, setEmployeeList] = useState<string[]>([]);
 
-  const reload = useCallback(() => setRefreshKey(k => k + 1), []);
   const [refreshKey, setRefreshKey] = useState(0);
+  const reload = useCallback(() => setRefreshKey(k => k + 1), []);
 
-  // Load record
+  // 加载员工列表
+  useEffect(() => {
+    fetchWithAuth("/api/employees").then(r => r.json())
+      .then((data: any[]) => setEmployeeList(data.map(e => e.name).filter(Boolean)))
+      .catch(() => {});
+  }, []);
+
+  // 加载记录
   useEffect(() => {
     let ignore = false;
     async function run() {
@@ -76,7 +79,6 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
         const sts = data.steps || [];
         setSteps(sts);
 
-        // Load notes for all steps
         const notesMap: Record<number, VatStepNote[]> = {};
         await Promise.all(sts.map(async (s: VatStep) => {
           try {
@@ -95,12 +97,7 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
     return () => { ignore = true; };
   }, [id, refreshKey]);
 
-  const toggleExpand = (stepId: number) => {
-    setExpandedSteps(p => ({ ...p, [stepId]: !p[stepId] }));
-    setShowNotes(p => ({ ...p, [stepId]: true }));
-  };
-
-  // Step actions
+  // ===== 步骤操作 =====
   const handleStart = async (stepId: number) => {
     try {
       const res = await fetchWithAuth(`/api/vat/records/${id}/steps`, {
@@ -128,15 +125,6 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({ step_id: stepId, status: "已完成" }),
       });
       if (!res.ok) { const e = await res.json(); setError(e.error || "完成失败"); return; }
-      // Auto-start next step
-      const idx = steps.findIndex(s => s.id === stepId);
-      const next = idx >= 0 && idx < steps.length - 1 ? steps[idx + 1] : null;
-      if (next && next.status === "待处理") {
-        await fetchWithAuth(`/api/vat/records/${id}/steps`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step_id: next.id, status: "进行中" }),
-        });
-      }
       reload();
     } catch (e) { setError(e instanceof Error ? e.message : "完成失败"); }
   };
@@ -150,6 +138,17 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
       if (!res.ok) { const e = await res.json(); setError(e.error || "撤回失败"); return; }
       reload();
     } catch (e) { setError(e instanceof Error ? e.message : "撤回失败"); }
+  };
+
+  const handleBlock = async (stepId: number) => {
+    try {
+      const res = await fetchWithAuth(`/api/vat/records/${id}/steps`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId, status: "阻塞" }),
+      });
+      if (!res.ok) { const e = await res.json(); setError(e.error || "操作失败"); return; }
+      reload();
+    } catch (e) { setError(e instanceof Error ? e.message : "操作失败"); }
   };
 
   const handleAddNote = async (stepId: number) => {
@@ -175,54 +174,37 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
     } catch { setError("删除备注失败"); }
   };
 
-  // File upload for steps
   const handleStepUpload = async (stepId: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setStepUploading(p => ({ ...p, [stepId]: true }));
-    setStepUploadErrors(p => ({ ...p, [stepId]: "" }));
     setStepFileNames(p => ({ ...p, [stepId]: file.name }));
+    setStepUploadErrors(p => ({ ...p, [stepId]: "" }));
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetchWithAuth("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "上传失败");
-      }
-      const uploadResult = await res.json();
-      const fileUrl = uploadResult.url || uploadResult.file_url || "";
-      // Add as a note with file link
-      const noteContent = `📎 ${file.name}\n` + (fileUrl ? `${window.location.origin}/api/files/${fileUrl}` : "");
-      await fetchWithAuth(`/api/vat/records/${id}/steps/${stepId}/notes`, {
+      const fd = new FormData(); fd.append("file", file);
+      const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      if (!ur.ok) throw new Error("上传失败");
+      const { url } = await ur.json();
+      const note = `📎 ${file.name}\n${window.location.origin}/api/files/${url}`;
+      const nr = await fetchWithAuth(`/api/vat/records/${id}/steps/${stepId}/notes`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: noteContent, created_by: user?.name || "系统" }),
+        body: JSON.stringify({ content: note, created_by: user?.name || "系统" }),
       });
-      const notes = await fetchWithAuth(`/api/vat/records/${id}/steps/${stepId}/notes`).then(r => r.json());
-      setStepNotes(p => ({ ...p, [stepId]: notes }));
+      if (!nr.ok) throw new Error("保存失败");
       setStepUploadErrors(p => ({ ...p, [stepId]: "" }));
+      reload();
     } catch (err) {
-      setStepUploadErrors(p => ({ ...p, [stepId]: err instanceof Error ? err.message : "上传失败" }));
+      const msg = err instanceof Error ? err.message : String(err);
+      setStepUploadErrors(p => ({ ...p, [stepId]: msg }));
+      setError(msg);
     } finally {
       setStepUploading(p => ({ ...p, [stepId]: false }));
       e.target.value = "";
     }
   };
 
-  // Payment status update for step 5
-  const handlePaymentStatus = async (stepId: number, payment_status: string) => {
-    try {
-      const res = await fetchWithAuth(`/api/vat/records/${id}/steps`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step_id: stepId, payment_status }),
-      });
-      if (!res.ok) { const e = await res.json(); setError(e.error || "更新失败"); return; }
-      reload();
-    } catch (e) { setError(e instanceof Error ? e.message : "更新失败"); }
-  };
-
-  // Change assignee
   const handleAssign = async (stepId: number, newAssignee: string) => {
+    setEditingAssignee(null);
     try {
       const res = await fetchWithAuth(`/api/vat/records/${id}/steps`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -231,6 +213,10 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
       if (!res.ok) { const e = await res.json(); setError(e.error || "修改失败"); return; }
       reload();
     } catch (e) { setError(e instanceof Error ? e.message : "修改失败"); }
+  };
+
+  const toggleExpand = (stepId: number) => {
+    setExpandedSteps(p => ({ ...p, [stepId]: !p[stepId] }));
   };
 
   if (loading) {
@@ -252,11 +238,11 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
 
   if (!record) return null;
 
-  const allDone = steps.length > 0 && steps.every(s => s.status === "已完成");
   const completedCount = steps.filter(s => s.status === "已完成").length;
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Error banner */}
       {error && (
         <div className="rounded-lg border border-[var(--destructive)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-4 py-3 text-sm text-[var(--destructive)] flex items-center justify-between">
           <span>{error}</span>
@@ -265,206 +251,234 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.back()}><ArrowLeft className="size-4" /></Button>
-        <div className="flex-1">
-          <h1 className="font-display text-2xl font-light tracking-tight">{record.company_name}</h1>
-          <div className="mt-1 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
-            <span>{record.year_month}</span>
-            <span>· 税号: {record.tax_id || "—"}</span>
-            <span>· {completedCount}/{steps.length} 已完成</span>
-            {allDone && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[var(--success)] text-[var(--success-foreground)]">已归档</span>}
+      <div>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回"><ArrowLeft className="size-4" /></Button>
+          <div className="flex-1">
+            <h1 className="font-display text-2xl font-light tracking-tight">{record.company_name}</h1>
+            <div className="mt-1 flex items-center gap-2 text-sm text-[var(--muted-foreground)] flex-wrap">
+              <span>{record.year_month}</span>
+              <span>· 税号: {record.tax_id || "—"}</span>
+              <span>· {completedCount}/{steps.length} 已完成</span>
+              {completedCount === steps.length && (
+                <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[var(--success)] text-[var(--success-foreground)]">已归档</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Step list */}
-      <div className="flex flex-col gap-3">
-        {steps.map((step) => {
-          const isActive = step.status === "进行中";
-          const isDone = step.status === "已完成";
-          const isPending = step.status === "待处理";
-          const expanded = expandedSteps[step.id] || false;
-          const notes = stepNotes[step.id] || [];
-          const prevStep = steps[step.step_order - 2]; // previous step (0-indexed)
-          const prevCompleted = prevStep?.completed_at || null;
+      {/* Step list — 时间轴样式，对标订单详情页 */}
+      {steps.length === 0 ? (
+        <p className="text-sm text-[var(--muted-foreground)]">暂无步骤</p>
+      ) : (
+        <div className="flex flex-col gap-0">
+          {steps.map((step, i) => {
+            const notes = stepNotes[step.id] || [];
+            const isDone = step.status === "已完成";
+            const isActive = step.status === "进行中";
+            const isPending = step.status === "待处理";
+            const hasNotes = notes.length > 0;
 
-          return (
-            <div key={step.id}
-              className={cn(
-                "rounded-lg border transition-colors",
-                isActive ? "border-[var(--primary)] bg-[color-mix(in_oklch,var(--primary),var(--background)_96%)]" :
-                isDone ? "border-[var(--border)] bg-[var(--card)] opacity-80" :
-                "border-[var(--border)] bg-[var(--card)]"
-              )}
-            >
-              {/* Step header - always visible */}
-              <div
-                className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-                onClick={() => toggleExpand(step.id)}
-              >
-                {/* Status icon */}
-                {isDone ? <CheckCircle2 className="size-5 text-[var(--success)] shrink-0" /> :
-                 isActive ? <div className="relative shrink-0"><Timer className="size-5 text-emerald-500" /><span className="absolute -right-1 -top-1 flex size-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex size-2 rounded-full bg-emerald-500" /></span></div> :
-                 <Clock className="size-5 text-[var(--muted-foreground)]/40 shrink-0" />}
+            // 是否阻塞：前一步没完成（第一步除外）
+            const prevStep = i > 0 ? steps[i - 1] : null;
+            const prevDone = !prevStep || prevStep.status === "已完成";
+            const canStart = isPending && (i === 0 || prevDone);
+            const canComplete = isActive && (i === 0 || prevDone);
 
-                {/* Step info */}
-                <div className="flex-1 min-w-0">
+            return (
+              <div key={step.id} className="flex gap-3">
+                {/* Timeline dot + line */}
+                <div className="flex flex-col items-center">
+                  <div className={cn(
+                    "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+                    isDone && "bg-[var(--success)] text-[var(--success-foreground)]",
+                    isActive && "bg-[var(--primary)] text-[var(--primary-foreground)] ring-2 ring-[var(--ring)]/30",
+                    isPending && "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                  )}>
+                    {isDone ? "✓" : step.step_order}
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={cn("w-px flex-1 min-h-[20px]", isDone ? "bg-[var(--success)]" : "bg-[var(--border)]")} />
+                  )}
+                </div>
+
+                {/* Step card */}
+                <div className="pb-5 flex-1">
+                  {/* Step header line */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={cn("text-sm font-medium", isDone && "line-through text-[var(--muted-foreground)]")}>
                       {step.step_order}. {step.step_name}
                     </span>
+
                     {/* Payment status for step 5 */}
                     {step.step_order === 5 && step.payment_status && (
-                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                        PAYMENT_STATUSES.find(p => p.value === step.payment_status)?.color || ""
+                      <span className={cn(
+                        "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                        step.payment_status === "已付款" ? "bg-[var(--success)] text-[var(--success-foreground)]" :
+                        step.payment_status === "逾期未付" ? "bg-[var(--destructive)] text-[var(--destructive-foreground)]" :
+                        "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
                       )}>
                         {step.payment_status}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-[var(--muted-foreground)]">
-                    <span>{step.assignee || "—"}</span>
-                    <StepTimer
-                      created_at={step.created_at}
-                      started_at={step.started_at}
-                      completed_at={step.completed_at}
-                      status={step.status}
-                      prev_completed_at={prevCompleted}
-                    />
-                    {notes.length > 0 && (
-                      <span className="inline-flex items-center gap-1">
-                        <MessageSquare className="size-3" />{notes.length}
-                      </span>
-                    )}
-                  </div>
-                </div>
 
-                {/* Quick actions */}
-                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                  {isPending && (
-                    <Button size="xs" variant="ghost" onClick={() => handleStart(step.id)} className="text-xs">
-                      开始
-                    </Button>
-                  )}
-                  {isActive && (
-                    <>
-                      {confirmingStepId === step.id ? (
-                        <div className="flex items-center gap-1">
-                          <input className="w-32 rounded border px-2 py-1 text-xs" placeholder="备注(可选)"
-                            value={newNotes[step.id] || ""}
-                            onChange={e => setNewNotes(p => ({ ...p, [step.id]: e.target.value }))}
-                            onKeyDown={e => { if (e.key === "Enter") handleConfirmComplete(step.id); if (e.key === "Escape") setConfirmingStepId(null); }}
-                            autoFocus
-                          />
-                          <Button size="xs" onClick={() => handleConfirmComplete(step.id)} className="text-xs bg-[var(--success)] text-[var(--success-foreground)]">确认</Button>
-                          <Button size="xs" variant="ghost" onClick={() => setConfirmingStepId(null)}><X className="size-3" /></Button>
-                        </div>
-                      ) : (
-                        <Button size="xs" variant="ghost" onClick={() => setConfirmingStepId(step.id)} className="text-xs">
-                          <CheckCircle2 className="size-3 mr-1" />标记完成
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  {isDone && (
-                    <Button size="xs" variant="ghost" onClick={() => handleRollback(step.id)} className="text-xs text-[var(--muted-foreground)]">
-                      <RotateCcw className="size-3 mr-1" />撤回
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Expanded content */}
-              {expanded && (
-                <div className="border-t px-4 py-3 flex flex-col gap-3 bg-[var(--card)]">
-                  {/* Assignee */}
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-[var(--muted-foreground)]">负责人:</span>
-                    <input
-                      className="rounded border px-2 py-1 text-xs w-28"
-                      value={step.assignee || ""}
-                      onChange={e => handleAssign(step.id, e.target.value)}
-                      onBlur={e => { if (e.target.value !== step.assignee) handleAssign(step.id, e.target.value); }}
-                      placeholder="输入名字"
-                    />
-                    {step.step_order <= 3 && step.assignee !== DEFAULT_ASSIGNEES[step.step_order] && (
-                      <Button size="xs" variant="ghost" className="text-[0.6rem]" onClick={() => handleAssign(step.id, DEFAULT_ASSIGNEES[step.step_order])}>
-                        重置为 {DEFAULT_ASSIGNEES[step.step_order]}
-                      </Button>
-                    )}
-                    {step.step_order >= 4 && step.assignee !== DEFAULT_ASSIGNEES[step.step_order] && (
-                      <Button size="xs" variant="ghost" className="text-[0.6rem]" onClick={() => handleAssign(step.id, DEFAULT_ASSIGNEES[step.step_order])}>
-                        重置为 {DEFAULT_ASSIGNEES[step.step_order]}
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Payment status for step 5 */}
-                  {step.step_order === 5 && (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-[var(--muted-foreground)]">付款状态:</span>
-                      <div className="flex gap-1">
-                        {PAYMENT_STATUSES.map(ps => (
-                          <button key={ps.value}
-                            onClick={() => handlePaymentStatus(step.id, ps.value)}
-                            className={cn(
-                              "rounded px-2 py-1 text-xs transition-colors",
-                              step.payment_status === ps.value
-                                ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                                : "border hover:bg-[var(--muted)]"
-                            )}
-                          >
-                            {ps.label}
-                          </button>
+                  {/* Assignee + timer */}
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--muted-foreground)] flex-wrap">
+                    {/* Assignee — clickable to change */}
+                    {editingAssignee === step.id ? (
+                      <select
+                        className="rounded border px-1.5 py-0.5 text-xs"
+                        value={step.assignee || ""}
+                        onChange={e => handleAssign(step.id, e.target.value)}
+                        onBlur={() => setEditingAssignee(null)}
+                        autoFocus
+                      >
+                        <option value="">—</option>
+                        {employeeList.filter(n => n).map(name => (
+                          <option key={name} value={name}>{name}</option>
                         ))}
-                      </div>
-                    </div>
-                  )}
+                      </select>
+                    ) : (
+                      <button
+                        onClick={() => setEditingAssignee(step.id)}
+                        className="hover:text-[var(--primary)] hover:underline cursor-pointer"
+                      >
+                        {step.assignee || "未分配"}
+                      </button>
+                    )}
+                  </div>
 
-                  {/* File upload */}
-                  <div className="flex items-center gap-2 text-xs">
+                  {/* Action buttons + timer */}
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                    {/* 待处理 */}
+                    {isPending && !canStart && (
+                      <span className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] opacity-50 cursor-not-allowed select-none">需先完成前一步</span>
+                    )}
+                    {isPending && canStart && (
+                      <button onClick={() => handleStart(step.id)}
+                        className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_70%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-2 py-1 text-xs text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_85%)] transition-colors">
+                        开始
+                      </button>
+                    )}
+
+                    {/* 进行中 */}
+                    {isActive && (
+                      <>
+                        {confirmingStepId === step.id ? (
+                          <>
+                            <input
+                              className="w-32 rounded border px-2 py-0.5 text-xs"
+                              placeholder="备注(可选)"
+                              value={newNotes[step.id] || ""}
+                              onChange={e => setNewNotes(p => ({ ...p, [step.id]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === "Enter") handleConfirmComplete(step.id); if (e.key === "Escape") setConfirmingStepId(null); }}
+                              autoFocus
+                            />
+                            <button onClick={() => handleConfirmComplete(step.id)}
+                              className="rounded px-2 py-0.5 text-xs bg-[var(--success)] text-[var(--success-foreground)] hover:bg-[color-mix(in_oklch,var(--success),var(--foreground)_20%)] transition-colors">确认完成</button>
+                            <button onClick={() => { setConfirmingStepId(null); setNewNotes(p => ({ ...p, [step.id]: "" })); }}
+                              className="rounded px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">取消</button>
+                          </>
+                        ) : (
+                          <>
+                            {canComplete ? (
+                              <button onClick={() => setConfirmingStepId(step.id)}
+                                className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
+                            ) : (
+                              <span className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] opacity-50 cursor-not-allowed select-none">需先完成前一步</span>
+                            )}
+                            <button onClick={() => handleBlock(step.id)}
+                              className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">
+                              <PauseCircle className="size-3 mr-0.5" />标记阻塞
+                            </button>
+                          </>
+                        )}
+                        <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status}
+                          prev_completed_at={i > 0 ? steps[i - 1].completed_at : null} started_at={step.started_at} className="ml-1" />
+                      </>
+                    )}
+
+                    {/* 已完成 / 阻塞 */}
+                    {(isDone && (
+                      <div className="flex items-center gap-2">
+                        <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成"
+                          prev_completed_at={i > 0 ? steps[i - 1].completed_at : null} started_at={step.started_at} />
+                        {step.completed_at && (
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            {step.completed_at.slice(0, 16)}
+                          </span>
+                        )}
+                        <button onClick={() => handleRollback(step.id)}
+                          className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
+                          <Undo2 className="size-3" />撤回
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* File upload button */}
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                     <label className={cn(
-                      "inline-flex items-center gap-1 cursor-pointer rounded px-2 py-1 text-xs transition-colors",
-                      stepUploading[step.id] ? "opacity-50" : "border hover:bg-[var(--muted)]"
+                      "shrink-0 cursor-pointer rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors inline-flex items-center gap-1",
+                      stepUploading[step.id] && "opacity-50 pointer-events-none"
                     )}>
-                      {stepUploading[step.id] ? (
-                        <><Loader2 className="size-3 animate-spin" />{stepFileNames[step.id] || "上传中..."}</>
-                      ) : (
-                        <><Upload className="size-3" />上传附件</>
-                      )}
-                      <input type="file" className="hidden" onChange={e => handleStepUpload(step.id, e)} disabled={stepUploading[step.id]} />
+                      <Upload className="size-3" />
+                      {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
+                      <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx"
+                        onChange={e => handleStepUpload(step.id, e)} disabled={stepUploading[step.id]} />
                     </label>
                     {stepUploadErrors[step.id] && (
-                      <span className="text-[var(--destructive)]">{stepUploadErrors[step.id]}</span>
+                      <span className="text-xs text-[var(--destructive)]">{stepUploadErrors[step.id]}</span>
                     )}
                   </div>
 
-                  {/* Notes area */}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[var(--muted-foreground)]">备注:</span>
-                    </div>
-                    {notes.length > 0 && (
-                      <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
-                        {notes.map(note => {
-                          // Check if this note is a file link
-                          const fileLinkMatch = note.content.match(/📎\s+(.+?)\n([\s\S]+)/);
-                          if (fileLinkMatch) {
-                            const fileName = fileLinkMatch[1];
-                            const url = fileLinkMatch[2].trim();
-                            return (
-                              <div key={note.id} className="flex items-center justify-between rounded bg-[var(--muted)] px-3 py-2 text-xs group">
-                                <div className="flex items-center gap-2">
-                                  <Paperclip className="size-3 text-[var(--muted-foreground)]" />
-                                  <span>{fileName}</span>
-                                  <a href={fileUrl(url)} target="_blank" rel="noopener noreferrer"
-                                    className="text-[var(--primary)] hover:underline flex items-center gap-1">
-                                    <Eye className="size-3" />查看
-                                  </a>
+                  {/* Notes toggle */}
+                  <button onClick={() => toggleExpand(step.id)}
+                    className="mt-1 flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
+                    <MessageSquare className="size-3" />
+                    {hasNotes && <span className="rounded-full bg-[var(--muted)] px-1.5 text-[0.65rem]">{notes.length}</span>}
+                    {expandedSteps[step.id] ? "收起" : "备注"}
+                  </button>
+
+                  {/* Expanded notes area */}
+                  {expandedSteps[step.id] && (
+                    <div className="mt-3 space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                      {/* Notes list */}
+                      {notes.length > 0 && (
+                        <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+                          {notes.map(note => {
+                            const fileMatch = note.content.match(/📎\s+(.+?)\n([\s\S]+)/);
+                            if (fileMatch) {
+                              const fileName = fileMatch[1];
+                              const url = fileMatch[2].trim();
+                              const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+                              return (
+                                <div key={note.id} className="flex items-center justify-between rounded bg-[var(--muted)] px-3 py-2 text-xs group">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <Paperclip className="size-3 text-[var(--muted-foreground)] shrink-0" />
+                                    <span className="truncate">{fileName}</span>
+                                    <a href={fileUrl(url)} target="_blank" rel="noopener noreferrer"
+                                      className="text-[var(--primary)] hover:underline shrink-0">
+                                      {isImg ? "预览" : "查看"}
+                                    </a>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-[var(--muted-foreground)]">{note.created_by} · {note.created_at?.slice(0, 16)}</span>
+                                    <button onClick={() => handleDeleteNote(step.id, note.id)}
+                                      className="opacity-0 group-hover:opacity-100 text-[var(--destructive)] hover:text-[var(--destructive)] transition-opacity">
+                                      <X className="size-3" />
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[var(--muted-foreground)]">{note.created_by} · {note.created_at?.slice(0, 16)}</span>
+                              );
+                            }
+                            return (
+                              <div key={note.id} className="flex items-start justify-between rounded bg-[var(--muted)] px-3 py-2 text-xs group">
+                                <span className="flex-1 whitespace-pre-wrap break-all">{note.content}</span>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  <span className="text-[var(--muted-foreground)] whitespace-nowrap">{note.created_by} · {note.created_at?.slice(0, 16)}</span>
                                   <button onClick={() => handleDeleteNote(step.id, note.id)}
                                     className="opacity-0 group-hover:opacity-100 text-[var(--destructive)] hover:text-[var(--destructive)] transition-opacity">
                                     <X className="size-3" />
@@ -472,43 +486,62 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
                                 </div>
                               </div>
                             );
-                          }
-                          return (
-                            <div key={note.id} className="flex items-center justify-between rounded bg-[var(--muted)] px-3 py-2 text-xs group">
-                              <span className="flex-1">{note.content}</span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[var(--muted-foreground)]">{note.created_by} · {note.created_at?.slice(0, 16)}</span>
-                                <button onClick={() => handleDeleteNote(step.id, note.id)}
-                                  className="opacity-0 group-hover:opacity-100 text-[var(--destructive)] hover:text-[var(--destructive)] transition-opacity">
-                                  <X className="size-3" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                          })}
+                        </div>
+                      )}
 
-                    {/* Add note */}
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="flex-1 rounded border px-2 py-1.5 text-xs"
-                        placeholder="添加备注..."
-                        value={newNotes[step.id] || ""}
-                        onChange={e => setNewNotes(p => ({ ...p, [step.id]: e.target.value }))}
-                        onKeyDown={e => { if (e.key === "Enter") handleAddNote(step.id); }}
-                      />
-                      <Button size="xs" variant="ghost" onClick={() => handleAddNote(step.id)}>
-                        <MessageSquare className="size-3" />
-                      </Button>
+                      {/* Add note input */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="flex-1 rounded border px-2 py-1.5 text-xs"
+                          placeholder="添加备注..."
+                          value={newNotes[step.id] || ""}
+                          onChange={e => setNewNotes(p => ({ ...p, [step.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === "Enter") handleAddNote(step.id); }}
+                        />
+                        <Button size="xs" variant="ghost" onClick={() => handleAddNote(step.id)}>
+                          <MessageSquare className="size-3" />
+                        </Button>
+                      </div>
+
+                      {/* Payment status toggle (step 5 only) */}
+                      {step.step_order === 5 && (
+                        <div className="border-t pt-2.5 mt-1">
+                          <p className="text-xs text-[var(--muted-foreground)] mb-1.5">付款状态:</p>
+                          <div className="flex gap-1.5">
+                            {PAYMENT_STATUSES.map(ps => (
+                              <button key={ps.value}
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetchWithAuth(`/api/vat/records/${id}/steps`, {
+                                      method: "PATCH", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ step_id: step.id, payment_status: ps.value }),
+                                    });
+                                    if (!res.ok) { const e = await res.json(); setError(e.error || "更新失败"); return; }
+                                    reload();
+                                  } catch (e) { setError(e instanceof Error ? e.message : "更新失败"); }
+                                }}
+                                className={cn(
+                                  "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                                  step.payment_status === ps.value
+                                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                                    : "border hover:bg-[var(--muted)]"
+                                )}
+                              >
+                                {ps.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
