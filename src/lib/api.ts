@@ -221,7 +221,11 @@ export async function updateStep(orderId: string, stepId: number, data: { status
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ step_id: stepId, ...data }),
   });
-  if (!res.ok) throw new Error("更新步骤失败");
+  if (!res.ok) {
+    let msg = "更新步骤失败";
+    try { const err = await res.json(); if (err?.error) msg = err.error; } catch {}
+    throw new Error(msg);
+  }
   return res.json() as Promise<OrderStep>;
 }
 
