@@ -239,7 +239,7 @@ export default function VatPage() {
     const refetch = async () => {
       const res = await fetchWithAuth(`/api/vat/records?month=${recordMonth}`);
       const data = await res.json();
-      setRecords(Array.isArray(data) ? data : []);
+      const arr = Array.isArray(data.records) ? data.records : (Array.isArray(data) ? data : []); setRecords(arr);
     };
     refetch();
   }, [filterBy, activeTab, recordMonth]);
