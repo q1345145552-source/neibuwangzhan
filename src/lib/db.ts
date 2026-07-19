@@ -669,9 +669,13 @@ function initTables(database: Database.Database) {
       status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
       approved_by TEXT DEFAULT '',
       approved_at TEXT,
+      images TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // leave_requests 迁移：补 images 列
+  try { database.exec("ALTER TABLE leave_requests ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
 
   // 奖惩制度 - 积分规则表
   database.exec(`
