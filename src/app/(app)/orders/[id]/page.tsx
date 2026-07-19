@@ -275,7 +275,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         await updateStep(id, next.id, { status: "进行中" });
       }
       reload();
-    } catch (e) { console.error("[订单] 步骤完成失败", e); setError("更新失败"); }
+    } catch (e) { console.error("[订单] 步骤完成失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
   };
 
   // 步骤撤回
@@ -283,7 +283,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       await updateStep(id, stepId, { status: "进行中" });
       reload();
-    } catch (e) { console.error("[订单] 步骤撤回失败", e); setError("撤回失败"); }
+    } catch (e) { console.error("[订单] 步骤撤回失败", e); setError(e instanceof Error ? e.message : "撤回失败"); }
   };
 
   // 费用保存
@@ -342,7 +342,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       await updateStep(id, stepId, { status: newStatus });
       reload();
-    } catch (e) { console.error("[订单] 步骤状态修改失败", e); setError("更新失败"); }
+    } catch (e) { console.error("[订单] 步骤状态修改失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
   };
 
   // 编辑订单
@@ -426,6 +426,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="flex flex-col gap-6">
+      {error && (
+        <div className="rounded-lg border border-[var(--destructive)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-4 py-3 text-sm text-[var(--destructive)] flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="ml-3 text-[var(--destructive)] hover:opacity-70 text-lg leading-none">&times;</button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回订单列表"><ArrowLeft className="size-4" aria-hidden="true" /></Button>
