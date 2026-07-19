@@ -98,16 +98,27 @@ const warningBadge: Record<string, string> = {
 export default function VatPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("customers");
-
-  // 从详情页返回时读取 ?tab=records 切换到对应标签
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const t = p.get("tab");
-    if (t && ["customers","records","history","reconciliation","summary"].includes(t)) {
-      setActiveTab(t);
+  const [activeTab, setActiveTab] = useState(() => {
+    // 1. URL 参数优先（从详情页返回）
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      const t = p.get("tab");
+      if (t && ["customers","records","history","reconciliation","summary"].includes(t)) return t;
     }
-  }, []);
+    // 2. 本地存储记住上次位置
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("vatActiveTab");
+      if (saved && ["customers","records","history","reconciliation","summary"].includes(saved)) return saved;
+    }
+    // 3. 默认
+    return "customers";
+  });
+
+  // 切换标签时存入本地存储 + 同步 URL 参数
+  const switchTab = (tab: string) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") localStorage.setItem("vatActiveTab", tab);
+  };
   const [filterBy, setFilterBy] = useState<string | null>(null);
 
   // Customers
@@ -239,7 +250,7 @@ export default function VatPage() {
   // ===== Dashboard click → jump to records tab with filter =====
   const handleDashboardClick = (filterKey: string) => {
     setFilterBy(filterKey);
-    setActiveTab("records");
+    switchTab("records");
   };
 
   // ===== Customer CRUD =====
@@ -440,7 +451,7 @@ export default function VatPage() {
         {TABS.map(t => (
           <button
             key={t.key}
-            onClick={() => { setActiveTab(t.key); setFilterBy(null); }}
+            onClick={() => { switchTab(t.key); setFilterBy(null); }}
             className={cn(
               "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
               activeTab === t.key
@@ -856,10 +867,10 @@ export default function VatPage() {
                   { label: "总申报笔数", val: summaryData.grand.totalRecords, color: "" },
                   { label: "已归档", val: summaryData.grand.archivedRecords, color: "text-emerald-600" },
                   { label: "未完成", val: summaryData.grand.overdueRecords, color: "text-red-500" },
-                  { label: "VAT总额", val: `¥${summaryData.grand.totalVat.toLocaleString()}`, color: "" },
-                  { label: "已付税款", val: `¥${summaryData.grand.totalPaid.toLocaleString()}`, color: "text-emerald-600" },
-                  { label: "未付税款", val: `¥${summaryData.grand.totalUnpaid.toLocaleString()}`, color: "text-red-500" },
-                  { label: "罚款总额", val: `¥${summaryData.grand.totalFines.toLocaleString()}`, color: "text-red-500" },
+                  { label: "VAT总额", val: `¥${(summaryData.grand.totalVat || 0).toLocaleString()}`, color: "" },
+                  { label: "已付税款", val: `¥${(summaryData.grand.totalPaid || 0).toLocaleString()}`, color: "text-emerald-600" },
+                  { label: "未付税款", val: `¥${(summaryData.grand.totalUnpaid || 0).toLocaleString()}`, color: "text-red-500" },
+                  { label: "罚款总额", val: `¥${(summaryData.grand.totalFines || 0).toLocaleString()}`, color: "text-red-500" },
                 ].map(item => (
                   <div key={item.label} className="rounded-lg border p-3 text-center">
                     <div className="text-[0.6rem] uppercase text-[var(--muted-foreground)] mb-1">{item.label}</div>
@@ -893,10 +904,10 @@ export default function VatPage() {
                         <td className="px-3 py-3 text-center tabular-nums">{cust.totalRecords}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-emerald-600">{cust.archivedRecords}</td>
                         <td className="px-3 py-3 text-center tabular-nums text-red-500">{cust.overdueRecords}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">¥{cust.totalVat.toLocaleString()}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-emerald-600">¥{cust.totalPaid.toLocaleString()}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-red-500">¥{cust.totalUnpaid.toLocaleString()}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-red-500">{cust.totalFines > 0 ? `¥${cust.totalFines.toLocaleString()}` : "—"}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">¥{(cust.totalVat || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-emerald-600">¥{(cust.totalPaid || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-500">¥{(cust.totalUnpaid || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-500">{cust.totalFines > 0 ? `¥${(cust.totalFines || 0).toLocaleString()}` : "—"}</td>
                       </tr>
                     ))}
                     {/* Grand total row */}
@@ -905,10 +916,10 @@ export default function VatPage() {
                       <td className="px-3 py-3 text-center">{summaryData.grand.totalRecords}</td>
                       <td className="px-3 py-3 text-center">{summaryData.grand.archivedRecords}</td>
                       <td className="px-3 py-3 text-center">{summaryData.grand.overdueRecords}</td>
-                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalVat.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalPaid.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalUnpaid.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalFines.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{(summaryData.grand.totalVat || 0).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{(summaryData.grand.totalPaid || 0).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{(summaryData.grand.totalUnpaid || 0).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{(summaryData.grand.totalFines || 0).toLocaleString()}</td>
                     </tr>
                   </tbody>
                 </table>
