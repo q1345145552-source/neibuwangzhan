@@ -817,6 +817,37 @@ function initTables(database: Database.Database) {
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS vat_step_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      step_id INTEGER NOT NULL,
+      record_id INTEGER NOT NULL,
+      document_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('uploaded','pending'))
+    );
+
+    CREATE TABLE IF NOT EXISTS vat_record_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      file_url TEXT DEFAULT '',
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS vat_record_finances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'income' CHECK(type IN ('income','expense')),
+      amount REAL NOT NULL DEFAULT 0,
+      description TEXT DEFAULT '',
+      payment_method TEXT DEFAULT '',
+      slip_number TEXT DEFAULT '',
+      slip_file TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'paid' CHECK(status IN ('paid','pending','cancelled')),
+      currency TEXT DEFAULT 'CNY',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
 

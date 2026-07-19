@@ -61,6 +61,9 @@ interface StepTimelineProps {
   // Can the step be completed? (check prev step)
   canComplete?: (step: TimelineStep, prevStep: TimelineStep | null) => boolean;
 
+  // Hide per-step "开始" button — use top-level "开始任务" instead
+  hidePerStepStart?: boolean;
+
   // Optional extra content
   renderStepExtra?: (step: TimelineStep) => React.ReactNode;
   renderHeaderBadges?: (step: TimelineStep) => React.ReactNode;
@@ -72,6 +75,7 @@ export function StepTimeline({
   onStart, onComplete, onRollback, onBlock, onUpload, onAddNote, onDeleteNote, onAssigneeChange,
   canComplete,
   renderStepExtra, renderHeaderBadges, renderExpandedExtra,
+  hidePerStepStart = false,
 }: StepTimelineProps) {
   const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
@@ -231,7 +235,11 @@ export function StepTimeline({
                     ) : (
                       <>
                         {step.status === "待处理" ? (
-                          <button onClick={() => handleStart(step.id)} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-2 py-1 text-xs text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_85%)] transition-colors">开始</button>
+                          hidePerStepStart ? (
+                            <span className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)]">待开始</span>
+                          ) : (
+                            <button onClick={() => handleStart(step.id)} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-2 py-1 text-xs text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_85%)] transition-colors">开始</button>
+                          )
                         ) : (
                           <>
                             {canFinish ? (

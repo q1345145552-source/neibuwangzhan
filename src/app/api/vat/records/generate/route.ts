@@ -5,6 +5,16 @@ import { getDb } from "@/lib/db";
 const PROGRESS_STEPS = ["收资料", "Excel 计算", "发客户确认", "e-Filing 提交", "付款纳税", "归档完成"];
 const DEFAULT_ASSIGNEES: Record<number, string> = { 1: "Eve", 2: "Eve", 3: "Eve", 4: "Pop", 5: "Pop", 6: "Pop" };
 
+// 每步的默认文件清单
+const STEP_DOCS: Record<number, string[]> = {
+  1: ["公司文件", "税号文件", "上月申报表"],
+  2: ["计算表"],
+  3: ["客户确认函"],
+  4: ["e-Filing 申报截图"],
+  5: ["付款凭证"],
+  6: ["归档文件"],
+};
+
 function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, month: string): "created" | "exists" {
   const existing = db.prepare("SELECT id FROM vat_records WHERE customer_id = ? AND year_month = ?").get(customerId, month);
   if (existing) return "exists";
@@ -13,8 +23,20 @@ function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, m
   const recordId = result.lastInsertRowid;
   for (let i = 0; i < PROGRESS_STEPS.length; i++) {
     const order = i + 1;
-    db.prepare("INSERT INTO vat_record_steps (record_id, step_name, step_order, assignee) VALUES (?, ?, ?, ?)")
+    const stepResult = db.prepare("INSERT INTO vat_record_steps (record_id, step_name, step_order, assignee) VALUES (?, ?, ?, ?)")
       .run(recordId, PROGRESS_STEPS[i], order, DEFAULT_ASSIGNEES[order] || "");
+    const stepId = stepResult.lastInsertRowid;
+    // 生成该步骤的文件清单
+    const docs = STEP_DOCS[order] || [];
+    for (const docName of docs) {
+      db.prepare("INSERT INTO vat_step_documents (step_id, record_id, document_name, status) VALUES (?, ?, ?, 'pending')")
+        .run(stepId, recordId, docName);
+    }
+  }
+  // 同步创建对账记录
+  const existingRecon = db.prepare("SELECT id FROM vat_reconciliation WHERE customer_id = ? AND year_month = ?").get(customerId, month);
+  if (!existingRecon) {
+    db.prepare("INSERT INTO vat_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, 0, 0, 0)").run(customerId, month);
   }
   return "created";
 }
@@ -23,9 +45,13 @@ function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, m
 // body: { month: "YYYY-MM" } — 批量生成全部启用客户
 // body: { month: "YYYY-MM", customer_id: number } — 单个客户生成
 export async function POST(req: NextRequest) {
-  const auth = await verifyAuth(req);
-  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
+  // 定时任务内部调用：跳过登录验证
+  const isCron = req.headers.get("authorization") === "Bearer internal-cron";
+  if (!isCron) {
+    const auth = await verifyAuth(req);
+    if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+    if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
 
   const body = await req.json();
   const month = body.month;
