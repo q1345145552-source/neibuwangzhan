@@ -808,6 +808,17 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS vat_step_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL,
+      step_id INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
 
   // VAT 第二轮迁移
   try { database.exec("ALTER TABLE vat_record_steps ADD COLUMN started_at TEXT"); } catch {}
