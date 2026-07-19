@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { VatCustomerProfile } from "@/components/vat-customer-profile";
 import {
   Users, FileText, Calculator, Search, History, BarChart3,
-  Plus, Trash2, Edit3, Save, X, CheckCircle2, Clock,
+  Plus, Trash2, Edit3, Save, X, CheckCircle2, Clock, Download,
   AlertTriangle, TrendingUp, Send, Pause, Square, Ban, Mail, Bell,
   FileCheck, ClipboardCheck, Archive, ArrowUpRight, Layers
 } from "lucide-react";
@@ -107,7 +107,10 @@ export default function VatPage() {
 
   // Records
   const [records, setRecords] = useState<VatRecord[]>([]);
-  const [allRecords, setAllRecords] = useState<VatRecord[]>([]); // unfiltered for history
+  const [allRecords, setAllRecords] = useState<VatRecord[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit] = useState(20);
   const [recordMonth, setRecordMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
@@ -117,6 +120,22 @@ export default function VatPage() {
   // Reconciliation
   const [reconciliations, setReconciliations] = useState<VatReconciliation[]>([]);
   const [reconMonth, setReconMonth] = useState(new Date().toISOString().slice(0, 7));
+
+  // History filters
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyMonthFrom, setHistoryMonthFrom] = useState("");
+  const [historyMonthTo, setHistoryMonthTo] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("");
+
+  // Summary
+  const [summaryYear, setSummaryYear] = useState(String(new Date().getFullYear()));
+  const [summaryData, setSummaryData] = useState<{
+    year: string; customers: { customerId: number; companyName: string; taxId: string;
+    totalRecords: number; archivedRecords: number; overdueRecords: number;
+    totalVat: number; totalPaid: number; totalUnpaid: number; totalFines: number }[];
+    grand: { totalRecords: number; archivedRecords: number; overdueRecords: number;
+    totalVat: number; totalPaid: number; totalUnpaid: number; totalFines: number }
+  } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -141,12 +160,43 @@ export default function VatPage() {
     try {
       const res = await fetchWithAuth(`/api/vat/records?month=${recordMonth}`);
       const data = await res.json();
-      const arr = Array.isArray(data) ? data : [];
+      const arr = Array.isArray(data.records) ? data.records : (Array.isArray(data) ? data : []);
       setRecords(arr);
-      setAllRecords(arr);
       setSelectedIds(new Set());
-    } catch { setRecords([]); setAllRecords([]); }
+    } catch { setRecords([]); }
   }, [recordMonth]);
+
+  // Load history with full filters
+  const loadHistory = useCallback(async (override?: { search?: string; monthFrom?: string; monthTo?: string; status?: string; page?: number }) => {
+    const s = override?.search ?? historySearch;
+    const mf = override?.monthFrom ?? historyMonthFrom;
+    const mt = override?.monthTo ?? historyMonthTo;
+    const st = override?.status ?? historyStatus;
+    const pg = override?.page ?? 1;
+    const params = new URLSearchParams();
+    if (s) params.set("search", s);
+    if (mf) params.set("month_from", mf);
+    if (mt) params.set("month_to", mt);
+    if (st) params.set("status", st);
+    params.set("page", String(pg));
+    params.set("limit", String(historyLimit));
+    try {
+      const res = await fetchWithAuth(`/api/vat/records?${params.toString()}`);
+      const data = await res.json();
+      setAllRecords(Array.isArray(data.records) ? data.records : []);
+      setHistoryTotal(data.total || 0);
+      setHistoryPage(data.page || 1);
+    } catch { setAllRecords([]); setHistoryTotal(0); }
+  }, [historySearch, historyMonthFrom, historyMonthTo, historyStatus, historyLimit]);
+
+  // Load annual summary
+  const loadSummary = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`/api/vat/summary?year=${summaryYear}`);
+      const data = await res.json();
+      setSummaryData(data);
+    } catch { setSummaryData(null); }
+  }, [summaryYear]);
 
   const loadReconciliations = useCallback(async () => {
     try {
@@ -158,11 +208,10 @@ export default function VatPage() {
   useEffect(() => { loadCustomers(); loadDashboard(); }, [loadCustomers, loadDashboard]);
   useEffect(() => {
     if (activeTab === "records") loadRecords();
-    if (activeTab === "history") {
-      fetchWithAuth("/api/vat/records").then(r => r.json()).then(d => setAllRecords(Array.isArray(d) ? d : [])).catch(() => {});
-    }
+    if (activeTab === "history") loadHistory();
     if (activeTab === "reconciliation") loadReconciliations();
-  }, [activeTab, loadRecords, loadReconciliations]);
+    if (activeTab === "summary") loadSummary();
+  }, [activeTab, loadRecords, loadReconciliations, loadHistory, loadSummary]);
 
   // Apply filter when filterBy changes
   useEffect(() => {
@@ -634,45 +683,37 @@ export default function VatPage() {
       {/* ---- 历史查询 ---- */}
       {activeTab === "history" && (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3">
             <h2 className="text-lg font-medium">历史查询</h2>
-            <div className="flex items-center gap-2">
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-2">
               <input type="text" placeholder="搜索公司名称..."
-                className="rounded border px-3 py-2 text-sm w-48"
-                onChange={async (e) => {
-                  const q = e.target.value;
-                  try {
-                    if (!q) {
-                      const res = await fetchWithAuth("/api/vat/records");
-                      setAllRecords(Array.isArray(await res.json()) ? await res.json() : []);
-                      return;
-                    }
-                    const res = await fetchWithAuth(`/api/vat/records?search=${encodeURIComponent(q)}`);
-                    setAllRecords(Array.isArray(await res.json()) ? await res.json() : []);
-                  } catch {}
-                }} />
-              <select className="rounded border px-3 py-2 text-sm"
-                onChange={async (e) => {
-                  const m = e.target.value;
-                  try {
-                    const url = m ? `/api/vat/records?month=${m}` : "/api/vat/records";
-                    const res = await fetchWithAuth(url);
-                    setAllRecords(Array.isArray(await res.json()) ? await res.json() : []);
-                  } catch {}
-                }}>
-                <option value="">全部月份</option>
-                {(() => {
-                  const months = [];
-                  const now = new Date();
-                  for (let i = 0; i < 24; i++) {
-                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                    months.push(d.toISOString().slice(0, 7));
-                  }
-                  return months.map(m => <option key={m} value={m}>{m}</option>);
-                })()}
+                className="rounded border px-3 py-2 text-sm w-44"
+                value={historySearch}
+                onChange={e => setHistorySearch(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") loadHistory({ search: historySearch, page: 1 }); }}
+              />
+              <input type="month" value={historyMonthFrom}
+                onChange={e => setHistoryMonthFrom(e.target.value)}
+                className="rounded border px-3 py-2 text-sm w-40" placeholder="起始月份" />
+              <span className="text-[var(--muted-foreground)] text-sm">至</span>
+              <input type="month" value={historyMonthTo}
+                onChange={e => setHistoryMonthTo(e.target.value)}
+                className="rounded border px-3 py-2 text-sm w-40" placeholder="结束月份" />
+              <select className="rounded border px-3 py-2 text-sm" value={historyStatus}
+                onChange={e => setHistoryStatus(e.target.value)}>
+                <option value="">全部状态</option>
+                <option value="进行中">进行中</option>
+                <option value="已归档">已归档</option>
               </select>
+              <Button size="sm" variant="outline" onClick={() => loadHistory({ search: historySearch, monthFrom: historyMonthFrom, monthTo: historyMonthTo, status: historyStatus, page: 1 })}>
+                查询
+              </Button>
             </div>
           </div>
+
+          {/* Results */}
           <div className="rounded-lg border overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-[var(--muted)]">
@@ -680,38 +721,184 @@ export default function VatPage() {
                   <th className="px-4 py-3 text-left font-medium">公司名称</th>
                   <th className="px-4 py-3 text-left font-medium">申报月份</th>
                   <th className="px-4 py-3 text-left font-medium">进度</th>
-                  <th className="px-4 py-3 text-left font-medium">金额</th>
+                  <th className="px-4 py-3 text-left font-medium">VAT金额</th>
+                  <th className="px-4 py-3 text-left font-medium">逾期罚款</th>
                   <th className="px-4 py-3 text-left font-medium">负责人</th>
                 </tr>
               </thead>
               <tbody>
                 {!allRecords.length ? (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无历史记录</td></tr>
-                ) : allRecords.map(r => (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无历史记录</td></tr>
+                ) : allRecords.map(r => {
+                  const warn = getWarningLevel(r.progress, r.year_month);
+                  return (
                   <tr key={r.id} className="border-t hover:bg-[var(--muted)] cursor-pointer transition-colors"
                     onClick={() => window.location.href = `/vat/${r.id}`}>
                     <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{r.company_name || "—"}</td>
                     <td className="px-4 py-3">{r.year_month}</td>
-                    <td className="px-4 py-3">{r.progress}</td>
-                    <td className="px-4 py-3">{r.amount > 0 ? `¥${r.amount.toLocaleString()}` : "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                        r.progress === "归档完成"
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200"
+                          : "bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]"
+                      )}>
+                        {r.progress === "归档完成" ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
+                        {r.progress}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 tabular-nums">{r.amount > 0 ? `¥${r.amount.toLocaleString()}` : "—"}</td>
+                    <td className="px-4 py-3 tabular-nums">
+                      {warn.estimatedFine > 0
+                        ? <span className="text-[var(--destructive)] font-medium">¥{warn.estimatedFine.toLocaleString()}</span>
+                        : <span className="text-[var(--muted-foreground)]">—</span>}
+                    </td>
                     <td className="px-4 py-3">{r.assignee || "—"}</td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {historyTotal > historyLimit && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[var(--muted-foreground)]">
+                共 {historyTotal} 条，第 {historyPage}/{Math.ceil(historyTotal / historyLimit)} 页
+              </span>
+              <div className="flex items-center gap-1">
+                <Button size="xs" variant="outline" disabled={historyPage <= 1}
+                  onClick={() => loadHistory({ page: historyPage - 1 })}>上一页</Button>
+                {Array.from({ length: Math.min(5, Math.ceil(historyTotal / historyLimit)) }, (_, i) => {
+                  const startPage = Math.max(1, historyPage - 2);
+                  const p = startPage + i;
+                  if (p > Math.ceil(historyTotal / historyLimit)) return null;
+                  return (
+                    <Button key={p} size="xs" variant={p === historyPage ? "default" : "outline"}
+                      onClick={() => loadHistory({ page: p })}>{p}</Button>
+                  );
+                })}
+                <Button size="xs" variant="outline" disabled={historyPage >= Math.ceil(historyTotal / historyLimit)}
+                  onClick={() => loadHistory({ page: historyPage + 1 })}>下一页</Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* ---- 年度汇总 ---- */}
       {activeTab === "summary" && (
         <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-medium">年度汇总</h2>
-          <p className="text-sm text-[var(--muted-foreground)]">按年度汇总各客户的 VAT 申报情况、税金统计。报表功能下一轮实现。</p>
-          <div className="rounded-lg border p-8 text-center text-[var(--muted-foreground)]">
-            <BarChart3 className="size-8 mx-auto mb-2 opacity-30" />
-            年度汇总功能将在下一轮迭代中完善
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">年度汇总</h2>
+            <div className="flex items-center gap-2">
+              <select className="rounded border px-3 py-2 text-sm" value={summaryYear}
+                onChange={e => setSummaryYear(e.target.value)}>
+                {(() => {
+                  const years = [];
+                  for (let y = new Date().getFullYear(); y >= 2024; y--) years.push(y);
+                  return years.map(y => <option key={y} value={y}>{y}年</option>);
+                })()}
+              </select>
+              {summaryData && summaryData.customers.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => {
+                  import("@/lib/export").then(({ exportToExcel }) => {
+                    const cols = [
+                      { header: "公司名称", key: "companyName" as const },
+                      { header: "税号", key: "taxId" as const },
+                      { header: "总申报笔数", key: "totalRecords" as const },
+                      { header: "已归档", key: "archivedRecords" as const },
+                      { header: "未完成", key: "overdueRecords" as const },
+                      { header: "VAT总额", key: "totalVat" as const, render: (r: any) => `¥${r.totalVat.toLocaleString()}` },
+                      { header: "已付", key: "totalPaid" as const, render: (r: any) => `¥${r.totalPaid.toLocaleString()}` },
+                      { header: "未付", key: "totalUnpaid" as const, render: (r: any) => `¥${r.totalUnpaid.toLocaleString()}` },
+                      { header: "罚款总额", key: "totalFines" as const, render: (r: any) => `¥${r.totalFines.toLocaleString()}` },
+                    ];
+                    exportToExcel(summaryData.customers, cols, `VAT年度汇总_${summaryYear}`);
+                  });
+                }}>
+                  <Download className="size-4 mr-1" />导出Excel
+                </Button>
+              )}
+            </div>
           </div>
+
+          {!summaryData ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="size-6 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />
+            </div>
+          ) : summaryData.customers.length === 0 ? (
+            <div className="rounded-lg border p-8 text-center text-[var(--muted-foreground)]">
+              <BarChart3 className="size-8 mx-auto mb-2 opacity-30" />
+              {summaryYear} 年暂无申报数据
+            </div>
+          ) : (
+            <>
+              {/* Grand totals */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {[
+                  { label: "总申报笔数", val: summaryData.grand.totalRecords, color: "" },
+                  { label: "已归档", val: summaryData.grand.archivedRecords, color: "text-emerald-600" },
+                  { label: "未完成", val: summaryData.grand.overdueRecords, color: "text-red-500" },
+                  { label: "VAT总额", val: `¥${summaryData.grand.totalVat.toLocaleString()}`, color: "" },
+                  { label: "已付税款", val: `¥${summaryData.grand.totalPaid.toLocaleString()}`, color: "text-emerald-600" },
+                  { label: "未付税款", val: `¥${summaryData.grand.totalUnpaid.toLocaleString()}`, color: "text-red-500" },
+                  { label: "罚款总额", val: `¥${summaryData.grand.totalFines.toLocaleString()}`, color: "text-red-500" },
+                ].map(item => (
+                  <div key={item.label} className="rounded-lg border p-3 text-center">
+                    <div className="text-[0.6rem] uppercase text-[var(--muted-foreground)] mb-1">{item.label}</div>
+                    <div className={cn("text-lg font-semibold tabular-nums", item.color)}>
+                      {typeof item.val === "number" ? item.val.toLocaleString() : item.val}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Customer table */}
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-[var(--muted)]">
+                    <tr>
+                      <th className="px-3 py-3 text-left font-medium">公司名称</th>
+                      <th className="px-3 py-3 text-center font-medium">总笔数</th>
+                      <th className="px-3 py-3 text-center font-medium">已归档</th>
+                      <th className="px-3 py-3 text-center font-medium">未完成</th>
+                      <th className="px-3 py-3 text-right font-medium">VAT总额</th>
+                      <th className="px-3 py-3 text-right font-medium">已付税款</th>
+                      <th className="px-3 py-3 text-right font-medium">未付税款</th>
+                      <th className="px-3 py-3 text-right font-medium">罚款</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryData.customers.map(cust => (
+                      <tr key={cust.customerId} className="border-t hover:bg-[var(--muted)] cursor-pointer transition-colors"
+                        onClick={() => setProfileCustomerId(cust.customerId)}>
+                        <td className="px-3 py-3 font-medium text-[var(--primary)] hover:underline">{cust.companyName}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{cust.totalRecords}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-emerald-600">{cust.archivedRecords}</td>
+                        <td className="px-3 py-3 text-center tabular-nums text-red-500">{cust.overdueRecords}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">¥{cust.totalVat.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-emerald-600">¥{cust.totalPaid.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-500">¥{cust.totalUnpaid.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-500">{cust.totalFines > 0 ? `¥${cust.totalFines.toLocaleString()}` : "—"}</td>
+                      </tr>
+                    ))}
+                    {/* Grand total row */}
+                    <tr className="border-t bg-[var(--muted)] font-medium text-sm">
+                      <td className="px-3 py-3">全年合计</td>
+                      <td className="px-3 py-3 text-center">{summaryData.grand.totalRecords}</td>
+                      <td className="px-3 py-3 text-center">{summaryData.grand.archivedRecords}</td>
+                      <td className="px-3 py-3 text-center">{summaryData.grand.overdueRecords}</td>
+                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalVat.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalPaid.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalUnpaid.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right">¥{summaryData.grand.totalFines.toLocaleString()}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
     {profileCustomerId && (
