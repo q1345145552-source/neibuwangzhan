@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
@@ -96,6 +97,7 @@ const warningBadge: Record<string, string> = {
 
 export default function VatPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("customers");
   const [filterBy, setFilterBy] = useState<string | null>(null);
 
@@ -642,15 +644,16 @@ export default function VatPage() {
                 ) : filteredRecords.map(r => {
                   const warn = getWarningLevel(r.progress, r.year_month);
                   return (
-                    <tr key={r.id} className={cn("border-t transition-colors group", warningStyles[warn.level])}>
+                    <tr key={r.id} className={cn("border-t transition-colors group cursor-pointer", warningStyles[warn.level])}
+                      onClick={() => router.push(`/vat/${r.id}`)}>
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <input type="checkbox" className="size-4 rounded"
                           checked={selectedIds.has(r.id)}
                           onChange={() => toggleSelect(r.id)} />
                       </td>
-                      <td className="px-4 py-3 font-medium">
+                      <td className="px-4 py-3 font-medium" onClick={(e) => { e.stopPropagation(); }}>
                         <span className="cursor-pointer hover:text-[var(--primary)] hover:underline"
-                          onClick={(e) => { e.stopPropagation(); window.location.href = `/vat/${r.id}`; }}>
+                          onClick={(e) => { e.stopPropagation(); router.push(`/vat/${r.id}`); }}>
                           {r.company_name || "—"}
                         </span>
                         <button onClick={(e) => { e.stopPropagation(); setProfileCustomerId(r.customer_id); }}
@@ -803,7 +806,7 @@ export default function VatPage() {
                   const warn = getWarningLevel(r.progress, r.year_month);
                   return (
                   <tr key={r.id} className="border-t hover:bg-[var(--muted)] cursor-pointer transition-colors"
-                    onClick={() => window.location.href = `/vat/${r.id}`}>
+                    onClick={() => router.push(`/vat/${r.id}`)}>
                     <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{r.company_name || "—"}</td>
                     <td className="px-4 py-3">{r.year_month}</td>
                     <td className="px-4 py-3">
