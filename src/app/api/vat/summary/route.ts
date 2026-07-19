@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
+// 泰国 VAT 逾期罚款：申报逾期 7 天以上罚款 ฿1,000，之后每天加 ฿200，上限 ฿41,000
+function calcLateFine(deadline: Date, taxAmount: number): number {
+  const now = new Date();
+  if (now <= deadline) return 0;
+  const daysLate = Math.floor((now.getTime() - deadline.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLate <= 7) return 200; // initial penalty
+  let fine = 1000 + (daysLate - 7) * 200;
+  return Math.min(fine, 41000);
+}
+
 // GET /api/vat/summary?year=2026
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -11,8 +21,10 @@ export async function GET(req: NextRequest) {
   const year = url.searchParams.get("year") || String(new Date().getFullYear());
   const db = getDb();
 
-  // Get all enabled customers
-  const customers = db.prepare("SELECT id, company_name, tax_id FROM vat_customers ORDER BY company_name").all() as { id: number; company_name: string; tax_id: string }[];
+  // 只统计启用客户
+  const customers = db.prepare(
+    "SELECT id, company_name, tax_id FROM vat_customers WHERE status = '启用' ORDER BY company_name"
+  ).all() as { id: number; company_name: string; tax_id: string }[];
 
   const summary: {
     customerId: number; companyName: string; taxId: string;
@@ -21,44 +33,48 @@ export async function GET(req: NextRequest) {
   }[] = [];
 
   for (const cust of customers) {
-    const records = db.prepare(`
-      SELECT r.*,
-        (SELECT s.payment_status FROM vat_record_steps s WHERE s.record_id = r.id AND s.step_order = 5) as step5_payment
-      FROM vat_records r
-      WHERE r.customer_id = ? AND r.year_month LIKE ?
-      ORDER BY r.year_month
-    `).all(cust.id, `${year}-%`) as any[];
+    // 该客户全年申报记录
+    const records = db.prepare(
+      "SELECT id, year_month, progress FROM vat_records WHERE customer_id = ? AND year_month LIKE ? ORDER BY year_month"
+    ).all(cust.id, `${year}-%`) as { id: number; year_month: string; progress: string }[];
 
     if (records.length === 0) continue;
 
-    const archived = records.filter((r: any) => r.progress === "归档完成").length;
-    const overdue = records.filter((r: any) => r.progress !== "归档完成").length;
-    const totalVat = records.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+    const totalRecords = records.length;
+    const archivedRecords = records.filter(r => r.progress === "归档完成").length;
+    const overdueRecords = records.filter(r => r.progress !== "归档完成").length;
 
-    // Use default tax = 7% of declared amount as payable if no reconciliation data
-    const taxPaid = records.filter((r: any) => r.step5_payment === "已付款").length * (totalVat > 0 ? totalVat / Math.max(records.length, 1) : 0);
-    const taxUnpaid = records.filter((r: any) => r.step5_payment === "逾期未付").length * (totalVat > 0 ? totalVat / Math.max(records.length, 1) : 0);
+    // 从对账表取真实税金数据
+    const reconRows = db.prepare(
+      "SELECT tax_payable, tax_paid, tax_unpaid FROM vat_reconciliation WHERE customer_id = ? AND year_month LIKE ?"
+    ).all(cust.id, `${year}-%`) as { tax_payable: number; tax_paid: number; tax_unpaid: number }[];
 
-    // Estimate fines: overdue records * 500 THB/day rough estimate
+    const totalVat = reconRows.reduce((s, r) => s + (r.tax_payable || 0), 0);
+    const totalPaid = reconRows.reduce((s, r) => s + (r.tax_paid || 0), 0);
+    const totalUnpaid = reconRows.reduce((s, r) => s + (r.tax_unpaid || 0), 0);
+
+    // 罚款：未完成的记录，按月计算逾期天数
     let totalFines = 0;
     for (const r of records) {
-      if (r.progress !== "归档完成") {
-        const [ry, rm] = r.year_month.split("-").map(Number);
-        const now = new Date();
-        if (now.getFullYear() > ry || (now.getFullYear() === ry && now.getMonth() + 1 > rm)) {
-          totalFines += 500; // minimum fine per overdue record
-        }
-      }
+      if (r.progress === "归档完成") continue;
+      const [ry, rm] = r.year_month.split("-").map(Number);
+      // 当月申报截止日为次月 15 日
+      const deadline = new Date(ry, rm, 15);
+      // 该月的应付税金
+      const recon = db.prepare(
+        "SELECT tax_payable FROM vat_reconciliation WHERE customer_id = ? AND year_month = ?"
+      ).get(cust.id, r.year_month) as { tax_payable: number } | undefined;
+      const payable = recon?.tax_payable || 0;
+      totalFines += calcLateFine(deadline, payable);
     }
 
     summary.push({
       customerId: cust.id, companyName: cust.company_name, taxId: cust.tax_id,
-      totalRecords: records.length, archivedRecords: archived, overdueRecords: overdue,
-      totalVat, totalPaid: Math.round(taxPaid), totalUnpaid: Math.round(taxUnpaid), totalFines,
+      totalRecords, archivedRecords, overdueRecords,
+      totalVat, totalPaid, totalUnpaid, totalFines,
     });
   }
 
-  // Grand totals
   const grand = {
     totalRecords: summary.reduce((s, c) => s + c.totalRecords, 0),
     archivedRecords: summary.reduce((s, c) => s + c.archivedRecords, 0),
