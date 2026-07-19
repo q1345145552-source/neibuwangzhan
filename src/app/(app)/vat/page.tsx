@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Users, FileText, Calculator, Search, History, BarChart3, Plus, Trash2, Edit3, Save, X, CheckCircle2, Clock, PauseCircle, Ban } from "lucide-react";
 
@@ -281,13 +282,14 @@ export default function VatPage() {
                 {records.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无申报记录</td></tr>
                 ) : records.map(r => (
-                  <tr key={r.id} className="border-t">
-                    <td className="px-4 py-3 font-medium">{r.company_name || "—"}</td>
+                  <tr key={r.id} className="border-t hover:bg-[var(--muted)] cursor-pointer transition-colors"
+                    onClick={() => window.location.href = `/vat/${r.id}`}>
+                    <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{r.company_name || "—"}</td>
                     <td className="px-4 py-3 text-[var(--muted-foreground)]">{r.tax_id || "—"}</td>
                     <td className="px-4 py-3">{r.year_month}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-xs font-medium text-[var(--primary)]">
-                        {r.progress === "归档完成" ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
+                        {r.progress === "归档完成" ? <CheckCircle2 className="size-3" /> : r.progress === "收资料" ? <Clock className="size-3 text-[var(--muted-foreground)]" /> : <Clock className="size-3" />}
                         {r.progress}
                       </span>
                     </td>
@@ -410,8 +412,9 @@ export default function VatPage() {
                 {!records.length ? (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无历史记录</td></tr>
                 ) : records.map(r => (
-                  <tr key={r.id} className="border-t">
-                    <td className="px-4 py-3 font-medium">{r.company_name || "—"}</td>
+                  <tr key={r.id} className="border-t hover:bg-[var(--muted)] cursor-pointer transition-colors"
+                    onClick={() => window.location.href = `/vat/${r.id}`}>
+                    <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{r.company_name || "—"}</td>
                     <td className="px-4 py-3">{r.year_month}</td>
                     <td className="px-4 py-3">{r.progress}</td>
                     <td className="px-4 py-3">{r.amount > 0 ? `¥${r.amount.toLocaleString()}` : "—"}</td>

@@ -787,6 +787,8 @@ function initTables(database: Database.Database) {
       status TEXT NOT NULL DEFAULT '待处理',
       assignee TEXT DEFAULT '',
       notes TEXT DEFAULT '',
+      payment_status TEXT DEFAULT '',
+      started_at TEXT,
       completed_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -805,6 +807,11 @@ function initTables(database: Database.Database) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+
+  // VAT 第二轮迁移
+  try { database.exec("ALTER TABLE vat_record_steps ADD COLUMN started_at TEXT"); } catch {}
+  try { database.exec("ALTER TABLE vat_record_steps ADD COLUMN payment_status TEXT DEFAULT ''"); } catch {}
 
   // 触发自动积分规则
   try { seedPointsRulesZ(database); } catch {}
