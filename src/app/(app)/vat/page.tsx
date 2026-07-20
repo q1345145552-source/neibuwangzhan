@@ -652,20 +652,19 @@ export default function VatPage() {
             </table>
           </div>
 
-          {records.length === 0 && (
-            <Button size="sm" variant="outline" onClick={async () => {
-              try {
-                const res = await fetchWithAuth("/api/vat/records/generate", {
-                  method: "POST", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ month: recordMonth }),
-                });
-                if (res.ok) { loadRecords(); loadDashboard(); }
-                else { const e = await res.json(); setError(e.error || "生成失败"); }
-              } catch { setError("生成申报记录失败"); }
-            }}>
-              <Plus className="size-4 mr-1" />批量生成当月记录
-            </Button>
-          )}
+          {/* Always-visible generate button — backend skips existing records */}
+          <Button size="sm" variant="outline" onClick={async () => {
+            try {
+              const res = await fetchWithAuth("/api/vat/records/generate", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ month: recordMonth }),
+              });
+              if (res.ok) { loadRecords(); loadDashboard(); }
+              else { const e = await res.json(); setError(e.error || "生成失败"); }
+            } catch { setError("生成申报记录失败"); }
+          }}>
+            <Plus className="size-4 mr-1" />批量生成当月记录
+          </Button>
 
           {/* Legend */}
           <div className="flex items-center gap-4 text-xs text-[var(--muted-foreground)]">
