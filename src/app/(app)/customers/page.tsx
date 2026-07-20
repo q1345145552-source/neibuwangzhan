@@ -8,7 +8,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, X, Building2, Edit3, Trash2, ChevronRight,
-  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote
+  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote, AlertTriangle, UserCheck, ArrowRightLeft
 } from "lucide-react";
 
 // ===== Types =====
@@ -187,7 +187,11 @@ export default function CustomersPage() {
   const [withdrawMsg, setWithdrawMsg] = useState("");
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
-  const [dashboard, setDashboard] = useState<{potential:number;following:number;cooperated:number;dormant:number;new_this_month:number} | null>(null);
+  const [dashboard, setDashboard] = useState<{potential:number;following:number;cooperated:number;dormant:number;new_this_month:number;alerts:any[];dormant_with_deals:number;dormant_no_deals:number} | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [reassignTarget, setReassignTarget] = useState("");
+  const [reassigning, setReassigning] = useState(false);
+  const [employees, setEmployees] = useState<{name:string}[]>([]);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -210,6 +214,16 @@ export default function CustomersPage() {
       setMyPoints(data.total_customer_points || 0);
     } catch {}
   };
+
+  const loadEmployees = async () => {
+    try {
+      const res = await fetchWithAuth("/api/employees");
+      const data = await res.json();
+      if (Array.isArray(data)) setEmployees(data.map((e: any) => ({ name: e.name })));
+    } catch {}
+  };
+
+  useEffect(() => { loadEmployees(); }, []);
 
   const loadDashboard = async () => {
     try {
@@ -311,6 +325,31 @@ export default function CustomersPage() {
         a.click(); URL.revokeObjectURL(url);
       }
     } catch {}
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === customers.length) { setSelectedIds(new Set()); return; }
+    setSelectedIds(new Set(customers.map(c => c.id)));
+  };
+
+  const handleBatchReassign = async () => {
+    if (!selectedIds.size || !reassignTarget.trim()) return;
+    setReassigning(true);
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "batch_reassign", ids: [...selectedIds], new_claimed_by: reassignTarget.trim() }),
+    });
+    setReassigning(false);
+    if (res.ok) { setSelectedIds(new Set()); setReassignTarget(""); loadCustomers(); loadDashboard(); }
+    else { const e = await res.json(); alert(e.error || "操作失败"); }
   };
 
   const handleDelete = async (id: number, name: string) => {
@@ -423,6 +462,80 @@ export default function CustomersPage() {
         </div>
       )}
 
+      {/* Follow-up Coverage Alerts */}
+      {dashboard?.alerts && dashboard.alerts.length > 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="size-4 text-amber-500" />
+            <h3 className="text-sm font-medium">跟进覆盖预警</h3>
+            <span className="text-xs text-[var(--muted-foreground)]">共 {dashboard.alerts.length} 个客户未及时跟进</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {dashboard.alerts.map((a: any) => (
+              <div key={a.id} className={cn(
+                "flex items-center justify-between rounded-lg border px-3 py-2 text-sm cursor-pointer hover:opacity-80 transition-opacity",
+                a.level === "red"
+                  ? "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
+                  : "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20"
+              )} onClick={() => router.push(`/customers/${a.id}`)}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate">{a.company_name}</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {a.claimed_by ? `${a.claimed_by} · ` : ""}
+                    {a.last_follow_up ? `上次跟进: ${a.last_follow_up?.slice(0, 10)}` : "从未跟进"}
+                  </p>
+                </div>
+                <span className={cn(
+                  "shrink-0 ml-2 rounded-full px-2 py-0.5 text-xs font-medium",
+                  a.level === "red"
+                    ? "bg-red-200 text-red-700 dark:bg-red-800 dark:text-red-300"
+                    : "bg-amber-200 text-amber-700 dark:bg-amber-800 dark:text-amber-300"
+                )}>
+                  {a.level === "red" ? "超2周" : "超1周"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Dormant Analysis */}
+      {dashboard && (dashboard.dormant > 0) && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <h3 className="text-sm font-medium mb-3">沉睡客户分析</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/10 p-3">
+              <p className="text-xs text-[var(--muted-foreground)]">有成交历史的沉睡客户</p>
+              <p className="text-xl font-bold text-amber-600 tabular-nums mt-1">{dashboard.dormant_with_deals}</p>
+              <p className="text-xs text-[var(--muted-foreground)] mt-0.5">高价值流失客户，建议激活重新分配</p>
+            </div>
+            <div className="rounded-lg border border-slate-300 bg-slate-50/50 dark:border-slate-700 dark:bg-slate-900/10 p-3">
+              <p className="text-xs text-[var(--muted-foreground)]">无成交记录的沉睡客户</p>
+              <p className="text-xl font-bold text-slate-500 tabular-nums mt-1">{dashboard.dormant_no_deals}</p>
+              <p className="text-xs text-[var(--muted-foreground)] mt-0.5">从未进入合作阶段，种子客户下沉</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch reassign bar */}
+      {selectedIds.size > 0 && user?.role === "admin" && (
+        <div className="flex items-center gap-3 rounded-lg border border-[var(--primary)] bg-[color-mix(in_oklch,var(--primary),var(--background)_95%)] px-4 py-2 flex-wrap">
+          <span className="text-sm font-medium">已选 {selectedIds.size} 个客户</span>
+          <div className="flex items-center gap-2">
+            <select value={reassignTarget} onChange={e => setReassignTarget(e.target.value)}
+              className="h-8 rounded border border-[var(--border)] px-2 text-xs outline-none focus:border-[var(--ring)]">
+              <option value="">选择目标员工</option>
+              {employees.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
+            </select>
+            <Button size="xs" onClick={handleBatchReassign} disabled={reassigning || !reassignTarget.trim()} className="gap-1">
+              <ArrowRightLeft className="size-3" />{reassigning ? "转移中..." : "转移归属"}
+            </Button>
+          </div>
+          <button onClick={() => setSelectedIds(new Set())} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+        </div>
+      )}
+
       {/* Search & Filter */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -497,6 +610,11 @@ export default function CustomersPage() {
           <table className="w-full text-sm">
             <thead className="bg-[var(--muted)]">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  {user?.role === "admin" && (
+                    <input type="checkbox" className="size-4 rounded" checked={customers.length > 0 && selectedIds.size === customers.length} onChange={toggleSelectAll} />
+                  )}
+                </th>
                 <th className="px-4 py-3 text-left font-medium">公司名称</th>
                 <th className="px-4 py-3 text-left font-medium hidden sm:table-cell">行业</th>
                 <th className="px-4 py-3 text-left font-medium">状态</th>
@@ -515,6 +633,9 @@ export default function CustomersPage() {
                 >
                   <td className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-2">
+                      {user?.role === "admin" && (
+                        <input type="checkbox" className="size-4 rounded shrink-0" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} onClick={e => e.stopPropagation()} />
+                      )}
                       <Building2 className="size-3.5 text-[var(--muted-foreground)] shrink-0" />
                       <span className="hover:text-[var(--primary)] hover:underline">{c.company_name}</span>
                     </div>

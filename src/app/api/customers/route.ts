@@ -60,7 +60,42 @@ export async function GET(req: NextRequest) {
         (SELECT COUNT(*) FROM customers WHERE status = '沉睡') as dormant,
         (SELECT COUNT(*) FROM customers WHERE created_at >= datetime('now','-1 month')) as new_this_month
     `).get() as any;
-    return NextResponse.json(stats);
+
+    // Follow-up alerts: 跟进中 customers with stale follow-ups
+    const alerts = db.prepare(`
+      SELECT c.id, c.company_name, c.claimed_by,
+        (SELECT MAX(created_at) FROM customer_follow_ups WHERE customer_id = c.id) as last_follow_up
+      FROM customers c
+      WHERE c.status = '跟进中'
+        AND c.id NOT IN (SELECT DISTINCT customer_id FROM customer_follow_ups WHERE created_at >= datetime('now','-7 days'))
+      ORDER BY last_follow_up ASC NULLS FIRST
+    `).all() as any[];
+
+    // Add color coding in the API response
+    const now = new Date();
+    const alertsWithLevel = alerts.map((a: any) => {
+      const lastDate = a.last_follow_up ? new Date(a.last_follow_up) : null;
+      let level = 'yellow'; // 7-14 days
+      if (!lastDate || (now.getTime() - lastDate.getTime()) > 14 * 86400000) level = 'red';
+      return { ...a, level, last_follow_up: a.last_follow_up || null };
+    });
+
+    // Dormant analysis: split by deal history
+    const dormantWithDeals = db.prepare(`
+      SELECT COUNT(*) as count FROM customers c
+      WHERE c.status = '沉睡' AND c.company_name IN (SELECT DISTINCT customer_name FROM orders)
+    `).get() as any;
+    const dormantNoDeals = db.prepare(`
+      SELECT COUNT(*) as count FROM customers c
+      WHERE c.status = '沉睡' AND c.company_name NOT IN (SELECT DISTINCT customer_name FROM orders)
+    `).get() as any;
+
+    return NextResponse.json({
+      ...stats,
+      alerts: alertsWithLevel,
+      dormant_with_deals: dormantWithDeals.count,
+      dormant_no_deals: dormantNoDeals.count,
+    });
   }
 
   // My customer points
@@ -117,6 +152,25 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   // === Special actions ===
+
+  // Batch reassign
+  if (body.action === "batch_reassign") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
+    const { ids, new_claimed_by } = body;
+    if (!ids || !Array.isArray(ids) || !ids.length) return NextResponse.json({ error: "请选择要转移的客户" }, { status: 400 });
+    if (!new_claimed_by?.trim()) return NextResponse.json({ error: "请指定目标员工" }, { status: 400 });
+    const db = getDb();
+    const result = db.transaction(() => {
+      let count = 0;
+      for (const id of ids) {
+        const r = db.prepare("UPDATE customers SET claimed_by = ?, updated_at = datetime('now') WHERE id = ?").run(new_claimed_by.trim(), id);
+        count += r.changes;
+      }
+      return count;
+    })() as number;
+    return NextResponse.json({ success: true, count: result });
+  }
+
 
   // Follow-up: add follow-up log + points
   if (body.action === "follow_up") {
