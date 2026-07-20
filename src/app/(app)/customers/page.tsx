@@ -51,7 +51,6 @@ function AddCustomerForm({
   const [form, setForm] = useState({
     company_name: "", industry: "", handler_name: "",
     handler_wechat: "", willingness: "", demand_tags: "", status: "潜在",
-    total_deal_amount: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -63,7 +62,7 @@ function AddCustomerForm({
       const res = await fetchWithAuth("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, total_deal_amount: Number(form.total_deal_amount) || 0 }),
+        body: JSON.stringify({ ...form }),
       });
       if (res.ok) { onSaved(); onClose(); }
       else { const e = await res.json(); setError(e.error || "创建失败"); }
@@ -131,11 +130,7 @@ function AddCustomerForm({
                 </select>
               </div>
             </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">成交总额 (฿)</label>
-              <input type="number" value={form.total_deal_amount} onChange={e => setForm(p => ({ ...p, total_deal_amount: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] font-mono" placeholder="0" />
-            </div>
+
           </div>
 
           <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-[var(--border)]">
@@ -679,6 +674,7 @@ export default function CustomersPage() {
                       )}
                     </div>
                   </td>
+                  <td className="px-3 py-2.5 align-middle text-[var(--muted-foreground)] hidden lg:table-cell truncate">{c.source_channel || "—"}</td>
                   <td className="px-3 py-2.5 align-middle text-right font-mono tabular-nums whitespace-nowrap">
                     {c.total_deal_amount > 0 ? c.total_deal_amount.toLocaleString() : "—"}
                   </td>
