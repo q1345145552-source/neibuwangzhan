@@ -348,9 +348,9 @@ export async function POST(req: NextRequest) {
     const c = db.prepare("SELECT * FROM customers WHERE id = ?").get(id) as any;
     if (!c) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
     if (c.status !== "潜在") return NextResponse.json({ error: "只能认领潜在客户" }, { status: 400 });
-    if (c.claimed_by) return NextResponse.json({ error: "已被认领" }, { status: 409 });
+    if (c.claimed_by && c.claimed_by.trim()) return NextResponse.json({ error: "已被认领" }, { status: 409 });
     db.prepare("UPDATE customers SET claimed_by = ?, status = '跟进中', updated_at = datetime('now') WHERE id = ?").run(auth.name, id);
-    insertPointsRecord(db, auth.name!, 8, `激活沉睡客户「${(c as any).company_name}」`, "customer_activate");
+    insertPointsRecord(db, auth.name!, 5, `认领客户「${(c as any).company_name}」`, "customer_claim");
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }

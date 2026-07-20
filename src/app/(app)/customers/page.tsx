@@ -645,21 +645,21 @@ export default function CustomersPage() {
             {search || statusFilter !== "全部" ? "无匹配结果" : "暂无客户，点击右上角「录入客户」开始"}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-[var(--muted)]">
               <tr>
-                <th className="px-4 py-3 w-10">
+                <th className="px-3 py-3 w-10">
                   {user?.role === "admin" && (
                     <input type="checkbox" className="size-4 rounded" checked={customers.length > 0 && selectedIds.size === customers.length} onChange={toggleSelectAll} />
                   )}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">公司名称</th>
-                <th className="px-4 py-3 text-left font-medium hidden sm:table-cell">行业</th>
-                <th className="px-4 py-3 text-left font-medium">状态</th>
-                <th className="px-4 py-3 text-left font-medium hidden md:table-cell">认领人</th>
-                <th className="px-4 py-3 text-left font-medium hidden lg:table-cell">来源</th>
-                <th className="px-4 py-3 text-right font-medium">成交金额</th>
-                <th className="px-4 py-3 text-right font-medium w-28">操作</th>
+                <th className="px-3 py-3 text-left font-medium">公司名称</th>
+                <th className="px-3 py-3 text-left font-medium w-[88px] hidden sm:table-cell">行业</th>
+                <th className="px-3 py-3 text-center font-medium w-[80px]">状态</th>
+                <th className="px-3 py-3 text-center font-medium w-[80px] hidden md:table-cell">认领人</th>
+                <th className="px-3 py-3 text-left font-medium w-[88px] hidden lg:table-cell">来源</th>
+                <th className="px-3 py-3 text-right font-medium w-[96px]">成交金额</th>
+                <th className="px-3 py-3 text-center font-medium w-[108px]">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -669,42 +669,46 @@ export default function CustomersPage() {
                   className="border-t border-[var(--border)] hover:bg-[var(--muted)]/50 cursor-pointer transition-colors"
                   onClick={() => router.push(`/customers/${c.id}`)}
                 >
-                  <td className="px-4 py-3 font-medium">
-                    <div className="flex items-center gap-2">
-                      {user?.role === "admin" && (
-                        <input type="checkbox" className="size-4 rounded shrink-0" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} onClick={e => e.stopPropagation()} />
-                      )}
+                  <td className="px-3 py-2.5 align-middle">
+                    {user?.role === "admin" && (
+                      <input type="checkbox" className="size-4 rounded" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} onClick={e => e.stopPropagation()} />
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 align-middle">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Building2 className="size-3.5 text-[var(--muted-foreground)] shrink-0" />
-                      <span className="hover:text-[var(--primary)] hover:underline">{c.company_name}</span>
+                      <span className="truncate hover:text-[var(--primary)] hover:underline">{c.company_name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[var(--muted-foreground)] hidden sm:table-cell">{c.industry || "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", statusColor[c.status] || "")}>
+                  <td className="px-3 py-2.5 align-middle text-[var(--muted-foreground)] hidden sm:table-cell">{c.industry || "—"}</td>
+                  <td className="px-3 py-2.5 align-middle text-center">
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap", statusColor[c.status] || "")}>
                       {c.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    <div className="text-xs">
+                  <td className="px-3 py-2.5 align-middle hidden md:table-cell">
+                    <div className="flex justify-center">
                       {c.claimed_by ? (
-                        <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-1.5 py-0.5 text-[var(--primary)]">{c.claimed_by}</span>
-                      ) : "—"}
+                        <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-1.5 py-0.5 text-xs text-[var(--primary)] whitespace-nowrap">{c.claimed_by}</span>
+                      ) : (
+                        <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                      )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[var(--muted-foreground)] hidden lg:table-cell">{c.source_channel || "—"}</td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
+                  <td className="px-3 py-2.5 align-middle text-[var(--muted-foreground)] hidden lg:table-cell truncate">{c.source_channel || "—"}</td>
+                  <td className="px-3 py-2.5 align-middle text-right font-mono tabular-nums whitespace-nowrap">
                     {c.total_deal_amount > 0 ? c.total_deal_amount.toLocaleString() : "—"}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-2.5 align-middle" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-0.5">
                       {c.status === "潜在" && !c.claimed_by && (
-                        <button onClick={() => handleClaim(c.id)} className="px-2 py-0.5 text-xs rounded border border-[var(--primary)] text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] transition-colors font-medium">
-                          <Hand className="size-3 mr-0.5 inline" />认领
+                        <button onClick={() => handleClaim(c.id)} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded border border-[var(--primary)] text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] transition-colors font-medium whitespace-nowrap">
+                          <Hand className="size-3" />认领
                         </button>
                       )}
                       {c.status === "沉睡" && (
-                        <button onClick={() => handleActivate(c.id)} className="px-2 py-0.5 text-xs rounded border border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors font-medium">
-                          <Zap className="size-3 mr-0.5 inline" />激活
+                        <button onClick={() => handleActivate(c.id)} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded border border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors font-medium whitespace-nowrap">
+                          <Zap className="size-3" />激活
                         </button>
                       )}
                       {user?.role === "admin" && (
