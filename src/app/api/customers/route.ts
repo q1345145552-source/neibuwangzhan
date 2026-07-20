@@ -171,6 +171,7 @@ export async function POST(req: NextRequest) {
 
   // Batch import from CSV
   if (body.action === "batch_import") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
     const { csv_text } = body;
     if (!csv_text?.trim()) return NextResponse.json({ error: "请上传CSV文件内容" }, { status: 400 });
 
@@ -380,6 +381,7 @@ export async function POST(req: NextRequest) {
   }
 
   // === Standard create ===
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可创建客户" }, { status: 403 });
   const { company_name } = body;
   if (!company_name?.trim()) return NextResponse.json({ error: "请输入公司名称" }, { status: 400 });
 
