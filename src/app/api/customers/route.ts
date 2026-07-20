@@ -52,8 +52,8 @@ export async function GET(req: NextRequest) {
 
   // Template download
   if (action === "template") {
-    const csvHeaders = "公司名称,行业,公司性质,成立时间,来源渠道,老板姓名,老板微信,经办人姓名,经办人微信,合作意愿度,需求标签,合作状态,成交总额";
-    const csvExample = "示例科技有限公司,电商,有限公司,2020-01-01,展会,张三,zhangsan,李四,lisi,高,\"VAT,商标\",潜在,0";
+    const csvHeaders = "公司名称,行业,联系人,联系方式,合作意愿度,需求标签,合作状态,成交总额";
+    const csvExample = "示例科技有限公司,电商,张三,zhangsan888,高,\"VAT,商标\",潜在,0";
     const BOM = "\ufeff";
     const NL = "\n";
     const csv = BOM + csvHeaders + NL + csvExample + NL;
@@ -185,13 +185,8 @@ export async function POST(req: NextRequest) {
     const fieldMap: Record<string, string> = {
       "公司名称": "company_name",
       "行业": "industry",
-      "公司性质": "company_type",
-      "成立时间": "founded_at",
-      "来源渠道": "source_channel",
-      "老板姓名": "owner_name",
-      "老板微信": "owner_wechat",
-      "经办人姓名": "handler_name",
-      "经办人微信": "handler_wechat",
+      "联系人": "handler_name",
+      "联系方式": "handler_wechat",
       "合作意愿度": "willingness",
       "需求标签": "demand_tags",
       "合作状态": "status",
@@ -203,8 +198,8 @@ export async function POST(req: NextRequest) {
     let successCount = 0;
 
     const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO customers (company_name, industry, company_type, founded_at, source_channel, owner_name, owner_wechat, handler_name, handler_wechat, willingness, demand_tags, status, total_deal_amount)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO customers (company_name, industry, handler_name, handler_wechat, willingness, demand_tags, status, total_deal_amount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     // Parse CSV lines (handling quoted fields)
@@ -258,17 +253,12 @@ export async function POST(req: NextRequest) {
       const result = insertStmt.run(
         row["公司名称"].trim(),
         row["行业"] || "",
-        row["公司性质"] || "",
-        row["成立时间"] || "",
-        row["来源渠道"] || "",
-        row["老板姓名"] || "",
-        row["老板微信"] || "",
-        row["经办人姓名"] || "",
-        row["经办人微信"] || "",
+        row["联系人"] || "",
+        row["联系方式"] || "",
         row["合作意愿度"] || "",
         row["需求标签"] || "",
         status,
-        amount,
+        amount
       );
 
       if (result.changes > 0) {
