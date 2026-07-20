@@ -140,28 +140,28 @@ export async function GET(req: NextRequest) {
   // Apply auto-flow before listing
   applyAutoFlow(db);
 
-  let sql = "SELECT * FROM customers";
+  let sql = `SELECT c.*, COALESCE((SELECT SUM(o.total_amount) FROM orders o WHERE o.customer_name = c.company_name), 0) as total_deal_amount FROM customers c`;
   const conditions: string[] = [];
   const params: string[] = [];
 
   if (search) {
-    conditions.push("(company_name LIKE ? OR handler_name LIKE ?)");
+    conditions.push("(c.company_name LIKE ? OR c.handler_name LIKE ?)");
     params.push(`%${search}%`, `%${search}%`);
   }
   if (status) {
-    conditions.push("status = ?");
+    conditions.push("c.status = ?");
     params.push(status);
   }
 
   // 员工只能看到未认领的客户 + 自己认领的客户
   if (auth.role !== "admin") {
     const name = auth.name || "";
-    conditions.push("(claimed_by = '' OR claimed_by IS NULL OR claimed_by = ?)");
+    conditions.push("(c.claimed_by = '' OR c.claimed_by IS NULL OR c.claimed_by = ?)");
     params.push(name);
   }
 
   if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
-  sql += " ORDER BY updated_at DESC";
+  sql += " ORDER BY c.updated_at DESC";
 
   const rows = db.prepare(sql).all(...params);
   return NextResponse.json(rows);

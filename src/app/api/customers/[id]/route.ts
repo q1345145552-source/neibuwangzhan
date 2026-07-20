@@ -18,7 +18,7 @@ export async function GET(
   db.exec("UPDATE customers SET status = '沉睡', updated_at = datetime('now') WHERE status = '跟进中' AND id NOT IN (SELECT DISTINCT customer_id FROM customer_follow_ups WHERE created_at >= datetime('now', '-1 month'))");
   db.exec("UPDATE customers SET status = '沉睡', updated_at = datetime('now') WHERE status = '已合作' AND company_name NOT IN (SELECT DISTINCT customer_name FROM orders WHERE created_at >= datetime('now', '-3 months'))");
 
-  const customer = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
+  const customer = db.prepare("SELECT c.*, COALESCE((SELECT SUM(o.total_amount) FROM orders o WHERE o.customer_name = c.company_name), 0) as total_deal_amount FROM customers c WHERE c.id = ?").get(id);
   if (!customer) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
 
   const follow_ups = db.prepare("SELECT * FROM customer_follow_ups WHERE customer_id = ? ORDER BY created_at DESC").all(id);
