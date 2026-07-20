@@ -54,6 +54,10 @@ const businessLines = [
   { name: "NBTC", href: "/nbtc", icon: Radio },
 ];
 
+const customerNav = [
+  { name: "客户管理", href: "/customers", icon: Building2 },
+];
+
 
 const vatNav = [
   { name: "VAT申报", href: "/vat", icon: Calculator },
@@ -85,6 +89,7 @@ function isActiveRoute(pathname: string, href: string) {
   if (href === "/agency") return pathname === "/agency";
   if (href === "/internal") return pathname === "/internal";
   if (href === "/vat") return pathname.startsWith("/vat");
+  if (href === "/customers") return pathname.startsWith("/customers");
   return pathname.startsWith(href);
 }
 
@@ -172,6 +177,9 @@ export function Sidebar() {
         <NavSection items={vatNav} pathname={pathname} onClose={close} />
 
         <div className="mt-4 mb-2 px-3">
+          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">客户</span>
+          <NavSection items={customerNav} pathname={pathname} onClose={close} />
+
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">业务线</span>
         </div>
         <NavSection items={businessLines} pathname={pathname} onClose={close} />

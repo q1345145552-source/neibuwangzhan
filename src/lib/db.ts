@@ -948,6 +948,46 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_by TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
+
+  /* ── 客户管理 ── */
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT NOT NULL UNIQUE,
+      industry TEXT DEFAULT '',
+      company_type TEXT DEFAULT '',
+      founded_at TEXT DEFAULT '',
+      source_channel TEXT DEFAULT '',
+      owner_name TEXT DEFAULT '',
+      owner_wechat TEXT DEFAULT '',
+      handler_name TEXT DEFAULT '',
+      handler_wechat TEXT DEFAULT '',
+      willingness TEXT DEFAULT '',
+      demand_tags TEXT DEFAULT '',
+      status TEXT DEFAULT '潜在' CHECK(status IN ('潜在','跟进中','已合作','沉睡')),
+      total_deal_amount REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      employee_name TEXT DEFAULT '',
+      content TEXT DEFAULT '',
+      next_contact_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT DEFAULT '',
+      point_type TEXT NOT NULL CHECK(point_type IN ('跟进','认领','激活','升级','成交')),
+      points INTEGER DEFAULT 0,
+      customer_id INTEGER REFERENCES customers(id),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 }
 
 /* ── 积分规则种子 ── */
