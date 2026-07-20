@@ -50,6 +50,22 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
 
+  // Template download
+  if (action === "template") {
+    const csvHeaders = "公司名称,行业,公司性质,成立时间,来源渠道,老板姓名,老板微信,经办人姓名,经办人微信,合作意愿度,需求标签,合作状态,成交总额";
+    const csvExample = "示例科技有限公司,电商,有限公司,2020-01-01,展会,张三,zhangsan,李四,lisi,高,\"VAT,商标\",潜在,0";
+    const BOM = "\ufeff";
+    const NL = "\n";
+    const csv = BOM + csvHeaders + NL + csvExample + NL;
+    const encoded = new TextEncoder().encode(csv);
+    return new NextResponse(encoded, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename*=UTF-8''%E5%AE%A2%E6%88%B7%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.csv",
+      },
+    });
+  }
+
   // Dashboard stats
   if (action === "dashboard") {
     const stats = db.prepare(`
@@ -152,6 +168,118 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   // === Special actions ===
+
+  // Batch import from CSV
+  if (body.action === "batch_import") {
+    const { csv_text } = body;
+    if (!csv_text?.trim()) return NextResponse.json({ error: "请上传CSV文件内容" }, { status: 400 });
+
+    const lines = csv_text.trim().split(/\r?\n/);
+    if (lines.length < 2) return NextResponse.json({ error: "CSV文件为空或只有表头" }, { status: 400 });
+
+    // Parse header
+    const headerLine = lines[0].replace(/^\uFEFF/, "");
+    const headers = headerLine.split(",").map((h: string) => h.trim());
+
+    // Map header names to db fields
+    const fieldMap: Record<string, string> = {
+      "公司名称": "company_name",
+      "行业": "industry",
+      "公司性质": "company_type",
+      "成立时间": "founded_at",
+      "来源渠道": "source_channel",
+      "老板姓名": "owner_name",
+      "老板微信": "owner_wechat",
+      "经办人姓名": "handler_name",
+      "经办人微信": "handler_wechat",
+      "合作意愿度": "willingness",
+      "需求标签": "demand_tags",
+      "合作状态": "status",
+      "成交总额": "total_deal_amount",
+    };
+
+    const db = getDb();
+    const errors: string[] = [];
+    let successCount = 0;
+
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO customers (company_name, industry, company_type, founded_at, source_channel, owner_name, owner_wechat, handler_name, handler_wechat, willingness, demand_tags, status, total_deal_amount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    // Parse CSV lines (handling quoted fields)
+    const parseCsvLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
+        else { current += ch; }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    for (let i = 1; i < lines.length; i++) {
+      const lineNum = i + 1; // 1-based row number for error messages
+      const raw = lines[i].trim();
+      if (!raw) continue;
+
+      const values = parseCsvLine(raw);
+      if (values.length !== headers.length) {
+        errors.push(`第${lineNum}行: 列数不匹配（期望${headers.length}列，实际${values.length}列）`);
+        continue;
+      }
+
+      const row: Record<string, string> = {};
+      for (let j = 0; j < headers.length; j++) {
+        row[headers[j]] = values[j];
+      }
+
+      // Validate required: company_name
+      if (!row["公司名称"]?.trim()) {
+        errors.push(`第${lineNum}行: 公司名称为必填`);
+        continue;
+      }
+
+      // Check duplicate
+      const exists = db.prepare("SELECT id FROM customers WHERE company_name = ?").get(row["公司名称"].trim());
+      if (exists) {
+        errors.push(`第${lineNum}行: 公司「${row["公司名称"].trim()}」已存在`);
+        continue;
+      }
+
+      // Insert
+      const status = row["合作状态"]?.trim() || "潜在";
+      const amount = parseFloat(row["成交总额"] || "0") || 0;
+
+      const result = insertStmt.run(
+        row["公司名称"].trim(),
+        row["行业"] || "",
+        row["公司性质"] || "",
+        row["成立时间"] || "",
+        row["来源渠道"] || "",
+        row["老板姓名"] || "",
+        row["老板微信"] || "",
+        row["经办人姓名"] || "",
+        row["经办人微信"] || "",
+        row["合作意愿度"] || "",
+        row["需求标签"] || "",
+        status,
+        amount,
+      );
+
+      if (result.changes > 0) {
+        successCount++;
+      } else {
+        errors.push(`第${lineNum}行: 导入失败（可能公司名称重复）`);
+      }
+    }
+
+    return NextResponse.json({ success: true, imported: successCount, errors });
+  }
 
   // Batch reassign
   if (body.action === "batch_reassign") {
