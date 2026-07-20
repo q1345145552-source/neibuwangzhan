@@ -10,7 +10,7 @@ import { VatCustomerProfile } from "@/components/vat-customer-profile";
 import {
   Users, FileText, Calculator, Search, History, BarChart3,
   Plus, Trash2, Edit3, Save, X, CheckCircle2, Clock, Download,
-  AlertTriangle, TrendingUp, Send, Pause, Square, Ban, Mail, Bell,
+  AlertTriangle, TrendingUp, Send, Pause, Square, Ban, Mail, Bell, RefreshCw,
   FileCheck, ClipboardCheck, Archive, ArrowUpRight, Layers
 } from "lucide-react";
 
@@ -160,6 +160,7 @@ export default function VatPage() {
   } | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [profileCustomerId, setProfileCustomerId] = useState<number | null>(null);
 
@@ -553,8 +554,16 @@ export default function VatPage() {
                 </span>
               )}
             </div>
-            <input type="month" value={recordMonth} onChange={e => { setRecordMonth(e.target.value); setFilterBy(null); }}
-              className="rounded border px-3 py-2 text-sm" />
+            <div className="flex items-center gap-2">
+              <input type="month" value={recordMonth} onChange={e => { setRecordMonth(e.target.value); setFilterBy(null); }}
+                className="rounded border px-3 py-2 text-sm" />
+              <Button variant="outline" size="sm" disabled={refreshing}
+                onClick={async () => { setRefreshing(true); try { await loadRecords(); } finally { setRefreshing(false); } }}
+                className="gap-1.5">
+                <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+                刷新
+              </Button>
+            </div>
           </div>
 
           {/* Batch actions bar */}
