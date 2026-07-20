@@ -989,6 +989,17 @@ function initTables(database: Database.Database) {
       customer_id INTEGER REFERENCES customers(id),
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS point_withdrawals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      status TEXT DEFAULT '待审核' CHECK(status IN ('待审核','已通过','已驳回')),
+      reviewed_by TEXT DEFAULT '',
+      review_note TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      reviewed_at TEXT DEFAULT ''
+    );
   `);
 }
 
@@ -1007,6 +1018,11 @@ function seedPointsRulesZ(database: Database.Database) {
     ["工单超时扣分", "issue_overdue", -3, "auto", "工单超过2天未处理扣3分"],
     ["工单解决加分", "issue_resolved", 3, "auto", "解决一个工单加3分"],
     ["达人A级评估加分", "influencer_a_grade", 5, "auto", "评估出一个A级达人加5分"],
+    ["客户跟进加分", "customer_followup", 2, "auto", "写一条客户跟进日志加2分"],
+    ["客户认领加分", "customer_claim", 5, "auto", "认领一个客户加5分"],
+    ["客户激活加分", "customer_activate", 8, "auto", "激活一个沉睡客户加8分"],
+    ["客户升级加分", "customer_upgrade", 10, "auto", "客户从潜在升级到已合作加10分"],
+    ["销售成交加分", "customer_deal", 10, "auto", "成交一单关联客户加10分"],
   ];
   const stmt = database.prepare(
     "INSERT OR IGNORE INTO points_rules (rule_name, rule_key, points, rule_type, description) VALUES (?, ?, ?, ?, ?)"

@@ -8,7 +8,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, X, Building2, Edit3, Trash2, ChevronRight,
-  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap
+  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote
 } from "lucide-react";
 
 // ===== Types =====
@@ -181,6 +181,12 @@ export default function CustomersPage() {
   const [vatImportable, setVatImportable] = useState<any[]>([]);
   const [selectedVatIds, setSelectedVatIds] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [myPoints, setMyPoints] = useState(0);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawMsg, setWithdrawMsg] = useState("");
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [showReviewPanel, setShowReviewPanel] = useState(false);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -195,6 +201,17 @@ export default function CustomersPage() {
   }, [search, statusFilter]);
 
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
+
+  const loadMyPoints = async () => {
+    try {
+      const res = await fetchWithAuth("/api/customers?action=my_points");
+      const data = await res.json();
+      setMyPoints(data.total_customer_points || 0);
+    } catch {}
+  };
+
+  useEffect(() => { loadMyPoints(); }, [customers]); // refresh when customers change
+  useEffect(() => { if (user?.role === "admin") loadWithdrawals(); }, [user]);
 
   const handleClaim = async (id: number) => {
     const res = await fetchWithAuth("/api/customers", {
@@ -238,6 +255,55 @@ export default function CustomersPage() {
     alert(data.imported ? "已导入 " + data.imported + " 个客户" : "导入失败");
   };
 
+  const handleWithdraw = async () => {
+    const amt = Number(withdrawAmount);
+    if (!amt || amt <= 0) { setWithdrawMsg("请输入有效积分"); return; }
+    setWithdrawMsg("");
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "withdraw_request", amount: amt }),
+    });
+    const data = await res.json();
+    if (res.ok) { setShowWithdraw(false); setWithdrawAmount(""); alert(data.message); loadMyPoints(); }
+    else { setWithdrawMsg(data.error || "申请失败"); }
+  };
+
+  const loadWithdrawals = async () => {
+    if (user?.role !== "admin") return;
+    try {
+      const res = await fetchWithAuth("/api/customers?action=withdrawals");
+      const data = await res.json();
+      setWithdrawals(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  const handleReview = async (withdrawal_id: number, approve: boolean) => {
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "withdraw_review", withdrawal_id, approve }),
+    });
+    if (res.ok) { loadWithdrawals(); loadMyPoints(); }
+    else { const d = await res.json(); alert(d.error || "操作失败"); }
+  };
+
+  const handleExportSales = async () => {
+    try {
+      const res = await fetchWithAuth("/api/internal/points", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "export_sales", month: new Date().toISOString().slice(0, 7) }),
+      });
+      const data = await res.json();
+      if (data.rows) {
+        const csv = "员工,跟进积分,认领积分,激活积分,升级积分,成交积分,总销售积分\n" + data.rows.map((r: any) => `${r.name},${r.followup_points},${r.claim_points},${r.activate_points},${r.upgrade_points},${r.deal_points},${r.total_sales}`).join("\n");
+        const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `销售积分_${data.month}.csv`;
+        a.click(); URL.revokeObjectURL(url);
+      }
+    } catch {}
+  };
+
   const handleDelete = async (id: number, name: string) => {
     if (!confirm("确定删除客户\"" + name + "\"？相关跟进记录和积分也会清除。")) return;
     await fetchWithAuth("/api/customers?id=" + id, { method: "DELETE" });
@@ -250,7 +316,15 @@ export default function CustomersPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">客户管理</h1>
-          <p className="text-sm text-[var(--muted-foreground)] mt-0.5">统一管理合作客户与潜客</p>
+          <div className="flex items-center gap-3 mt-0.5">
+            <p className="text-sm text-[var(--muted-foreground)]">统一管理合作客户与潜客</p>
+            <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] px-2 py-0.5 text-xs font-medium text-[var(--success)]">
+              <Banknote className="size-3" />我的销售积分: {myPoints}
+            </span>
+            <button onClick={() => setShowWithdraw(true)} className="text-xs text-[var(--primary)] hover:underline">提现</button>
+            {user?.role === "admin" && <button onClick={() => setShowReviewPanel(!showReviewPanel)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">审核{withdrawals.filter((w: any) => w.status === "待审核").length > 0 ? `(${withdrawals.filter((w: any) => w.status === "待审核").length})` : ""}</button>}
+            {user?.role === "admin" && <button onClick={handleExportSales} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">导出月报</button>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={openVatImport} className="gap-1.5">
@@ -289,6 +363,38 @@ export default function CustomersPage() {
           ))}
         </div>
       </div>
+
+      {/* Admin Review Panel */}
+      {showReviewPanel && user?.role === "admin" && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium">提现审核</h3>
+            <button onClick={() => setShowReviewPanel(false)}><X className="size-4 text-[var(--muted-foreground)]" /></button>
+          </div>
+          {withdrawals.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">暂无提现申请</p>
+          ) : (
+            <div className="space-y-2">
+              {withdrawals.map((w: any) => (
+                <div key={w.id} className="flex items-center justify-between border-b border-[var(--border)] pb-2 last:border-b-0 last:pb-0">
+                  <div>
+                    <span className="text-sm font-medium">{w.employee_name}</span>
+                    <span className="ml-2 text-sm font-mono text-[var(--success)]">-{w.amount}</span>
+                    <span className={w.status === "待审核" ? "ml-2 text-xs text-amber-500" : w.status === "已通过" ? "ml-2 text-xs text-green-600" : "ml-2 text-xs text-[var(--destructive)]"}>{w.status}</span>
+                    <span className="ml-2 text-xs text-[var(--muted-foreground)]">{w.created_at?.slice(0, 10)}</span>
+                  </div>
+                  {w.status === "待审核" && (
+                    <div className="flex gap-1">
+                      <Button size="xs" variant="outline" className="h-7 text-xs text-green-600" onClick={() => handleReview(w.id, true)}>通过</Button>
+                      <Button size="xs" variant="outline" className="h-7 text-xs text-[var(--destructive)]" onClick={() => handleReview(w.id, false)}>驳回</Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
@@ -372,6 +478,33 @@ export default function CustomersPage() {
 
       {/* Add form modal */}
       {showAddForm && <AddCustomerForm onClose={() => setShowAddForm(false)} onSaved={loadCustomers} />}
+
+      {/* Withdraw Modal */}
+      {showWithdraw && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={() => { setShowWithdraw(false); setWithdrawMsg(""); }} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
+            <div className="w-full max-w-sm rounded-xl border bg-[var(--background)] shadow-2xl p-6 mx-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-medium">积分提现</h2>
+                <button onClick={() => { setShowWithdraw(false); setWithdrawMsg(""); }} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              </div>
+              <p className="text-sm text-[var(--muted-foreground)] mb-3">当前销售积分: <span className="font-bold text-[var(--success)]">{myPoints}</span></p>
+              <div className="mb-3">
+                <label className="text-xs text-[var(--muted-foreground)]">提现分数</label>
+                <input type="number" value={withdrawAmount} onChange={e => { setWithdrawAmount(e.target.value); setWithdrawMsg(""); }}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] font-mono" placeholder="输入要提现的分数" />
+              </div>
+              {withdrawMsg && <p className="text-xs text-[var(--destructive)] mb-3">{withdrawMsg}</p>}
+              <p className="text-xs text-[var(--muted-foreground)] mb-4">10 泰铢 = 1 分，管理员审核通过后到账</p>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => { setShowWithdraw(false); setWithdrawMsg(""); }}>取消</Button>
+                <Button size="sm" onClick={handleWithdraw}>提交申请</Button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* VAT Import Modal */}
       {showVatImport && (

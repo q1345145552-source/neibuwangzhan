@@ -3,6 +3,12 @@ import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // Helper: apply status auto-flow rules
+function insertPointsRecord(db: any, employeeName: string, points: number, reason: string, ruleKey: string) {
+  db.prepare(
+    "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(employeeName, points, reason, ruleKey, "customer", "system");
+}
+
 function applyAutoFlow(db: any) {
   // 跟进中 + 有成交订单 → 已合作
   db.exec(`
@@ -43,6 +49,19 @@ export async function GET(req: NextRequest) {
   const action = url.searchParams.get("action") || "";
 
   const db = getDb();
+
+  // My customer points
+  if (action === "my_points") {
+    const name = auth.name || "";
+    const total = db.prepare("SELECT COALESCE(SUM(points), 0) as total FROM points_records WHERE employee_name = ? AND rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal') AND status != '已撤销'").get(name) as { total: number };
+    return NextResponse.json({ employee_name: name, total_customer_points: total.total });
+  }
+
+  // Admin: pending withdrawals
+  if (auth.role === "admin" && action === "withdrawals") {
+    const rows = db.prepare("SELECT * FROM point_withdrawals ORDER BY CASE WHEN status = '待审核' THEN 0 ELSE 1 END, created_at DESC").all();
+    return NextResponse.json(rows);
+  }
 
   // VAT import: get vat_customers not yet in customers pool
   if (action === "vat-importable") {
@@ -86,6 +105,46 @@ export async function POST(req: NextRequest) {
 
   // === Special actions ===
 
+  // Follow-up: add follow-up log + points
+  if (body.action === "follow_up") {
+    const { customer_id, content, next_contact_at } = body;
+    if (!customer_id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
+    if (!content?.trim()) return NextResponse.json({ error: "请填写跟进内容" }, { status: 400 });
+    const db = getDb();
+    db.prepare("INSERT INTO customer_follow_ups (customer_id, employee_name, content, next_contact_at) VALUES (?, ?, ?, ?)").run(customer_id, auth.name!, content.trim(), next_contact_at || "");
+    insertPointsRecord(db, auth.name!, 2, `跟进客户 #${customer_id}`, "customer_followup");
+    return NextResponse.json({ success: true });
+  }
+
+  // Withdraw request
+  if (body.action === "withdraw_request") {
+    const { amount } = body;
+    if (!amount || amount <= 0) return NextResponse.json({ error: "请输入有效积分" }, { status: 400 });
+    const db = getDb();
+    const total = db.prepare("SELECT COALESCE(SUM(points), 0) as total FROM points_records WHERE employee_name = ? AND rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal') AND status != '已撤销'").get(auth.name!) as { total: number };
+    if (total.total < amount) return NextResponse.json({ error: `积分不足，当前销售积分: ${total.total}` }, { status: 400 });
+    db.prepare("INSERT INTO point_withdrawals (employee_name, amount) VALUES (?, ?)").run(auth.name!, amount);
+    return NextResponse.json({ success: true, message: "提现申请已提交，等待管理员审核" });
+  }
+
+  // Admin: review withdrawal
+  if (body.action === "withdraw_review") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可审核" }, { status: 403 });
+    const { withdrawal_id, approve, note } = body;
+    if (!withdrawal_id) return NextResponse.json({ error: "缺少提现申请 ID" }, { status: 400 });
+    const db = getDb();
+    const w = db.prepare("SELECT * FROM point_withdrawals WHERE id = ?").get(withdrawal_id) as any;
+    if (!w) return NextResponse.json({ error: "申请不存在" }, { status: 404 });
+    if (w.status !== "待审核") return NextResponse.json({ error: "该申请已处理" }, { status: 400 });
+    const status = approve ? "已通过" : "已驳回";
+    db.prepare("UPDATE point_withdrawals SET status = ?, reviewed_by = ?, review_note = ?, reviewed_at = datetime('now') WHERE id = ?").run(status, auth.name!, note || "", withdrawal_id);
+    if (approve) {
+      // Deduct from points
+      db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, ?, ?, 'withdrawal', 'customer', 'system')").run(w.employee_name, -w.amount, `积分提现 -${w.amount} 分（管理员审核通过）`);
+    }
+    return NextResponse.json({ success: true });
+  }
+
   // Claim: claim a 潜在 customer
   if (body.action === "claim") {
     const { id } = body;
@@ -96,6 +155,7 @@ export async function POST(req: NextRequest) {
     if (c.status !== "潜在") return NextResponse.json({ error: "只能认领潜在客户" }, { status: 400 });
     if (c.claimed_by) return NextResponse.json({ error: "已被认领" }, { status: 409 });
     db.prepare("UPDATE customers SET claimed_by = ?, status = '跟进中', updated_at = datetime('now') WHERE id = ?").run(auth.name, id);
+    insertPointsRecord(db, auth.name!, 8, `激活沉睡客户「${(c as any).company_name}」`, "customer_activate");
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }
@@ -109,6 +169,7 @@ export async function POST(req: NextRequest) {
     if (!c) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
     if (c.status !== "沉睡") return NextResponse.json({ error: "只能激活沉睡客户" }, { status: 400 });
     db.prepare("UPDATE customers SET claimed_by = ?, status = '跟进中', updated_at = datetime('now') WHERE id = ?").run(auth.name, id);
+    insertPointsRecord(db, auth.name!, 8, `激活沉睡客户「${(c as any).company_name}」`, "customer_activate");
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }
