@@ -145,12 +145,19 @@ export async function GET(req: NextRequest) {
   const params: string[] = [];
 
   if (search) {
-    conditions.push("(company_name LIKE ? OR owner_name LIKE ? OR handler_name LIKE ?)");
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    conditions.push("(company_name LIKE ? OR handler_name LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`);
   }
   if (status) {
     conditions.push("status = ?");
     params.push(status);
+  }
+
+  // 员工只能看到未认领的客户 + 自己认领的客户
+  if (auth.role !== "admin") {
+    const name = auth.name || "";
+    conditions.push("(claimed_by = '' OR claimed_by IS NULL OR claimed_by = ?)");
+    params.push(name);
   }
 
   if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
