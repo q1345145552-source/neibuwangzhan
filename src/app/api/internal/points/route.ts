@@ -103,24 +103,27 @@ export async function GET(req: NextRequest) {
   `;
   const salesRanking = db.prepare(salesRankSql).all(dateFrom, dateTo);
 
-  // 销售积分月汇总
-  const salesExportSql = `
-    SELECT 
-      COALESCE(SUM(CASE WHEN rule_key = 'customer_followup' AND status != '已撤销' THEN points ELSE 0 END), 0) as followup_points,
-      COALESCE(SUM(CASE WHEN rule_key = 'customer_claim' AND status != '已撤销' THEN points ELSE 0 END), 0) as claim_points,
-      COALESCE(SUM(CASE WHEN rule_key = 'customer_activate' AND status != '已撤销' THEN points ELSE 0 END), 0) as activate_points,
-      COALESCE(SUM(CASE WHEN rule_key = 'customer_upgrade' AND status != '已撤销' THEN points ELSE 0 END), 0) as upgrade_points,
-      COALESCE(SUM(CASE WHEN rule_key = 'customer_deal' AND status != '已撤销' THEN points ELSE 0 END), 0) as deal_points,
-      COALESCE(SUM(CASE WHEN rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal') AND status != '已撤销' THEN points ELSE 0 END), 0) as total_sales
-    FROM points_records
-    WHERE rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal')
-      AND created_at >= ? AND created_at <= ?
-      AND employee_name = ?
-  `;
+  // 季度销售详细排行
+  let quarterlySales: any[] = [];
+  if (quarter) {
+    quarterlySales = db.prepare(`
+      SELECT employee_name as name,
+        COALESCE(SUM(CASE WHEN status != '已撤销' THEN points ELSE 0 END), 0) as total_points,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_followup' AND status != '已撤销' THEN points/2 ELSE 0 END), 0) as followup_count,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_claim' AND status != '已撤销' THEN points/5 ELSE 0 END), 0) as claim_count,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_activate' AND status != '已撤销' THEN points/8 ELSE 0 END), 0) as activate_count,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_deal' AND status != '已撤销' THEN points/10 ELSE 0 END), 0) as deal_count
+      FROM points_records
+      WHERE rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal')
+        AND created_at >= ? AND created_at <= ?
+        AND points > 0
+      GROUP BY employee_name ORDER BY total_points DESC
+    `).all(dateFrom, dateTo);
+  }
 
   return NextResponse.json({
     rankings: rankData, records, month, employees, appeals,
-    peerVotes, clientFeedback, quarters, salesRanking,
+    peerVotes, clientFeedback, quarters, salesRanking, quarterlySales,
     quarter: quarter || null
   });
 }
