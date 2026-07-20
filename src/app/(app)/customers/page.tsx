@@ -385,6 +385,7 @@ export default function CustomersPage() {
             {user?.role === "admin" && <button onClick={handleExportSales} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">导出月报</button>}
           </div>
         </div>
+        {user?.role === "admin" && (
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
             <FileSpreadsheet className="size-4" />下载模板
@@ -400,6 +401,7 @@ export default function CustomersPage() {
             <Plus className="size-4" />录入客户
           </Button>
         </div>
+        )}
       </div>
 
       {/* Dashboard Cards */}
