@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, use, useCallback } from "react";
+import React, { useState, useEffect, use, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Upload, MessageSquare, CheckCircle2, Circle, Trash2, X, Copy, CheckCheck, Link2, Pencil, Edit3, Save } from "lucide-react";
@@ -102,6 +102,8 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
   const [editingRecord, setEditingRecord] = useState(false);
   const [editFields, setEditFields] = useState<{ amount?: number; assignee?: string }>({});
   const [savingRecord, setSavingRecord] = useState(false);
+  const [stepsError, setStepsError] = useState("");
+  const initialLoadDone = useRef(false);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey(k => k + 1), []);
@@ -121,8 +123,10 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
         const res = await fetchWithAuth(`/api/vat/records/${id}`);
         const data = await res.json();
         if (ignore) return;
-        if (data.error) { setError(data.error); setLoading(false); return; }
+        if (data.error) { if (initialLoadDone.current) { setStepsError(data.error); } else { setError(data.error); } setLoading(false); return; }
         setRecord(data);
+        initialLoadDone.current = true;
+        setStepsError("");
         const sts = data.steps || [];
         setSteps(sts);
 
@@ -160,7 +164,13 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
           }
         } catch {}
       } catch {
-        if (!ignore) setError("加载记录失败");
+        if (!ignore) {
+          if (initialLoadDone.current) {
+            setStepsError("加载记录失败");
+          } else {
+            setError("加载记录失败");
+          }
+        }
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -436,13 +446,7 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
   // ===== Main render =====
   return (
     <div className="flex flex-col gap-6">
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-lg border border-[var(--destructive)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-4 py-3 text-sm text-[var(--destructive)] flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError("")} className="ml-3 text-[var(--destructive)] hover:opacity-70 text-lg leading-none">&times;</button>
-        </div>
-      )}
+
 
       {/* Header row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -561,6 +565,12 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
                     生成评价链接
                   </Button>
                 )}
+              </div>
+            )}
+            {stepsError && (
+              <div className="rounded-lg border border-[var(--destructive)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-4 py-3 text-sm text-[var(--destructive)] flex items-center justify-between mb-4">
+                <span>{stepsError}</span>
+                <button onClick={() => setStepsError("")} className="ml-3 hover:opacity-70 text-lg leading-none">&times;</button>
               </div>
             )}
             {steps.length === 0 ? (
