@@ -156,9 +156,6 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                   )}
                 </dd>
               </div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">公司性质</dt><dd className="mt-1 text-sm">{customer.company_type || "—"}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">成立时间</dt><dd className="mt-1 text-sm">{customer.founded_at || "—"}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">来源渠道</dt><dd className="mt-1 text-sm">{customer.source_channel || "—"}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">合作意愿度</dt><dd className="mt-1 text-sm">{customer.willingness || "—"}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">成交总额</dt><dd className="mt-1 text-sm font-mono">{customer.total_deal_amount > 0 ? customer.total_deal_amount.toLocaleString() + " ฿" : "—"}</dd></div>
             </dl>
@@ -169,10 +166,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               <User className="size-4 text-[var(--muted-foreground)]" />联系人
             </h3>
             <dl className="grid gap-4 sm:grid-cols-2">
-              <div><dt className="text-xs text-[var(--muted-foreground)]">老板姓名</dt><dd className="mt-1 text-sm">{customer.owner_name || "—"}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">老板微信</dt><dd className="mt-1 text-sm font-mono">{customer.owner_wechat || "—"}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">经办人姓名</dt><dd className="mt-1 text-sm">{customer.handler_name || "—"}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">经办人微信</dt><dd className="mt-1 text-sm font-mono">{customer.handler_wechat || "—"}</dd></div>
+              <div><dt className="text-xs text-[var(--muted-foreground)]">联系人</dt><dd className="mt-1 text-sm">{customer.handler_name || "—"}</dd></div>
+              <div><dt className="text-xs text-[var(--muted-foreground)]">联系方式</dt><dd className="mt-1 text-sm font-mono">{customer.handler_wechat || "—"}</dd></div>
             </dl>
           </div>
 

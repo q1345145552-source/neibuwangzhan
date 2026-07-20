@@ -49,8 +49,7 @@ function AddCustomerForm({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    company_name: "", industry: "", company_type: "", founded_at: "",
-    source_channel: "", owner_name: "", owner_wechat: "", handler_name: "",
+    company_name: "", industry: "", handler_name: "",
     handler_wechat: "", willingness: "", demand_tags: "", status: "潜在",
     total_deal_amount: "",
   });
@@ -88,68 +87,49 @@ function AddCustomerForm({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-            <div className="col-span-2">
+          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div>
               <label className="text-xs text-[var(--muted-foreground)]">公司名称 <span className="text-[var(--destructive)]">*</span></label>
               <input value={form.company_name} onChange={e => setForm(p => ({ ...p, company_name: e.target.value }))}
                 className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="必填" />
             </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">行业</label>
-              <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-[var(--muted-foreground)]">行业</label>
+                <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--muted-foreground)]">联系人</label>
+                <input value={form.handler_name} onChange={e => setForm(p => ({ ...p, handler_name: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="姓名" />
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">公司性质</label>
-              <input value={form.company_type} onChange={e => setForm(p => ({ ...p, company_type: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 有限公司、个体" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-[var(--muted-foreground)]">联系方式</label>
+                <input value={form.handler_wechat} onChange={e => setForm(p => ({ ...p, handler_wechat: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="微信或电话" />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--muted-foreground)]">合作意愿度</label>
+                <input value={form.willingness} onChange={e => setForm(p => ({ ...p, willingness: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 高、中、低" />
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">成立时间</label>
-              <input type="date" value={form.founded_at} onChange={e => setForm(p => ({ ...p, founded_at: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">来源渠道</label>
-              <input value={form.source_channel} onChange={e => setForm(p => ({ ...p, source_channel: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 转介绍、展会" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">老板姓名</label>
-              <input value={form.owner_name} onChange={e => setForm(p => ({ ...p, owner_name: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">老板微信</label>
-              <input value={form.owner_wechat} onChange={e => setForm(p => ({ ...p, owner_wechat: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">经办人姓名</label>
-              <input value={form.handler_name} onChange={e => setForm(p => ({ ...p, handler_name: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">经办人微信</label>
-              <input value={form.handler_wechat} onChange={e => setForm(p => ({ ...p, handler_wechat: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">合作意愿度</label>
-              <input value={form.willingness} onChange={e => setForm(p => ({ ...p, willingness: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 高、中、低" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">需求标签</label>
-              <input value={form.demand_tags} onChange={e => setForm(p => ({ ...p, demand_tags: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 VAT, 商标" />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--muted-foreground)]">合作状态</label>
-              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
-                className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
-                {STATUS_OPTIONS.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-[var(--muted-foreground)]">需求标签</label>
+                <input value={form.demand_tags} onChange={e => setForm(p => ({ ...p, demand_tags: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 VAT, 商标" />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--muted-foreground)]">合作状态</label>
+                <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
+                  className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                  {STATUS_OPTIONS.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className="text-xs text-[var(--muted-foreground)]">成交总额 (฿)</label>
@@ -690,12 +670,13 @@ export default function CustomersPage() {
                     <div className="flex justify-center">
                       {c.claimed_by ? (
                         <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-1.5 py-0.5 text-xs text-[var(--primary)] whitespace-nowrap">{c.claimed_by}</span>
+                      ) : c.handler_name ? (
+                        <span className="text-xs text-[var(--muted-foreground)]">{c.handler_name}</span>
                       ) : (
                         <span className="text-xs text-[var(--muted-foreground)]">—</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 align-middle text-[var(--muted-foreground)] hidden lg:table-cell truncate">{c.source_channel || "—"}</td>
                   <td className="px-3 py-2.5 align-middle text-right font-mono tabular-nums whitespace-nowrap">
                     {c.total_deal_amount > 0 ? c.total_deal_amount.toLocaleString() : "—"}
                   </td>
