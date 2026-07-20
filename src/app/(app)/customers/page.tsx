@@ -8,7 +8,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, X, Building2, Edit3, Trash2, ChevronRight,
-  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote, AlertTriangle, UserCheck, ArrowRightLeft
+  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote, AlertTriangle, UserCheck, ArrowRightLeft, Upload, FileSpreadsheet
 } from "lucide-react";
 
 // ===== Types =====
@@ -191,6 +191,8 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [reassignTarget, setReassignTarget] = useState("");
   const [reassigning, setReassigning] = useState(false);
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [importResult, setImportResult] = useState<{imported:number;errors:string[]} | null>(null);
   const [employees, setEmployees] = useState<{name:string}[]>([]);
 
   const loadCustomers = useCallback(async () => {
@@ -340,6 +342,35 @@ export default function CustomersPage() {
     setSelectedIds(new Set(customers.map(c => c.id)));
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await fetchWithAuth("/api/customers?action=template");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "客户导入模板.csv";
+      a.click(); URL.revokeObjectURL(url);
+    } catch {}
+  };
+
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingCsv(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const res = await fetchWithAuth("/api/customers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "batch_import", csv_text: text }),
+      });
+      const data = await res.json();
+      setImportResult(data);
+      if (data.imported > 0) { loadCustomers(); loadDashboard(); }
+    } catch { setImportResult({ imported: 0, errors: ["网络错误，请重试"] }); }
+    finally { setImportingCsv(false); e.target.value = ""; }
+  };
+
   const handleBatchReassign = async () => {
     if (!selectedIds.size || !reassignTarget.trim()) return;
     setReassigning(true);
@@ -375,9 +406,16 @@ export default function CustomersPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+            <FileSpreadsheet className="size-4" />下载模板
+          </Button>
           <Button size="sm" variant="outline" onClick={openVatImport} className="gap-1.5">
             <Download className="size-4" />从VAT导入
           </Button>
+          <label className="cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--background)] text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors">
+            <Upload className="size-4" />{importingCsv ? "导入中..." : "批量导入"}
+            <input type="file" accept=".csv" onChange={handleImportCsv} className="hidden" disabled={importingCsv} />
+          </label>
           <Button size="sm" onClick={() => setShowAddForm(true)} className="gap-1.5">
             <Plus className="size-4" />录入客户
           </Button>
@@ -708,6 +746,39 @@ export default function CustomersPage() {
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={() => { setShowWithdraw(false); setWithdrawMsg(""); }}>取消</Button>
                 <Button size="sm" onClick={handleWithdraw}>提交申请</Button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Import Result Modal */}
+      {importResult && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={() => setImportResult(null)} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto">
+            <div className="w-full max-w-md rounded-xl border bg-[var(--background)] shadow-2xl p-6 mx-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-medium">导入结果</h2>
+                <button onClick={() => setImportResult(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              </div>
+              <div className="mb-4">
+                <p className="text-sm">成功导入 <span className="font-bold text-green-600">{importResult.imported}</span> 个客户</p>
+                {importResult.errors.length > 0 && (
+                  <p className="text-sm text-[var(--destructive)] mt-1">失败/跳过 {importResult.errors.length} 条</p>
+                )}
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-[var(--border)] mb-4">
+                  <div className="p-2 space-y-1 text-xs">
+                    {importResult.errors.map((err, i) => (
+                      <div key={i} className="text-[var(--destructive)]">{err}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => setImportResult(null)}>关闭</Button>
               </div>
             </div>
           </div>
