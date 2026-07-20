@@ -1057,21 +1057,23 @@ function seedData(database: Database.Database) {
     for (const name of ["公司注册","商标","FDA认证","TISI","DLD","清关","地址认证","Mall开店","NBTC","工作签证","社保开户"]) insert.run(name);
   }
 
-  // 迁移：确保社保开户业务线存在（已有数据的服务器不会走到上面的种子逻辑）
-  try {
-    const ssExists = database.prepare("SELECT 1 FROM business_types WHERE name = '社保开户'").get();
-    if (!ssExists) {
-      database.prepare("INSERT INTO business_types (name) VALUES ('社保开户')").run();
-      console.log("[DB] 已插入社保开户业务线");
-    }
-  } catch {}
-
-  // 迁移：确保工作签证业务线存在
+  // 迁移：确保工作签证业务线存在（已有数据的服务器不会走到上面的种子逻辑）
+  // 重要：插入顺序必须与种子保持一致 — 工作签证(ID 10), 社保开户(ID 11)
+  // 这样 businessSteps[10] 才会对应工作签证、businessSteps[11] 对应社保开户
   try {
     const workVisaExists = database.prepare("SELECT 1 FROM business_types WHERE name = '工作签证'").get();
     if (!workVisaExists) {
       database.prepare("INSERT INTO business_types (name) VALUES ('工作签证')").run();
       console.log("[DB] 已插入工作签证业务线");
+    }
+  } catch {}
+
+  // 迁移：确保社保开户业务线存在
+  try {
+    const ssExists = database.prepare("SELECT 1 FROM business_types WHERE name = '社保开户'").get();
+    if (!ssExists) {
+      database.prepare("INSERT INTO business_types (name) VALUES ('社保开户')").run();
+      console.log("[DB] 已插入社保开户业务线");
     }
   } catch {}
 
