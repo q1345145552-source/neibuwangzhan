@@ -3,10 +3,10 @@ import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // Helper: apply status auto-flow rules
-function insertPointsRecord(db: any, employeeName: string, points: number, reason: string, ruleKey: string) {
+function insertPointsRecord(db: any, employeeName: string, points: number, reason: string, ruleKey: string, refId?: string) {
   db.prepare(
-    "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(employeeName, points, reason, ruleKey, "customer", "system");
+    "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(employeeName, points, reason, ruleKey, "customer", refId || "", "system");
 }
 
 function applyAutoFlow(db: any) {
@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
     if (!content?.trim()) return NextResponse.json({ error: "请填写跟进内容" }, { status: 400 });
     const db = getDb();
     db.prepare("INSERT INTO customer_follow_ups (customer_id, employee_name, content, next_contact_at) VALUES (?, ?, ?, ?)").run(customer_id, auth.name!, content.trim(), next_contact_at || "");
-    insertPointsRecord(db, auth.name!, 2, `跟进客户 #${customer_id}`, "customer_followup");
+    insertPointsRecord(db, auth.name!, 2, `跟进客户 #${customer_id}`, "customer_followup", String(customer_id));
     return NextResponse.json({ success: true });
   }
 
@@ -341,7 +341,7 @@ export async function POST(req: NextRequest) {
     if (c.status !== "潜在") return NextResponse.json({ error: "只能认领潜在客户" }, { status: 400 });
     if (c.claimed_by && c.claimed_by.trim()) return NextResponse.json({ error: "已被认领" }, { status: 409 });
     db.prepare("UPDATE customers SET claimed_by = ?, status = '跟进中', updated_at = datetime('now') WHERE id = ?").run(auth.name, id);
-    insertPointsRecord(db, auth.name!, 5, `认领客户「${(c as any).company_name}」`, "customer_claim");
+    insertPointsRecord(db, auth.name!, 5, `认领客户「${(c as any).company_name}」`, "customer_claim", String(id));
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }
@@ -355,7 +355,7 @@ export async function POST(req: NextRequest) {
     if (!c) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
     if (c.status !== "沉睡") return NextResponse.json({ error: "只能激活沉睡客户" }, { status: 400 });
     db.prepare("UPDATE customers SET claimed_by = ?, status = '跟进中', updated_at = datetime('now') WHERE id = ?").run(auth.name, id);
-    insertPointsRecord(db, auth.name!, 8, `激活沉睡客户「${(c as any).company_name}」`, "customer_activate");
+    insertPointsRecord(db, auth.name!, 8, `激活沉睡客户「${(c as any).company_name}」`, "customer_activate", String(id));
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }
@@ -413,6 +413,40 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
 
   const db = getDb();
+
+  // 如果修改 claimed_by，执行积分转移
+  if (body.claimed_by !== undefined) {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可修改认领人" }, { status: 403 });
+    const customer = db.prepare("SELECT * FROM customers WHERE id = ?").get(id) as any;
+    if (!customer) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
+    const oldClaimedBy = customer.claimed_by || "";
+    const newClaimedBy = body.claimed_by.trim();
+
+    // 相同不处理
+    if (oldClaimedBy && newClaimedBy && oldClaimedBy !== newClaimedBy) {
+      // 查找旧认领人名下与该客户关联的所有积分
+      const oldPoints = db.prepare(
+        `SELECT * FROM points_records
+         WHERE employee_name = ? AND ref_id = ? AND rule_key IN ('customer_claim','customer_followup','customer_activate','customer_upgrade','customer_deal')
+         AND status != '已撤销'`
+      ).all(oldClaimedBy, String(id)) as any[];
+
+      const transferNote = `客户「${customer.company_name}」认领人转移：从 ${oldClaimedBy} 转到 ${newClaimedBy}`;
+
+      for (const r of oldPoints) {
+        // 撤销旧认领人的积分
+        db.prepare(
+          "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, ?, ?, ?, 'customer', ?, 'system')"
+        ).run(oldClaimedBy, -r.points, `${transferNote}（扣回原 ${r.rule_key} ${r.points} 分）`, r.rule_key, String(id));
+
+        // 给新认领人加上同等积分
+        db.prepare(
+          "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, ?, ?, ?, 'customer', ?, 'system')"
+        ).run(newClaimedBy, r.points, `${transferNote}（转入原 ${r.rule_key} ${r.points} 分）`, r.rule_key, String(id));
+      }
+    }
+  }
+
   const fields = ["company_name","industry","company_type","founded_at","source_channel","owner_name","owner_wechat","handler_name","handler_wechat","willingness","demand_tags","status","total_deal_amount","claimed_by"];
   const sets: string[] = [];
   const vals: any[] = [];
