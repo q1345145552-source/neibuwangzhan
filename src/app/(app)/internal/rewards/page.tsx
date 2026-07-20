@@ -44,6 +44,7 @@ export default function RewardsPage() {
   const isAdmin = user?.role === "admin";
 
   const [rankings, setRankings] = useState<Ranking[]>([]);
+  const [salesRanking, setSalesRanking] = useState<{name:string;total_points:number}[]>([]);
   const [records, setRecords] = useState<PointsRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [appeals, setAppeals] = useState<PointsRecord[]>([]);
@@ -88,6 +89,7 @@ export default function RewardsPage() {
       const res = await fetchWithAuth(url, { cache: "no-store" });
       const data = await res.json();
       setRankings(data.rankings || []);
+      setSalesRanking(data.salesRanking || []);
       setRecords(data.records || []);
       // employees 由独立 useEffect 加载，不从 points API 取
       setAppeals(data.appeals || []);
@@ -230,6 +232,41 @@ export default function RewardsPage() {
                     </td>
                     <td className="py-2.5 px-4 text-center text-green-600 tabular-nums">+{r.bonus}</td>
                     <td className="py-2.5 px-4 text-center text-red-500 tabular-nums">{r.penalty}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* ── 销售排行 ── */}
+      {isAdmin && (
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-5 py-4 border-b border-[var(--border)]">
+          <h2 className="text-sm font-medium flex items-center gap-2"><TrendingUp className="size-4" />销售积分排行 · {title}</h2>
+        </div>
+        {salesRanking.length === 0 ? (
+          <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无销售积分数据，录入客户并跟进后显示</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-[var(--border)]">
+                <th className="py-2.5 px-5 text-left text-xs font-medium w-10">#</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
+                <th className="py-2.5 px-4 text-center text-xs font-medium">销售积分</th>
+              </tr></thead>
+              <tbody>
+                {salesRanking.slice(0, 20).map((r, idx) => (
+                  <tr key={r.name} className={cn("border-b border-[var(--border)]",
+                    idx === 0 && "bg-amber-50/30 dark:bg-amber-950/10",
+                    idx === 1 && "bg-slate-50/30 dark:bg-slate-950/10",
+                    idx === 2 && "bg-orange-50/20 dark:bg-orange-950/10"
+                  )}>
+                    <td className="py-2.5 px-5">{rankMedal(idx)}</td>
+                    <td className={cn("py-2.5 px-4 font-medium", idx < 3 && "font-semibold")}>{r.name}</td>
+                    <td className="py-2.5 px-4 text-center font-bold text-green-600 tabular-nums">+{r.total_points}</td>
                   </tr>
                 ))}
               </tbody>

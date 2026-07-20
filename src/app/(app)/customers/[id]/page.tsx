@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft, Building2, Tag, User, Calendar, DollarSign, Edit3, Save, X,
+  ArrowLeft, Building2, Tag, User, Calendar, DollarSign, Edit3, Save, X, Send, Plus,
   Clock, MessageSquare, Star, TrendingUp
 } from "lucide-react";
 
@@ -47,6 +47,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [editingClaimedBy, setEditingClaimedBy] = useState(false);
   const [newClaimedBy, setNewClaimedBy] = useState("");
+  const [followUpContent, setFollowUpContent] = useState("");
+  const [followUpNext, setFollowUpNext] = useState("");
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,6 +63,25 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }
     load();
   }, [id]);
+
+  const reload = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/customers/${id}`);
+      const data = await res.json();
+      if (!data.error) setCustomer(data);
+    } catch {}
+  };
+
+  const handleAddFollowUp = async () => {
+    if (!followUpContent.trim()) return;
+    setSavingFollowUp(true);
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "follow_up", customer_id: Number(id), content: followUpContent.trim(), next_contact_at: followUpNext }),
+    });
+    setSavingFollowUp(false);
+    if (res.ok) { setFollowUpContent(""); setFollowUpNext(""); reload(); }
+  };
 
   const handleReassign = async () => {
     const res = await fetchWithAuth("/api/customers", {
@@ -159,6 +181,21 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <h3 className="mb-4 text-sm font-medium flex items-center gap-2">
               <MessageSquare className="size-4 text-[var(--muted-foreground)]" />跟进记录
             </h3>
+            {/* Follow-up input */}
+            <div className="mb-4 flex flex-col gap-2">
+              <textarea value={followUpContent} onChange={e => setFollowUpContent(e.target.value)}
+                className="w-full min-h-[60px] rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none resize-none focus:border-[var(--ring)]"
+                placeholder="写跟进记录... (+2 积分)" />
+              <div className="flex items-center gap-2">
+                <input type="date" value={followUpNext} onChange={e => setFollowUpNext(e.target.value)}
+                  className="h-8 rounded border border-[var(--border)] px-2 text-xs outline-none focus:border-[var(--ring)]" placeholder="下次联系" />
+                <div className="flex-1" />
+                <Button size="xs" onClick={handleAddFollowUp} disabled={savingFollowUp || !followUpContent.trim()} className="gap-1">
+                  <Send className="size-3" />{savingFollowUp ? "发送中..." : "发送"}
+                </Button>
+              </div>
+            </div>
+
             {customer.follow_ups?.length ? (
               <div className="space-y-3">
                 {customer.follow_ups.map((f: any) => (

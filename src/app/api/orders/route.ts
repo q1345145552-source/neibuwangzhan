@@ -77,8 +77,23 @@ export async function POST(req: NextRequest) {
     insertAll();
     logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
 
-    // 自动升级客户状态：跟进中 → 已合作
-    db.prepare("UPDATE customers SET status = '已合作', updated_at = datetime('now') WHERE company_name = ? AND status = '跟进中'").run(customer_name);
+    // 查找客户池中匹配的客户
+    const poolCustomer = db.prepare("SELECT * FROM customers WHERE company_name = ?").get(customer_name) as any;
+
+    // 自动升级客户状态：跟进中 → 已合作，并给升级加分
+    if (poolCustomer && poolCustomer.status === '跟进中') {
+      db.prepare("UPDATE customers SET status = '已合作', updated_at = datetime('now') WHERE id = ?").run(poolCustomer.id);
+      if (poolCustomer.claimed_by) {
+        const reason = `客户「${customer_name}」升级为已合作`;
+        db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, 10, ?, 'customer_upgrade', 'customer', 'system')").run(poolCustomer.claimed_by, reason);
+      }
+    }
+
+    // 成交奖励：给认领员工加 10 分
+    if (poolCustomer && poolCustomer.claimed_by) {
+      const reason = `成交订单 ORD-关联客户「${customer_name}」`;
+      db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, 10, ?, 'customer_deal', 'customer', 'system')").run(poolCustomer.claimed_by, reason);
+    }
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
     return NextResponse.json(order, { status: 201 });

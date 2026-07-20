@@ -91,9 +91,36 @@ export async function GET(req: NextRequest) {
     ? db.prepare("SELECT name FROM employees WHERE role = 'employee' ORDER BY name").all()
     : [];
 
+  // 销售积分排行（仅来自 customer_* 规则）
+  const salesRankSql = `
+    SELECT employee_name as name,
+           COALESCE(SUM(CASE WHEN status != '已撤销' THEN points ELSE 0 END), 0) as total_points
+    FROM points_records
+    WHERE rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal')
+      AND created_at >= ? AND created_at <= ?
+      AND points > 0
+    GROUP BY employee_name ORDER BY total_points DESC
+  `;
+  const salesRanking = db.prepare(salesRankSql).all(dateFrom, dateTo);
+
+  // 销售积分月汇总
+  const salesExportSql = `
+    SELECT 
+      COALESCE(SUM(CASE WHEN rule_key = 'customer_followup' AND status != '已撤销' THEN points ELSE 0 END), 0) as followup_points,
+      COALESCE(SUM(CASE WHEN rule_key = 'customer_claim' AND status != '已撤销' THEN points ELSE 0 END), 0) as claim_points,
+      COALESCE(SUM(CASE WHEN rule_key = 'customer_activate' AND status != '已撤销' THEN points ELSE 0 END), 0) as activate_points,
+      COALESCE(SUM(CASE WHEN rule_key = 'customer_upgrade' AND status != '已撤销' THEN points ELSE 0 END), 0) as upgrade_points,
+      COALESCE(SUM(CASE WHEN rule_key = 'customer_deal' AND status != '已撤销' THEN points ELSE 0 END), 0) as deal_points,
+      COALESCE(SUM(CASE WHEN rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal') AND status != '已撤销' THEN points ELSE 0 END), 0) as total_sales
+    FROM points_records
+    WHERE rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal')
+      AND created_at >= ? AND created_at <= ?
+      AND employee_name = ?
+  `;
+
   return NextResponse.json({
     rankings: rankData, records, month, employees, appeals,
-    peerVotes, clientFeedback, quarters,
+    peerVotes, clientFeedback, quarters, salesRanking,
     quarter: quarter || null
   });
 }
@@ -164,7 +191,34 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  return NextResponse.json({ error: "未知操作" }, { status: 400 });
+  
+  // Admin: export sales summary
+  if (body.action === "export_sales") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
+    const month = body.month || bangkokMonthKey();
+    const [y, m] = month.split("-");
+    const dateFrom = `${month}-01`;
+    const lastDay = bangkokLastDayOfMonth(+y, +m);
+    const dateTo = `${month}-${String(lastDay).padStart(2, "0")} 23:59:59`;
+
+    const rows = db.prepare(`
+      SELECT employee_name as name,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_followup' AND status != '已撤销' THEN points ELSE 0 END), 0) as followup_points,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_claim' AND status != '已撤销' THEN points ELSE 0 END), 0) as claim_points,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_activate' AND status != '已撤销' THEN points ELSE 0 END), 0) as activate_points,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_upgrade' AND status != '已撤销' THEN points ELSE 0 END), 0) as upgrade_points,
+        COALESCE(SUM(CASE WHEN rule_key = 'customer_deal' AND status != '已撤销' THEN points ELSE 0 END), 0) as deal_points,
+        COALESCE(SUM(CASE WHEN rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal') AND status != '已撤销' THEN points ELSE 0 END), 0) as total_sales
+      FROM points_records
+      WHERE rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal')
+        AND created_at >= ? AND created_at <= ?
+        AND points > 0
+      GROUP BY employee_name HAVING total_sales > 0 ORDER BY total_sales DESC
+    `).all(dateFrom, dateTo);
+
+    return NextResponse.json({ month, rows });
+  }
+return NextResponse.json({ error: "未知操作" }, { status: 400 });
 }
 
 // ── 自动积分引擎 ──
