@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
     insertAll();
     logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
 
+    // 自动升级客户状态：跟进中 → 已合作
+    db.prepare("UPDATE customers SET status = '已合作', updated_at = datetime('now') WHERE company_name = ? AND status = '跟进中'").run(customer_name);
+
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
     return NextResponse.json(order, { status: 201 });
   } catch (err) {

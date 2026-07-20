@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save } from "lucide-react";
-import { fetchBusinessTypes, fetchEmployees, createOrder } from "@/lib/api";
+import { ArrowLeft, Save, Search, ChevronDown } from "lucide-react";
+import { fetchBusinessTypes, fetchEmployees, createOrder, fetchWithAuth } from "@/lib/api";
 import { subServices } from "@/lib/constants";
 import type { BusinessType, Employee } from "@/lib/api";
 
@@ -20,6 +20,9 @@ export default function NewOrderPage() {
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [appliedBizName, setAppliedBizName] = useState<string | null>(null);
+  const [customerPool, setCustomerPool] = useState<{id:number;company_name:string;industry:string;handler_name:string;owner_name:string}[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [form, setForm] = useState({
     business_type_id: "",
     customer_name: "",
@@ -40,6 +43,7 @@ export default function NewOrderPage() {
   useEffect(() => {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => setError("加载业务线失败"));
     fetchEmployees().then(setEmployees).catch(() => {});
+    fetchWithAuth("/api/customers").then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // 业务线加载完成后，根据 URL 上的 biz 参数预选一次（渲染期间派生状态，而非在 effect 里 setState）
@@ -146,9 +150,37 @@ export default function NewOrderPage() {
             <Input id="monthly_rent" name="monthly_rent" type="number" value={form.monthly_rent} onChange={handleChange} className="h-10" placeholder="0" />
           </div>
           )}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 relative">
             <Label htmlFor="customer_name" className="text-sm font-medium">客户名称</Label>
-            <Input id="customer_name" name="customer_name" value={form.customer_name} onChange={handleChange} required className="h-10" placeholder="公司全称" />
+            <div className="relative">
+              <Input id="customer_name" name="customer_name" value={form.customer_name} onChange={handleChange} required className="h-10 pr-8" placeholder="输入或从客户池选择"
+                onFocus={() => setShowCustomerDropdown(true)}
+                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+              />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-[var(--muted-foreground)] pointer-events-none" />
+            </div>
+            {showCustomerDropdown && customerPool.length > 0 && (
+              <div className="absolute top-[72px] left-0 right-0 z-30 rounded-lg border border-[var(--border)] bg-[var(--background)] shadow-xl max-h-48 overflow-y-auto">
+                {customerPool
+                  .filter(c => !customerSearch || c.company_name.toLowerCase().includes(customerSearch.toLowerCase()))
+                  .slice(0, 20)
+                  .map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--muted)] border-b last:border-b-0 flex items-center justify-between"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setForm(prev => ({ ...prev, customer_name: c.company_name }));
+                        setShowCustomerDropdown(false);
+                      }}
+                    >
+                      <span>{c.company_name}</span>
+                      {c.handler_name && <span className="text-xs text-[var(--muted-foreground)]">{c.handler_name}</span>}
+                    </button>
+                  ))}
+              </div>
+            )}
           </div>
           {form.business_type_id === "2" && (
           <div className="flex flex-col gap-2">
