@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft, Building2, Tag, User, Calendar, DollarSign,
+  ArrowLeft, Building2, Tag, User, Calendar, DollarSign, Edit3, Save, X,
   Clock, MessageSquare, Star, TrendingUp
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ interface CustomerDetail {
   willingness: string;
   demand_tags: string;
   status: string;
+  claimed_by: string;
   total_deal_amount: number;
   created_at: string;
   updated_at: string;
@@ -41,7 +43,10 @@ const statusColor: Record<string, string> = {
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
+  const { user } = useAuth();
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
+  const [editingClaimedBy, setEditingClaimedBy] = useState(false);
+  const [newClaimedBy, setNewClaimedBy] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,6 +60,18 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }
     load();
   }, [id]);
+
+  const handleReassign = async () => {
+    const res = await fetchWithAuth("/api/customers", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(id), claimed_by: newClaimedBy }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setCustomer(prev => prev ? { ...prev, claimed_by: updated.claimed_by } : null);
+      setEditingClaimedBy(false);
+    }
+  };
 
   if (loading) return (
     <div className="animate-pulse space-y-4">
@@ -98,6 +115,25 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               <Building2 className="size-4 text-[var(--muted-foreground)]" />基本信息
             </h3>
             <dl className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">认领人</dt>
+                <dd className="mt-1 text-sm flex items-center gap-2">
+                  {customer.claimed_by ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-xs font-medium text-[var(--primary)]">{customer.claimed_by}</span>
+                  ) : "—"}
+                  {user?.role === "admin" && !editingClaimedBy && (
+                    <button onClick={() => { setNewClaimedBy(customer.claimed_by || ""); setEditingClaimedBy(true); }} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><Edit3 className="size-3" /></button>
+                  )}
+                  {editingClaimedBy && (
+                    <div className="flex items-center gap-1">
+                      <input value={newClaimedBy} onChange={e => setNewClaimedBy(e.target.value)}
+                        className="w-24 h-7 text-xs rounded border border-[var(--border)] px-2 outline-none focus:border-[var(--ring)]" placeholder="员工名" />
+                      <button onClick={handleReassign} className="text-green-600 hover:text-green-700"><Save className="size-3" /></button>
+                      <button onClick={() => setEditingClaimedBy(false)} className="text-[var(--muted-foreground)]"><X className="size-3" /></button>
+                    </div>
+                  )}
+                </dd>
+              </div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">公司性质</dt><dd className="mt-1 text-sm">{customer.company_type || "—"}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">成立时间</dt><dd className="mt-1 text-sm">{customer.founded_at || "—"}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">来源渠道</dt><dd className="mt-1 text-sm">{customer.source_channel || "—"}</dd></div>

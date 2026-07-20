@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, X, Building2, Edit3, Trash2, ChevronRight,
-  Filter, Tag, User, Calendar, DollarSign
+  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap
 } from "lucide-react";
 
 // ===== Types =====
@@ -25,6 +26,7 @@ interface Customer {
   willingness: string;
   demand_tags: string;
   status: "潜在" | "跟进中" | "已合作" | "沉睡";
+  claimed_by: string;
   total_deal_amount: number;
   created_at: string;
   updated_at: string;
@@ -169,11 +171,16 @@ function AddCustomerForm({
 // ===== Main Page =====
 export default function CustomersPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("全部");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showVatImport, setShowVatImport] = useState(false);
+  const [vatImportable, setVatImportable] = useState<any[]>([]);
+  const [selectedVatIds, setSelectedVatIds] = useState<Set<number>>(new Set());
+  const [importing, setImporting] = useState(false);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -189,9 +196,51 @@ export default function CustomersPage() {
 
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
+  const handleClaim = async (id: number) => {
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "claim", id }),
+    });
+    if (!res.ok) { const e = await res.json(); alert(e.error); return; }
+    loadCustomers();
+  };
+
+  const handleActivate = async (id: number) => {
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "activate", id }),
+    });
+    if (!res.ok) { const e = await res.json(); alert(e.error); return; }
+    loadCustomers();
+  };
+
+  const openVatImport = async () => {
+    setShowVatImport(true);
+    try {
+      const res = await fetchWithAuth("/api/customers?action=vat-importable");
+      const data = await res.json();
+      setVatImportable(Array.isArray(data) ? data : []);
+    } catch { setVatImportable([]); }
+  };
+
+  const doVatImport = async () => {
+    if (!selectedVatIds.size) return;
+    setImporting(true);
+    const res = await fetchWithAuth("/api/customers", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "vat-import", ids: [...selectedVatIds] }),
+    });
+    const data = await res.json();
+    setImporting(false);
+    setShowVatImport(false);
+    setSelectedVatIds(new Set());
+    loadCustomers();
+    alert(data.imported ? "已导入 " + data.imported + " 个客户" : "导入失败");
+  };
+
   const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`确定删除客户"${name}"？相关跟进记录和积分也会清除。`)) return;
-    await fetchWithAuth(`/api/customers?id=${id}`, { method: "DELETE" });
+    if (!confirm("确定删除客户\"" + name + "\"？相关跟进记录和积分也会清除。")) return;
+    await fetchWithAuth("/api/customers?id=" + id, { method: "DELETE" });
     loadCustomers();
   };
 
@@ -203,9 +252,14 @@ export default function CustomersPage() {
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">客户管理</h1>
           <p className="text-sm text-[var(--muted-foreground)] mt-0.5">统一管理合作客户与潜客</p>
         </div>
-        <Button size="sm" onClick={() => setShowAddForm(true)} className="gap-1.5">
-          <Plus className="size-4" />录入客户
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={openVatImport} className="gap-1.5">
+            <Download className="size-4" />从VAT导入
+          </Button>
+          <Button size="sm" onClick={() => setShowAddForm(true)} className="gap-1.5">
+            <Plus className="size-4" />录入客户
+          </Button>
+        </div>
       </div>
 
       {/* Search & Filter */}
@@ -253,10 +307,10 @@ export default function CustomersPage() {
                 <th className="px-4 py-3 text-left font-medium">公司名称</th>
                 <th className="px-4 py-3 text-left font-medium hidden sm:table-cell">行业</th>
                 <th className="px-4 py-3 text-left font-medium">状态</th>
-                <th className="px-4 py-3 text-left font-medium hidden md:table-cell">联系人</th>
+                <th className="px-4 py-3 text-left font-medium hidden md:table-cell">认领人</th>
                 <th className="px-4 py-3 text-left font-medium hidden lg:table-cell">来源</th>
                 <th className="px-4 py-3 text-right font-medium">成交金额</th>
-                <th className="px-4 py-3 w-10" />
+                <th className="px-4 py-3 text-right font-medium w-28">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -280,8 +334,8 @@ export default function CustomersPage() {
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
                     <div className="text-xs">
-                      {c.handler_name || c.owner_name ? (
-                        <span>{c.handler_name || c.owner_name}</span>
+                      {c.claimed_by ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-1.5 py-0.5 text-[var(--primary)]">{c.claimed_by}</span>
                       ) : "—"}
                     </div>
                   </td>
@@ -291,9 +345,21 @@ export default function CustomersPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => handleDelete(c.id, c.company_name)} className="p-1 text-[var(--muted-foreground)] hover:text-[var(--destructive)] transition-colors" title="删除">
-                        <Trash2 className="size-3.5" />
-                      </button>
+                      {c.status === "潜在" && !c.claimed_by && (
+                        <button onClick={() => handleClaim(c.id)} className="px-2 py-0.5 text-xs rounded border border-[var(--primary)] text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] transition-colors font-medium">
+                          <Hand className="size-3 mr-0.5 inline" />认领
+                        </button>
+                      )}
+                      {c.status === "沉睡" && (
+                        <button onClick={() => handleActivate(c.id)} className="px-2 py-0.5 text-xs rounded border border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors font-medium">
+                          <Zap className="size-3 mr-0.5 inline" />激活
+                        </button>
+                      )}
+                      {user?.role === "admin" && (
+                        <button onClick={() => handleDelete(c.id, c.company_name)} className="p-1 text-[var(--muted-foreground)] hover:text-[var(--destructive)] transition-colors" title="删除">
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      )}
                       <ChevronRight className="size-4 text-[var(--muted-foreground)]" />
                     </div>
                   </td>
@@ -306,6 +372,47 @@ export default function CustomersPage() {
 
       {/* Add form modal */}
       {showAddForm && <AddCustomerForm onClose={() => setShowAddForm(false)} onSaved={loadCustomers} />}
+
+      {/* VAT Import Modal */}
+      {showVatImport && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={() => { setShowVatImport(false); setSelectedVatIds(new Set()); }} />
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] overflow-y-auto">
+            <div className="w-full max-w-md rounded-xl border bg-[var(--background)] shadow-2xl p-6 mx-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-medium">从VAT白名单导入</h2>
+                <button onClick={() => { setShowVatImport(false); setSelectedVatIds(new Set()); }} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              </div>
+              {vatImportable.length === 0 ? (
+                <p className="text-sm text-[var(--muted-foreground)] py-4">VAT白名单中的客户已全部导入，或无可导入客户</p>
+              ) : (
+                <>
+                  <div className="max-h-64 overflow-y-auto border rounded-lg mb-4">
+                    {vatImportable.map((vc: any) => (
+                      <label key={vc.id} className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--muted)]/50 cursor-pointer border-b last:border-b-0">
+                        <input type="checkbox" className="size-4 rounded" checked={selectedVatIds.has(vc.id)} onChange={() => {
+                          const next = new Set(selectedVatIds);
+                          next.has(vc.id) ? next.delete(vc.id) : next.add(vc.id);
+                          setSelectedVatIds(next);
+                        }} />
+                        <span className="text-sm">{vc.company_name}</span>
+                        {vc.tax_id && <span className="text-xs text-[var(--muted-foreground)]">{vc.tax_id}</span>}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-[var(--muted-foreground)]">已选 {selectedVatIds.size} 项</span>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => { setShowVatImport(false); setSelectedVatIds(new Set()); }}>取消</Button>
+                      <Button size="sm" onClick={doVatImport} disabled={importing || !selectedVatIds.size}>{importing ? "导入中..." : "导入"}</Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

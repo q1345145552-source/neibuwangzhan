@@ -948,6 +948,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_by TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE customers ADD COLUMN claimed_by TEXT DEFAULT ''"); } catch {}
 
   /* ── 客户管理 ── */
   database.exec(`
@@ -965,6 +966,7 @@ function initTables(database: Database.Database) {
       willingness TEXT DEFAULT '',
       demand_tags TEXT DEFAULT '',
       status TEXT DEFAULT '潜在' CHECK(status IN ('潜在','跟进中','已合作','沉睡')),
+      claimed_by TEXT DEFAULT '',
       total_deal_amount REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
