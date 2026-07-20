@@ -85,14 +85,14 @@ export async function POST(req: NextRequest) {
       db.prepare("UPDATE customers SET status = '已合作', updated_at = datetime('now') WHERE id = ?").run(poolCustomer.id);
       if (poolCustomer.claimed_by) {
         const reason = `客户「${customer_name}」升级为已合作`;
-        db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, 10, ?, 'customer_upgrade', 'customer', 'system')").run(poolCustomer.claimed_by, reason);
+        db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, 10, ?, 'customer_upgrade', 'customer', ?, 'system')").run(poolCustomer.claimed_by, reason, String(poolCustomer.id));
       }
     }
 
     // 成交奖励：给认领员工加 10 分
     if (poolCustomer && poolCustomer.claimed_by) {
       const reason = `成交订单 ORD-关联客户「${customer_name}」`;
-      db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, 10, ?, 'customer_deal', 'customer', 'system')").run(poolCustomer.claimed_by, reason);
+      db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, 10, ?, 'customer_deal', 'customer', ?, 'system')").run(poolCustomer.claimed_by, reason, String(poolCustomer.id));
     }
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
