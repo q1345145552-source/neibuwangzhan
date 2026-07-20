@@ -367,6 +367,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(row);
   }
 
+  // Release: admin resets customer to 潜在 (points kept, no deduction)
+  if (body.action === "release") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
+    const { id } = body;
+    if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
+    const db = getDb();
+    const c = db.prepare("SELECT * FROM customers WHERE id = ?").get(id) as any;
+    if (!c) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
+
+    // 检查是否有进行中的订单
+    const ongoing = db.prepare(
+      "SELECT COUNT(*) as cnt FROM orders WHERE customer_name = ? AND status = '进行中'"
+    ).get(c.company_name) as any;
+    if (ongoing.cnt > 0) {
+      return NextResponse.json({ error: "该客户还有进行中的订单，无法释放" }, { status: 400 });
+    }
+
+    db.prepare(
+      "UPDATE customers SET claimed_by = '', status = '潜在', updated_at = datetime('now') WHERE id = ?"
+    ).run(id);
+    const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
+    return NextResponse.json(row);
+  }
+
   // VAT import: batch import selected vat customers
   if (body.action === "vat-import") {
     const { ids } = body;

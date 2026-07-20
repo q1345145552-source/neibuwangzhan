@@ -8,7 +8,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Building2, Tag, User, Calendar, DollarSign, Edit3, Save, X, Send, Plus,
-  Clock, MessageSquare, Star, TrendingUp
+  Clock, MessageSquare, Star, TrendingUp, Unlock
 } from "lucide-react";
 
 interface CustomerDetail {
@@ -95,6 +95,24 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  const [releasing, setReleasing] = useState(false);
+  const handleRelease = async () => {
+    if (!confirm("确认释放该客户？客户状态将回到「潜在」，认领人清空，积分保留。")) return;
+    setReleasing(true);
+    try {
+      const res = await fetchWithAuth("/api/customers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "release", id: Number(id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "释放失败"); return; }
+      // Refresh
+      const reloadRes = await fetchWithAuth(`/api/customers/${id}`);
+      const reloaded = await reloadRes.json();
+      if (!reloaded.error) setCustomer(reloaded);
+    } finally { setReleasing(false); }
+  };
+
   if (loading) return (
     <div className="animate-pulse space-y-4">
       <div className="h-7 w-40 rounded bg-[var(--muted)]" />
@@ -124,6 +142,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", statusColor[customer.status] || "")}>{customer.status}</span>
             {customer.industry && <span className="text-xs text-[var(--muted-foreground)]">{customer.industry}</span>}
             <span className="text-xs text-[var(--muted-foreground)]">· 创建于 {customer.created_at?.slice(0, 10)}</span>
+            {user?.role === "admin" && customer.status !== "潜在" && (
+              <button onClick={handleRelease} disabled={releasing} className="inline-flex items-center gap-1 rounded border border-[var(--destructive)] px-2 py-0.5 text-xs text-[var(--destructive)] hover:bg-[var(--destructive)]/10 transition-colors">
+                <Unlock className="size-3" />{releasing ? "释放中..." : "释放"}
+              </button>
+            )}
           </div>
         </div>
       </div>
