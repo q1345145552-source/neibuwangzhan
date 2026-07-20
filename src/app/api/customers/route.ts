@@ -50,6 +50,19 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
 
+  // Dashboard stats
+  if (action === "dashboard") {
+    const stats = db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM customers WHERE status = '潜在') as potential,
+        (SELECT COUNT(*) FROM customers WHERE status = '跟进中') as following,
+        (SELECT COUNT(*) FROM customers WHERE status = '已合作') as cooperated,
+        (SELECT COUNT(*) FROM customers WHERE status = '沉睡') as dormant,
+        (SELECT COUNT(*) FROM customers WHERE created_at >= datetime('now','-1 month')) as new_this_month
+    `).get() as any;
+    return NextResponse.json(stats);
+  }
+
   // My customer points
   if (action === "my_points") {
     const name = auth.name || "";

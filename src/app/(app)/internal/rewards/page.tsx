@@ -45,6 +45,7 @@ export default function RewardsPage() {
 
   const [rankings, setRankings] = useState<Ranking[]>([]);
   const [salesRanking, setSalesRanking] = useState<{name:string;total_points:number}[]>([]);
+  const [quarterlySales, setQuarterlySales] = useState<{name:string;total_points:number;followup_count:number;claim_count:number;activate_count:number;deal_count:number}[]>([]);
   const [records, setRecords] = useState<PointsRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [appeals, setAppeals] = useState<PointsRecord[]>([]);
@@ -90,6 +91,7 @@ export default function RewardsPage() {
       const data = await res.json();
       setRankings(data.rankings || []);
       setSalesRanking(data.salesRanking || []);
+      setQuarterlySales(data.quarterlySales || []);
       setRecords(data.records || []);
       // employees 由独立 useEffect 加载，不从 points API 取
       setAppeals(data.appeals || []);
@@ -267,6 +269,49 @@ export default function RewardsPage() {
                     <td className="py-2.5 px-5">{rankMedal(idx)}</td>
                     <td className={cn("py-2.5 px-4 font-medium", idx < 3 && "font-semibold")}>{r.name}</td>
                     <td className="py-2.5 px-4 text-center font-bold text-green-600 tabular-nums">+{r.total_points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* ── 季度销售详细排行 ── */}
+      {quarter && (
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div className="px-5 py-4 border-b border-[var(--border)]">
+          <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />季度销售详细排行 · {quarter}</h2>
+        </div>
+        {quarterlySales.length === 0 ? (
+          <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">该季度暂无销售积分数据</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-[var(--border)]">
+                <th className="py-2.5 px-5 text-left text-xs font-medium w-10">#</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">销售积分</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">跟进次数</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">认领数</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">激活数</th>
+                <th className="py-2.5 px-3 text-center text-xs font-medium">成交数</th>
+              </tr></thead>
+              <tbody>
+                {quarterlySales.map((r, idx) => (
+                  <tr key={r.name} className={cn("border-b border-[var(--border)]",
+                    idx === 0 && "bg-amber-50/30 dark:bg-amber-950/10",
+                    idx === 1 && "bg-slate-50/30 dark:bg-slate-950/10",
+                    idx === 2 && "bg-orange-50/20 dark:bg-orange-950/10"
+                  )}>
+                    <td className="py-2.5 px-5">{rankMedal(idx)}</td>
+                    <td className={cn("py-2.5 px-4 font-medium", idx < 3 && "font-semibold")}>{r.name}</td>
+                    <td className="py-2.5 px-3 text-center font-bold text-green-600 tabular-nums">+{r.total_points}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-[var(--muted-foreground)]">{r.followup_count}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-[var(--muted-foreground)]">{r.claim_count}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-[var(--muted-foreground)]">{r.activate_count}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-[var(--muted-foreground)]">{r.deal_count}</td>
                   </tr>
                 ))}
               </tbody>

@@ -187,6 +187,7 @@ export default function CustomersPage() {
   const [withdrawMsg, setWithdrawMsg] = useState("");
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [dashboard, setDashboard] = useState<{potential:number;following:number;cooperated:number;dormant:number;new_this_month:number} | null>(null);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -210,7 +211,15 @@ export default function CustomersPage() {
     } catch {}
   };
 
+  const loadDashboard = async () => {
+    try {
+      const res = await fetchWithAuth("/api/customers?action=dashboard");
+      setDashboard(await res.json());
+    } catch {}
+  };
+
   useEffect(() => { loadMyPoints(); }, [customers]); // refresh when customers change
+  useEffect(() => { loadDashboard(); loadMyPoints(); }, [customers]); // dashboard refreshes with customers
   useEffect(() => { if (user?.role === "admin") loadWithdrawals(); }, [user]);
 
   const handleClaim = async (id: number) => {
@@ -335,6 +344,84 @@ export default function CustomersPage() {
           </Button>
         </div>
       </div>
+
+      {/* Dashboard Cards */}
+      {dashboard && (
+        <div className="flex flex-col gap-4">
+          {/* 5 stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {[
+              { label: "潜在", value: dashboard.potential, color: "bg-slate-100 dark:bg-slate-800", textColor: "text-slate-700 dark:text-slate-300" },
+              { label: "跟进中", value: dashboard.following, color: "bg-blue-100 dark:bg-blue-900/30", textColor: "text-blue-700 dark:text-blue-400" },
+              { label: "已合作", value: dashboard.cooperated, color: "bg-green-100 dark:bg-green-900/30", textColor: "text-green-700 dark:text-green-400" },
+              { label: "沉睡", value: dashboard.dormant, color: "bg-amber-100 dark:bg-amber-900/30", textColor: "text-amber-700 dark:text-amber-400" },
+              { label: "本月新增", value: dashboard.new_this_month, color: "bg-purple-100 dark:bg-purple-900/30", textColor: "text-purple-700 dark:text-purple-400" },
+            ].map(card => (
+              <div key={card.label} className={cn("rounded-xl border border-[var(--border)] p-4", card.color)}>
+                <p className="text-xs text-[var(--muted-foreground)] mb-1">{card.label}</p>
+                <p className={cn("text-2xl font-bold tabular-nums", card.textColor)}>{card.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Conversion rates */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+              <p className="text-xs text-[var(--muted-foreground)] mb-1">潜在 → 跟进中 转化率</p>
+              <p className="text-lg font-bold tabular-nums">
+                {dashboard.potential + dashboard.following > 0
+                  ? Math.round(dashboard.following / (dashboard.potential + dashboard.following) * 100) : 0}%
+              </p>
+              <div className="mt-2 h-2 rounded-full bg-[var(--muted)] overflow-hidden">
+                <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${dashboard.potential + dashboard.following > 0 ? Math.round(dashboard.following / (dashboard.potential + dashboard.following) * 100) : 0}%` }} />
+              </div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+              <p className="text-xs text-[var(--muted-foreground)] mb-1">跟进中 → 已合作 转化率</p>
+              <p className="text-lg font-bold tabular-nums">
+                {dashboard.following + dashboard.cooperated > 0
+                  ? Math.round(dashboard.cooperated / (dashboard.following + dashboard.cooperated) * 100) : 0}%
+              </p>
+              <div className="mt-2 h-2 rounded-full bg-[var(--muted)] overflow-hidden">
+                <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${dashboard.following + dashboard.cooperated > 0 ? Math.round(dashboard.cooperated / (dashboard.following + dashboard.cooperated) * 100) : 0}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Sales Funnel */}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+            <p className="text-xs text-[var(--muted-foreground)] mb-3">销售漏斗</p>
+            {(() => {
+              const total = dashboard.potential + dashboard.following + dashboard.cooperated + dashboard.dormant;
+              const stages = [
+                { label: "潜在", count: dashboard.potential, color: "bg-slate-400" },
+                { label: "跟进中", count: dashboard.following, color: "bg-blue-400" },
+                { label: "已合作", count: dashboard.cooperated, color: "bg-green-400" },
+                { label: "沉睡", count: dashboard.dormant, color: "bg-amber-400" },
+              ];
+              return (
+                <div className="flex items-center gap-0.5 h-10 rounded-md overflow-hidden">
+                  {stages.map((s, i) => (
+                    <div key={s.label}
+                      className={cn(s.color, "h-full flex items-center justify-center text-xs font-medium text-white transition-all min-w-[50px]")}
+                      style={{ width: total > 0 ? `${Math.max(s.count / total * 100, 5)}%` : "25%" }}
+                      title={`${s.label}: ${s.count}`}
+                    >
+                      {s.count > 0 && `${s.label} ${s.count}`}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div className="flex items-center gap-4 mt-2 text-xs text-[var(--muted-foreground)]">
+              <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-slate-400 inline-block" />潜在</span>
+              <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-blue-400 inline-block" />跟进中</span>
+              <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-green-400 inline-block" />已合作</span>
+              <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-amber-400 inline-block" />沉睡</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search & Filter */}
       <div className="flex items-center gap-3 flex-wrap">
