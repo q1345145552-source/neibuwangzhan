@@ -16,7 +16,6 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const body = await req.json();
   const { company_name, tax_id, contact, status } = body;
@@ -34,7 +33,6 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const body = await req.json();
   const { id, company_name, tax_id, contact, status } = body;
@@ -53,7 +51,6 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
