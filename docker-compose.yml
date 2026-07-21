@@ -1,0 +1,13 @@
+services:
+  neibuxitong:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neibuxitong
+    ports:
+      - "3000:3000"
+    volumes:
+      - /data/neibuxitong:/app/data
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
