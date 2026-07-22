@@ -65,8 +65,36 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
 
   const db = getDb();
-  // 先删除该客户的所有申报记录（否则外键约束会阻止删客户）
-  db.prepare("DELETE FROM vat_records WHERE customer_id = ?").run(id);
+
+  // 按从子到父的顺序清理，仅删未归档记录（归档记录保留用于历史查询）
+  const nonArchivedIds = db.prepare(
+    "SELECT id FROM vat_records WHERE customer_id = ? AND progress != '归档完成'"
+  ).all(id) as { id: number }[];
+
+  if (nonArchivedIds.length > 0) {
+    const placeholders = nonArchivedIds.map(() => "?").join(",");
+    const recordIds = nonArchivedIds.map(r => r.id);
+
+    // 删除步骤级子表
+    db.prepare(`DELETE FROM vat_step_notes WHERE record_id IN (${placeholders})`).run(...recordIds);
+    db.prepare(`DELETE FROM vat_step_documents WHERE record_id IN (${placeholders})`).run(...recordIds);
+
+    // 删除记录级子表
+    db.prepare(`DELETE FROM vat_record_documents WHERE record_id IN (${placeholders})`).run(...recordIds);
+    db.prepare(`DELETE FROM vat_record_finances WHERE record_id IN (${placeholders})`).run(...recordIds);
+    db.prepare(`DELETE FROM vat_record_steps WHERE record_id IN (${placeholders})`).run(...recordIds);
+
+    // 删除未归档的申报记录
+    db.prepare(`DELETE FROM vat_records WHERE id IN (${placeholders})`).run(...recordIds);
+  }
+
+  // 删除对账记录
+  db.prepare("DELETE FROM vat_reconciliation WHERE customer_id = ?").run(id);
+
+  // 临时关闭外键约束，删除客户主记录；归档的历史记录保留（customer_id 悬空，可查）
+  db.pragma("foreign_keys = OFF");
   db.prepare("DELETE FROM vat_customers WHERE id = ?").run(id);
+  db.pragma("foreign_keys = ON");
+
   return NextResponse.json({ success: true });
 }
