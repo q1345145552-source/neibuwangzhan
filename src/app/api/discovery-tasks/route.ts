@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest) {
     const infs = db.prepare("SELECT * FROM influencers WHERE discovery_task_id = ?").all(id) as any[];
 
     // For each influencer: generate discovery steps, mark step 1 as completed (found via task),
-    // and change status to 评估中
+    // and change status to 待评估
     for (const inf of infs) {
       // Generate discovery steps
       seedInfluencerSteps(db, inf.id, "discovery");
@@ -75,8 +75,8 @@ export async function PATCH(req: NextRequest) {
         db.prepare("UPDATE influencer_steps SET status = '已完成', completed_at = datetime('now') WHERE id = ?").run(step1.id);
       }
 
-      // Update influencer status to 评估中
-      db.prepare("UPDATE influencers SET status = '评估中', updated_at = datetime('now') WHERE id = ?").run(inf.id);
+      // Update influencer status to 待评估
+      db.prepare("UPDATE influencers SET status = '待评估', updated_at = datetime('now') WHERE id = ?").run(inf.id);
     }
   } else if (status) {
     db.prepare("UPDATE discovery_tasks SET status = ? WHERE id = ?").run(status, id);
