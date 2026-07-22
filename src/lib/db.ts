@@ -470,7 +470,7 @@ function initTables(database: Database.Database) {
       avg_views TEXT DEFAULT '',
       gmv_range TEXT DEFAULT '',
       notes TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','评估中','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
       created_by TEXT DEFAULT '',
       deleted INTEGER DEFAULT 0,
       deleted_at TEXT,
@@ -949,6 +949,15 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE customers ADD COLUMN claimed_by TEXT DEFAULT ''"); } catch {}
+
+  // 迁移：统一达人状态 — '评估中' → '待评估'
+  try {
+    const cnt = database.prepare("SELECT COUNT(*) as c FROM influencers WHERE status = '评估中'").get() as { c: number };
+    if (cnt.c > 0) {
+      database.prepare("UPDATE influencers SET status = '待评估', updated_at = datetime('now') WHERE status = '评估中'").run();
+      console.log(`[DB] 已将 ${cnt.c} 条达人状态从 '评估中' 统一为 '待评估'`);
+    }
+  } catch {}
 
   /* ── 客户管理 ── */
   database.exec(`

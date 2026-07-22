@@ -13,8 +13,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 const statusClass: Record<string, string> = {
-  "待评估": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-  "评估中": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+  "待评估": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
   "已评估": "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   "已推荐给老板": "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
   "已联系": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
@@ -89,7 +88,7 @@ export default function InfluencersPage() {
     try {
       let url: string;
       if (activeTab === "evaluating") {
-        url = "/api/influencers?status=评估中";
+        url = "/api/influencers?status=待评估";
       } else if (activeTab === "evaluated") {
         url = "/api/influencers?status=已评估";
       } else if (activeTab === "recommended") {
@@ -328,7 +327,8 @@ function getPreviewGrade() {
   });
 
   const getDisplayStatus = (inf: Influencer) => {
-    if (inf.status === "评估中" && activeTab === "evaluating") return "待评估";
+    // All statuses are now unified as 待评估 — no mapping needed
+    if (inf.status === "待评估" && activeTab === "evaluating") return "待评估";
     if (activeTab === "rejected") return "不推荐";
     if (inf.phase === "completed_discovery") return "已入池";
     return inf.status;
