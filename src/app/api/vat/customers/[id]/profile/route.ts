@@ -45,7 +45,7 @@ export async function GET(
   // Check consecutive non-compliance (逾期 for 3+ months)
   const overdueCount = db.prepare(`
     SELECT year_month, progress FROM vat_records
-    WHERE customer_id = ? AND progress != '归档完成'
+    WHERE customer_id = ? AND progress != '归档完成' AND progress != '已停止'
     ORDER BY year_month DESC
   `).all(id) as any[];
 

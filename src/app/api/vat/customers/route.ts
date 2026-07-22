@@ -43,6 +43,14 @@ export async function PATCH(req: NextRequest) {
   db.prepare(
     "UPDATE vat_customers SET company_name=?, tax_id=?, contact=?, status=?, updated_at=datetime('now') WHERE id=?"
   ).run(company_name.trim(), tax_id || "", contact || "", status || "启用", id);
+
+  // 改为已终止时，自动停止该客户当月未完成的申报记录，从本月申报列表消失
+  if (status === "已终止") {
+    db.prepare(
+      "UPDATE vat_records SET progress = '已停止', updated_at = datetime('now') WHERE customer_id = ? AND progress != '归档完成'"
+    ).run(id);
+  }
+
   const row = db.prepare("SELECT * FROM vat_customers WHERE id = ?").get(id);
   return NextResponse.json(row);
 }
@@ -57,6 +65,8 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
 
   const db = getDb();
+  // 先删除该客户的所有申报记录（否则外键约束会阻止删客户）
+  db.prepare("DELETE FROM vat_records WHERE customer_id = ?").run(id);
   db.prepare("DELETE FROM vat_customers WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
 }

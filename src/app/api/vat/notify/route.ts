@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       SELECT r.id, c.company_name, r.progress
       FROM vat_records r
       JOIN vat_customers c ON r.customer_id = c.id
-      WHERE r.year_month = ? AND r.progress != '归档完成' AND c.status = '启用'
+      WHERE r.year_month = ? AND r.progress != '归档完成' AND r.progress != '已停止' AND c.status = '启用'
     `).all(pm) as any[];
     
     for (const sr of staleRecords) {
