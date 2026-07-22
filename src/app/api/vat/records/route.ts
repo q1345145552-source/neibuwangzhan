@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     where.push("r.progress = '归档完成'");
   } else if (status === "进行中") {
     where.push("r.progress != '归档完成'");
+    where.push("r.progress != '已停止'");
   }
 
   const whereClause = where.length > 0 ? "WHERE " + where.join(" AND ") : "";
