@@ -286,8 +286,21 @@ export default function VatPage() {
 
   const handleDeleteCustomer = async (id: number) => {
     if (!confirm("确认删除该客户？")) return;
-    try { await fetchWithAuth(`/api/vat/customers?id=${id}`, { method: "DELETE" }); loadCustomers(); loadDashboard(); }
-    catch { setError("删除失败"); }
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/vat/customers?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "删除失败" }));
+        setError(data.error || "删除失败");
+        return;
+      }
+      loadCustomers();
+      loadDashboard();
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startEditCustomer = (c: VatCustomer) => {
