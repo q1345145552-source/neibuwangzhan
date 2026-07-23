@@ -14,8 +14,51 @@ export function getDb(): Database.Database {
     db.pragma("foreign_keys = ON");
     initTables(db);
     seedData(db);
+    migrateInfluencersCheck(db);
   }
   return db;
+}
+
+// 运行时迁移：确保启用状态紧跟代码变更（每次获取 DB 实例时检查，幂等）
+let influencersCheckMigrated = false;
+function migrateInfluencersCheck(database: Database.Database) {
+  if (influencersCheckMigrated) return;
+  influencersCheckMigrated = true;
+  try {
+    const oldSql = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='influencers'"
+    ).get() as { sql: string } | undefined;
+    if (oldSql && !oldSql.sql.includes('待提交')) {
+      database.pragma("foreign_keys = OFF");
+      database.exec(`
+        DROP TABLE IF EXISTS influencers_new;
+        CREATE TABLE influencers_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL, tiktok_link TEXT DEFAULT '', category TEXT DEFAULT '',
+          contact TEXT DEFAULT '', code TEXT DEFAULT '', contact_phone TEXT DEFAULT '',
+          line_id TEXT DEFAULT '', monthly_gmv TEXT DEFAULT '', live_stream_ratio TEXT DEFAULT '',
+          contact_time TEXT DEFAULT '',
+          reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复')),
+          followers TEXT DEFAULT '', avg_views TEXT DEFAULT '', gmv_range TEXT DEFAULT '',
+          notes TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
+          created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
+          discovery_task_id INTEGER REFERENCES discovery_tasks(id)
+        );
+        INSERT INTO influencers_new SELECT * FROM influencers;
+        DROP TABLE influencers;
+        ALTER TABLE influencers_new RENAME TO influencers;
+        CREATE INDEX IF NOT EXISTS idx_influencers_status ON influencers(status);
+        CREATE INDEX IF NOT EXISTS idx_influencers_phase ON influencers(phase);
+      `);
+      database.pragma("foreign_keys = ON");
+      console.log("[DB] 已更新 influencers 表 CHECK 约束，加入 '待提交' 状态");
+    }
+  } catch (e) {
+    console.error("[DB] influencers 迁移失败:", e);
+  }
 }
 
 export function logOperation(actor: string, action: string, targetType: string, targetId: string, detail?: string, oldValue?: string, newValue?: string, fieldName?: string) {
@@ -470,7 +513,7 @@ function initTables(database: Database.Database) {
       avg_views TEXT DEFAULT '',
       gmv_range TEXT DEFAULT '',
       notes TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
       created_by TEXT DEFAULT '',
       deleted INTEGER DEFAULT 0,
       deleted_at TEXT,
