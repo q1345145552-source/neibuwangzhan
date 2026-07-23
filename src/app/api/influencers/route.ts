@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   }
   if (search) { conditions.push("(i.name LIKE ? OR i.category LIKE ? OR i.contact LIKE ? OR i.code LIKE ?)"); const q = `%${search}%`; params.push(q, q, q, q); }
   if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
-  sql += " ORDER BY created_at DESC";
+  sql += " ORDER BY i.created_at DESC";
   const rows = db.prepare(sql).all(...params);
   const res = NextResponse.json(rows);
   res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
