@@ -38,25 +38,62 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const url = new URL(req.url);
+  const search = url.searchParams.get("search") || "";
   const month = url.searchParams.get("month") || "";
+  const monthFrom = url.searchParams.get("month_from") || "";
+  const monthTo = url.searchParams.get("month_to") || "";
   const subtype = url.searchParams.get("subtype") || "";
+  const progress = url.searchParams.get("progress") || "";
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get("pageSize") || "20", 10)));
 
   const db = getDb();
-  let where = "";
+  const where: string[] = ["c.status = '启用'"];
   const params: unknown[] = [];
 
-  if (month) { where += " AND r.year_month = ?"; params.push(month); }
-  if (subtype) { where += " AND r.subtype = ?"; params.push(subtype); }
+  if (search) {
+    where.push("c.company_name LIKE ?");
+    params.push(`%${search}%`);
+  }
 
+  // single month takes priority over range
+  if (month) {
+    where.push("r.year_month = ?");
+    params.push(month);
+  } else {
+    if (monthFrom) { where.push("r.year_month >= ?"); params.push(monthFrom); }
+    if (monthTo) { where.push("r.year_month <= ?"); params.push(monthTo); }
+  }
+
+  if (subtype) { where.push("r.subtype = ?"); params.push(subtype); }
+
+  if (progress) {
+    where.push("r.progress = ?");
+    params.push(progress);
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  // Count total
+  const countRow = db.prepare(
+    `SELECT COUNT(*) as cnt FROM wht_records r
+     JOIN wht_customers c ON r.customer_id = c.id
+     ${whereClause}`
+  ).get(...params) as { cnt: number };
+  const total = countRow.cnt;
+
+  // Fetch page
+  const offset = (page - 1) * pageSize;
   const rows = db.prepare(
     `SELECT r.*, c.company_name, c.tax_id, c.status as customer_status
      FROM wht_records r
      JOIN wht_customers c ON r.customer_id = c.id
-     WHERE c.status = '启用'${where}
-     ORDER BY r.year_month DESC, c.company_name`
-  ).all(...params);
+     ${whereClause}
+     ORDER BY r.year_month DESC, c.company_name
+     LIMIT ? OFFSET ?`
+  ).all(...params, pageSize, offset);
 
-  return NextResponse.json(rows);
+  return NextResponse.json({ rows, total, page, pageSize });
 }
 
 export async function POST(req: NextRequest) {
