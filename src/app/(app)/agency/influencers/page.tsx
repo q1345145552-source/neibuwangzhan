@@ -40,10 +40,11 @@ const ratingColors: Record<string, string> = {
 };
 
 const tabs = [
-  { key: "discovery", label: "达人发现" },
+  { key: "all", label: "全部" },
+  { key: "pending", label: "待提交" },
   { key: "evaluating", label: "待评估" },
-  { key: "evaluated", label: "待推荐" },
-  { key: "recommended", label: "老板推荐" },
+  { key: "evaluated", label: "已评估" },
+  { key: "recommended", label: "已推荐给老板" },
   { key: "rejected", label: "不推荐" },
 ];
 
@@ -62,7 +63,7 @@ export default function InfluencersPage() {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("discovery");
+  const [activeTab, setActiveTab] = useState("all");
 
   // Evaluation modal
   const [evalModal, setEvalModal] = useState<Influencer | null>(null);
@@ -88,7 +89,11 @@ export default function InfluencersPage() {
     setLoading(true);
     try {
       let url: string;
-      if (activeTab === "evaluating") {
+      if (activeTab === "all") {
+        url = "/api/influencers";
+      } else if (activeTab === "pending") {
+        url = "/api/influencers?status=待提交";
+      } else if (activeTab === "evaluating") {
         url = "/api/influencers?status=待评估";
       } else if (activeTab === "evaluated") {
         url = "/api/influencers?status=已评估";
@@ -97,7 +102,7 @@ export default function InfluencersPage() {
       } else if (activeTab === "rejected") {
         url = "/api/influencers?status=不推荐";
       } else {
-        url = `/api/influencers?phase=${activeTab}`;
+        url = "/api/influencers";
       }
       const res = await fetchWithAuth(url, { cache: "no-store" });
       if (!res.ok) {
@@ -328,9 +333,6 @@ function getPreviewGrade() {
   });
 
   const getDisplayStatus = (inf: Influencer) => {
-    // All statuses are now unified as 待评估 — no mapping needed
-    if (inf.status === "待评估" && activeTab === "evaluating") return "待评估";
-    if (activeTab === "rejected") return "不推荐";
     if (inf.phase === "completed_discovery") return "已入池";
     return inf.status;
   };
@@ -473,7 +475,7 @@ function getPreviewGrade() {
                       {inf.notes || "-"}
                     </td>
                   )}
-                  {(activeTab === "evaluating" || activeTab === "evaluated" || activeTab === "recommended" || activeTab === "rejected") && (
+                  {(activeTab !== "all" && activeTab !== "pending") && (
                     <td className="py-3 px-4">
                       {activeTab === "evaluating" && (
                         <div className="flex items-center gap-1.5">
@@ -515,7 +517,7 @@ function getPreviewGrade() {
           </table>
           {filtered.length === 0 && (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">
-              {activeTab === "discovery" ? "暂无发现阶段的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : activeTab === "evaluated" ? "暂无已评估的达人" : "暂无待老板确认的达人"}
+              {activeTab === "all" ? "暂无达人" : activeTab === "pending" ? "暂无待提交的达人" : activeTab === "evaluating" ? "暂无待评估的达人" : activeTab === "evaluated" ? "暂无已评估的达人" : activeTab === "recommended" ? "暂无已推荐给老板的达人" : "暂无不推荐的达人"}
             </div>
           )}
         </div>
