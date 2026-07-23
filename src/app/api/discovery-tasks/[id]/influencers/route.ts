@@ -35,9 +35,9 @@ export async function POST(
   if (!tiktok_link) return NextResponse.json({ error: "请填写TikTok链接" }, { status: 400 });
 
   // Create influencer WITHOUT discovery steps (steps generated when task is completed)
-  // Status starts as 待评估, phase = discovery
+  // Status starts as 待提交, phase = discovery. Upgraded to 待评估 when task is submitted.
   const result = db.prepare(
-    "INSERT INTO influencers (name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes, code, status, phase, discovery_task_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待评估', 'discovery', ?, ?)"
+    "INSERT INTO influencers (name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes, code, status, phase, discovery_task_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待提交', 'discovery', ?, ?)"
   ).run(name, tiktok_link, category || "", contact_phone || "", line_id || "", followers || "", avg_views || "", gmv_range || "", monthly_gmv || "", live_stream_ratio || "", notes || "", code || "", id, auth.name || "");
 
   const inf = db.prepare("SELECT * FROM influencers WHERE id = ?").get(result.lastInsertRowid);

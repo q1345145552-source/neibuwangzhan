@@ -366,7 +366,7 @@ export default function DiscoveryTasksPage() {
           <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
             <p className="text-sm font-medium text-[var(--foreground)]">确认提交评估？</p>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              任务下所有达人将自动流转到 Ploy 的评估池，状态变为"待评估"。
+              任务下所有达人将从"待提交"变为"待评估"，进入 Ploy 的评估池。
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setConfirmSubmitId(null)}>取消</Button>
