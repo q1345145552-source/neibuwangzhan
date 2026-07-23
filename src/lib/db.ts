@@ -1075,6 +1075,7 @@ function initTables(database: Database.Database) {
       subtype TEXT NOT NULL CHECK(subtype IN ('ภ.ง.ด.1','ภ.ง.ด.53')),
       progress TEXT NOT NULL DEFAULT '收资料',
       notes TEXT DEFAULT '',
+      reminded INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
