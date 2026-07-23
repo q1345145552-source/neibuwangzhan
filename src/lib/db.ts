@@ -818,6 +818,7 @@ function initTables(database: Database.Database) {
       customer_id INTEGER NOT NULL REFERENCES vat_customers(id),
       year_month TEXT NOT NULL,
       progress TEXT NOT NULL DEFAULT '收资料',
+      notes TEXT DEFAULT '',
       amount REAL DEFAULT 0,
       assignee TEXT DEFAULT '',
       file_paths TEXT DEFAULT '[]',
@@ -1073,6 +1074,7 @@ function initTables(database: Database.Database) {
       year_month TEXT NOT NULL,
       subtype TEXT NOT NULL CHECK(subtype IN ('ภ.ง.ด.1','ภ.ง.ด.53')),
       progress TEXT NOT NULL DEFAULT '收资料',
+      notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -1084,6 +1086,7 @@ function initTables(database: Database.Database) {
       step_name TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','进行中','已完成','已跳过')),
       assignee TEXT DEFAULT 'Eve',
+      started_at TEXT,
       completed_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );

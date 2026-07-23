@@ -328,6 +328,11 @@ export default function WhtPage() {
                             </div>
                           ))}
                         </div>
+                        <div className="mt-3 flex justify-end border-t border-[var(--border)] pt-3">
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => router.push(`/wht/${r.id}`)}>
+                            查看详情
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
