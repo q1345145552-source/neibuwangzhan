@@ -35,8 +35,8 @@ function migrateInfluencersCheck(database: Database.Database) {
         CREATE TABLE influencers_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL, tiktok_link TEXT DEFAULT '', category TEXT DEFAULT '',
-          contact TEXT DEFAULT '', code TEXT DEFAULT '', contact_phone TEXT DEFAULT '',
-          line_id TEXT DEFAULT '', monthly_gmv TEXT DEFAULT '', live_stream_ratio TEXT DEFAULT '',
+          contact TEXT DEFAULT '', contact_phone TEXT DEFAULT '', line_id TEXT DEFAULT '',
+          monthly_gmv TEXT DEFAULT '', live_stream_ratio TEXT DEFAULT '',
           contact_time TEXT DEFAULT '',
           reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复')),
           followers TEXT DEFAULT '', avg_views TEXT DEFAULT '', gmv_range TEXT DEFAULT '',
@@ -45,7 +45,8 @@ function migrateInfluencersCheck(database: Database.Database) {
           created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now')),
           phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
-          discovery_task_id INTEGER REFERENCES discovery_tasks(id)
+          discovery_task_id INTEGER REFERENCES discovery_tasks(id),
+          code TEXT DEFAULT ''
         );
         INSERT INTO influencers_new SELECT * FROM influencers;
         DROP TABLE influencers;
