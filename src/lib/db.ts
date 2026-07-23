@@ -470,7 +470,7 @@ function initTables(database: Database.Database) {
       avg_views TEXT DEFAULT '',
       gmv_range TEXT DEFAULT '',
       notes TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
       created_by TEXT DEFAULT '',
       deleted INTEGER DEFAULT 0,
       deleted_at TEXT,
