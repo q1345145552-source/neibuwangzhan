@@ -61,6 +61,7 @@ const customerNav = [
 
 const vatNav = [
   { name: "VAT申报", href: "/vat", icon: Calculator },
+  { name: "预扣税申报", href: "/wht", icon: FileText },
 ];
 
 const agencyNav = [

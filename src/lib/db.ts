@@ -1054,6 +1054,40 @@ function initTables(database: Database.Database) {
       reviewed_at TEXT DEFAULT ''
     );
   `);
+
+  /* ── 预扣税申报 ── */
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS wht_customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT NOT NULL,
+      tax_id TEXT DEFAULT '',
+      contact TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '启用' CHECK(status IN ('启用','暂停','已终止')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS wht_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES wht_customers(id),
+      year_month TEXT NOT NULL,
+      subtype TEXT NOT NULL CHECK(subtype IN ('ภ.ง.ด.1','ภ.ง.ด.53')),
+      progress TEXT NOT NULL DEFAULT '收资料',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS wht_record_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES wht_records(id),
+      step_order INTEGER NOT NULL,
+      step_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','进行中','已完成','已跳过')),
+      assignee TEXT DEFAULT 'Eve',
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 }
 
 /* ── 积分规则种子 ── */
