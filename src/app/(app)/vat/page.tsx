@@ -10,7 +10,7 @@ import { VatCustomerProfile } from "@/components/vat-customer-profile";
 import {
   Users, FileText, Calculator, Search, History, BarChart3,
   Plus, Trash2, Edit3, Save, X, CheckCircle2, Clock, Download,
-  AlertTriangle, TrendingUp, Send, Pause, Square, Ban, Mail, Bell, RefreshCw,
+  AlertTriangle, TrendingUp, Send, Pause, Square, Ban, Mail, Bell, RefreshCw, ChevronLeft, ChevronRight,
   FileCheck, ClipboardCheck, Archive, ArrowUpRight, Layers
 } from "lucide-react";
 
@@ -129,6 +129,9 @@ export default function VatPage() {
 
   // Records
   const [records, setRecords] = useState<VatRecord[]>([]);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [recordsTotal, setRecordsTotal] = useState(0);
+  const [recordsPageSize] = useState(50);
   const [allRecords, setAllRecords] = useState<VatRecord[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
@@ -231,11 +234,16 @@ export default function VatPage() {
 
   useEffect(() => { loadCustomers(); loadDashboard(); }, [loadCustomers, loadDashboard]);
   useEffect(() => {
-    if (activeTab === "records") loadRecords();
+    if (activeTab === "records") { setRecordsPage(1); loadRecords(); }
     if (activeTab === "history") loadHistory();
     if (activeTab === "reconciliation") loadReconciliations();
     if (activeTab === "summary") loadSummary();
   }, [activeTab, loadRecords, loadReconciliations, loadHistory, loadSummary]);
+
+  // Separate: reload records on page change
+  useEffect(() => {
+    if (activeTab === "records") loadRecords();
+  }, [recordsPage]);
 
   // Apply filter when filterBy changes
   useEffect(() => {
@@ -665,6 +673,23 @@ export default function VatPage() {
             </table>
           </div>
 
+          {/* Pagination */}
+          {recordsTotal > recordsPageSize && (
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" disabled={recordsPage <= 1}
+                onClick={() => setRecordsPage(p => Math.max(1, p - 1))}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <span className="text-sm text-[var(--muted-foreground)] px-2">
+                第 {recordsPage} / {Math.ceil(recordsTotal / recordsPageSize)} 页（共 {recordsTotal} 条）
+              </span>
+              <Button variant="outline" size="sm" disabled={recordsPage >= Math.ceil(recordsTotal / recordsPageSize)}
+                onClick={() => setRecordsPage(p => Math.min(Math.ceil(recordsTotal / recordsPageSize), p + 1))}>
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
+
           {/* Always-visible generate button — backend skips existing records */}
           <Button size="sm" variant="outline" onClick={async () => {
             try {
@@ -672,7 +697,7 @@ export default function VatPage() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ month: recordMonth }),
               });
-              if (res.ok) { loadRecords(); loadDashboard(); }
+              if (res.ok) { setRecordsPage(1); loadRecords(); loadDashboard(); }
               else { const e = await res.json(); setError(e.error || "生成失败"); }
             } catch { setError("生成申报记录失败"); }
           }}>
