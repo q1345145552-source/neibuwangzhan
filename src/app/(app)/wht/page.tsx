@@ -127,7 +127,7 @@ export default function WhtPage() {
     if (subtype) params.set("subtype", subtype);
     if (filterMonthFrom) params.set("month_from", filterMonthFrom);
     if (filterMonthTo) params.set("month_to", filterMonthTo);
-    if (filterProgress && filterProgress !== "未归档") params.set("progress", filterProgress);
+    if (filterProgress) params.set("progress", filterProgress);
     params.set("page", String(currentPage));
     params.set("pageSize", String(pageSize));
     return `/api/wht/records?${params.toString()}`;
