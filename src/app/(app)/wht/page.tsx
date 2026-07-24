@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { WhtCustomerProfile } from "@/components/wht-customer-profile";
 import {
-  Plus, Save, X, Edit3, Trash2, RefreshCw, ChevronDown, ChevronRight, Check, FileDown, Search, ChevronLeft, AlertTriangle, Clock,
+  Plus, Save, X, Edit3, Trash2, RefreshCw, ChevronDown, ChevronRight, Check, FileDown, Search, ChevronLeft, AlertTriangle, Clock, Upload, Download, FileSpreadsheet,
 } from "lucide-react";
 
 const STATUS_OPTIONS = ["启用", "暂停", "已终止"] as const;
@@ -18,6 +19,9 @@ const tabs = [
   { key: "customers", label: "客户白名单" },
   { key: "wht1", label: "ภ.ง.ด.1" },
   { key: "wht53", label: "ภ.ง.ด.53" },
+  { key: "history", label: "历史查询" },
+  { key: "reconciliation", label: "对账表" },
+  { key: "summary", label: "年度汇总" },
 ];
 
 interface WhtCustomer { id: number; company_name: string; tax_id: string; contact: string; status: string; }
@@ -61,6 +65,39 @@ const warningBadgeStyle: Record<string, string> = {
   red: "bg-red-100 text-red-800",
 };
 
+// Inline editable cell for reconciliation
+function EditableCell({ id, field, value, onUpdate }: { id: number; field: string; value: number; onUpdate: (id: number, field: string, value: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [temp, setTemp] = useState(value);
+  
+  if (!editing) {
+    return (
+      <span className="cursor-pointer hover:text-[var(--primary)]" onClick={() => { setTemp(value); setEditing(true); }}>
+        {field === "tax_unpaid" && value > 0 ? <span className="text-red-500 font-medium">฿{value.toLocaleString()}</span> : `฿${value.toLocaleString()}`}
+      </span>
+    );
+  }
+  
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        type="number"
+        value={temp}
+        onChange={e => setTemp(Number(e.target.value))}
+        className="w-20 h-7 rounded border px-2 text-xs outline-none focus:border-[var(--ring)]"
+        autoFocus
+        onKeyDown={e => {
+          if (e.key === "Enter") { onUpdate(id, field, temp); setEditing(false); }
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <button onClick={() => { onUpdate(id, field, temp); setEditing(false); }} className="text-[var(--success)] text-xs"><Check className="size-3" /></button>
+      <button onClick={() => setEditing(false)} className="text-[var(--muted-foreground)] text-xs"><X className="size-3" /></button>
+    </span>
+  );
+}
+
+
 export default function WhtPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("customers");
@@ -95,6 +132,26 @@ export default function WhtPage() {
   // Batch
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [profileCustomerId, setProfileCustomerId] = useState<number | null>(null);
+
+  // Import
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+
+  // History
+  const [historyRecords, setHistoryRecords] = useState<WhtRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+
+  // Reconciliation
+  const [reconMonth, setReconMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [reconciliations, setReconciliations] = useState<any[]>([]);
+
+  // Summary
+  const [summaryYear, setSummaryYear] = useState(new Date().getFullYear().toString());
+  const [summaryData, setSummaryData] = useState<{ year: string; customers: any[]; grand: any } | null>(null);
+
 
   // Error
   const [error, setError] = useState("");
@@ -153,6 +210,100 @@ export default function WhtPage() {
 
   const handleSearch = () => setCurrentPage(1);
 
+
+  // Download template
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await fetchWithAuth("/api/wht/customers?action=template");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "预扣税客户导入模板.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch { setError("下载模板失败"); }
+  };
+
+  // Import CSV
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingCsv(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const res = await fetchWithAuth("/api/wht/customers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "batch_import", csv_text: text }),
+      });
+      const data = await res.json();
+      setImportResult(data);
+      if (data.success) loadCustomers();
+    } catch { setError("导入失败"); }
+    finally { setImportingCsv(false); e.target.value = ""; }
+  };
+
+  // Load history records
+  const loadHistory = useCallback(async (opts?: { page?: number }) => {
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchText) params.set("search", searchText);
+      if (filterSubtype) params.set("subtype", filterSubtype);
+      if (filterMonthFrom) params.set("month_from", filterMonthFrom);
+      if (filterMonthTo) params.set("month_to", filterMonthTo);
+      if (filterProgress && filterProgress !== "未归档") params.set("progress", filterProgress);
+      params.set("page", String(opts?.page ?? historyPage));
+      params.set("pageSize", "20");
+      const res = await fetchWithAuth(`/api/wht/records?${params.toString()}`);
+      const data = await res.json();
+      setHistoryRecords(data.rows || []);
+      setHistoryTotal(data.total || 0);
+      if (opts?.page) setHistoryPage(opts.page);
+    } catch {}
+    finally { setHistoryLoading(false); }
+  }, [searchText, filterSubtype, filterProgress, filterMonthFrom, filterMonthTo, historyPage]);
+
+  // Load reconciliations
+  const loadReconciliations = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`/api/wht/reconciliation?month=${reconMonth}`);
+      setReconciliations(await res.json());
+    } catch {}
+  }, [reconMonth]);
+
+  // Load summary
+  const loadSummary = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`/api/wht/summary?year=${summaryYear}`);
+      setSummaryData(await res.json());
+    } catch {}
+  }, [summaryYear]);
+
+  // Load data for new tabs
+  useEffect(() => {
+    if (activeTab === "history") loadHistory();
+  }, [activeTab, loadHistory]);
+  useEffect(() => {
+    if (activeTab === "reconciliation") loadReconciliations();
+  }, [activeTab, reconMonth, loadReconciliations]);
+  useEffect(() => {
+    if (activeTab === "summary") loadSummary();
+  }, [activeTab, summaryYear, loadSummary]);
+
+  // Handle reconciliation update
+  const handleReconUpdate = async (id: number, field: string, value: number) => {
+    try {
+      await fetchWithAuth("/api/wht/reconciliation", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, [field]: value }),
+      });
+      loadReconciliations();
+    } catch { setError("更新失败"); }
+  };
   // Batch handlers
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -300,6 +451,32 @@ export default function WhtPage() {
         </div>
       )}
 
+      {importResult && (
+        <div className={cn(
+          "flex items-start gap-2 rounded-lg px-4 py-3 text-sm",
+          importResult.errors?.length > 0 ? "bg-amber-50 border border-amber-200 text-amber-800" : "bg-emerald-50 border border-emerald-200 text-emerald-700"
+        )}>
+          <div className="flex-1">
+            <p className="font-medium">
+              {importResult.success ? `导入完成：${importResult.imported} 条成功` : "导入失败"}
+              {importResult.skipped > 0 && ` · ${importResult.skipped} 条跳过`}
+            </p>
+            {importResult.errors?.length > 0 && (
+              <ul className="mt-1 text-xs list-disc list-inside space-y-0.5">
+                {importResult.errors.slice(0, 5).map((e: string, i: number) => <li key={i}>{e}</li>)}
+                {importResult.errors.length > 5 && <li>...共 {importResult.errors.length} 条错误</li>}
+              </ul>
+            )}
+            {importResult.skippedRows?.length > 0 && !importResult.errors?.length && (
+              <ul className="mt-1 text-xs list-disc list-inside space-y-0.5">
+                {importResult.skippedRows.slice(0, 3).map((s: string, i: number) => <li key={i}>{s}</li>)}
+              </ul>
+            )}
+          </div>
+          <button onClick={() => setImportResult(null)}><X className="size-4" /></button>
+        </div>
+      )}
+
       {/* Dashboard */}
       <div className="grid grid-cols-2 gap-4">
         {["ภ.ง.ด.1", "ภ.ง.ด.53"].map(subtype => {
@@ -352,9 +529,18 @@ export default function WhtPage() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">客户白名单</h2>
-            <Button size="sm" onClick={() => { setShowAddCustomer(true); setEditingCustomerId(null); setCustomerForm({ company_name: "", tax_id: "", contact: "", status: "启用" }); }}>
-              <Plus className="size-4 mr-1" />添加客户
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                <FileSpreadsheet className="size-4" />下载模板
+              </Button>
+              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors">
+                <Upload className="size-4" />{importingCsv ? "导入中..." : "批量导入"}
+                <input type="file" accept=".csv" onChange={handleImportCsv} className="hidden" disabled={importingCsv} />
+              </label>
+              <Button size="sm" onClick={() => { setShowAddCustomer(true); setEditingCustomerId(null); setCustomerForm({ company_name: "", tax_id: "", contact: "", status: "启用" }); }}>
+                <Plus className="size-4 mr-1" />添加客户
+              </Button>
+            </div>
           </div>
 
           {(showAddCustomer || editingCustomerId !== null) && (
@@ -409,7 +595,13 @@ export default function WhtPage() {
                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
                     <td className="px-4 py-3">{c.contact || "—"}</td>
-                    <td className="px-4 py-3"><span className={statusBadge(c.status)}>{c.status}</span></td>
+                    <td className="px-4 py-3">
+                        <span className={statusBadge(c.status)}>{c.status}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setProfileCustomerId(c.id); }}
+                          className="ml-2 text-[0.6rem] text-[var(--muted-foreground)] hover:text-[var(--primary)] underline">
+                          画像
+                        </button>
+                      </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
                         <Button size="icon-xs" variant="ghost" onClick={() => startEdit(c)}><Edit3 className="size-3" /></Button>
@@ -535,7 +727,12 @@ export default function WhtPage() {
                           className="size-4 rounded border-[var(--border)] cursor-pointer accent-[var(--primary)]" />
                         <span className="flex items-center gap-3 flex-1 cursor-pointer" onClick={() => toggleExpand(r.id)}>
                           {expandedRecord === r.id ? <ChevronDown className="size-4 text-[var(--muted-foreground)]" /> : <ChevronRight className="size-4 text-[var(--muted-foreground)]" />}
-                          <span className="font-medium flex-1">{r.company_name}</span>
+                          <span className="font-medium">{r.company_name}</span>
+                          <button onClick={(e) => { e.stopPropagation(); setProfileCustomerId(r.customer_id); }}
+                            className="text-[0.6rem] text-[var(--muted-foreground)] hover:text-[var(--primary)] underline">
+                            画像
+                          </button>
+                          <span className="flex-1" />
                           <span className="text-xs text-[var(--muted-foreground)]">{r.year_month}</span>
                           <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">{r.subtype}</span>
                           <span className="text-xs text-[var(--muted-foreground)]">{r.tax_id || "—"}</span>
@@ -608,6 +805,302 @@ export default function WhtPage() {
           )}
         </div>
       )}
+      {/* ---- 历史查询 ---- */}
+      {activeTab === "history" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-medium">历史查询</h2>
+            <Button variant="outline" size="sm" onClick={() => loadHistory()} disabled={historyLoading} className="gap-1.5">
+              <RefreshCw className={cn("size-3.5", historyLoading && "animate-spin")} />刷新
+            </Button>
+          </div>
+
+          {/* Filters */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-[var(--muted-foreground)]" />
+              <input type="text" placeholder="搜索公司名称..." value={searchText}
+                onChange={e => { setSearchText(e.target.value); setHistoryPage(1); }}
+                className="w-full h-9 pl-8 pr-3 rounded-md border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-[var(--muted-foreground)]">月份从</label>
+              <input type="month" value={filterMonthFrom} onChange={e => { setFilterMonthFrom(e.target.value); setHistoryPage(1); }}
+                className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-[var(--muted-foreground)]">到</label>
+              <input type="month" value={filterMonthTo} onChange={e => { setFilterMonthTo(e.target.value); setHistoryPage(1); }}
+                className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-[var(--muted-foreground)]">子类型</label>
+              <select value={filterSubtype} onChange={e => { setFilterSubtype(e.target.value); setHistoryPage(1); }}
+                className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]">
+                <option value="">全部</option>
+                <option value="ภ.ง.ด.1">ภ.ง.ด.1</option>
+                <option value="ภ.ง.ด.53">ภ.ง.ด.53</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-[var(--muted-foreground)]">状态</label>
+              <select value={filterProgress} onChange={e => { setFilterProgress(e.target.value); setHistoryPage(1); }}
+                className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]">
+                <option value="">全部</option>
+                <option value="归档">已归档</option>
+                <option value="未归档">进行中</option>
+              </select>
+            </div>
+          </div>
+
+          {historyRecords.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)] rounded-xl border border-dashed">
+              暂无历史申报记录
+            </div>
+          ) : (
+            <>
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-[var(--muted)]">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">月份</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">子类型</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">进度</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRecords.map((r: WhtRecord) => {
+                      const wl = getWarningLevel(r.progress, r.year_month);
+                      return (
+                        <tr key={r.id} className={cn("border-t border-[var(--border)] hover:bg-[var(--muted)]/30", warningRowStyle[wl.level])}>
+                          <td className="px-4 py-3 font-medium">
+                            <span className="cursor-pointer hover:text-[var(--primary)] hover:underline"
+                              onClick={() => router.push(`/wht/${r.id}`)}>{r.company_name}</span>
+                            <button onClick={(e) => { e.stopPropagation(); setProfileCustomerId(r.customer_id); }}
+                              className="ml-2 text-[0.6rem] text-[var(--muted-foreground)] hover:text-[var(--primary)] underline">画像</button>
+                          </td>
+                          <td className="px-4 py-3 text-[var(--muted-foreground)]">{r.year_month}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)]">{r.subtype}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                                r.progress === "归档" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                              )}>{r.progress}</span>
+                              {wl.level !== "green" && (
+                                <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-medium", warningBadgeStyle[wl.level])}>
+                                  {wl.level === "red" ? <AlertTriangle className="size-3" /> : <Clock className="size-3" />}
+                                  {wl.label}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-xs">{(r as any).amount > 0 ? `฿${(r as any).amount.toLocaleString()}` : "—"}</td>
+                          <td className="px-4 py-3 text-right">
+                            <Button size="icon-xs" variant="ghost" onClick={() => router.push(`/wht/${r.id}`)}>
+                              <ChevronRight className="size-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {Math.ceil(historyTotal / 20) > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <Button variant="outline" size="sm" disabled={historyPage <= 1}
+                    onClick={() => setHistoryPage(p => Math.max(1, p - 1))}>
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <span className="text-sm text-[var(--muted-foreground)] px-2">
+                    第 {historyPage} / {Math.ceil(historyTotal / 20)} 页（共 {historyTotal} 条）
+                  </span>
+                  <Button variant="outline" size="sm" disabled={historyPage >= Math.ceil(historyTotal / 20)}
+                    onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyTotal / 20), p + 1))}>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ---- 对账表 ---- */}
+      {activeTab === "reconciliation" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">对账表</h2>
+            <div className="flex items-center gap-2">
+              <input type="month" value={reconMonth} onChange={e => setReconMonth(e.target.value)}
+                className="rounded border px-3 py-2 text-sm" />
+              <Button variant="outline" size="sm" onClick={loadReconciliations} className="gap-1.5">
+                <RefreshCw className="size-3.5" />刷新
+              </Button>
+            </div>
+          </div>
+
+          {reconciliations.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)] rounded-xl border border-dashed">
+              暂无对账数据
+            </div>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--muted)]">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">月份</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">应付税金</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">已付税金</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">未付税金</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliations.map((rec: any) => (
+                    <tr key={rec.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                      <td className="px-4 py-3 font-medium">{rec.company_name}</td>
+                      <td className="px-4 py-3 text-[var(--muted-foreground)]">{rec.year_month}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        <EditableCell id={rec.id} field="tax_payable" value={rec.tax_payable} onUpdate={handleReconUpdate} />
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        <EditableCell id={rec.id} field="tax_paid" value={rec.tax_paid} onUpdate={handleReconUpdate} />
+                      </td>
+                      <td className={cn("px-4 py-3 text-right font-mono text-xs", rec.tax_unpaid > 0 && "text-red-500 font-medium")}>
+                        <EditableCell id={rec.id} field="tax_unpaid" value={rec.tax_unpaid} onUpdate={handleReconUpdate} />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button onClick={(e) => { e.stopPropagation(); setProfileCustomerId(rec.customer_id); }}
+                          className="text-[0.6rem] text-[var(--muted-foreground)] hover:text-[var(--primary)] underline">画像</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- 年度汇总 ---- */}
+      {activeTab === "summary" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">年度汇总</h2>
+            <div className="flex items-center gap-2">
+              <select className="rounded border px-3 py-2 text-sm" value={summaryYear}
+                onChange={e => setSummaryYear(e.target.value)}>
+                {(() => {
+                  const years = [];
+                  for (let y = new Date().getFullYear(); y >= 2024; y--) years.push(y);
+                  return years.map(y => <option key={y} value={y}>{y}年</option>);
+                })()}
+              </select>
+              {summaryData && summaryData.customers.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => {
+                  import("@/lib/export").then(({ exportToExcel }) => {
+                    const cols = [
+                      { header: "公司名称", key: "companyName" as const },
+                      { header: "税号", key: "taxId" as const },
+                      { header: "ภ.ง.ด.1笔数", key: "wht1Count" as const },
+                      { header: "ภ.ง.ด.53笔数", key: "wht53Count" as const },
+                      { header: "总申报笔数", key: "totalRecords" as const },
+                      { header: "已归档", key: "archivedRecords" as const },
+                      { header: "未完成", key: "overdueRecords" as const },
+                      { header: "预扣税总额", key: "totalAmount" as const, render: (r: any) => `฿${r.totalAmount.toLocaleString()}` },
+                      { header: "已付", key: "totalPaid" as const, render: (r: any) => `฿${r.totalPaid.toLocaleString()}` },
+                      { header: "未付", key: "totalUnpaid" as const, render: (r: any) => `฿${r.totalUnpaid.toLocaleString()}` },
+                    ];
+                    exportToExcel(summaryData.customers, cols, `WHT年度汇总_${summaryYear}`);
+                  });
+                }}>
+                  <Download className="size-4 mr-1" />导出Excel
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {!summaryData ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="size-6 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />
+            </div>
+          ) : summaryData.customers.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)] rounded-xl border border-dashed">
+              {summaryYear} 年暂无申报记录
+            </div>
+          ) : (
+            <>
+              {/* Grand totals */}
+              <div className="grid grid-cols-6 gap-3">
+                {[
+                  { label: "总申报", value: summaryData.grand.totalRecords, color: "text-[var(--foreground)]" },
+                  { label: "已归档", value: summaryData.grand.archivedRecords, color: "text-emerald-600" },
+                  { label: "未完成", value: summaryData.grand.overdueRecords, color: "text-amber-600" },
+                  { label: "总金额", value: `฿${summaryData.grand.totalAmount.toLocaleString()}`, color: "text-[var(--foreground)]" },
+                  { label: "已付", value: `฿${summaryData.grand.totalPaid.toLocaleString()}`, color: "text-emerald-600" },
+                  { label: "未付", value: `฿${summaryData.grand.totalUnpaid.toLocaleString()}`, color: "text-red-500" },
+                ].map(item => (
+                  <div key={item.label} className="rounded-lg border bg-[var(--card)] p-3 text-center">
+                    <p className={cn("text-sm font-bold tabular-nums", item.color)}>{item.value}</p>
+                    <p className="text-[0.6rem] text-[var(--muted-foreground)]">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-[var(--muted)]">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">ภ.ง.ด.1</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">ภ.ง.ด.53</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">总数</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">已归档</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">未完成</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">总金额</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">未付</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryData.customers.map((c: any) => (
+                      <tr key={c.customerId} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                        <td className="px-4 py-3 font-medium">{c.companyName}</td>
+                        <td className="px-4 py-3 text-center">{c.wht1Count}</td>
+                        <td className="px-4 py-3 text-center">{c.wht53Count}</td>
+                        <td className="px-4 py-3 text-center tabular-nums">{c.totalRecords}</td>
+                        <td className="px-4 py-3 text-center text-emerald-600 tabular-nums">{c.archivedRecords}</td>
+                        <td className="px-4 py-3 text-center text-amber-600 tabular-nums">{c.overdueRecords}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs tabular-nums">฿{c.totalAmount.toLocaleString()}</td>
+                        <td className={cn("px-4 py-3 text-right font-mono text-xs tabular-nums", c.totalUnpaid > 0 && "text-red-500")}>฿{c.totalUnpaid.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+
+      {/* Customer Profile Panel */}
+      {profileCustomerId && (
+        <WhtCustomerProfile
+          customerId={profileCustomerId}
+          onClose={() => setProfileCustomerId(null)}
+        />
+      )}
+
     </div>
   );
 }
