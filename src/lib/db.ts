@@ -1094,6 +1094,20 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS wht_reconciliation (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES wht_customers(id),
+      year_month TEXT NOT NULL,
+      tax_payable REAL DEFAULT 0,
+      tax_paid REAL DEFAULT 0,
+      tax_unpaid REAL DEFAULT 0,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 }
 
 /* ── 积分规则种子 ── */

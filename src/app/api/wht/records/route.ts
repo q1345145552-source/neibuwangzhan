@@ -101,10 +101,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await verifyAuth(req);
-  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+  const isCron = req.headers.get("authorization") === "Bearer internal-cron";
+  
   const body = await req.json();
+
+  // Cron bypass — skip auth for internal calls
+  if (!isCron) {
+    const auth = await verifyAuth(req);
+    if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
   const { action } = body;
 
   const db = getDb();
@@ -130,6 +135,15 @@ export async function POST(req: NextRequest) {
         "INSERT INTO wht_records (customer_id, year_month, subtype) VALUES (?, ?, ?)"
       ).run(c.id, month, genSubtype);
       seedRecordSteps(db, Number(result.lastInsertRowid), genSubtype);
+      // Sync reconciliation
+      const existingRecon = db.prepare(
+        "SELECT id FROM wht_reconciliation WHERE customer_id = ? AND year_month = ?"
+      ).get(c.id, month);
+      if (!existingRecon) {
+        db.prepare(
+          "INSERT INTO wht_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, 0, 0, 0)"
+        ).run(c.id, month);
+      }
       created++;
     }
     return NextResponse.json({ created });
@@ -149,6 +163,15 @@ export async function POST(req: NextRequest) {
     "INSERT INTO wht_records (customer_id, year_month, subtype) VALUES (?, ?, ?)"
   ).run(customer_id, year_month, createSubtype);
   seedRecordSteps(db, Number(result.lastInsertRowid), createSubtype);
+  // Sync reconciliation
+  const existingReconSingle = db.prepare(
+    "SELECT id FROM wht_reconciliation WHERE customer_id = ? AND year_month = ?"
+  ).get(customer_id, year_month);
+  if (!existingReconSingle) {
+    db.prepare(
+      "INSERT INTO wht_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, 0, 0, 0)"
+    ).run(customer_id, year_month);
+  }
   const row = db.prepare("SELECT * FROM wht_records WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }
