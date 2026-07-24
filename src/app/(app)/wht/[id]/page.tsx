@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, Upload, MessageSquare, Trash2, X } from "lucide-react";
+import { ArrowLeft, FileText, Upload, MessageSquare, Trash2, X, Download } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { StepTimeline, type TimelineStep, type TimelineNote, type TimelineEmployee } from "@/components/step-timeline";
@@ -51,6 +51,7 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [deleteDocTarget, setDeleteDocTarget] = useState<number | null>(null);
   const [deletingDoc, setDeletingDoc] = useState(false);
+  const [downloadingCert, setDownloadingCert] = useState(false);
   const [stepsError, setStepsError] = useState("");
   const initialLoadDone = useRef(false);
 
@@ -131,15 +132,20 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
       body: JSON.stringify({ step_id: stepId, status: "已完成" }),
     });
     if (!res.ok) { const e = await res.json(); throw new Error(e.error || "完成失败"); }
-    // 自动启动下一步
+    // 自动启动下一个待处理的步骤（跳过已标记跳过的步骤）
     const idx = steps.findIndex(s => s.id === stepId);
-    const next = idx >= 0 && idx < steps.length - 1 ? steps[idx + 1] : null;
-    if (next && (next.status === "待处理" || next.status === "已跳过")) {
-      if (next.status === "待处理") {
-        await fetchWithAuth(`/api/wht/records/${id}/steps`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step_id: next.id, status: "进行中" }),
-        });
+    if (idx >= 0 && idx < steps.length - 1) {
+      for (let i = idx + 1; i < steps.length; i++) {
+        if (steps[i].status === "已跳过") continue;
+        if (steps[i].status === "待处理") {
+          await fetchWithAuth(`/api/wht/records/${id}/steps`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ step_id: steps[i].id, status: "进行中" }),
+          });
+          break;
+        }
+        // already started/completed → stop looking
+        break;
       }
     }
     reload();
@@ -363,6 +369,36 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
                 onDeleteNote={handleDeleteNote}
                 onAssigneeChange={handleAssigneeChange}
                 hidePerStepStart
+                renderHeaderBadges={(step) => {
+                  if (record?.subtype !== "ภ.ง.ด.53" || step.step_order !== 4) return null;
+                  return (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setDownloadingCert(true);
+                        try {
+                          const res = await fetchWithAuth(`/api/wht/records/${id}/certificate`);
+                          if (!res.ok) throw new Error("");
+                          const blob = await res.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `50tawi-${record.company_name}-${record.year_month}.pdf`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          window.URL.revokeObjectURL(url);
+                        } catch { alert("下载失败，请重试"); }
+                        finally { setDownloadingCert(false); }
+                      }}
+                      disabled={downloadingCert}
+                      className="inline-flex items-center gap-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                    >
+                      <Download className="size-3" />
+                      {downloadingCert ? "下载中..." : "下载 50ทวิ"}
+                    </button>
+                  );
+                }}
               />
             )}
           </div>

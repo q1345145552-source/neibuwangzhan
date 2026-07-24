@@ -994,6 +994,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE customers ADD COLUMN claimed_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE wht_records ADD COLUMN amount REAL DEFAULT 0"); } catch {}
 
   // 迁移：统一达人状态 — '评估中' → '待评估'
   try {
@@ -1076,6 +1077,7 @@ function initTables(database: Database.Database) {
       progress TEXT NOT NULL DEFAULT '收资料',
       notes TEXT DEFAULT '',
       reminded INTEGER DEFAULT 0,
+      amount REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

@@ -68,8 +68,12 @@ export async function GET(req: NextRequest) {
   if (subtype) { where.push("r.subtype = ?"); params.push(subtype); }
 
   if (progress) {
-    where.push("r.progress = ?");
-    params.push(progress);
+    if (progress === "未归档") {
+      where.push("r.progress != '归档'");
+    } else {
+      where.push("r.progress = ?");
+      params.push(progress);
+    }
   }
 
   const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
