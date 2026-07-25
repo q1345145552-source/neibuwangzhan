@@ -56,6 +56,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     async function load() {
       try {
         const res = await fetchWithAuth(`/api/customers/${id}`);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) { setLoading(false); return; }
         setCustomer(data);
@@ -67,6 +68,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const reload = async () => {
     try {
       const res = await fetchWithAuth(`/api/customers/${id}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       if (!data.error) setCustomer(data);
     } catch {}

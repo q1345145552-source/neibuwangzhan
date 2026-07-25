@@ -43,7 +43,7 @@ export default function NewOrderPage() {
   useEffect(() => {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => setError("加载业务线失败"));
     fetchEmployees().then(setEmployees).catch(() => {});
-    fetchWithAuth("/api/customers").then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(() => {});
+    fetchWithAuth("/api/customers").then(r => r.json()).then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // 业务线加载完成后，根据 URL 上的 biz 参数预选一次（渲染期间派生状态，而非在 effect 里 setState）

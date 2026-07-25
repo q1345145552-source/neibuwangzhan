@@ -88,6 +88,7 @@ export default function RewardsPage() {
       if (quarter) url += `&quarter=${encodeURIComponent(quarter)}`;
       if (filterEmployee) url += `&employee=${encodeURIComponent(filterEmployee)}`;
       const res = await fetchWithAuth(url, { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       const data = await res.json();
       setRankings(data.rankings || []);
       setSalesRanking(data.salesRanking || []);
@@ -157,6 +158,7 @@ export default function RewardsPage() {
     if (!voteNominee) { setVoteMsg("请选择同事"); return; }
     setVoteMsg("");
     const res = await fetchWithAuth("/api/internal/points", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "peer_vote", nominee: voteNominee, reason: voteReason }) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
     const d = await res.json();
     if (d.error) { setVoteMsg(d.error); return; }
     setVoteNominee(""); setVoteReason("");

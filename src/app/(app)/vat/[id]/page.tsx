@@ -121,6 +121,7 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
     async function run() {
       try {
         const res = await fetchWithAuth(`/api/vat/records/${id}`);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
         const data = await res.json();
         if (ignore) return;
         if (data.error) { if (initialLoadDone.current) { setStepsError(data.error); } else { setError(data.error); } setLoading(false); return; }

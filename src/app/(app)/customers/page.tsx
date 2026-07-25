@@ -187,6 +187,7 @@ export default function CustomersPage() {
   const loadMyPoints = async () => {
     try {
       const res = await fetchWithAuth("/api/customers?action=my_points");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       setMyPoints(data.total_customer_points || 0);
     } catch {}
@@ -195,6 +196,7 @@ export default function CustomersPage() {
   const loadEmployees = async () => {
     try {
       const res = await fetchWithAuth("/api/employees");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data)) setEmployees(data.map((e: any) => ({ name: e.name })));
     } catch {}
@@ -235,6 +237,7 @@ export default function CustomersPage() {
     setShowVatImport(true);
     try {
       const res = await fetchWithAuth("/api/customers?action=vat-importable");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       setVatImportable(Array.isArray(data) ? data : []);
     } catch { setVatImportable([]); }
@@ -272,6 +275,7 @@ export default function CustomersPage() {
     if (user?.role !== "admin") return;
     try {
       const res = await fetchWithAuth("/api/customers?action=withdrawals");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       setWithdrawals(Array.isArray(data) ? data : []);
     } catch {}

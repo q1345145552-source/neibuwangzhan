@@ -30,6 +30,7 @@ export default function TemplatesPage() {
     try {
       const url = typeFilter !== "all" ? `/api/templates?type=${typeFilter}` : "/api/templates";
       const res = await fetchWithAuth(url, { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       setTemplates(await res.json());
     } catch {}
   };

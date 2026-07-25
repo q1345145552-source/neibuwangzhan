@@ -6,13 +6,21 @@ import { Users, FileSignature, TrendingUp, Search, FlaskConical, PackageCheck, S
 import { cn } from "@/lib/utils";
 import { fetchWithAuth } from "@/lib/api";
 
-const STAFF = [
-  { id: "ploy", label: "Ploy" },
-  { id: "yuanli", label: "Yuanli" },
-  { id: "pare", label: "Prae" },
-  { id: "namcha", label: "Namcha" },
+// 动态员工列表（保留已知配色作为兜底）
+const KNOWN_COLORS: Record<string, string> = {
+  "ploy": "border-l-pink-400", "yuanli": "border-l-amber-400",
+  "pare": "border-l-blue-400", "namcha": "border-l-emerald-400",
+};
+
+const palette = [
+  "border-l-pink-400", "border-l-amber-400", "border-l-blue-400", "border-l-emerald-400",
+  "border-l-cyan-400", "border-l-purple-400", "border-l-rose-400", "border-l-indigo-400",
+  "border-l-teal-400", "border-l-orange-400",
 ];
-const STAFF_LABELS: Record<string, string> = Object.fromEntries(STAFF.map(s => [s.id, s.label]));
+function assignColor(index: number, name: string): string {
+  if (KNOWN_COLORS[name]) return KNOWN_COLORS[name];
+  return palette[index % palette.length];
+}
 
 interface StaffRow {
   name: string; tasks: number; influencers: number; evaluations: number; contracts: number;
@@ -40,11 +48,6 @@ const ratingColor = (r: string) => {
   const base = (r || "").replace("+", "");
   const map: Record<string, string> = { A: "bg-emerald-500", B: "bg-blue-500", C: "bg-amber-500", D: "bg-red-500" };
   return map[base] || "bg-slate-400";
-};
-
-const staffColors: Record<string, string> = {
-  "ploy": "border-l-pink-400", "yuanli": "border-l-amber-400",
-  "pare": "border-l-blue-400", "namcha": "border-l-emerald-400",
 };
 
 function timeAgo(dateStr: string) {
@@ -84,6 +87,8 @@ function formatDate(d: Date) {
 export default function AgencyPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [staffList, setStaffList] = useState<{ id: number; name: string; role: string }[]>([]);
+  const staffColorMap = Object.fromEntries(staffList.map((s, i) => [s.name, assignColor(i, s.name)]));
 
   // ── Filters ──
   const [quickDays, setQuickDays] = useState<number | null>(7);
@@ -157,6 +162,13 @@ export default function AgencyPage() {
       .then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetchWithAuth("/api/employees")
+      .then(r => r.json())
+      .then((list: { id: number; name: string; role: string }[]) => setStaffList(Array.isArray(list) ? list : []))
+      .catch(() => {});
+  }, []);
+
   const maxCat = stats?.categories[0]?.c || 1;
   const { pipelineCounts: pc } = data || { pipelineCounts: { discovery: 0, completed_discovery: 0, contract: 0, incubation: 0, completed_incubation: 0 } };
   const ps = data?.periodStats || { tasks: 0, influencers: 0, evaluations: 0, contracts: 0 };
@@ -220,7 +232,7 @@ export default function AgencyPage() {
               className="appearance-none h-8 rounded border border-[var(--border)] bg-[var(--background)] pl-3 pr-7 text-xs outline-none focus:border-[var(--ring)] cursor-pointer"
             >
               <option value="">全部成员</option>
-              {STAFF.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              {staffList.map((s: { id: string; name: string }) => <option key={s.id} value={s.name}>{s.name}</option>)}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3 pointer-events-none text-[var(--muted-foreground)]" />
           </div>
@@ -317,13 +329,13 @@ export default function AgencyPage() {
               </tr>
             </thead>
             <tbody>
-              {(data?.staffWorkload || []).map((row: StaffRow) => (
+              {(data?.staffWorkload || []).map((row: StaffRow, index: number) => (
                 <tr key={row.name} className={cn(
                   "border-b border-[var(--border)] hover:bg-[var(--secondary)] transition-colors border-l-2",
-                  staffColors[row.name] || "border-l-transparent",
+                  staffColorMap[row.name] || assignColor(index, row.name),
                   employee && employee !== row.name && "opacity-40"
                 )}>
-                  <td className="py-2.5 px-5 font-medium text-[var(--foreground)]">{STAFF_LABELS[row.name] || row.name}</td>
+                  <td className="py-2.5 px-5 font-medium text-[var(--foreground)]">{row.name}</td>
                   <td className="py-2.5 px-4 text-center tabular-nums">
                     {row.tasks > 0 ? (
                       <button onClick={() => handleWlDetail(row.name, "tasks", row.name + " 的发现任务")} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
