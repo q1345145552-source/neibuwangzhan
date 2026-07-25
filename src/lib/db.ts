@@ -50,6 +50,7 @@ function migrateInfluencersCheck(database: Database.Database) {
           code TEXT DEFAULT ''
         );
         -- 先清洗脏数据，确保符合 CHECK 约束
+        UPDATE influencers SET status = '待评估' WHERE status = '评估中';
         UPDATE influencers SET reply_status = '待联系' WHERE reply_status NOT IN ('待联系','已联系','已回复','未回复','不回复') OR reply_status IS NULL OR reply_status = '';
         INSERT INTO influencers_new SELECT * FROM influencers;
         DROP TABLE influencers;
@@ -95,6 +96,7 @@ function migrateInfluencersNoSign(database: Database.Database) {
           code TEXT DEFAULT ''
         );
         -- 先清洗脏数据，确保符合 CHECK 约束
+        UPDATE influencers SET status = '待评估' WHERE status = '评估中';
         UPDATE influencers SET reply_status = '待联系' WHERE reply_status NOT IN ('待联系','已联系','已回复','未回复','不回复') OR reply_status IS NULL OR reply_status = '';
         INSERT INTO influencers_new SELECT * FROM influencers;
         DROP TABLE influencers;
