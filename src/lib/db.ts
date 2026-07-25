@@ -49,6 +49,8 @@ function migrateInfluencersCheck(database: Database.Database) {
           discovery_task_id INTEGER REFERENCES discovery_tasks(id),
           code TEXT DEFAULT ''
         );
+        -- 先清洗脏数据，确保符合 CHECK 约束
+        UPDATE influencers SET reply_status = '待联系' WHERE reply_status NOT IN ('待联系','已联系','已回复','未回复','不回复') OR reply_status IS NULL OR reply_status = '';
         INSERT INTO influencers_new SELECT * FROM influencers;
         DROP TABLE influencers;
         ALTER TABLE influencers_new RENAME TO influencers;
@@ -92,6 +94,8 @@ function migrateInfluencersNoSign(database: Database.Database) {
           discovery_task_id INTEGER REFERENCES discovery_tasks(id),
           code TEXT DEFAULT ''
         );
+        -- 先清洗脏数据，确保符合 CHECK 约束
+        UPDATE influencers SET reply_status = '待联系' WHERE reply_status NOT IN ('待联系','已联系','已回复','未回复','不回复') OR reply_status IS NULL OR reply_status = '';
         INSERT INTO influencers_new SELECT * FROM influencers;
         DROP TABLE influencers;
         ALTER TABLE influencers_new RENAME TO influencers;
