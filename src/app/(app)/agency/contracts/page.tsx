@@ -124,7 +124,7 @@ export default function ContractsPage() {
       const [cd, allInfs] = await Promise.all([cr.json(), ir.json()]);
       setContracts(Array.isArray(cd) ? cd : []);
       const infs = Array.isArray(allInfs) ? allInfs : [];
-      setPoolInfs(infs.filter((i: Influencer) => i.phase === "completed_discovery"));
+      setPoolInfs(infs.filter((i: Influencer) => i.phase === "completed_discovery" && i.status !== "不签约"));
       // 签约中：排除已有合同的达人（合同已在合同列表中显示）
       const contractIds = new Set((Array.isArray(cd) ? cd : []).map((c: Contract) => c.influencer_id));
       setActiveInfs(infs.filter((i: Influencer) => i.phase === "contract" && !contractIds.has(i.id)));
