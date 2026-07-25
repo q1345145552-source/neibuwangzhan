@@ -272,6 +272,41 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
   const [uploadingFin, setUploadingFin] = useState(false);
   const [finSlipFile, setFinSlipFile] = useState("");
 
+  // ── Edit influencer modal ──
+  const [editInfModal, setEditInfModal] = useState(false);
+  const [editInfForm, setEditInfForm] = useState({ name: "", category: "", followers: "", contact_phone: "", line_id: "", tiktok_link: "", monthly_gmv: "" });
+  const [editInfSaving, setEditInfSaving] = useState(false);
+  const [editInfError, setEditInfError] = useState("");
+
+  const handleOpenEditInf = () => {
+    if (!inf) return;
+    setEditInfForm({ name: inf.name || "", category: inf.category || "", followers: inf.followers || "", contact_phone: inf.contact_phone || "", line_id: inf.line_id || "", tiktok_link: inf.tiktok_link || "", monthly_gmv: inf.monthly_gmv || "" });
+    setEditInfError("");
+    setEditInfModal(true);
+  };
+
+  const handleSaveEditInf = async () => {
+    if (!inf) return;
+    setEditInfSaving(true);
+    setEditInfError("");
+    try {
+      const res = await fetchWithAuth("/api/influencers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: inf.id, ...editInfForm }),
+      });
+      if (!res.ok) throw new Error("保存失败");
+      setEditInfModal(false);
+      reload();
+    } catch (err) {
+      setEditInfError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setEditInfSaving(false);
+    }
+  };
+
+
+
   // ── Document form ──
   const [newDocName, setNewDocName] = useState("");
   const [docFileName, setDocFileName] = useState("");
@@ -723,6 +758,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
           </Button>
           <div>
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{inf.name}</h1>
+          {!isClient && (<button onClick={handleOpenEditInf} className="ml-2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="编辑达人信息"><Pencil className="size-4" /></button>)}
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">{getPageTitle(inf)} · 评估数据</p>
           </div>
         </div>
@@ -1649,6 +1685,33 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
       )}
+
+      {/* Edit influencer modal */}
+      {editInfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditInfModal(false)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-[var(--foreground)]">编辑达人信息</h3>
+              <button onClick={() => setEditInfModal(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+            </div>
+            {editInfError && <p className="mb-3 text-xs text-[var(--destructive)]">{editInfError}</p>}
+            <div className="space-y-3">
+              <div><label className="text-xs text-[var(--muted-foreground)]">达人名称</label><input value={editInfForm.name} onChange={e => setEditInfForm(p => ({ ...p, name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">品类</label><input value={editInfForm.category} onChange={e => setEditInfForm(p => ({ ...p, category: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">粉丝量</label><input value={editInfForm.followers} onChange={e => setEditInfForm(p => ({ ...p, followers: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">月度 GMV</label><input value={editInfForm.monthly_gmv} onChange={e => setEditInfForm(p => ({ ...p, monthly_gmv: e.target.value }))} placeholder="如 50000" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">联系电话</label><input value={editInfForm.contact_phone} onChange={e => setEditInfForm(p => ({ ...p, contact_phone: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">LINE ID</label><input value={editInfForm.line_id} onChange={e => setEditInfForm(p => ({ ...p, line_id: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">TikTok 链接</label><input value={editInfForm.tiktok_link} onChange={e => setEditInfForm(p => ({ ...p, tiktok_link: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setEditInfModal(false)} disabled={editInfSaving} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleSaveEditInf} disabled={editInfSaving} className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors disabled:opacity-50">{editInfSaving ? "保存中..." : "保存"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -16,7 +16,7 @@ const categories = ["美妆 (Beauty)", "测评 (Review/Try-on)", "生活 (Lifest
     "耳机 (Earphones)", "音箱 (Speakers)", "家装建材 (Home Improvement)", "农业品类 (Agriculture)",
     "泳衣 (Swimwear)", "太阳能灯 (Solar Lights)", "健身器材 (Fitness Equipment)", "眼镜 (Eyewear)",
     "家居用品 (Home Goods)",
-    "玩具 (Toys)"];
+    "玩具 (Toys)","杂货用品 (Daily Essentials)","宠物用品 (Pet Supplies)","保健品 (Health Food)"];
 
 export default function NewInfluencerPage() {
   const router = useRouter();
