@@ -209,19 +209,46 @@ export default function ContractsPage() {
     setNosignSaving(true);
     try {
       const cancelNote = "不签约原因: " + nosignReason.trim() + " (" + new Date(Date.now() + 7*60*60*1000).toLocaleString("th-TH") + ")";
+
+      // 1. 获取达人当前信息
       const getRes = await fetchWithAuth("/api/influencers/" + nosignModal.id, { cache: "no-store" });
-      const inf = getRes.ok ? await getRes.json() : { notes: "" };
+      if (!getRes.ok) {
+        const errData = await getRes.json().catch(() => ({}));
+        throw new Error(errData.error || "获取达人 HTTP " + getRes.status);
+      }
+      const inf = await getRes.json().catch(() => null);
+      if (!inf || typeof inf !== "object") throw new Error("获取达人信息失败: 返回数据为空");
+
       const prevNotes = inf.notes || "";
       const mergedNotes = prevNotes ? prevNotes + "\n" + cancelNote : cancelNote;
-      await fetchWithAuth("/api/influencers", {
+
+      // 2. 更新达人不签约
+      const patchRes = await fetchWithAuth("/api/influencers", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: nosignModal.id, status: "不签约", phase: "completed_discovery", notes: mergedNotes }),
       });
+      if (!patchRes.ok) {
+        const errData = await patchRes.json().catch(() => ({}));
+        throw new Error(errData.error || "更新达人 HTTP " + patchRes.status);
+      }
+
+      // 3. 验证返回数据
+      const patchData = await patchRes.json().catch(() => null);
+      if (!patchData) throw new Error("更新达人成功但服务器返回了空数据");
+
       setNosignModal(null);
       setNosignReason("");
       load();
-    } catch (err) { console.error("不签约操作失败", err); alert("操作失败"); }
+    } catch (err) {
+      console.error("不签约操作失败", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        alert("不签约失败: 网络连接异常，请检查网络后重试");
+      } else {
+        alert("不签约失败: " + msg);
+      }
+    }
     setNosignSaving(false);
   };
 
