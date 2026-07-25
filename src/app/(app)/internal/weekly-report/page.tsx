@@ -38,7 +38,7 @@ export default function WeeklyReportPage() {
   useEffect(() => {
     setLoading(true);
     fetchWithAuth(`/api/internal/weekly-report?from=${from}&to=${to}`, { cache: "no-store" })
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error("加载失败"); return r; }).then(r => r.json())
       .then(d => setData(d.employees || []))
       .catch(() => {})
       .finally(() => setLoading(false));

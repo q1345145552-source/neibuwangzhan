@@ -255,6 +255,7 @@ export default function InternalPage() {
     const loadStaff = async () => {
       try {
         const res = await fetchWithAuth("/api/employees", { cache: "no-store" });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
         const data = await res.json();
         const names: string[] = (Array.isArray(data) ? data : []).map((e: any) => e.name).filter(Boolean);
         setStaffNames(names);
@@ -271,6 +272,7 @@ export default function InternalPage() {
       const to = `${calendarMonth}-${String(lastDay).padStart(2, "0")}`;
       const emp = calendarEmployee || user?.name || "";
       const res = await fetchWithAuth(`/api/attendance?employee=${encodeURIComponent(emp)}&from=${from}&to=${to}`, { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       setCalendarData(await res.json());
     } catch (e) { console.error("[内部管理] 加载日历数据失败", e); }
   };
@@ -279,6 +281,7 @@ export default function InternalPage() {
     setLoadingAnomaly(true);
     try {
       const res = await fetchWithAuth(`/api/attendance/details?employee=${encodeURIComponent(emp)}&month=${summaryMonth}&type=${type}`, { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       setAnomalyRecords(await res.json());
     } catch (e) { console.error("[内部管理] 加载异常明细失败", e); }
     setLoadingAnomaly(false);
@@ -345,6 +348,7 @@ export default function InternalPage() {
   const handleExportAttendance = async () => {
     try {
       const res = await fetchWithAuth("/api/attendance", { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       const data = await res.json();
       const arr = Array.isArray(data) ? data : [];
       const cols: ExportColumn<any>[] = [

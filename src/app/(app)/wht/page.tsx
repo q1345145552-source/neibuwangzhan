@@ -160,6 +160,7 @@ export default function WhtPage() {
   const loadCustomers = useCallback(async () => {
     try {
       const res = await fetchWithAuth("/api/wht/customers");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       setCustomers(Array.isArray(data) ? data : []);
     } catch {}
@@ -170,6 +171,7 @@ export default function WhtPage() {
   const loadStats = useCallback(async () => {
     try {
       const res = await fetchWithAuth('/api/wht/stats');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       if (data.stats) setDashboardStats(data);
     } catch {}
@@ -194,6 +196,7 @@ export default function WhtPage() {
     setRefreshing(true);
     try {
       const res = await fetchWithAuth(buildRecordsUrl());
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       const data = await res.json();
       setRecords(Array.isArray(data.rows) ? data.rows : []);
       setTotalRecords(data.total ?? 0);
@@ -259,6 +262,7 @@ export default function WhtPage() {
       params.set("page", String(opts?.page ?? historyPage));
       params.set("pageSize", "20");
       const res = await fetchWithAuth(`/api/wht/records?${params.toString()}`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       const data = await res.json();
       setHistoryRecords(data.rows || []);
       setHistoryTotal(data.total || 0);
@@ -271,6 +275,7 @@ export default function WhtPage() {
   const loadReconciliations = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`/api/wht/reconciliation?month=${reconMonth}`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       setReconciliations(await res.json());
     } catch {}
   }, [reconMonth]);
@@ -279,6 +284,7 @@ export default function WhtPage() {
   const loadSummary = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`/api/wht/summary?year=${summaryYear}`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       setSummaryData(await res.json());
     } catch {}
   }, [summaryYear]);
@@ -396,6 +402,7 @@ export default function WhtPage() {
     if (!stepsMap[recordId]) {
       try {
         const res = await fetchWithAuth(`/api/wht/records/${recordId}/steps`);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
         const data = await res.json();
         setStepsMap(prev => ({ ...prev, [recordId]: Array.isArray(data) ? data : [] }));
       } catch {}
@@ -413,6 +420,7 @@ export default function WhtPage() {
         body: JSON.stringify({ step_id: step.id, status: nextStatus }),
       });
       const res = await fetchWithAuth(`/api/wht/records/${recordId}/steps`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
       setStepsMap(prev => ({ ...prev, [recordId]: Array.isArray(data) ? data : [] }));
       loadRecords();
