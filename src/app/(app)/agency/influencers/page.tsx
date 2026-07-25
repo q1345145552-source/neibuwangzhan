@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2, Download, X } from "lucide-react";
+import { ArrowLeft, Search, ExternalLink, ListTodo, ClipboardCheck, Star, Upload, Loader2, Trash2, Download, X, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toThaiDate, bangkokDateStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -78,6 +78,36 @@ export default function InfluencersPage() {
   const [evalError, setEvalError] = useState("");
   const [infToDelete, setInfToDelete] = useState<number | null>(null);
   const [cancelModal, setCancelModal] = useState<number | null>(null);
+  const [editInfModal, setEditInfModal] = useState<Influencer | null>(null);
+  const [editInfForm, setEditInfForm] = useState({ name: "", category: "", followers: "", monthly_gmv: "", contact_phone: "", contact: "" });
+  const [editInfSaving, setEditInfSaving] = useState(false);
+  const [editInfError, setEditInfError] = useState("");
+
+  const handleOpenEditInf = (inf: Influencer) => {
+    setEditInfForm({ name: inf.name || "", category: inf.category || "", followers: inf.followers || "", monthly_gmv: inf.monthly_gmv || "", contact_phone: inf.contact_phone || "", contact: inf.contact || "" });
+    setEditInfError("");
+    setEditInfModal(inf);
+  };
+
+  const handleSaveEditInf = async () => {
+    if (!editInfModal) return;
+    setEditInfSaving(true);
+    setEditInfError("");
+    try {
+      const res = await fetchWithAuth("/api/influencers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editInfModal.id, ...editInfForm }),
+      });
+      if (!res.ok) throw new Error("保存失败");
+      setEditInfModal(null);
+      load();
+    } catch (err) {
+      setEditInfError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setEditInfSaving(false);
+    }
+  };
   const [cancelReason, setCancelReason] = useState('');
   const [cancelSaving, setCancelSaving] = useState(false);
   const csvRef = useRef<HTMLInputElement>(null);
@@ -478,6 +508,7 @@ function getPreviewGrade() {
                     <td className="py-3 px-4">
                       {activeTab === "evaluating" && (
                         <div className="flex items-center gap-1.5">
+                          <button onClick={() => handleOpenEditInf(inf)} className="text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="编辑"><Pencil className="size-3.5" /></button>
                           <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleStartEval(inf)}>
                             <ClipboardCheck className="size-3" />开始评估
                           </Button>
@@ -488,6 +519,7 @@ function getPreviewGrade() {
                       )}
                       {activeTab === "evaluated" && (
                         <div className="flex items-center gap-1.5">
+                          <button onClick={() => handleOpenEditInf(inf)} className="text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="编辑"><Pencil className="size-3.5" /></button>
                           <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleRecommend(inf.id)}>
                             <Star className="size-3" />推荐给老板
                           </Button>
@@ -497,16 +529,22 @@ function getPreviewGrade() {
                         </div>
                       )}
                       {activeTab === "recommended" && (
-                        <Link href={`/agency/influencers/${inf.id}`}>
-                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
-                            查看详情
-                          </Button>
-                        </Link>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => handleOpenEditInf(inf)} className="text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="编辑"><Pencil className="size-3.5" /></button>
+                          <Link href={`/agency/influencers/${inf.id}`}>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                              查看详情
+                            </Button>
+                          </Link>
+                        </div>
                       )}
                       {activeTab === "rejected" && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleRestore(inf.id)}>
-                          恢复
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => handleOpenEditInf(inf)} className="text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="编辑"><Pencil className="size-3.5" /></button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleRestore(inf.id)}>
+                            恢复
+                          </Button>
+                        </div>
                       )}
                     </td>
                   )}
@@ -733,6 +771,32 @@ function getPreviewGrade() {
           </div>
         </div>
       )}
+
+      {/* Edit influencer basic info modal */}
+      {editInfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditInfModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-[var(--foreground)]">编辑达人 - {editInfModal.name}</h3>
+              <button onClick={() => setEditInfModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+            </div>
+            {editInfError && <p className="mb-3 text-xs text-[var(--destructive)]">{editInfError}</p>}
+            <div className="space-y-3">
+              <div><label className="text-xs text-[var(--muted-foreground)]">达人名称</label><input value={editInfForm.name} onChange={e => setEditInfForm(p => ({ ...p, name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">品类</label><input value={editInfForm.category} onChange={e => setEditInfForm(p => ({ ...p, category: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">粉丝量</label><input value={editInfForm.followers} onChange={e => setEditInfForm(p => ({ ...p, followers: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">月度 GMV</label><input value={editInfForm.monthly_gmv} onChange={e => setEditInfForm(p => ({ ...p, monthly_gmv: e.target.value }))} placeholder="如 50000" className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">联系人</label><input value={editInfForm.contact} onChange={e => setEditInfForm(p => ({ ...p, contact: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+              <div><label className="text-xs text-[var(--muted-foreground)]">联系电话</label><input value={editInfForm.contact_phone} onChange={e => setEditInfForm(p => ({ ...p, contact_phone: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" /></div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setEditInfModal(null)} disabled={editInfSaving} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleSaveEditInf} disabled={editInfSaving} className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors disabled:opacity-50">{editInfSaving ? "保存中..." : "保存"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
