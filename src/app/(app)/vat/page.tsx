@@ -183,15 +183,20 @@ export default function VatPage() {
     } catch { setDashboard(null); }
   }, [recordMonth]);
 
-  const loadRecords = useCallback(async () => {
+  const loadRecords = useCallback(async (page: number = recordsPage) => {
     try {
-      const res = await fetchWithAuth(`/api/vat/records?month=${recordMonth}`);
+      const params = new URLSearchParams();
+      params.set("month", recordMonth);
+      params.set("page", String(page));
+      params.set("limit", String(recordsPageSize));
+      const res = await fetchWithAuth(`/api/vat/records?${params.toString()}`);
       const data = await res.json();
       const arr = Array.isArray(data.records) ? data.records : (Array.isArray(data) ? data : []);
       setRecords(arr);
+      setRecordsTotal(data.total || 0);
       setSelectedIds(new Set());
-    } catch { setRecords([]); }
-  }, [recordMonth]);
+    } catch { setRecords([]); setRecordsTotal(0); }
+  }, [recordMonth, recordsPageSize]);
 
   // Load history with full filters
   const loadHistory = useCallback(async (override?: { search?: string; monthFrom?: string; monthTo?: string; status?: string; page?: number }) => {
@@ -234,7 +239,7 @@ export default function VatPage() {
 
   useEffect(() => { loadCustomers(); loadDashboard(); }, [loadCustomers, loadDashboard]);
   useEffect(() => {
-    if (activeTab === "records") { setRecordsPage(1); loadRecords(); }
+    if (activeTab === "records") { setRecordsPage(1); loadRecords(1); }
     if (activeTab === "history") loadHistory();
     if (activeTab === "reconciliation") loadReconciliations();
     if (activeTab === "summary") loadSummary();
@@ -242,7 +247,7 @@ export default function VatPage() {
 
   // Separate: reload records on page change
   useEffect(() => {
-    if (activeTab === "records") loadRecords();
+    if (activeTab === "records") loadRecords(recordsPage);
   }, [recordsPage]);
 
   // Apply filter when filterBy changes
@@ -342,7 +347,7 @@ export default function VatPage() {
       if (action === "pause") { loadCustomers(); loadDashboard(); }
       setError("");
       setSelectedIds(new Set());
-      loadRecords();
+      loadRecords(recordsPage);
     } catch { setError("批量操作失败"); }
     finally { setLoading(false); }
   };
@@ -579,7 +584,7 @@ export default function VatPage() {
               <input type="month" value={recordMonth} onChange={e => { setRecordMonth(e.target.value); setFilterBy(null); }}
                 className="rounded border px-3 py-2 text-sm" />
               <Button variant="outline" size="sm" disabled={refreshing}
-                onClick={async () => { setRefreshing(true); try { await loadRecords(); } finally { setRefreshing(false); } }}
+                onClick={async () => { setRefreshing(true); try { await loadRecords(recordsPage); } finally { setRefreshing(false); } }}
                 className="gap-1.5">
                 <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
                 刷新
@@ -697,7 +702,7 @@ export default function VatPage() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ month: recordMonth }),
               });
-              if (res.ok) { setRecordsPage(1); loadRecords(); loadDashboard(); }
+              if (res.ok) { setRecordsPage(1); loadRecords(1); loadDashboard(); }
               else { const e = await res.json(); setError(e.error || "生成失败"); }
             } catch { setError("生成申报记录失败"); }
           }}>
