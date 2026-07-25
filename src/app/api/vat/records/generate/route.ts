@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
+import { isCronRequest } from "@/lib/cron-auth";
 import { getDb } from "@/lib/db";
 
 const PROGRESS_STEPS = ["收资料", "Excel 计算", "发客户确认", "e-Filing 提交", "付款纳税", "归档完成"];
@@ -45,17 +47,20 @@ function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, m
 // body: { month: "YYYY-MM" } — 批量生成全部启用客户
 // body: { month: "YYYY-MM", customer_id: number } — 单个客户生成
 export async function POST(req: NextRequest) {
-  // 定时任务内部调用：跳过登录验证
-  const isCron = req.headers.get("authorization") === "Bearer internal-cron";
+  // 定时任务内部调用：跳过登录验证（密钥来自环境变量 CRON_SECRET，未配置则此分支不可用）
+  const isCron = isCronRequest(req);
   if (!isCron) {
     const auth = await verifyAuth(req);
     if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
     if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
 
-  const body = await req.json();
+  const body = await readJson(req);
   const month = body.month;
   if (!month) return NextResponse.json({ error: "请指定月份" }, { status: 400 });
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return NextResponse.json({ error: "月份格式应为 YYYY-MM" }, { status: 400 });
+  }
 
   const db = getDb();
 

@@ -153,8 +153,11 @@ export default function AgencyPage() {
     if (to) params.set("to", to);
     if (employee) params.set("employee", employee);
 
+    // ignore 标记：快速切换时间区间/成员时，先发的慢响应不能覆盖后发的结果
+    let ignore = false;
     fetchWithAuth(`/api/agency/dashboard?${params.toString()}`, { cache: "no-store" })
-      .then(r => r.json()).then(setData).catch(() => {});
+      .then(r => r.json()).then(d => { if (!ignore) setData(d); }).catch(() => {});
+    return () => { ignore = true; };
   }, [quickDays, showCustom, customFrom, customTo, employee]);
 
   useEffect(() => {
@@ -232,7 +235,7 @@ export default function AgencyPage() {
               className="appearance-none h-8 rounded border border-[var(--border)] bg-[var(--background)] pl-3 pr-7 text-xs outline-none focus:border-[var(--ring)] cursor-pointer"
             >
               <option value="">全部成员</option>
-              {staffList.map((s: { id: string; name: string }) => <option key={s.id} value={s.name}>{s.name}</option>)}
+              {staffList.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3 pointer-events-none text-[var(--muted-foreground)]" />
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
@@ -74,8 +75,8 @@ export default function TemplatesPage() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("确定删除此模板？")) return;
-    await fetchWithAuth(`/api/templates?id=${id}`, { method: "DELETE" });
-    load();
+    const ok = await apiCall(`/api/templates?id=${id}`, { method: "DELETE" });
+    if (ok) load();
   };
 
   return (

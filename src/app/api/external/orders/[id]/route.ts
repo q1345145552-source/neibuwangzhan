@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { getClientCustomerNames, customerNameFilter } from "@/lib/client-scope";
 import { corsResponse, handleOptions } from "@/lib/cors";
 
 export async function OPTIONS(req: NextRequest) {
@@ -25,12 +26,16 @@ export async function GET(
   const { id } = await params;
   const db = getDb();
 
+  // 同列表接口：按显式映射限定可见范围，未配置时回退到姓名匹配
+  const { names } = getClientCustomerNames(payload.id, payload.name);
+  const scope = customerNameFilter(names);
+
   const order = db.prepare(`
     SELECT o.*, bt.name as business_type_name
     FROM orders o
     LEFT JOIN business_types bt ON o.business_type_id = bt.id
-    WHERE o.id = ? AND o.customer_name = ?
-  `).get(id, payload.name) as any;
+    WHERE o.id = ? AND ${scope.clause}
+  `).get(id, ...scope.params) as any;
 
   if (!order) {
     return corsResponse({ error: "订单不存在" }, 404, origin);

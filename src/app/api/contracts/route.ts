@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { validateEnums } from "@/lib/enums";
+import { readJson } from "@/lib/req";
 import { getDb, logOperation, CONTRACT_UPDATABLE_FIELDS } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
@@ -34,15 +36,38 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes } = body;
   const created_by = auth.name || "";
   if (!influencer_id) return NextResponse.json({ error: "请选择达人" }, { status: 400 });
+
+  const errEnum = validateEnums({ "contracts.payment_status": payment_status });
+  if (errEnum) return NextResponse.json({ error: errEnum }, { status: 400 });
+
+  // 达人必须存在：原来只靠外键兜底，传个不存在的 id 会抛异常变成 500
+  const inf = db.prepare("SELECT id, name, status FROM influencers WHERE id = ?").get(influencer_id) as
+    { id: number; name: string; status: string } | undefined;
+  if (!inf) return NextResponse.json({ error: "达人不存在" }, { status: 404 });
+
+  // 一个达人只能有一份生效合同：原来不去重，重复创建时每次都把达人状态强行改回「已签约」
+  //（哪怕这个达人当前是「已停止」）。续签请改现有合同的起止日期。
+  const existing = db.prepare(
+    "SELECT id FROM contracts WHERE influencer_id = ? AND COALESCE(deleted, 0) = 0"
+  ).get(influencer_id) as { id: number } | undefined;
+  if (existing) {
+    return NextResponse.json(
+      { error: `「${inf.name}」已有一份生效合同（#${existing.id}），续签请直接修改该合同`, existing_contract_id: existing.id },
+      { status: 409 }
+    );
+  }
+
   const result = db.prepare(
     "INSERT INTO contracts (influencer_id, base_salary, commission, live_sessions, live_duration, video_count, contract_url, payment_status, start_date, end_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(influencer_id, base_salary || "", commission || "", live_sessions || "", live_duration || "", video_count || "", contract_url || "", payment_status || "未付", start_date || "", end_date || "", notes || "", created_by || "");
-  // Update influencer status to 已签约 when contract is created
-  db.prepare("UPDATE influencers SET status = '已签约', updated_at = datetime('now') WHERE id = ?").run(influencer_id);
+  // 建合同即视为签约成功；但已停止合作的达人不该被悄悄拉回「已签约」
+  if (inf.status !== "已停止") {
+    db.prepare("UPDATE influencers SET status = '已签约', updated_at = datetime('now') WHERE id = ?").run(influencer_id);
+  }
   const row = db.prepare("SELECT c.*, i.name AS influencer_name, i.code AS influencer_code FROM contracts c LEFT JOIN influencers i ON c.influencer_id = i.id WHERE c.id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }
@@ -51,7 +76,7 @@ export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, influencer_id, ...fields } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
 
@@ -59,6 +84,8 @@ export async function PATCH(req: NextRequest) {
   const oldRow = db.prepare("SELECT * FROM contracts WHERE id = ?").get(id) as any;
   if (!oldRow) return NextResponse.json({ error: "合同不存在" }, { status: 404 });
 
+  const _e = validateEnums({ "contracts.payment_status": fields.payment_status, "contracts.phase": fields.phase });
+  if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   const trackedFields = ["base_salary", "commission", "live_sessions", "live_duration", "video_count", "payment_status"];
   const sets: string[] = []; const vals: any[] = [];
   for (const [k, v] of Object.entries(fields)) {
@@ -90,6 +117,15 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+  // 主数据删除不可恢复：仅管理员或创建人本人可删
+  const _delId = new URL(req.url).searchParams.get("id");
+  if (!_delId) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
+  const _owner = getDb().prepare("SELECT created_by as o FROM contracts WHERE id = ?").get(_delId) as { o: string } | undefined;
+  if (!_owner) return NextResponse.json({ error: "合同不存在" }, { status: 404 });
+  if (auth.role !== "admin" && (_owner.o || "") !== auth.name) {
+    return NextResponse.json({ error: "只能删除自己创建的合同，其他请联系管理员" }, { status: 403 });
+  }
 
   const db = getDb();
   const { searchParams } = new URL(req.url);

@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // POST /api/wht/records/batch
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const body = await req.json();
+  const body = await readJson(req);
   const { action, ids } = body;
   if (!action || !ids || !Array.isArray(ids) || ids.length === 0) {
     return NextResponse.json({ error: "缺少参数" }, { status: 400 });

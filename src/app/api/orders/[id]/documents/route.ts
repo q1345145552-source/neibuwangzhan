@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
@@ -24,7 +25,7 @@ export async function POST(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { name, file_type, uploaded_by, direction, file_url, status } = body;
   if (!name) return NextResponse.json({ error: "请提供文档名称" }, { status: 400 });
 
@@ -48,7 +49,7 @@ export async function DELETE(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { document_id } = body;
 
   if (!document_id) return NextResponse.json({ error: "缺少 document_id" }, { status: 400 });

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
+import { isCronRequest } from "@/lib/cron-auth";
 import { getDb } from "@/lib/db";
 
 // Step templates per subtype
@@ -22,6 +24,8 @@ const WHT_STEPS: Record<string, { name: string; assignee: string; optional?: boo
     { name: "归档", assignee: "Eve" },
   ],
 };
+
+export const WHT_SUBTYPES = Object.keys(WHT_STEPS);
 
 function seedRecordSteps(db: any, recordId: number, subtype: string) {
   const steps = WHT_STEPS[subtype] || [];
@@ -48,8 +52,12 @@ export async function GET(req: NextRequest) {
   const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get("pageSize") || "20", 10)));
 
   const db = getDb();
-  const where: string[] = ["c.status = '启用'"];
+  // 之前这里硬编码 c.status = '启用'，客户一停用，他过去所有申报记录就从列表里消失、无法查历史。
+  // 改成可选筛选：默认排除已软删除的客户，customer_status=启用 时才按状态过滤。
+  const customerStatus = url.searchParams.get("customer_status") || "";
+  const where: string[] = ["COALESCE(c.deleted, 0) = 0"];
   const params: unknown[] = [];
+  if (customerStatus) { where.push("c.status = ?"); params.push(customerStatus); }
 
   if (search) {
     where.push("c.company_name LIKE ?");
@@ -101,14 +109,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const isCron = req.headers.get("authorization") === "Bearer internal-cron";
-  
-  const body = await req.json();
+  // 定时任务内部调用：密钥来自环境变量 CRON_SECRET，未配置则此分支不可用
+  const isCron = isCronRequest(req);
 
-  // Cron bypass — skip auth for internal calls
+  const body = await readJson(req);
+
   if (!isCron) {
     const auth = await verifyAuth(req);
     if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+    if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
   const { action } = body;
 
@@ -119,6 +128,13 @@ export async function POST(req: NextRequest) {
     const { month, subtype: genSubtype } = body;
     if (!month) return NextResponse.json({ error: "请指定月份" }, { status: 400 });
     if (!genSubtype) return NextResponse.json({ error: "请选择申报类型" }, { status: 400 });
+    // 不校验的话，未知类型会生成 0 个步骤的"僵尸记录"——永远推进不了，也没有任何报错
+    if (!WHT_SUBTYPES.includes(genSubtype)) {
+      return NextResponse.json({ error: `不支持的申报类型: ${genSubtype}（可选: ${WHT_SUBTYPES.join(" / ")}）` }, { status: 400 });
+    }
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return NextResponse.json({ error: "月份格式应为 YYYY-MM" }, { status: 400 });
+    }
 
     const customers = db.prepare(
       "SELECT id FROM wht_customers WHERE status = '启用'"
@@ -153,6 +169,14 @@ export async function POST(req: NextRequest) {
   const { customer_id, year_month, subtype: createSubtype } = body;
   if (!customer_id || !year_month || !createSubtype)
     return NextResponse.json({ error: "缺少参数" }, { status: 400 });
+  if (!WHT_SUBTYPES.includes(createSubtype)) {
+    return NextResponse.json({ error: `不支持的申报类型: ${createSubtype}（可选: ${WHT_SUBTYPES.join(" / ")}）` }, { status: 400 });
+  }
+  if (!/^\d{4}-\d{2}$/.test(year_month)) {
+    return NextResponse.json({ error: "月份格式应为 YYYY-MM" }, { status: 400 });
+  }
+  const cust = db.prepare("SELECT id FROM wht_customers WHERE id = ? AND COALESCE(deleted, 0) = 0").get(customer_id);
+  if (!cust) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
 
   const exists = db.prepare(
     "SELECT id FROM wht_records WHERE customer_id = ? AND year_month = ? AND subtype = ?"

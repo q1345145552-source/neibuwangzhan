@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { validateEnums } from "@/lib/enums";
+import { readJson } from "@/lib/req";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -20,8 +22,10 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { name, type, category, data_json } = body;
+  const _e = validateEnums({ "templates.type": type });
+  if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   if (!name || !type) return NextResponse.json({ error: "请填写名称和类型" }, { status: 400 });
   const result = db.prepare(
     "INSERT INTO templates (name, type, category, data_json, created_by) VALUES (?, ?, ?, ?, ?)"
@@ -34,7 +38,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, name, category, data_json } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
   const sets: string[] = []; const vals: any[] = [];

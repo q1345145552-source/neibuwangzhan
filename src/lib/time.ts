@@ -84,6 +84,25 @@ export function bangkokMonthKey(): string {
   return bangkokToday().slice(0, 7);
 }
 
+/**
+ * 把 [start, end) 的开区间上界转成闭区间上界（减 1 秒），
+ * 供只能写 `created_at <= ?` 的存量 SQL 使用。
+ */
+export function utcSecondBefore(ts: string): string {
+  const d = new Date(ts.replace(" ", "T") + "Z");
+  return new Date(d.getTime() - 1000).toISOString().replace("T", " ").split(".")[0];
+}
+
+/**
+ * 曼谷日历上的某个「月」对应的 UTC 闭区间 [start, endInclusive]。
+ * 用于和存 UTC 的 created_at 比较——直接拿 "YYYY-MM-01" 当边界会差 7 小时，
+ * 导致曼谷 1 号早上 7 点前的数据被算进上个月。
+ */
+export function bangkokMonthBounds(year: number, month: number): { from: string; to: string } {
+  const { start, end } = bangkokMonthRange(year, month);
+  return { from: start, to: utcSecondBefore(end) };
+}
+
 /** 曼谷现在完整格式化 YYYY-MM-DD HH:mm:ss */
 export function bangkokNowStr(): string {
   const bkk = toBangkokDate();

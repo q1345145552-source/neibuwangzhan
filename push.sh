@@ -4,6 +4,25 @@ cd "$(dirname "$0")"
 
 MSG="${1:-优化更新}"
 
+# ── 服务器凭据：从环境变量读，不写在这个文件里 ──
+# 这个脚本会提交进 git，写死密码等于把服务器 root 权限公开。
+# 在本机 ~/.zshrc（或 ~/.bashrc）里加：
+#   export DEPLOY_HOST=187.127.108.58
+#   export DEPLOY_USER=root
+#   export DEPLOY_PASSWORD='你的密码'
+# 更推荐改用 SSH 密钥登录，然后关掉服务器的密码登录。
+DEPLOY_HOST="${DEPLOY_HOST:-187.127.108.58}"
+DEPLOY_USER="${DEPLOY_USER:-root}"
+if [ -z "$DEPLOY_PASSWORD" ]; then
+  echo "❌ 未设置 DEPLOY_PASSWORD 环境变量，无法部署。"
+  echo "   在 ~/.zshrc 里加一行： export DEPLOY_PASSWORD='服务器密码'"
+  echo "   然后执行： source ~/.zshrc"
+  echo ""
+  echo "   ⚠️ 提醒：这个密码此前明文写在 push.sh 里并已进入 git 历史，"
+  echo "      请尽快到服务器上改掉它（passwd），改完再更新这个环境变量。"
+  exit 1
+fi
+
 echo "📦 正在提交: $MSG"
 git add -A
 git diff --cached --quiet && echo "⚠️ 没有新改动，跳过提交" && exit 0
@@ -17,12 +36,13 @@ echo ""
 echo "📋 部署到服务器..."
 
 # 使用 Python paramiko 部署（更可靠）
+# 凭据通过环境变量传给子进程，不经过命令行参数（命令行参数在 ps 里可见）
 python3 -c "
-import paramiko, sys, time
+import paramiko, sys, time, os
 
-host = '187.127.108.58'
-user = 'root'
-password = 'RL2XuiQVsZP/'
+host = os.environ['DEPLOY_HOST']
+user = os.environ['DEPLOY_USER']
+password = os.environ['DEPLOY_PASSWORD']
 vol = '/var/lib/docker/volumes/neibuxitong_app_data/_data'
 
 ssh = paramiko.SSHClient()

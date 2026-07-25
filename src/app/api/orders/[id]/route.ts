@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/orders/:id
@@ -40,7 +41,7 @@ export async function PATCH(
   const existing = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
   if (!existing) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
-  const body = await req.json();
+  const body = await readJson(req);
   const fields: string[] = [];
   const values: unknown[] = [];
 

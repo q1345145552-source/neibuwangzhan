@@ -36,12 +36,15 @@ export default function WeeklyReportPage() {
   const { from, to, label } = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
 
   useEffect(() => {
+    // ignore 标记：快速改日期区间时，先发的慢响应不能覆盖后发的结果
+    let ignore = false;
     setLoading(true);
     fetchWithAuth(`/api/internal/weekly-report?from=${from}&to=${to}`, { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("加载失败"); return r; }).then(r => r.json())
-      .then(d => setData(d.employees || []))
+      .then(d => { if (!ignore) setData(d.employees || []); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
   }, [from, to]);
 
   const totals = useMemo(() => {

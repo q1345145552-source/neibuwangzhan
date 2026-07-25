@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function PATCH(
@@ -11,7 +12,7 @@ export async function PATCH(
 
   const { id, certId } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { certificate_number, product_name, issue_date, expiry_date, status, notes, file_url } = body;
 
   const existing = db.prepare("SELECT * FROM influencer_certificates WHERE id = ? AND influencer_id = ?").get(certId, id);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { title, assignee, priority, business_line, deadline, description } = body;
   if (!title) return NextResponse.json({ error: "请提供任务标题" }, { status: 400 });
 
@@ -51,7 +52,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, status } = body;
   if (!id) return NextResponse.json({ error: "请提供任务ID" }, { status: 400 });
   // 校验状态值，避免非法值触发 CHECK 约束直接 500
@@ -70,7 +71,7 @@ export async function DELETE(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id } = body;
   if (!id) return NextResponse.json({ error: "请提供任务ID" }, { status: 400 });
 

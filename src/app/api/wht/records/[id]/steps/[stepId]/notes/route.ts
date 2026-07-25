@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 function ensureTable(db: ReturnType<typeof getDb>) {
@@ -37,11 +38,12 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id, stepId } = await params;
   const db = getDb();
   ensureTable(db);
-  const body = await req.json();
+  const body = await readJson(req);
   const { content, created_by } = body;
   if (!content) return NextResponse.json({ error: "请输入备注内容" }, { status: 400 });
 

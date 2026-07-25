@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useLatestRequest } from "@/lib/use-latest";
+import { apiCall } from "@/lib/api-call";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -81,7 +83,10 @@ export default function RewardsPage() {
       .catch(() => {});
   }, []);
 
+  const latestLoad = useLatestRequest();
   const load = async () => {
+    // 领号：快速切换月份/员工/季度时，旧请求的结果不能覆盖新的
+    const run = latestLoad();
     setLoading(true);
     try {
       let url = `/api/internal/points?month=${month}`;
@@ -90,6 +95,7 @@ export default function RewardsPage() {
       const res = await fetchWithAuth(url, { cache: "no-store" });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
       const data = await res.json();
+      if (!run.isLatest()) return;
       setRankings(data.rankings || []);
       setSalesRanking(data.salesRanking || []);
       setQuarterlySales(data.quarterlySales || []);
@@ -101,7 +107,7 @@ export default function RewardsPage() {
       setQuarters(data.quarters || []);
       // hasVoted no longer checked (unlimited votes)
     } catch (e) { console.error("[奖惩] 加载失败", e); }
-    setLoading(false);
+    if (run.isLatest()) setLoading(false);
   };
 
   useEffect(() => { load(); }, [month, filterEmployee, quarter]);
@@ -128,30 +134,31 @@ export default function RewardsPage() {
 
   const handleUndo = async (id: number) => {
     if (!confirm("确定撤销这条积分记录吗？撤销后对应分数将从总分中扣除，排名也会更新。")) return;
-    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "undo", id }) });
-    load();
+    const ok = await apiCall("/api/internal/points", { method: "PATCH", body: { action: "undo", id } });
+    if (ok) load();
   };
 
   const handleRestore = async (id: number) => {
     if (!confirm("确定恢复这条已撤销的积分记录吗？分数将重新加到总分中。")) return;
-    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", id }) });
-    load();
+    const ok = await apiCall("/api/internal/points", { method: "PATCH", body: { action: "restore", id } });
+    if (ok) load();
   };
 
   const handleAppeal = async () => {
     if (!appealTarget || !appealReason.trim()) return;
-    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "appeal", id: appealTarget.id, reason: appealReason }) });
+    const ok = await apiCall("/api/internal/points", { method: "PATCH", body: { action: "appeal", id: appealTarget.id, reason: appealReason } });
+    if (!ok) return;
     setAppealTarget(null); setAppealReason(""); load();
   };
 
   const handleApproveAppeal = async (id: number) => {
-    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve_appeal", id }) });
-    load();
+    const ok = await apiCall("/api/internal/points", { method: "PATCH", body: { action: "approve_appeal", id } });
+    if (ok) load();
   };
 
   const handleRejectAppeal = async (id: number) => {
-    await fetchWithAuth("/api/internal/points", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reject_appeal", id }) });
-    load();
+    const ok = await apiCall("/api/internal/points", { method: "PATCH", body: { action: "reject_appeal", id } });
+    if (ok) load();
   };
 
   const handlePeerVote = async () => {

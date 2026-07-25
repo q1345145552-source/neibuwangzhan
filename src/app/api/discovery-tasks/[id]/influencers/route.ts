@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // GET /api/discovery-tasks/:id/influencers - list influencers in this task
@@ -28,7 +29,7 @@ export async function POST(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { name, tiktok_link, category, contact_phone, line_id, followers, avg_views, gmv_range, monthly_gmv, live_stream_ratio, notes, code } = body;
 
   if (!name) return NextResponse.json({ error: "请填写达人名称" }, { status: 400 });
@@ -54,7 +55,7 @@ export async function DELETE(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { influencer_id } = body;
   if (!influencer_id) return NextResponse.json({ error: "缺少达人ID" }, { status: 400 });
 

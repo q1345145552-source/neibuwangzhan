@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
+import { readJson } from "@/lib/req";
 import { verifyToken, signToken } from "@/lib/auth";
 import { corsResponse, handleOptions } from "@/lib/cors";
 import bcrypt from "bcryptjs";
@@ -12,7 +13,7 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin");
   try {
-    const { email, password } = await req.json();
+    const { email, password } = await readJson(req);
     if (!email || !password) {
       return corsResponse({ error: "请提供邮箱和密码" }, 400, origin);
     }

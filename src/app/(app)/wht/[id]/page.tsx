@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use, useCallback } from "react";
+import { apiCall } from "@/lib/api-call";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, Upload, MessageSquare, Trash2, X, Download, Pencil } from "lucide-react";
@@ -138,10 +139,11 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
       return;
     }
     setNoteErrorMsg(prev => ({ ...prev, [stepId]: "" }));
-    await fetchWithAuth(`/api/wht/records/${id}/steps/${stepId}/notes`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, created_by: user?.name || "系统" }),
+    const ok = await apiCall(`/api/wht/records/${id}/steps/${stepId}/notes`, {
+      method: "POST", body: { content, created_by: user?.name || "系统" },
+      onError: (msg) => setNoteErrorMsg(prev => ({ ...prev, [stepId]: msg })),
     });
+    if (!ok) return;
     setNewNotes((prev) => ({ ...prev, [stepId]: "" }));
     const notes = await fetchWithAuth(`/api/wht/records/${id}/steps/${stepId}/notes`).then(r => r.json());
     setStepNotes((prev) => ({ ...prev, [stepId]: notes }));

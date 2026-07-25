@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images } = body;
   if (!description?.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
@@ -50,11 +51,32 @@ export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const body = await req.json();
-  const { id, status, resolved_by, assignee, description, priority, images, resolve_screenshot } = body;
+  const body = await readJson(req);
+  const { id, status, assignee, description, priority, images, resolve_screenshot } = body;
   if (!id) return NextResponse.json({ error: "缺少工单ID" }, { status: 400 });
+
+  // 状态白名单：表上有 CHECK 约束，非法值会直接抛异常变成 500
+  const VALID_STATUS = ["待处理", "处理中", "已解决"];
+  if (status && !VALID_STATUS.includes(status)) {
+    return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
+  }
+  const VALID_PRIORITY = ["low", "medium", "high", "urgent"];
+  if (priority && !VALID_PRIORITY.includes(priority)) {
+    return NextResponse.json({ error: "无效的优先级" }, { status: 400 });
+  }
+
+  // 归属校验：GET 和 DELETE 都限定了本人，PATCH 却没有——
+  // 任何员工都能改/关闭别人的工单，而"解决工单"是会加分的（issue_resolved +3/个）
+  const ticket = db.prepare("SELECT assignee, created_by FROM issue_tickets WHERE id = ?").get(id) as
+    { assignee: string; created_by: string } | undefined;
+  if (!ticket) return NextResponse.json({ error: "工单不存在" }, { status: 404 });
+  if (auth.role !== "admin" && ticket.assignee !== auth.name && ticket.created_by !== auth.name) {
+    return NextResponse.json({ error: "只能处理指派给自己或自己创建的工单" }, { status: 403 });
+  }
+
   const sets: string[] = []; const vals: any[] = [];
-  if (status) { sets.push("status = ?"); vals.push(status); if (status === "已解决") { sets.push("resolved_at = datetime('now')"); if (resolved_by) { sets.push("resolved_by = ?"); vals.push(resolved_by); } } }
+  // resolved_by 取登录态，不信任请求体
+  if (status) { sets.push("status = ?"); vals.push(status); if (status === "已解决") { sets.push("resolved_at = datetime('now')"); sets.push("resolved_by = ?"); vals.push(auth.name); } }
   if (assignee) { sets.push("assignee = ?"); vals.push(assignee); }
   if (body.withdrawn_by) { sets.push("withdrawn_by = ?"); vals.push(body.withdrawn_by); sets.push("withdrawn_at = datetime('now')"); }
   if (description) { sets.push("description = ?"); vals.push(description); }

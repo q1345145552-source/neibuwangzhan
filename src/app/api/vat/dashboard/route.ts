@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { bangkokMonthKey } from "@/lib/time";
 
 // GET /api/vat/dashboard?month=YYYY-MM
 export async function GET(req: NextRequest) {
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const url = new URL(req.url);
-  const month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
+  const month = url.searchParams.get("month") || bangkokMonthKey();
   const db = getDb();
 
   // 本月应申报 = 当月有申报记录的启用客户数量

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { name, file_type, file_url, order_id } = body;
   if (!name) return NextResponse.json({ error: "请提供文档名称" }, { status: 400 });
 

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { bangkokMonthKey } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const url = new URL(req.url);
-  const month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
+  const month = url.searchParams.get("month") || bangkokMonthKey();
   const db = getDb();
 
   const subtypes = ["ภ.ง.ด.1", "ภ.ง.ด.53"];

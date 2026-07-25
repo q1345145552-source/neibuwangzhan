@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 interface FeedbackData {
   token: string;
   order_id: string;
+  ref_type?: string;
   submitted: boolean;
   submitted_at?: string;
   overall?: number;
@@ -12,6 +13,12 @@ interface FeedbackData {
   speed?: number;
   professionalism?: number;
   comment?: string;
+}
+
+// VAT 申报的 ref 形如 "VAT-12"，展示成「VAT申报」而不是「订单 VAT-12」
+function refLabel(refId?: string): string {
+  if (!refId) return "";
+  return refId.startsWith("VAT-") ? `VAT申报 #${refId.slice(4)}` : `订单 ${refId}`;
 }
 
 const dimensions = [
@@ -110,7 +117,7 @@ export function FeedbackForm({ token }: { token: string }) {
           <div style={s.checkmark}>✓</div>
           <h2 style={s.companyName}>湘泰</h2>
           <h1 style={s.title}>感谢您的评价</h1>
-          <p style={s.orderText}>订单 {data?.order_id || ""}</p>
+          <p style={s.orderText}>{refLabel(data?.order_id)}</p>
           {data?.overall ? (
             <div style={{ margin: "20px 0" }}>
               <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 12 }}>您的评分</p>
@@ -148,7 +155,7 @@ export function FeedbackForm({ token }: { token: string }) {
       <div style={s.card}>
         <h2 style={s.companyName}>湘泰</h2>
         <h1 style={s.title}>服务评价</h1>
-        <p style={s.orderText}>订单 {data.order_id}</p>
+        <p style={s.orderText}>{refLabel(data.order_id)}</p>
         <p style={s.subtitle}>请为本次服务打分</p>
 
         {dimensions.map(dim => (

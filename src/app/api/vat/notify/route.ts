@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { bangkokMonthKey } from "@/lib/time";
 
 // POST /api/vat/notify — 十号自动对账通知
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   // Allow both admin and system to call this (system via cron)
 
   const reqBody = await req.json().catch(() => ({}));
-  const month = reqBody.month || new Date().toISOString().slice(0, 7);
+  const month = reqBody.month || bangkokMonthKey();
   const db = getDb();
 
   const enabledCustomers = db.prepare("SELECT id, company_name FROM vat_customers WHERE status = '启用'").all() as { id: number; company_name: string }[];
@@ -119,7 +121,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const url = new URL(req.url);
-  const month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
+  const month = url.searchParams.get("month") || bangkokMonthKey();
   const db = getDb();
 
   const enabledCustomers = db.prepare("SELECT id, company_name FROM vat_customers WHERE status = '启用'").all() as { id: number; company_name: string }[];

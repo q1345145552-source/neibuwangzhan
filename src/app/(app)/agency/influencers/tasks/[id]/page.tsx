@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { apiCall } from "@/lib/api-call";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toThaiDate } from "@/lib/time";
@@ -103,12 +104,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
   const handleDeleteInf = async (infId: number) => {
     if (!confirm("确认删除此达人？")) return;
-    await fetchWithAuth(`/api/discovery-tasks/${id}/influencers`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ influencer_id: infId }),
-    });
-    load();
+    const ok = await apiCall(`/api/discovery-tasks/${id}/influencers`, { method: "DELETE", body: { influencer_id: infId }, onError: setError });
+    if (ok) load();
   };
 
   const handleSubmitForEval = async () => {
