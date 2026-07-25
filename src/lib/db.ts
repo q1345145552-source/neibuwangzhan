@@ -15,6 +15,7 @@ export function getDb(): Database.Database {
     initTables(db);
     seedData(db);
     migrateInfluencersCheck(db);
+    migrateInfluencersNoSign(db);
   }
   return db;
 }
@@ -59,6 +60,49 @@ function migrateInfluencersCheck(database: Database.Database) {
     }
   } catch (e) {
     console.error("[DB] influencers 迁移失败:", e);
+  }
+}
+
+// 运行时迁移：加入 '不签约' 状态（签约跟进页面点"不签约"需要此状态）
+let influencersNoSignMigrated = false;
+function migrateInfluencersNoSign(database: Database.Database) {
+  if (influencersNoSignMigrated) return;
+  influencersNoSignMigrated = true;
+  try {
+    const oldSql = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='influencers'"
+    ).get() as { sql: string } | undefined;
+    if (oldSql && !oldSql.sql.includes('不签约')) {
+      database.pragma("foreign_keys = OFF");
+      database.exec(`
+        DROP TABLE IF EXISTS influencers_new;
+        CREATE TABLE influencers_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL, tiktok_link TEXT DEFAULT '', category TEXT DEFAULT '',
+          contact TEXT DEFAULT '', contact_phone TEXT DEFAULT '', line_id TEXT DEFAULT '',
+          monthly_gmv TEXT DEFAULT '', live_stream_ratio TEXT DEFAULT '',
+          contact_time TEXT DEFAULT '',
+          reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复')),
+          followers TEXT DEFAULT '', avg_views TEXT DEFAULT '', gmv_range TEXT DEFAULT '',
+          notes TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池','不签约')),
+          created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
+          discovery_task_id INTEGER REFERENCES discovery_tasks(id),
+          code TEXT DEFAULT ''
+        );
+        INSERT INTO influencers_new SELECT * FROM influencers;
+        DROP TABLE influencers;
+        ALTER TABLE influencers_new RENAME TO influencers;
+        CREATE INDEX IF NOT EXISTS idx_influencers_status ON influencers(status);
+        CREATE INDEX IF NOT EXISTS idx_influencers_phase ON influencers(phase);
+      `);
+      database.pragma("foreign_keys = ON");
+      console.log("[DB] 已更新 influencers 表 CHECK 约束，加入 '不签约' 状态");
+    }
+  } catch (e) {
+    console.error("[DB] influencers 不签约迁移失败:", e);
   }
 }
 
@@ -514,7 +558,7 @@ function initTables(database: Database.Database) {
       avg_views TEXT DEFAULT '',
       gmv_range TEXT DEFAULT '',
       notes TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池','不签约')),
       created_by TEXT DEFAULT '',
       deleted INTEGER DEFAULT 0,
       deleted_at TEXT,
