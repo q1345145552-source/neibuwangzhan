@@ -19,6 +19,9 @@ export function getDb(): Database.Database {
   return db;
 }
 
+// 共享状态列表 — 所有建表/迁移统一使用此常量
+const INFLUENCER_STATUS_LIST = "'待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池','不签约'";
+
 // 运行时迁移：确保启用状态紧跟代码变更（每次获取 DB 实例时检查，幂等）
 let influencersCheckMigrated = false;
 function migrateInfluencersCheck(database: Database.Database) {
@@ -28,7 +31,7 @@ function migrateInfluencersCheck(database: Database.Database) {
     const oldSql = database.prepare(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name='influencers'"
     ).get() as { sql: string } | undefined;
-    if (oldSql && !oldSql.sql.includes('待提交')) {
+    if (oldSql && (!oldSql.sql.includes('待提交') || !oldSql.sql.includes('不签约'))) {
       database.pragma("foreign_keys = OFF");
       database.exec(`
         DROP TABLE IF EXISTS influencers_new;
@@ -41,7 +44,7 @@ function migrateInfluencersCheck(database: Database.Database) {
           reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复')),
           followers TEXT DEFAULT '', avg_views TEXT DEFAULT '', gmv_range TEXT DEFAULT '',
           notes TEXT DEFAULT '',
-          status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池')),
+          status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN (${INFLUENCER_STATUS_LIST})),
           created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now')),
           phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation')),
@@ -518,7 +521,7 @@ function initTables(database: Database.Database) {
       avg_views TEXT DEFAULT '',
       gmv_range TEXT DEFAULT '',
       notes TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池','不签约')),
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN (${INFLUENCER_STATUS_LIST})),
       created_by TEXT DEFAULT '',
       deleted INTEGER DEFAULT 0,
       deleted_at TEXT,
