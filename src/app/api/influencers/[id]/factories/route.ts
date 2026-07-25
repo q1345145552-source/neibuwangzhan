@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(
@@ -26,7 +27,7 @@ export async function POST(
 
   const { id } = await params;
   const db = getDb();
-  const { factory_id, relationship, notes } = await req.json();
+  const { factory_id, relationship, notes } = await readJson(req);
   if (!factory_id) return NextResponse.json({ error: "请选择工厂" }, { status: 400 });
 
   // Check duplicate

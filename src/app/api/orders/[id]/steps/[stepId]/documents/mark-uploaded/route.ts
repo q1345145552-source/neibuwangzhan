@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // POST /api/orders/:id/steps/:stepId/documents/mark-uploaded
@@ -12,7 +13,7 @@ export async function POST(
 
   const { id, stepId } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { document_id } = body;
   if (!document_id) return NextResponse.json({ error: "请提供 document_id" }, { status: 400 });
 

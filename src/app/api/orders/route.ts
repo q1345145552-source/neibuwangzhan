@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { validateEnums } from "@/lib/enums";
+import { readJson } from "@/lib/req";
 import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 
 // GET /api/orders?business_type_id=&status=
@@ -40,9 +42,11 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
 
-  const body = await req.json();
+  const body = await readJson(req);
   const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent, currency, trademark_name } = body;
 
+  const _e = validateEnums({ "orders.currency": currency });
+  if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   if (!customer_name || !business_type_id) {
     return NextResponse.json({ error: "请填写客户名和业务线" }, { status: 400 });
   }

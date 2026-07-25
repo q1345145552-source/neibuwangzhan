@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb, FACTORY_UPDATABLE_FIELDS } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { name, category, moq, contact, contact_phone, address, notes } = body;
   if (!name) return NextResponse.json({ error: "请填写工厂名称" }, { status: 400 });
   const result = db.prepare(
@@ -33,7 +34,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, ...fields } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
   const sets: string[] = []; const vals: any[] = [];
@@ -51,6 +52,9 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+  // 主数据删除不可恢复：工厂表没有创建人字段，限管理员
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可删除工厂" }, { status: 403 });
 
   const db = getDb();
   const { searchParams } = new URL(req.url);

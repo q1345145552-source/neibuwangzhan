@@ -9,8 +9,11 @@ export async function GET(_req: NextRequest) {
   const db = getDb();
 
   const total = (db.prepare("SELECT COUNT(*) as c FROM influencers").get() as any).c;
+  // 评级看 final_rating（评分引擎写的是这一列，老的 rating 列已废弃、恒为空），
+  // 且必须用 LIKE 'A%' —— 直播占比≥50% 的 A 级会被打成 'A+'，用等号会把最好的那批全漏掉。
+  // 改之前这里恒为 0：库里 16 条评估有 10 条是 A+，没有一条是纯 'A'。
   const aRated = (db.prepare(
-    "SELECT COUNT(DISTINCT ie.influencer_id) as c FROM influencer_evaluations ie WHERE ie.rating = 'A'"
+    "SELECT COUNT(DISTINCT ie.influencer_id) as c FROM influencer_evaluations ie WHERE ie.final_rating LIKE 'A%'"
   ).get() as any).c;
 
   const categories = db.prepare(

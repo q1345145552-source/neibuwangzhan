@@ -9,5 +9,10 @@ services:
     volumes:
       - /data/neibuxitong:/app/data
     restart: unless-stopped
+    # 密钥从宿主机项目目录下的 .env 读取（该文件在 .gitignore 里，不会进仓库）。
+    # 首次部署：cp .env.example .env，再按里面的说明填 JWT_SECRET / CRON_SECRET。
+    # 没填或用了示例值，start.sh 会拒绝启动并打印生成命令。
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production

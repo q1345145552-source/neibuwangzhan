@@ -22,7 +22,27 @@ export function getDb(): Database.Database {
 // 共享状态列表 — 所有建表/迁移统一使用此常量
 const INFLUENCER_STATUS_LIST = "'待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池','不签约'";
 
-// 运行时迁移：确保启用状态紧跟代码变更（每次获取 DB 实例时检查，幂等）
+// influencers_new 的列顺序（迁移时按名字逐列搬运，不依赖顺序）
+const INFLUENCER_COLUMNS = [
+  "id", "name", "tiktok_link", "category", "contact", "contact_phone", "line_id",
+  "monthly_gmv", "live_stream_ratio", "contact_time", "reply_status", "followers",
+  "avg_views", "gmv_range", "notes", "status", "created_by", "created_at",
+  "updated_at", "phase", "discovery_task_id", "code",
+] as const;
+
+const INFLUENCER_REPLY_STATUSES = ["待联系", "已联系", "已回复", "未回复", "不回复"];
+
+/**
+ * 运行时迁移：让 influencers 表的 CHECK 约束跟上 INFLUENCER_STATUS_LIST。
+ *
+ * 两个已修的坑：
+ * 1. 触发条件原本硬编码判断 '待提交' / '不签约' 两个字符串，以后往状态列表里加新状态
+ *    不会触发重建 → 新状态被旧 CHECK 拒绝，接口直接 500。现在改成比对完整列表。
+ * 2. 搬运数据原本用 `INSERT INTO influencers_new SELECT * FROM influencers`，
+ *    依赖两张表的列顺序完全一致。实测线上表的 code 在第 6 位、新表在最后一位，
+ *    一旦触发会有 17 个字段整体错位（达人编号写进电话字段…）。
+ *    现在改成显式列名，并且只搬两张表都有的列。
+ */
 let influencersCheckMigrated = false;
 function migrateInfluencersCheck(database: Database.Database) {
   if (influencersCheckMigrated) return;
@@ -31,8 +51,23 @@ function migrateInfluencersCheck(database: Database.Database) {
     const oldSql = database.prepare(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name='influencers'"
     ).get() as { sql: string } | undefined;
-    if (oldSql && (!oldSql.sql.includes('待提交') || !oldSql.sql.includes('不签约'))) {
-      database.pragma("foreign_keys = OFF");
+    if (!oldSql) return;
+
+    // 逐个比对状态列表里的每个值是否都出现在现有 CHECK 里
+    const wanted = INFLUENCER_STATUS_LIST.split(",").map(s => s.trim().replace(/^'|'$/g, ""));
+    const missing = wanted.filter(s => !oldSql.sql.includes(`'${s}'`));
+    if (missing.length === 0) return;
+
+    // 只搬运两张表都存在的列，避免 SELECT * 的列顺序错位
+    const existingCols = (database.prepare("PRAGMA table_info(influencers)").all() as { name: string }[])
+      .map(c => c.name);
+    const sharedCols = INFLUENCER_COLUMNS.filter(c => existingCols.includes(c));
+    const colList = sharedCols.join(", ");
+
+    const replyList = INFLUENCER_REPLY_STATUSES.map(s => `'${s}'`).join(",");
+
+    database.pragma("foreign_keys = OFF");
+    try {
       database.exec(`
         DROP TABLE IF EXISTS influencers_new;
         CREATE TABLE influencers_new (
@@ -41,7 +76,7 @@ function migrateInfluencersCheck(database: Database.Database) {
           contact TEXT DEFAULT '', contact_phone TEXT DEFAULT '', line_id TEXT DEFAULT '',
           monthly_gmv TEXT DEFAULT '', live_stream_ratio TEXT DEFAULT '',
           contact_time TEXT DEFAULT '',
-          reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复')),
+          reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN (${replyList})),
           followers TEXT DEFAULT '', avg_views TEXT DEFAULT '', gmv_range TEXT DEFAULT '',
           notes TEXT DEFAULT '',
           status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN (${INFLUENCER_STATUS_LIST})),
@@ -52,16 +87,18 @@ function migrateInfluencersCheck(database: Database.Database) {
           code TEXT DEFAULT ''
         );
         -- 先清洗脏数据，确保符合 CHECK 约束
-        UPDATE influencers SET status = '待评估' WHERE status = '评估中';
-        UPDATE influencers SET reply_status = '待联系' WHERE reply_status NOT IN ('待联系','已联系','已回复','未回复','不回复') OR reply_status IS NULL OR reply_status = '';
-        INSERT INTO influencers_new SELECT * FROM influencers;
+        UPDATE influencers SET status = '待评估' WHERE status NOT IN (${INFLUENCER_STATUS_LIST}) OR status IS NULL OR status = '';
+        UPDATE influencers SET reply_status = '待联系' WHERE reply_status NOT IN (${replyList}) OR reply_status IS NULL OR reply_status = '';
+        INSERT INTO influencers_new (${colList}) SELECT ${colList} FROM influencers;
         DROP TABLE influencers;
         ALTER TABLE influencers_new RENAME TO influencers;
         CREATE INDEX IF NOT EXISTS idx_influencers_status ON influencers(status);
         CREATE INDEX IF NOT EXISTS idx_influencers_phase ON influencers(phase);
       `);
+      console.log(`[DB] influencers CHECK 已更新（新增状态: ${missing.join("/")}），搬运 ${sharedCols.length} 列`);
+    } finally {
+      // 无论成功失败都要恢复外键，否则整个进程后续都跑在无外键保护状态
       database.pragma("foreign_keys = ON");
-      console.log("[DB] 已更新 influencers 表 CHECK 约束，加入 '待提交' 状态");
     }
   } catch (e) {
     console.error("[DB] influencers 迁移失败:", e);
@@ -805,6 +842,88 @@ function initTables(database: Database.Database) {
       submitted_at TEXT DEFAULT ''
     );
   `);
+  // 这三张表原先只在各自路由文件里用 ensureTable() 首次访问才建，
+  // 导致别处（如客户删除的级联清理）引用时可能"no such table"。统一在这里建。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS wht_step_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL,
+      step_id INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS wht_record_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      file_url TEXT DEFAULT '',
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS vat_step_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL,
+      step_id INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 50ทวิ 证书需要「收入额」和「税率」：wht_records.amount 是应扣税额（对账表里进 tax_payable），
+  // 之前证书把它当成收入额再乘 3% 算税，数字整个是错的
+  try { database.exec("ALTER TABLE wht_records ADD COLUMN income_amount REAL NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE wht_records ADD COLUMN tax_rate REAL NOT NULL DEFAULT 3"); } catch {}
+
+  // 一次性数据订正：阶段完成后的达人状态。
+  // 旧代码三个阶段完成一律写「已入池」，签约走完的达人被标成"回池子里了"，业务含义正好相反。
+  // 只订正那些明确是"阶段完成"且状态还停在已入池的记录，不动其他状态（可能是人工改过的）。
+  try {
+    const fixed = database.prepare(
+      "UPDATE influencers SET status = '已签约' WHERE phase = 'completed_contract' AND status = '已入池'"
+    ).run();
+    const fixed2 = database.prepare(
+      "UPDATE influencers SET status = '已完成' WHERE phase = 'completed_incubation' AND status = '已入池'"
+    ).run();
+    if (fixed.changes || fixed2.changes) {
+      console.log(`[DB] 订正阶段完成状态：签约完成 ${fixed.changes} 条 → 已签约，孵化完成 ${fixed2.changes} 条 → 已完成`);
+    }
+  } catch (e) {
+    console.error("[DB] 订正达人阶段状态失败:", e);
+  }
+
+  // 客户端口账号 → 可见客户公司 的显式映射。
+  //
+  // 之前外部接口是拿「登录账号的姓名」去匹配 orders.customer_name：
+  //   WHERE o.customer_name = payload.name
+  // 两个问题：同名客户会互相看到对方的订单；账号改名就立刻失联。
+  // 而且 customers 表是销售客户池（潜在/跟进中/已合作），并不是客户注册表——
+  // 实测 14 个订单里只有 1 个能在池子里找到同名记录，所以也不能靠它做关联。
+  // 这里用一张显式映射表：一个客户账号可以关联多个公司名，管理员维护。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS client_account_customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL REFERENCES employees(id),
+      customer_name TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, customer_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cac_employee ON client_account_customers(employee_id);
+  `);
+
+  // 手动改过状态的客户不再被自动流转规则覆盖
+  try { database.exec("ALTER TABLE customers ADD COLUMN status_locked INTEGER NOT NULL DEFAULT 0"); } catch {}
+
+  // VAT/WHT 客户改为软删除：物理删除会让已归档申报记录的 customer_id 悬空，
+  // 而列表用的是 INNER JOIN，历史记录会彻底查不到（还得为此全局关外键）
+  try { database.exec("ALTER TABLE vat_customers ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE wht_customers ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"); } catch {}
+
+  // ref_type 区分评价对象：'order' = 业务订单（order_id 形如 ORD-xxx）
+  // 'vat' = VAT 申报记录（order_id 形如 VAT-12，加前缀避免与订单号撞 UNIQUE 约束）
+  try { database.exec("ALTER TABLE feedback_tokens ADD COLUMN ref_type TEXT NOT NULL DEFAULT 'order'"); } catch {}
+  try { database.exec("ALTER TABLE client_feedback ADD COLUMN ref_type TEXT NOT NULL DEFAULT 'order'"); } catch {}
 
 
   database.exec(`

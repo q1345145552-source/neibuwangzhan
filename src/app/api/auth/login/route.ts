@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { readJson } from "@/lib/req";
 import bcrypt from "bcryptjs";
 import { signToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const body = await readJson(req);
   const { email, password } = body;
   if (!email || !password) return NextResponse.json({ error: "请输入邮箱和密码" }, { status: 400 });
 

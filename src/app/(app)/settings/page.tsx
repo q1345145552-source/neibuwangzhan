@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Save, Pencil, Trash2 } from "lucide-react";
+import { Plus, Save, Pencil, Trash2, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee } from "@/lib/api";
+import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee, fetchOrderCustomerNames } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 export default function SettingsPage() {
@@ -26,9 +26,46 @@ export default function SettingsPage() {
   const [editRole, setEditRole] = useState("");
   const [editPassword, setEditPassword] = useState("");
 
+  // 客户账号可见范围：该账号在外部客户端口能看到哪些公司的订单
+  const [scopeTarget, setScopeTarget] = useState<Employee | null>(null);
+  const [scopeSelected, setScopeSelected] = useState<string[]>([]);
+  const [allCustomerNames, setAllCustomerNames] = useState<string[]>([]);
+  const [scopeSearch, setScopeSearch] = useState("");
+  const [scopeSaving, setScopeSaving] = useState(false);
+  const [scopeError, setScopeError] = useState("");
+
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => {});
   }, []);
+
+  const openScope = async (emp: Employee) => {
+    setScopeTarget(emp);
+    setScopeSelected(emp.customer_names ?? []);
+    setScopeSearch("");
+    setScopeError("");
+    if (allCustomerNames.length === 0) {
+      try { setAllCustomerNames(await fetchOrderCustomerNames()); }
+      catch { setScopeError("客户名列表加载失败，可手动输入"); }
+    }
+  };
+
+  const toggleScope = (name: string) => {
+    setScopeSelected(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
+  };
+
+  const handleSaveScope = async () => {
+    if (!scopeTarget) return;
+    setScopeSaving(true); setScopeError("");
+    try {
+      const emp = await updateEmployee(Number(scopeTarget.id), { customer_names: scopeSelected });
+      setEmployees(prev => prev.map(e => e.id === scopeTarget.id ? { ...e, ...emp } : e));
+      setScopeTarget(null);
+    } catch (err) {
+      setScopeError(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setScopeSaving(false);
+    }
+  };
 
   const handleAdd = async () => {
     if (!newName.trim() || !newEmail.trim()) return;
@@ -165,6 +202,19 @@ export default function SettingsPage() {
                       )}>
                         {emp.role === "admin" ? "管理员" : emp.role === "client" ? "客户" : "员工"}
                       </span>
+                      {/* 客户账号：显示它在外部端口能看到哪些公司的订单 */}
+                      {emp.role === "client" && (
+                        <div className="mt-1 text-xs">
+                          {(emp.customer_names?.length ?? 0) > 0 ? (
+                            <span className="text-[var(--muted-foreground)]">
+                              可见 {emp.customer_names!.length} 家：{emp.customer_names!.slice(0, 2).join("、")}
+                              {emp.customer_names!.length > 2 ? " 等" : ""}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--warning)]">未配置可见公司（暂按账号姓名匹配）</span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5">
                       {!isAdmin ? (
@@ -176,6 +226,11 @@ export default function SettingsPage() {
                         </div>
                       ) : (
                         <div className="flex gap-1">
+                          {emp.role === "client" && (
+                            <Button variant="ghost" size="icon-xs" onClick={() => openScope(emp)} title="配置可见公司" aria-label="配置可见公司">
+                              <Building2 className="size-3" />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(emp)}><Pencil className="size-3" /></Button>
                           <Button variant="ghost" size="icon-xs" onClick={() => handleDelete(emp.id)} className="text-[var(--destructive)] hover:text-[var(--destructive)]"><Trash2 className="size-3" /></Button>
                         </div>
@@ -187,6 +242,86 @@ export default function SettingsPage() {
             </table>
           </div>
         </div>
+
+        {/* 客户账号可见范围配置 */}
+        {scopeTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="配置可见公司">
+            <div className="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-lg">
+              <h3 className="text-sm font-medium text-[var(--foreground)]">
+                配置可见公司 · {scopeTarget.name}
+              </h3>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)] leading-relaxed">
+                该客户账号登录外部端口后，只能看到这里勾选的公司的订单。
+                一个都不选 = 暂时回退到按账号姓名匹配（旧行为，同名客户会互相看到）。
+              </p>
+
+              {scopeError && (
+                <p role="alert" className="mt-3 rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-3 py-2 text-xs text-[var(--destructive)]">{scopeError}</p>
+              )}
+
+              <div className="mt-4">
+                <Input
+                  value={scopeSearch}
+                  onChange={(e) => setScopeSearch(e.target.value)}
+                  placeholder="搜索公司名，或输入后回车手动添加"
+                  className="h-9 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const v = scopeSearch.trim();
+                      if (v && !scopeSelected.includes(v)) setScopeSelected(prev => [...prev, v]);
+                      setScopeSearch("");
+                    }
+                  }}
+                />
+              </div>
+
+              {scopeSelected.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {scopeSelected.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => toggleScope(n)}
+                      className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] px-2.5 py-1 text-xs text-[var(--info)] hover:bg-[color-mix(in_oklch,var(--info),var(--background)_75%)] transition-colors"
+                      title="点击移除"
+                    >
+                      {n}<span aria-hidden="true">✕</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-md border border-[var(--border)]">
+                {allCustomerNames.filter(n => !scopeSearch || n.includes(scopeSearch)).length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-[var(--muted-foreground)]">
+                    {allCustomerNames.length === 0 ? "暂无订单客户，可在上方手动输入后回车添加" : "没有匹配的公司名"}
+                  </p>
+                ) : (
+                  allCustomerNames
+                    .filter(n => !scopeSearch || n.includes(scopeSearch))
+                    .map((n) => (
+                      <label key={n} className="flex cursor-pointer items-center gap-2 border-b border-[var(--border)] px-3 py-2 text-sm last:border-b-0 hover:bg-[var(--secondary)]">
+                        <input
+                          type="checkbox"
+                          checked={scopeSelected.includes(n)}
+                          onChange={() => toggleScope(n)}
+                          className="size-3.5 accent-[var(--primary)]"
+                        />
+                        <span className="text-[var(--foreground)]">{n}</span>
+                      </label>
+                    ))
+                )}
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setScopeTarget(null)} disabled={scopeSaving}>取消</Button>
+                <Button size="sm" onClick={handleSaveScope} disabled={scopeSaving}>
+                  <Save className="size-3.5" />{scopeSaving ? "保存中…" : `保存（已选 ${scopeSelected.length} 家）`}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Basic settings form */}
         <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">

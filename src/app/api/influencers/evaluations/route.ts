@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // Scoring rules
@@ -37,13 +38,33 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const {
     influencer_id, gmv, gmv_amount,
     live_gmv, gmv_tier, live_duration_tier, live_frequency_tier, professionalism_tier,
     live_stream_ratio, notes, evaluated_by
   } = body;
   if (!influencer_id) return NextResponse.json({ error: "缺少达人ID" }, { status: 400 });
+
+  const inf = db.prepare("SELECT id FROM influencers WHERE id = ?").get(influencer_id);
+  if (!inf) return NextResponse.json({ error: "达人不存在" }, { status: 404 });
+
+  // 档位必须在预设表里。原来是 `TABLE[tier] || 0`——传了表里没有的值（多个空格、
+  // 换了措辞、泰文输错）就静默按 0 分算，最终评级从 A 掉到 C，用户完全不知道为什么。
+  const tierChecks: [string, unknown, Record<string, number>][] = [
+    ["GMV 档位", gmv_tier, GMV_TIER_SCORES],
+    ["直播时长档位", live_duration_tier, DURATION_TIER_SCORES],
+    ["直播频次档位", live_frequency_tier, FREQUENCY_TIER_SCORES],
+    ["专业度档位", professionalism_tier, PROF_TIER_SCORES],
+  ];
+  for (const [label, value, table] of tierChecks) {
+    if (value !== undefined && value !== null && value !== "" && !(String(value) in table)) {
+      return NextResponse.json(
+        { error: `${label}「${String(value)}」不是有效选项，可选：${Object.keys(table).join(" / ")}` },
+        { status: 400 }
+      );
+    }
+  }
 
   // Calculate scores
   const gmv_score = GMV_TIER_SCORES[gmv_tier] || 0;

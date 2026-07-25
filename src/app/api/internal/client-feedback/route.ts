@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // POST: 内部记录反馈（需登录）
@@ -7,7 +8,7 @@ export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { order_id, overall, attitude, speed, professionalism, comment } = body;
 
   if (!order_id) return NextResponse.json({ error: "缺少订单编号" }, { status: 400 });

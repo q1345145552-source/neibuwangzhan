@@ -8,6 +8,9 @@
     "start": "next start",
     "backup": "bash scripts/backup.sh",
     "health": "node scripts/health-check.js",
+    "check:enums": "node scripts/check-enums.js",
+    "test:flows": "node scripts/test-flows.js",
+    "verify": "npm run check:enums && npm run test:flows && tsc --noEmit",
     "lint": "eslint"
   },
   "dependencies": {

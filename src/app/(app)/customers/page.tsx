@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -364,8 +365,8 @@ export default function CustomersPage() {
 
   const handleDelete = async (id: number, name: string) => {
     if (!confirm("确定删除客户\"" + name + "\"？相关跟进记录和积分也会清除。")) return;
-    await fetchWithAuth("/api/customers?id=" + id, { method: "DELETE" });
-    loadCustomers();
+    const ok = await apiCall("/api/customers?id=" + id, { method: "DELETE" });
+    if (ok) loadCustomers();
   };
 
   return (

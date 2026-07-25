@@ -233,10 +233,13 @@ function getPreviewGrade() {
           professionalism_tier: evalForm.professionalism_tier,
           live_stream_ratio: getLiveRatio(),
           notes: evalForm.notes,
-          evaluated_by: user?.name || "Ploy",
+          // evaluated_by 由后端取登录态，不再从前端传（传了也会被忽略）
         }),
       });
-      if (!res.ok) throw new Error("保存评估失败");
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || "保存评估失败");
+      }
 
       const patchRes = await fetchWithAuth("/api/influencers", {
         method: "PATCH",

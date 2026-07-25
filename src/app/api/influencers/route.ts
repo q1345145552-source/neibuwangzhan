@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb, seedInfluencerSteps, INFLUENCER_UPDATABLE_FIELDS } from "@/lib/db";
+import { validateEnums } from "@/lib/enums";
+import { readJson } from "@/lib/req";
+import { getDb, seedInfluencerSteps, logOperation, INFLUENCER_UPDATABLE_FIELDS } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -20,10 +22,15 @@ export async function GET(req: NextRequest) {
   const params: string[] = [];
   if (status) { const statuses = status.split(",").map(s => s.trim()); conditions.push("i.status IN (" + statuses.map(() => "?").join(",") + ")"); params.push(...statuses); }
   if (phase) {
+    // 「走到过某阶段」的达人列表要排除已经终止的：不推荐（评估没过）、不签约（谈崩）、已停止。
+    // 之前没排除，孵化页面里混进了 2 个不签约 + 1 个不推荐的达人。
+    // 想看全部（含终止的）可以传 include_terminated=1。
+    const includeTerminated = searchParams.get("include_terminated") === "1";
+    const notTerminated = includeTerminated ? "" : " AND i.status NOT IN ('不推荐','不签约','已停止')";
     if (phase === "contract") {
-      conditions.push("i.phase IN ('completed_discovery','contract','completed_contract')");
+      conditions.push(`i.phase IN ('completed_discovery','contract','completed_contract')${notTerminated}`);
     } else if (phase === "incubation") {
-      conditions.push("i.phase IN ('completed_discovery','contract','completed_contract','incubation','completed_incubation')");
+      conditions.push(`i.phase IN ('completed_discovery','contract','completed_contract','incubation','completed_incubation')${notTerminated}`);
     } else {
       conditions.push("i.phase = ?"); params.push(phase);
     }
@@ -42,7 +49,7 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { name, tiktok_link, category, contact, contact_phone, line_id, monthly_gmv, live_stream_ratio, contact_time, reply_status, followers, avg_views, gmv_range, notes, status, code } = body;
   if (!name) return NextResponse.json({ error: "请填写达人名称" }, { status: 400 });
   const result = db.prepare(
@@ -59,9 +66,17 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, ...fields } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
+
+  // 值白名单：这三列都有 CHECK 约束，之前只挡了字段名（防注入）没挡值，非法值直接 500
+  const errEnum = validateEnums({
+    "influencers.status": fields.status,
+    "influencers.reply_status": fields.reply_status,
+    "influencers.phase": fields.phase,
+  });
+  if (errEnum) return NextResponse.json({ error: errEnum }, { status: 400 });
   const sets: string[] = []; const vals: any[] = [];
   for (const [k, v] of Object.entries(fields)) {
     if (!INFLUENCER_UPDATABLE_FIELDS.has(k)) continue;
@@ -79,13 +94,30 @@ export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
+  // 主数据删除不可恢复：仅管理员或创建人本人可删
+  const _delId = new URL(req.url).searchParams.get("id");
+  if (!_delId) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
+  const _owner = getDb().prepare("SELECT created_by as o FROM influencers WHERE id = ?").get(_delId) as { o: string } | undefined;
+  if (!_owner) return NextResponse.json({ error: "达人不存在" }, { status: 404 });
+  if (auth.role !== "admin" && (_owner.o || "") !== auth.name) {
+    return NextResponse.json({ error: "只能删除自己创建的达人，其他请联系管理员" }, { status: 403 });
+  }
+
   const db = getDb();
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
-  db.prepare("DELETE FROM influencer_factories WHERE influencer_id = ?").run(id);
-  db.prepare("DELETE FROM influencer_evaluations WHERE influencer_id = ?").run(id);
-  db.prepare("DELETE FROM contracts WHERE influencer_id = ?").run(id);
-  db.prepare("DELETE FROM influencers WHERE id = ?").run(id);
+  const id = _delId;
+  // 与 /api/influencers/[id] 的删除保持一致：同样的子表清单 + 事务
+  // （原来这里漏删了步骤、备注、文档、财务、证书，会留下孤儿数据）
+  db.transaction(() => {
+    db.prepare("DELETE FROM influencer_step_notes WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencer_steps WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencer_evaluations WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencer_documents WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencer_finances WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencer_certificates WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM contracts WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencer_factories WHERE influencer_id = ?").run(id);
+    db.prepare("DELETE FROM influencers WHERE id = ?").run(id);
+  })();
+  logOperation(auth.name, "删除达人", "influencer", String(id));
   return NextResponse.json({ success: true });
 }

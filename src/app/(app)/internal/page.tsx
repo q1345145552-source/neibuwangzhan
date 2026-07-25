@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useLatestRequest } from "@/lib/use-latest";
+import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
@@ -226,7 +228,10 @@ export default function InternalPage() {
     return "other";
   };
 
+  const latestAttendance = useLatestRequest();
   const loadAttendance = async () => {
+    // 领号：切换统计月份时旧响应不能覆盖新的
+    const run = latestAttendance();
     try {
       const today = new Date().toISOString().split("T")[0];
       const [attRes, todayRes, sumRes, reqRes] = await Promise.all([
@@ -236,10 +241,12 @@ export default function InternalPage() {
         fetchWithAuth("/api/attendance/request", { cache: "no-store" }),
       ]);
       const attData = await attRes.json();
+      const [todayData, sumData, reqData] = await Promise.all([todayRes.json(), sumRes.json(), reqRes.json()]);
+      if (!run.isLatest()) return;
       setTodayRecord((Array.isArray(attData) ? attData : []).find((r: any) => r.date === today) || null);
-      setTodayStatuses(await todayRes.json());
-      setMonthlySummaries(await sumRes.json());
-      setAttendanceRequests(await reqRes.json());
+      setTodayStatuses(todayData);
+      setMonthlySummaries(sumData);
+      setAttendanceRequests(reqData);
     } catch (e) { console.error("[内部管理] 加载考勤数据失败", e); }
   };
 
@@ -264,7 +271,10 @@ export default function InternalPage() {
     loadStaff();
   }, []);
 
+  const latestCalendar = useLatestRequest();
   const loadCalendar = async () => {
+    // 领号：切换日历月份/成员时旧响应不能覆盖新的
+    const run = latestCalendar();
     try {
       const [y, m] = calendarMonth.split("-");
       const lastDay = bangkokLastDayOfMonth(Number(y), Number(m));
@@ -273,7 +283,9 @@ export default function InternalPage() {
       const emp = calendarEmployee || user?.name || "";
       const res = await fetchWithAuth(`/api/attendance?employee=${encodeURIComponent(emp)}&from=${from}&to=${to}`, { cache: "no-store" });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
-      setCalendarData(await res.json());
+      const calData = await res.json();
+      if (!run.isLatest()) return;
+      setCalendarData(calData);
     } catch (e) { console.error("[内部管理] 加载日历数据失败", e); }
   };
   const handleAnomalyClick = async (type: string, label: string, emp: string) => {
@@ -565,12 +577,10 @@ export default function InternalPage() {
   };
 
   const handleApproveLeave = async (id: number, status: string) => {
-    await fetchWithAuth("/api/leave", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status, approved_by: user?.name }),
-    });
-    loadAll();
+    // 失败要提示：后端可能返回 403（非管理员）或 400（状态非法），
+    // 之前不看返回值直接 loadAll()，用户只会觉得"点了没反应"
+    const ok = await apiCall("/api/leave", { method: "PATCH", body: { id, status } });
+    if (ok) loadAll();
   };
 
   // 补卡
@@ -598,12 +608,9 @@ export default function InternalPage() {
   };
 
   const handleApproveRequest = async (id: number, status: string) => {
-    await fetchWithAuth("/api/attendance/request", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status }),
-    });
-    loadAttendance();
+    // 后端可能返回 403（非管理员）/404（申请不存在），失败要给提示而不是静默刷新
+    const ok = await apiCall("/api/attendance/request", { method: "PATCH", body: { id, status } });
+    if (ok) loadAttendance();
   };
 
   const markNotifRead = async (id: number) => {

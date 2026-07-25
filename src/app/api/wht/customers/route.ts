@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { validateEnums } from "@/lib/enums";
+import { readJson } from "@/lib/req";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
+  // 这里原先整个 GET 没有鉴权（同文件其他方法有，按文件粒度扫描会漏掉），未登录即可拉全部客户名单
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
@@ -24,15 +30,17 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const rows = db.prepare("SELECT * FROM wht_customers ORDER BY status, company_name").all();
+  // deleted = 1 为软删除（见 DELETE），列表不展示，但历史归档记录仍能 JOIN 出公司名
+  const rows = db.prepare("SELECT * FROM wht_customers WHERE deleted = 0 ORDER BY status, company_name").all();
   return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const body = await req.json();
+  const body = await readJson(req);
 
   // Batch import from CSV
   if (body.action === "batch_import") {
@@ -125,6 +133,8 @@ export async function POST(req: NextRequest) {
 
   // Single customer add
   const { company_name, tax_id, contact, status } = body;
+  const _ec = validateEnums({ "wht_customers.status": status });
+  if (_ec) return NextResponse.json({ error: _ec }, { status: 400 });
   if (!company_name?.trim()) return NextResponse.json({ error: "请输入公司名称" }, { status: 400 });
 
   const db = getDb();
@@ -138,9 +148,12 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, company_name, tax_id, contact, status } = body;
+  const _e = validateEnums({ "wht_customers.status": status });
+  if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
   if (!company_name?.trim()) return NextResponse.json({ error: "请输入公司名称" }, { status: 400 });
 
@@ -152,20 +165,48 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json(row);
 }
 
+// 软删除，理由同 VAT：物理删除 + 全局关外键会让并发请求失去外键保护，
+// 且历史申报记录会因 customer_id 悬空而在列表里彻底消失。
+// 另外原实现把已归档记录也一并删了，和 VAT 的行为不一致，这里统一为「保留归档」。
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可删除客户" }, { status: 403 });
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
 
   const db = getDb();
-  db.pragma("foreign_keys = OFF");
-  db.prepare("DELETE FROM wht_record_steps WHERE record_id IN (SELECT id FROM wht_records WHERE customer_id = ?)").run(id);
-  db.prepare("DELETE FROM wht_records WHERE customer_id = ?").run(id);
-  db.prepare("DELETE FROM wht_reconciliation WHERE customer_id = ?").run(id);
-  db.prepare("DELETE FROM wht_customers WHERE id = ?").run(id);
-  db.pragma("foreign_keys = ON");
-  return NextResponse.json({ success: true });
+  const customer = db.prepare("SELECT id FROM wht_customers WHERE id = ?").get(id);
+  if (!customer) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
+
+  let archivedKept = 0;
+  db.transaction(() => {
+    const nonArchived = db.prepare(
+      "SELECT id FROM wht_records WHERE customer_id = ? AND progress != '归档'"
+    ).all(id) as { id: number }[];
+
+    if (nonArchived.length > 0) {
+      const ph = nonArchived.map(() => "?").join(",");
+      const ids = nonArchived.map(r => r.id);
+      db.prepare(`DELETE FROM wht_step_notes WHERE record_id IN (${ph})`).run(...ids);
+      db.prepare(`DELETE FROM wht_record_documents WHERE record_id IN (${ph})`).run(...ids);
+      db.prepare(`DELETE FROM wht_record_steps WHERE record_id IN (${ph})`).run(...ids);
+      db.prepare(`DELETE FROM wht_records WHERE id IN (${ph})`).run(...ids);
+    }
+
+    db.prepare("DELETE FROM wht_reconciliation WHERE customer_id = ?").run(id);
+
+    archivedKept = (db.prepare(
+      "SELECT COUNT(*) as c FROM wht_records WHERE customer_id = ?"
+    ).get(id) as { c: number }).c;
+
+    db.prepare(
+      "UPDATE wht_customers SET deleted = 1, status = '已终止', updated_at = datetime('now') WHERE id = ?"
+    ).run(id);
+  })();
+
+  logOperation(auth.name, "删除WHT客户", "wht_customer", String(id), `保留归档记录 ${archivedKept} 条`);
+  return NextResponse.json({ success: true, archived_kept: archivedKept });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { bangkokToday } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -10,7 +11,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
   const db = getDb();
-  const today = new Date().toISOString().split("T")[0];
+  // 请假起止日期是曼谷日历上的日期，"今天"也必须按曼谷算
+  const today = bangkokToday();
 
   // 今天在请假的员工（已通过且日期区间覆盖今天）
   const todayOnLeave = db.prepare(

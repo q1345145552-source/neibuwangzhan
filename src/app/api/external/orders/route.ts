@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
+import { getClientCustomerNames, customerNameFilter } from "@/lib/client-scope";
 import { corsResponse, handleOptions } from "@/lib/cors";
 
 export async function OPTIONS(req: NextRequest) {
@@ -23,6 +24,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
 
+  // 可见范围来自显式映射（client_account_customers），未配置时回退到姓名匹配
+  const { names } = getClientCustomerNames(payload.id, payload.name);
+  const scope = customerNameFilter(names);
+
   let sql = `SELECT o.id, o.customer_name, o.business_type_id, o.sub_service_type,
     o.address_type, o.monthly_rent, o.status, o.responsible_person,
     o.description, o.total_amount, o.currency, o.trademark_name,
@@ -30,8 +35,8 @@ export async function GET(req: NextRequest) {
     bt.name as business_type_name
     FROM orders o
     LEFT JOIN business_types bt ON o.business_type_id = bt.id
-    WHERE o.customer_name = ?`;
-  const params: unknown[] = [payload.name];
+    WHERE ${scope.clause}`;
+  const params: unknown[] = [...scope.params];
 
   if (status) {
     sql += " AND o.status = ?";

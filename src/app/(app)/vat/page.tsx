@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useLatestRequest } from "@/lib/use-latest";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
@@ -183,7 +184,10 @@ export default function VatPage() {
     } catch { setDashboard(null); }
   }, [recordMonth]);
 
+  const latestRecords = useLatestRequest();
   const loadRecords = useCallback(async (page: number = recordsPage) => {
+    // 领号：切月份/翻页时旧请求的结果不能覆盖新的
+    const run = latestRecords();
     try {
       const params = new URLSearchParams();
       params.set("month", recordMonth);
@@ -192,10 +196,11 @@ export default function VatPage() {
       const res = await fetchWithAuth(`/api/vat/records?${params.toString()}`);
       const data = await res.json();
       const arr = Array.isArray(data.records) ? data.records : (Array.isArray(data) ? data : []);
+      if (!run.isLatest()) return;
       setRecords(arr);
       setRecordsTotal(data.total || 0);
       setSelectedIds(new Set());
-    } catch { setRecords([]); setRecordsTotal(0); }
+    } catch { if (run.isLatest()) { setRecords([]); setRecordsTotal(0); } }
   }, [recordMonth, recordsPageSize]);
 
   // Load history with full filters
@@ -253,12 +258,15 @@ export default function VatPage() {
   // Apply filter when filterBy changes
   useEffect(() => {
     if (!filterBy || activeTab !== "records") return;
+    let ignore = false;
     const refetch = async () => {
       const res = await fetchWithAuth(`/api/vat/records?month=${recordMonth}`);
       const data = await res.json();
-      const arr = Array.isArray(data.records) ? data.records : (Array.isArray(data) ? data : []); setRecords(arr);
+      const arr = Array.isArray(data.records) ? data.records : (Array.isArray(data) ? data : []);
+      if (!ignore) setRecords(arr);
     };
     refetch();
+    return () => { ignore = true; };
   }, [filterBy, activeTab, recordMonth]);
 
   // ===== Dashboard click → jump to records tab with filter =====

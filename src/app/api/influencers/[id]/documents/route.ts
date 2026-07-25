@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const db = getDb();
-  const { name, file_type, file_url, uploaded_by } = await req.json();
+  const { name, file_type, file_url, uploaded_by } = await readJson(req);
   if (!name) return NextResponse.json({ error: "请填写文档名" }, { status: 400 });
   const result = db.prepare("INSERT INTO influencer_documents (influencer_id, name, file_type, file_url, uploaded_by) VALUES (?, ?, ?, ?, ?)")
     .run(id, name, file_type || "", file_url || "", uploaded_by || "");

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(
@@ -28,7 +29,7 @@ export async function POST(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { certificate_number, product_name, issue_date, expiry_date, notes, file_url } = body;
   if (!certificate_number) return NextResponse.json({ error: "请输入证书编号" }, { status: 400 });
 

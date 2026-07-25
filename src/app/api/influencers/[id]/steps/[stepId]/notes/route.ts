@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(
@@ -28,7 +29,7 @@ export async function POST(
 
   const { id, stepId } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { content, created_by } = body;
   if (!content) return NextResponse.json({ error: "请输入备注内容" }, { status: 400 });
 
@@ -55,7 +56,7 @@ export async function DELETE(
   note_id = url.searchParams.get("id");
   if (!note_id) {
     try {
-      const body = await req.json();
+      const body = await readJson(req);
       note_id = body.note_id;
     } catch {}
   }

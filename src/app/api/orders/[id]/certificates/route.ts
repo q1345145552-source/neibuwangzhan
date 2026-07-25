@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
@@ -25,7 +26,7 @@ export async function POST(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { certificate_number, product_name, issue_date, expiry_date, notes, file_url } = body;
   if (!certificate_number) return NextResponse.json({ error: "请输入证书编号" }, { status: 400 });
 
@@ -53,7 +54,7 @@ export async function PATCH(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { cert_id, certificate_number, product_name, issue_date, expiry_date, status, nsw_registration, nsw_download_status, notes, file_url } = body;
   if (!cert_id) return NextResponse.json({ error: "缺少 cert_id" }, { status: 400 });
 
@@ -100,7 +101,7 @@ export async function DELETE(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { cert_id } = body;
 
   if (!cert_id) return NextResponse.json({ error: "缺少 cert_id" }, { status: 400 });

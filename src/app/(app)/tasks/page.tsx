@@ -53,6 +53,8 @@ export default function TasksPage() {
   const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string; influencerId?: number; phase?: string }>>([]);
 
   useEffect(() => {
+    // ignore 标记：切换业务线筛选时，旧请求的结果不能覆盖新的
+    let ignore = false;
     async function load() {
       try {
         // 加载员工列表（供负责人下拉使用）
@@ -65,6 +67,7 @@ export default function TasksPage() {
           .catch(() => {});
 
         const data = await fetchTasks(businessFilter ? { business: businessFilter } : undefined);
+        if (ignore) return;
         setTaskList(data);
 
         // 加载当前用户的待办步骤（订单 + 达人两边）
@@ -83,7 +86,7 @@ export default function TasksPage() {
               orderId: `INF-${s.influencer_id}`, stepName: s.step_name, status: s.status, businessType: s.phase || "达人", influencerId: s.influencer_id
             })),
           ];
-          setAssignedSteps(merged);
+          if (!ignore) setAssignedSteps(merged);
         }
       } catch (err) {
         console.error("Tasks load error:", err);
@@ -92,6 +95,7 @@ export default function TasksPage() {
       }
     }
     load();
+    return () => { ignore = true; };
   }, [businessFilter, user?.name]);
 
   const handleDeleteTask = async () => {

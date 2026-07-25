@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { readJson } from "@/lib/req";
 
 /**
  * 公开客户反馈问卷 API — 无需登录
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { token, overall, attitude, speed, professionalism, comment } = body;
 
   if (!token) return NextResponse.json({ error: "缺少 token" }, { status: 400 });
@@ -58,44 +59,72 @@ export async function POST(req: NextRequest) {
   if (!tokenRow) return NextResponse.json({ error: "无效的链接" }, { status: 404 });
   if (tokenRow.submitted) return NextResponse.json({ error: "该订单已提交过评价" }, { status: 409 });
 
-  const orderId = tokenRow.order_id;
+  const refId: string = tokenRow.order_id;
+  // ref_type 兼容旧数据：老 token 没有该列值时按订单处理；VAT 的 ref 形如 "VAT-12"
+  const refType: string = tokenRow.ref_type || (refId.startsWith("VAT-") ? "vat" : "order");
 
-  // 查订单
-  const order = db.prepare("SELECT responsible_person FROM orders WHERE id = ?").get(orderId) as { responsible_person: string } | undefined;
-  const responsiblePerson = order?.responsible_person || "";
+  // ── 按评价对象类型解析「参与人」──
+  let responsiblePerson = "";
+  const participantSet = new Set<string>();
+  let subjectLabel = "";
 
-  // 查询所有完成过步骤的员工（去重）
-  const completers = db.prepare(
-    "SELECT DISTINCT assignee FROM order_steps WHERE order_id = ? AND status = '已完成' AND assignee != ''"
-  ).all(orderId) as { assignee: string }[];
+  if (refType === "vat") {
+    const recordId = refId.replace(/^VAT-/, "");
+    const record = db.prepare(
+      "SELECT r.assignee, r.year_month, c.company_name FROM vat_records r LEFT JOIN vat_customers c ON r.customer_id = c.id WHERE r.id = ?"
+    ).get(recordId) as { assignee: string; year_month: string; company_name: string } | undefined;
+    if (!record) return NextResponse.json({ error: "关联的申报记录不存在" }, { status: 404 });
+
+    responsiblePerson = record.assignee || "";
+    subjectLabel = `${record.company_name || "VAT"} ${record.year_month} VAT申报`;
+    const completers = db.prepare(
+      "SELECT DISTINCT assignee FROM vat_record_steps WHERE record_id = ? AND status = '已完成' AND assignee != ''"
+    ).all(recordId) as { assignee: string }[];
+    for (const c of completers) participantSet.add(c.assignee);
+  } else {
+    const order = db.prepare("SELECT responsible_person FROM orders WHERE id = ?").get(refId) as { responsible_person: string } | undefined;
+    if (!order) return NextResponse.json({ error: "关联的订单不存在" }, { status: 404 });
+
+    responsiblePerson = order.responsible_person || "";
+    subjectLabel = `订单 ${refId}`;
+    const completers = db.prepare(
+      "SELECT DISTINCT assignee FROM order_steps WHERE order_id = ? AND status = '已完成' AND assignee != ''"
+    ).all(refId) as { assignee: string }[];
+    for (const c of completers) participantSet.add(c.assignee);
+  }
 
   // 确保负责人也在名单里（如果步骤表里没有）
-  const participantSet = new Set(completers.map(c => c.assignee));
   if (responsiblePerson) participantSet.add(responsiblePerson);
   const participants = [...participantSet];
 
-  // 原子更新 token
-  const now = new Date().toISOString().replace("T", " ").split(".")[0];
-  db.prepare("UPDATE feedback_tokens SET submitted = 1, submitted_at = ? WHERE id = ? AND submitted = 0").run(now, tokenRow.id);
-
-  // 插入反馈记录
-  db.prepare(
-    "INSERT INTO client_feedback (order_id, responsible_person, overall, attitude, speed, professionalism, comment, feedback_type) VALUES (?, ?, ?, ?, ?, ?, ?, 'client')"
-  ).run(orderId, responsiblePerson, o, a, sp, pr, (comment || "").slice(0, 500));
-
-  // 计算积分并写入每个参与人
+  // 计算积分
   let pts = 0;
   if (o >= 4) pts = 3;
   else if (o <= 2) pts = -3;
-
   const ptsLabel = pts > 0 ? `+${pts}` : pts < 0 ? `${pts}` : "0";
-  const reason = `客户反馈: 订单 ${orderId} 综合${'★'.repeat(o)}${'☆'.repeat(5-o)}，${ptsLabel}分`;
+  const reason = `客户反馈: ${subjectLabel} 综合${'★'.repeat(o)}${'☆'.repeat(5 - o)}，${ptsLabel}分`;
 
-  for (const name of participants) {
+  // 整段放进事务，并以 UPDATE 的 changes 作为唯一性判据：
+  // 该接口无需登录，只靠前面的 if (tokenRow.submitted) 挡不住并发重复提交（会重复发积分）
+  const now = new Date().toISOString().replace("T", " ").split(".")[0];
+  let duplicated = false;
+  db.transaction(() => {
+    const upd = db.prepare(
+      "UPDATE feedback_tokens SET submitted = 1, submitted_at = ? WHERE id = ? AND submitted = 0"
+    ).run(now, tokenRow.id);
+    if (upd.changes === 0) { duplicated = true; return; }
+
     db.prepare(
-      "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_id, ref_type, status) VALUES (?, ?, ?, 'client_feedback', ?, 'order', '有效')"
-    ).run(name, pts, reason, orderId);
-  }
+      "INSERT INTO client_feedback (order_id, responsible_person, overall, attitude, speed, professionalism, comment, feedback_type, ref_type) VALUES (?, ?, ?, ?, ?, ?, ?, 'client', ?)"
+    ).run(refId, responsiblePerson, o, a, sp, pr, (comment || "").slice(0, 500), refType);
 
-  return NextResponse.json({ success: true, order_id: orderId, participants, points: pts });
+    const insPoints = db.prepare(
+      "INSERT INTO points_records (employee_name, points, reason, rule_key, ref_id, ref_type, status) VALUES (?, ?, ?, 'client_feedback', ?, ?, '有效')"
+    );
+    for (const name of participants) insPoints.run(name, pts, reason, refId, refType);
+  })();
+
+  if (duplicated) return NextResponse.json({ error: "该评价已提交过" }, { status: 409 });
+
+  return NextResponse.json({ success: true, order_id: refId, ref_type: refType, participants, points: pts });
 }

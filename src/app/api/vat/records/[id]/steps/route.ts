@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // PATCH /api/vat/records/[id]/steps
@@ -9,10 +10,11 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { step_id, status, notes, assignee, payment_status } = body;
 
   if (!step_id) {
@@ -51,6 +53,10 @@ export async function PATCH(
   }
 
   values.push(step_id, id);
+
+  // 步骤更新 + 对账同步 + 记录进度，三件事必须一起成功或一起回滚，
+  // 否则会出现"步骤标了已完成、但对账金额没跟上"这种对不上账的状态
+  db.transaction(() => {
   db.prepare(`UPDATE vat_record_steps SET ${updates.join(", ")} WHERE id = ? AND record_id = ?`).run(...values);
 
   // ── 对账表同步 ──
@@ -89,17 +95,23 @@ export async function PATCH(
   }
 
   // Sync record progress
-  const steps = db.prepare("SELECT status, step_name FROM vat_record_steps WHERE record_id = ? ORDER BY step_order").all(id) as { status: string; step_name: string }[];
-  const allDone = steps.every(s => s.status === "已完成");
-  if (steps.length > 0 && allDone) {
-    db.prepare("UPDATE vat_records SET progress = '归档完成', updated_at = datetime('now') WHERE id = ?").run(id);
-  } else if (steps.length > 0) {
-    // Find current active step
-    const activeStep = steps.find(s => s.status !== "已完成");
-    if (activeStep) {
-      db.prepare("UPDATE vat_records SET progress = ?, updated_at = datetime('now') WHERE id = ?").run((activeStep as any).step_name || activeStep.status, id);
+  // 「已停止」是客户停用时打的终止标记，不能被步骤同步覆写回进行中，
+  // 否则已停用客户的记录会被"复活"，重新出现在待办列表和催办通知里
+  const cur = db.prepare("SELECT progress FROM vat_records WHERE id = ?").get(id) as { progress: string } | undefined;
+  if (cur?.progress !== "已停止") {
+    const steps = db.prepare("SELECT status, step_name FROM vat_record_steps WHERE record_id = ? ORDER BY step_order").all(id) as { status: string; step_name: string }[];
+    const allDone = steps.every(s => s.status === "已完成");
+    if (steps.length > 0 && allDone) {
+      db.prepare("UPDATE vat_records SET progress = '归档完成', updated_at = datetime('now') WHERE id = ?").run(id);
+    } else if (steps.length > 0) {
+      // Find current active step
+      const activeStep = steps.find(s => s.status !== "已完成");
+      if (activeStep) {
+        db.prepare("UPDATE vat_records SET progress = ?, updated_at = datetime('now') WHERE id = ?").run(activeStep.step_name || activeStep.status, id);
+      }
     }
   }
+  })();
 
   const updated = db.prepare("SELECT * FROM vat_record_steps WHERE id = ?").get(step_id);
   return NextResponse.json(updated);

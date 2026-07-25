@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { apiCall } from "@/lib/api-call";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toThaiDate } from "@/lib/time";
@@ -104,7 +105,9 @@ export default function DiscoveryTasksPage() {
     const url = deleteInfluencers
       ? `/api/discovery-tasks?id=${taskId}&deleteInfluencers=true`
       : `/api/discovery-tasks?id=${taskId}`;
-    await fetchWithAuth(url, { method: "DELETE" });
+    // 后端限"管理员或创建人"，失败要提示（原来静默关弹窗，用户以为删掉了）
+    const ok = await apiCall(url, { method: "DELETE", onError: setError });
+    if (!ok) return;
     setDeleteModal(null);
     load();
   };

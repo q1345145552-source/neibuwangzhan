@@ -44,6 +44,8 @@ export interface Employee {
   name: string;
   email?: string;
   role?: string;
+  /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
+  customer_names?: string[];
 }
 
 export interface Document {
@@ -490,14 +492,26 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
   return res.json();
 }
 
-export async function updateEmployee(id: number, data: { name?: string; email?: string; role?: string; password?: string }) {
+export async function updateEmployee(
+  id: number,
+  data: { name?: string; email?: string; role?: string; password?: string; customer_names?: string[] }
+) {
   const res = await fetch("/api/employees", {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, ...data }),
   });
-  if (!res.ok) throw new Error("更新员工失败");
-  return res.json();
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "更新员工失败");
+  return result as Employee;
+}
+
+/** 订单里出现过的全部客户公司名，供配置客户账号可见范围时选择 */
+export async function fetchOrderCustomerNames(): Promise<string[]> {
+  const res = await fetch("/api/orders", { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取客户名失败");
+  const orders = (await res.json()) as Order[];
+  return [...new Set(orders.map((o) => o.customer_name).filter(Boolean))].sort();
 }
 
 export async function deleteEmployee(id: number) {

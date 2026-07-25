@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
 // PATCH /api/orders/:id/steps
@@ -13,7 +14,7 @@ export async function PATCH(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { step_id, status, notes, assignee, approval_status, submission_count } = body;
 
   if (!step_id) {

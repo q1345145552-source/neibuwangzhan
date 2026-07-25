@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(
@@ -21,9 +22,10 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await readJson(req);
   const { step_id, status, assignee } = body;
 
   if (!step_id) return NextResponse.json({ error: "缺少步骤 ID" }, { status: 400 });

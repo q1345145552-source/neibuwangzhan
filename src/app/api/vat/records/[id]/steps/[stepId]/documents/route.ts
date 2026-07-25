@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // GET /api/vat/records/[id]/steps/[stepId]/documents
@@ -25,7 +26,7 @@ export async function POST(
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id, stepId } = await params;
-  const body = await req.json();
+  const body = await readJson(req);
   const { document_id } = body;
   if (!document_id) return NextResponse.json({ error: "缺少 document_id" }, { status: 400 });
 

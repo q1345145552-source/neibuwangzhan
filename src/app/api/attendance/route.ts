@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { bangkokToday, utcNowStr } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { action } = body;
   // 防代打卡：普通员工只能给自己打卡，管理员可代指定员工补录
   const employee_name = auth.role === "admin" && body.employee_name ? body.employee_name : auth.name;

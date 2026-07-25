@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { validateEnums } from "@/lib/enums";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // Helper: apply status auto-flow rules
@@ -9,18 +11,33 @@ function insertPointsRecord(db: any, employeeName: string, points: number, reaso
   ).run(employeeName, points, reason, ruleKey, "customer", refId || "", "system");
 }
 
+/**
+ * 客户状态自动流转。
+ *
+ * 两个已修的坑：
+ * 1. 规则会连锁跳级：一个"跟进中"、但订单是半年前的客户，会在同一次调用里被规则1
+ *    改成"已合作"，紧接着被规则3 改成"沉睡"——销售刚认领就看到客户沉睡。
+ *    现在规则3 增加 `updated_at` 早于 3 个月的条件，刚被改动过的记录不会立刻沉睡。
+ * 2. 会覆盖手动改的状态：管理员手动改回"跟进中"，下次刷新列表又被打回去。
+ *    现在 status_locked = 1 的记录一律跳过（PATCH 手动改状态时会置位）。
+ */
 function applyAutoFlow(db: any) {
   // 跟进中 + 有成交订单 → 已合作
   db.exec(`
     UPDATE customers SET status = '已合作', updated_at = datetime('now')
     WHERE status = '跟进中'
+    AND COALESCE(status_locked, 0) = 0
     AND company_name IN (SELECT DISTINCT customer_name FROM orders)
   `);
 
   // 跟进中 + 1个月没写跟进日志 → 沉睡
+  // updated_at 条件很关键：刚被认领/激活的客户还没来得及写跟进日志，
+  // 没有这个条件的话下次刷新列表就会立刻被打回沉睡（激活操作等于白做）
   db.exec(`
     UPDATE customers SET status = '沉睡', updated_at = datetime('now')
     WHERE status = '跟进中'
+    AND COALESCE(status_locked, 0) = 0
+    AND updated_at < datetime('now', '-1 month')
     AND id NOT IN (
       SELECT DISTINCT customer_id FROM customer_follow_ups
       WHERE created_at >= datetime('now', '-1 month')
@@ -28,9 +45,12 @@ function applyAutoFlow(db: any) {
   `);
 
   // 已合作 + 3个月没新订单 → 沉睡
+  // updated_at 条件用于避免"刚由规则1 升级上来就立刻被判沉睡"的连锁跳级
   db.exec(`
     UPDATE customers SET status = '沉睡', updated_at = datetime('now')
     WHERE status = '已合作'
+    AND COALESCE(status_locked, 0) = 0
+    AND updated_at < datetime('now', '-3 months')
     AND company_name NOT IN (
       SELECT DISTINCT customer_name FROM orders
       WHERE created_at >= datetime('now', '-3 months')
@@ -138,7 +158,8 @@ export async function GET(req: NextRequest) {
   }
 
   // Apply auto-flow before listing
-  applyAutoFlow(db);
+  // 注意：这是一次"读接口里的写操作"，失败不应该让整个列表 500
+  try { applyAutoFlow(db); } catch (e) { console.error("[客户自动流转] 执行失败:", e); }
 
   let sql = `SELECT c.*, COALESCE((SELECT SUM(o.total_amount) FROM orders o WHERE o.customer_name = c.company_name), 0) as total_deal_amount FROM customers c`;
   const conditions: string[] = [];
@@ -172,7 +193,7 @@ export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
-  const body = await req.json();
+  const body = await readJson(req);
 
   // === Special actions ===
 
@@ -384,8 +405,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "该客户还有进行中的订单，无法释放" }, { status: 400 });
     }
 
+    // 释放回公海：同时解除状态锁定，让客户重新进入自动流转
     db.prepare(
-      "UPDATE customers SET claimed_by = '', status = '潜在', updated_at = datetime('now') WHERE id = ?"
+      "UPDATE customers SET claimed_by = '', status = '潜在', status_locked = 0, updated_at = datetime('now') WHERE id = ?"
     ).run(id);
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
@@ -439,7 +461,7 @@ export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
-  const body = await req.json();
+  const body = await readJson(req);
   const { id } = body;
   if (!id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
 
@@ -478,6 +500,8 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  const _e = validateEnums({ "customers.status": body.status });
+  if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   const fields = ["company_name","industry","company_type","founded_at","source_channel","owner_name","owner_wechat","handler_name","handler_wechat","willingness","demand_tags","status","total_deal_amount","claimed_by"];
   const sets: string[] = [];
   const vals: any[] = [];
@@ -486,6 +510,8 @@ export async function PATCH(req: NextRequest) {
   }
   if (!sets.length) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   sets.push("updated_at=datetime('now')");
+  // 手动改过状态就锁定，之后自动流转规则不再覆盖它（否则下次刷新列表就被打回去）
+  if (body.status !== undefined) sets.push("status_locked=1");
 
   db.prepare(`UPDATE customers SET ${sets.join(",")} WHERE id=?`).run(...vals, id);
   const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);

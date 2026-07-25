@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 export async function GET(
@@ -28,7 +29,7 @@ export async function POST(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { type, amount, description, currency, slip_file, payment_method, slip_number, status } = body;
   if (!type || amount === undefined) return NextResponse.json({ error: "请提供类型和金额" }, { status: 400 });
 
@@ -48,7 +49,7 @@ export async function PATCH(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { finance_id, type, amount, description, payment_method, slip_number, slip_file, status, currency } = body;
 
   if (!finance_id) return NextResponse.json({ error: "缺少 finance_id" }, { status: 400 });
@@ -84,7 +85,7 @@ export async function DELETE(
 
   const { id } = await params;
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { finance_id } = body;
 
   if (!finance_id) return NextResponse.json({ error: "缺少 finance_id" }, { status: 400 });

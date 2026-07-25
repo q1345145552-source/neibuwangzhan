@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
 // GET /api/wht/reconciliation?month=YYYY-MM
@@ -35,8 +36,9 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, tax_payable, tax_paid, tax_unpaid, notes } = body;
   if (!id) return NextResponse.json({ error: "缺少对账 ID" }, { status: 400 });
 

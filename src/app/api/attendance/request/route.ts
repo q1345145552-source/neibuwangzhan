@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { date, time, reason } = body;
   // 防冒名申请：普通员工只能给自己提补卡，管理员可代指定员工提
   const employee_name = auth.role === "admin" && body.employee_name ? body.employee_name : auth.name;
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可审批" }, { status: 403 });
   const db = getDb();
-  const body = await req.json();
+  const body = await readJson(req);
   const { id, status }: { id: number; status: string } = body;
   if (!id || !status) return NextResponse.json({ error: "缺少参数" }, { status: 400 });
 

@@ -232,10 +232,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       return;
     }
     setNoteErrorMsg(prev => ({ ...prev, [stepId]: "" }));
-    await addStepNote(id, stepId, content, user?.name || "系统");
-    setNewNotes((prev) => ({ ...prev, [stepId]: "" }));
-    const notes = await fetchStepNotes(id, stepId);
-    setStepNotes((prev) => ({ ...prev, [stepId]: notes }));
+    // addStepNote 失败会 throw（403/400 等），不接住的话备注框会被清空、
+    // 用户以为写成功了，实际什么都没保存
+    try {
+      await addStepNote(id, stepId, content, user?.name || "系统");
+      setNewNotes((prev) => ({ ...prev, [stepId]: "" }));
+      const notes = await fetchStepNotes(id, stepId);
+      setStepNotes((prev) => ({ ...prev, [stepId]: notes }));
+    } catch (err) {
+      setNoteErrorMsg(prev => ({ ...prev, [stepId]: err instanceof Error ? err.message : "添加备注失败" }));
+    }
   };
 
   const handleDeleteNote = async () => {
@@ -254,9 +260,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleMarkUploaded = async (stepId: number, docId: number) => {
-    await markStepDocumentUploaded(id, stepId, docId);
-    const docs = await fetchStepDocuments(id, stepId);
-    setStepDocs((prev) => ({ ...prev, [stepId]: docs }));
+    try {
+      await markStepDocumentUploaded(id, stepId, docId);
+      const docs = await fetchStepDocuments(id, stepId);
+      setStepDocs((prev) => ({ ...prev, [stepId]: docs }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "标记上传失败");
+    }
   };
 
   const handleConfirmComplete = async (stepId: number) => {
