@@ -20,7 +20,7 @@ interface IssueTicket {
   id: number; ticket_number: string; ref_id: string; ref_type: string;
   description: string; priority: string; status: string; assignee: string;
   created_by: string; resolved_by: string; withdrawn_by?: string; withdrawn_at?: string;
-  created_at: string;
+  created_at: string; resolved_at?: string;
   images?: string;
   resolve_screenshot?: string;
 }
@@ -101,6 +101,7 @@ export default function InternalPage() {
   const [issueForm, setIssueForm] = useState({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
   const [issueImages, setIssueImages] = useState<string[]>([]);
   const [issueUploading, setIssueUploading] = useState(false);
+  const [issueDetailModal, setIssueDetailModal] = useState<IssueTicket | null>(null);
   const [issueErr, setIssueErr] = useState("");
   const [issueSaving, setIssueSaving] = useState(false);
   const [lightboxImages, setLightboxImages] = useState<string[] | null>(null);
@@ -1700,6 +1701,9 @@ export default function InternalPage() {
                       </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
                   </td>
                   <td className="py-2.5 px-4">
+                    <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情">
+                      <ExternalLink className="size-3.5" />
+                    </button>
                     {t.status!=="已解决" ? (
                       <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}>
                         <CheckCircle2 className="size-3 mr-1" />解决
@@ -1738,7 +1742,147 @@ export default function InternalPage() {
         })()}
       </div>
 
-      {/* ── 请假审批 / 我的请假 ── */}
+      {/* ── 
+      {/* ── 工单详情弹窗 ── */}
+      {issueDetailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setIssueDetailModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-[var(--background)] border-b border-[var(--border)] px-5 py-4 flex items-center justify-between rounded-t-xl">
+              <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
+                <FileEdit className="size-4" />
+                工单详情 {issueDetailModal.ticket_number || '#' + issueDetailModal.id}
+              </h3>
+              <button onClick={() => setIssueDetailModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* 状态和紧急程度 */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium",
+                  issueDetailModal.status==="已解决"&&"bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+                  issueDetailModal.status==="处理中"&&"bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+                  issueDetailModal.status==="待处理"&&"bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400")}>
+                  {issueDetailModal.status}
+                </span>
+                <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium",
+                  issueDetailModal.priority==="high"&&"bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+                  issueDetailModal.priority==="medium"&&"bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+                  issueDetailModal.priority==="low"&&"bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400")}>
+                  {issueDetailModal.priority==="high"?"紧急":issueDetailModal.priority==="low"?"低":"普通"}
+                </span>
+              </div>
+
+              {/* 完整问题描述 */}
+              <div>
+                <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-1">问题描述</h4>
+                <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap leading-relaxed">{issueDetailModal.description}</p>
+              </div>
+
+              {/* 基本信息网格 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-0.5">关联编号</h4>
+                  <p className="text-sm text-[var(--foreground)]">{issueDetailModal.ref_id ? (issueDetailModal.ref_type==="influencer"?"达人 ":"订单 ") + issueDetailModal.ref_id : "—"}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-0.5">指派人</h4>
+                  <p className="text-sm text-[var(--foreground)]">{issueDetailModal.assignee || "—"}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-0.5">创建人</h4>
+                  <p className="text-sm text-[var(--foreground)]">{issueDetailModal.created_by || "—"}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-0.5">创建时间</h4>
+                  <p className="text-sm text-[var(--foreground)]">{issueDetailModal.created_at?.slice(0, 16) || "—"}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-0.5">解决人</h4>
+                  <p className="text-sm text-[var(--foreground)]">{issueDetailModal.resolved_by || "—"}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-0.5">解决时间</h4>
+                  <p className="text-sm text-[var(--foreground)]">{issueDetailModal.resolved_at?.slice(0, 16) || "—"}</p>
+                </div>
+              </div>
+
+              {/* 时间线 */}
+              <div>
+                <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-2">状态时间线</h4>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[0.6rem] font-medium">1</div>
+                    <span className="text-[var(--foreground)]">创建</span>
+                    <span className="text-[var(--muted-foreground)]">{issueDetailModal.created_at?.slice(0, 16) || "—"}</span>
+                    <span className="text-[var(--muted-foreground)]">· {issueDetailModal.created_by}</span>
+                  </div>
+                  {issueDetailModal.resolved_at && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-[0.6rem] font-medium">2</div>
+                      <span className="text-[var(--foreground)]">已解决</span>
+                      <span className="text-[var(--muted-foreground)]">{issueDetailModal.resolved_at.slice(0, 16)}</span>
+                      {issueDetailModal.resolved_by && <span className="text-[var(--muted-foreground)]">· {issueDetailModal.resolved_by}</span>}
+                    </div>
+                  )}
+                  {issueDetailModal.withdrawn_at && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[0.6rem] font-medium">3</div>
+                      <span className="text-[var(--foreground)]">已撤回</span>
+                      <span className="text-[var(--muted-foreground)]">{issueDetailModal.withdrawn_at.slice(0, 16)}</span>
+                      {issueDetailModal.withdrawn_by && <span className="text-[var(--muted-foreground)]">· {issueDetailModal.withdrawn_by}</span>}
+                    </div>
+                  )}
+                  {!issueDetailModal.resolved_at && !issueDetailModal.withdrawn_at && (
+                    <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--muted-foreground)] text-[0.6rem] font-medium">?</div>
+                      <span>等待解决中...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 上传的问题截图 */}
+              {(() => {
+                const imgs = (() => { try { return JSON.parse(issueDetailModal.images || "[]"); } catch { return []; } })();
+                if (imgs.length === 0) return null;
+                return (
+                  <div>
+                    <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-2">问题截图 ({imgs.length})</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {imgs.map((f: string, idx: number) => (
+                        <img
+                          key={idx}
+                          src={fileUrl('/api/files/' + f)}
+                          alt={`截图 ${idx + 1}`}
+                          className="w-24 h-24 object-cover rounded-lg border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => {
+                            setLightboxImages(imgs.map((f2: string) => '/api/files/' + f2));
+                            setLightboxIdx(idx);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 解决截图 */}
+              {issueDetailModal.resolve_screenshot && (
+                <div>
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-2">解决截图</h4>
+                  <img
+                    src={fileUrl('/api/files/' + issueDetailModal.resolve_screenshot)}
+                    alt="解决截图"
+                    className="w-32 h-32 object-cover rounded-lg border border-[var(--border)] cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => { setLightboxImages(['/api/files/' + issueDetailModal.resolve_screenshot!]); setLightboxIdx(0); }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──    请假审批 / 我的请假 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />{isAdmin ? "请假审批" : "我的请假"} ({(()=>{
