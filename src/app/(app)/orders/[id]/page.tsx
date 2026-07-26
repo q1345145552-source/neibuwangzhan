@@ -202,12 +202,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         setFinances(fins);
         setCertificates(certs);
 
-        const notesMap: Record<number, StepNote[]> = {};
-        const docsMap: Record<number, StepDocument[]> = {};
-        await Promise.all(sts.map(async (s) => {
-          notesMap[s.id] = await fetchStepNotes(id, s.id).catch(() => []);
-          docsMap[s.id] = await fetchStepDocuments(id, s.id).catch(() => []);
-        }));
+        // 一次拿全部步骤的备注和文件清单。
+        // 原来是遍历步骤各发 2 个请求，10 个步骤就是 20 次往返。
+        let notesMap: Record<number, StepNote[]> = {};
+        let docsMap: Record<number, StepDocument[]> = {};
+        try {
+          const r = await fetchWithAuth(`/api/orders/${id}/steps/details`, { cache: "no-store" });
+          if (r.ok) {
+            const d = await r.json();
+            notesMap = d.notes || {};
+            docsMap = d.documents || {};
+          }
+        } catch { /* 详情拿不到不影响主体展示，留空即可 */ }
         if (ignore) return;
         setStepNotes(notesMap);
         setStepDocs(docsMap);

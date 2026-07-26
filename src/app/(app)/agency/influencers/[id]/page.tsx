@@ -364,13 +364,15 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
         if (ignore) return;
         setInf(data);
         setSteps(data.steps || []);
-        const ns: Record<number, InfStepNote[]> = {};
-        for (const s of data.steps || []) {
-          try {
-            const nr = await fetchWithAuth(`/api/influencers/${id}/steps/${s.id}/notes`, { cache: "no-store" });
-            ns[s.id] = nr.ok ? await nr.json() : [];
-          } catch { ns[s.id] = []; }
-        }
+        // 一次拿全部步骤的备注。
+        // 原来是 for 循环里 await，串行发请求——走完三个阶段有 19 个步骤，
+        // 就是 19 次串行往返，页面会明显卡一下。
+        let ns: Record<number, InfStepNote[]> = {};
+        try {
+          const nr = await fetchWithAuth(`/api/influencers/${id}/steps/details`, { cache: "no-store" });
+          if (nr.ok) ns = (await nr.json()).notes || {};
+        } catch { /* 拿不到就留空，不影响主体 */ }
+        if (ignore) return;
         setStepNotes(ns);
         // Load documents, finances, certificates
         try { const dr = await fetchWithAuth(`/api/influencers/${id}/documents`, { cache: "no-store" }); if (dr.ok) setDocs(await dr.json()); } catch {}

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Save, Pencil, Trash2, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee, fetchOrderCustomerNames } from "@/lib/api";
+import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee, fetchOrderCustomerNames, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 export default function SettingsPage() {
@@ -34,9 +34,45 @@ export default function SettingsPage() {
   const [scopeSaving, setScopeSaving] = useState(false);
   const [scopeError, setScopeError] = useState("");
 
+  // 修改自己的密码
+  const [curPwd, setCurPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => {});
   }, []);
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwdMsg(null);
+    if (!curPwd) return setPwdMsg({ ok: false, text: "请输入当前密码" });
+    if (newPwd !== confirmPwd) return setPwdMsg({ ok: false, text: "两次输入的新密码不一致" });
+    if (newPwd.length < 8) return setPwdMsg({ ok: false, text: "新密码至少 8 位" });
+
+    setPwdSaving(true);
+    try {
+      const res = await fetchWithAuth("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_password: curPwd, new_password: newPwd }),
+      });
+      if (!res.ok) {
+        // 后端会返回具体原因（密码太常见、纯数字等），直接透给用户
+        const d = await res.json().catch(() => ({}));
+        setPwdMsg({ ok: false, text: d.error || "修改失败，请重试" });
+        return;
+      }
+      setPwdMsg({ ok: true, text: "密码已修改，下次登录用新密码" });
+      setCurPwd(""); setNewPwd(""); setConfirmPwd("");
+    } catch {
+      setPwdMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setPwdSaving(false);
+    }
+  }
 
   const openScope = async (emp: Employee) => {
     setScopeTarget(emp);
@@ -322,6 +358,48 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* 修改自己的密码 */}
+        <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">修改密码</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              改自己账号的登录密码。至少 8 位，不能全是数字。
+            </p>
+          </div>
+          <form onSubmit={handleChangePassword} className="flex flex-col gap-4 max-w-sm">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="curPwd" className="text-sm font-medium">当前密码</Label>
+              <Input id="curPwd" type="password" autoComplete="current-password"
+                value={curPwd} onChange={(e) => setCurPwd(e.target.value)}
+                disabled={pwdSaving} className="h-10" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="newPwd2" className="text-sm font-medium">新密码</Label>
+              <Input id="newPwd2" type="password" autoComplete="new-password" placeholder="至少 8 位"
+                value={newPwd} onChange={(e) => setNewPwd(e.target.value)}
+                disabled={pwdSaving} className="h-10" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="confirmPwd2" className="text-sm font-medium">再输一次</Label>
+              <Input id="confirmPwd2" type="password" autoComplete="new-password"
+                value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)}
+                disabled={pwdSaving} className="h-10" />
+            </div>
+            {pwdMsg && (
+              <p className={`rounded-md px-3 py-2 text-xs ${
+                pwdMsg.ok
+                  ? "bg-[color-mix(in_oklch,var(--success),var(--background)_88%)] text-[var(--success)]"
+                  : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[var(--destructive)]"
+              }`}>
+                {pwdMsg.text}
+              </p>
+            )}
+            <Button type="submit" size="sm" className="self-start" disabled={pwdSaving}>
+              {pwdSaving ? "保存中..." : "修改密码"}
+            </Button>
+          </form>
+        </div>
 
         {/* Basic settings form */}
         <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">

@@ -281,6 +281,84 @@ function testEnums(db) {
 }
 
 // ─────────────────────────────────────────────
+// 7. 热点查询必须走索引
+// ─────────────────────────────────────────────
+function testIndexes(db) {
+  section("热点查询走索引（不能全表扫描）");
+
+  // 取自 API 里的真实查询。EXPLAIN QUERY PLAN 出现 SCAN 就说明在全表扫，
+  // 数据量涨上来会明显变慢；SEARCH 才是走了索引。
+  const hot = [
+    ["VAT月度记录", "SELECT * FROM vat_records WHERE customer_id = 1 AND year_month = '2026-07'"],
+    ["VAT步骤", "SELECT * FROM vat_record_steps WHERE record_id = 1"],
+    ["VAT步骤文件", "SELECT * FROM vat_step_documents WHERE record_id = 1"],
+    ["订单步骤", "SELECT * FROM order_steps WHERE order_id = 'ORD001'"],
+    ["步骤所需文件", "SELECT * FROM step_documents WHERE order_id = 'ORD001'"],
+    ["达人步骤", "SELECT * FROM influencer_steps WHERE influencer_id = 1 AND phase = 'discovery'"],
+    ["达人评估", "SELECT * FROM influencer_evaluations WHERE influencer_id = 1"],
+    ["考勤", "SELECT * FROM attendance WHERE employee_name = 'x' AND date = '2026-07-25'"],
+  ];
+
+  for (const [name, q] of hot) {
+    let plan;
+    try { plan = db.prepare("EXPLAIN QUERY PLAN " + q).all().map(r => r.detail).join(" | "); }
+    catch (e) { ok(false, `${name}: 查询无法解析 — ${e.message}`); continue; }
+    ok(/SEARCH/.test(plan) && !/SCAN (?!.*USING)/.test(plan),
+      `${name} 应走索引（SEARCH），实际计划：${plan.slice(0, 90)}`);
+  }
+}
+
+// ─────────────────────────────────────────────
+// 8. 初始密码强制修改
+// ─────────────────────────────────────────────
+function testPasswordPolicy(db) {
+  section("初始密码强制修改");
+
+  let bcrypt;
+  try { bcrypt = require("bcryptjs"); }
+  catch { ok(false, "缺少 bcryptjs 依赖"); return; }
+
+  const cols = db.prepare("PRAGMA table_info(employees)").all().map(c => c.name);
+  ok(cols.includes("must_change_password"), "employees 表应有 must_change_password 列");
+  if (!cols.includes("must_change_password")) return;
+
+  // 仍在用初始密码的账号必须被标记
+  const users = db.prepare("SELECT id, name, password, must_change_password FROM employees").all();
+  const stillDefault = users.filter(u => u.password && bcrypt.compareSync("123456", u.password));
+  const unmarked = stillDefault.filter(u => u.must_change_password !== 1);
+  ok(unmarked.length === 0,
+    `仍用初始密码 123456 的账号必须全部标记为待改密，漏了 ${unmarked.length} 个：${unmarked.map(u => u.name).join(",")}`);
+
+  // 已改过密码的不应被误标
+  const changed = users.filter(u => u.password && !bcrypt.compareSync("123456", u.password));
+  const wronglyMarked = changed.filter(u => u.must_change_password === 1);
+  ok(wronglyMarked.length === 0,
+    `已经改过密码的账号不该再被要求改密，误标 ${wronglyMarked.length} 个`);
+
+  // 强度规则（与 change-password 路由里的 validatePassword 保持一致）
+  const WEAK = new Set(["123456", "password", "abc123", "111111", "admin123", "qwerty", "admin"]);
+  const validate = (p) => {
+    if (typeof p !== "string" || !p) return "空";
+    if (p.length < 8) return "太短";
+    if (p.length > 72) return "太长";
+    if (WEAK.has(p.toLowerCase())) return "太常见";
+    if (/^\d+$/.test(p)) return "纯数字";
+    if (/^[a-zA-Z]+$/.test(p)) return "纯字母";
+    return null;
+  };
+  const cases = [
+    ["123456", true], ["1234", true], ["12345678", true], ["abcdefgh", true],
+    ["password", true], ["admin", true], ["a".repeat(80), true],
+    ["Xiang2026!", false], ["tai8shu2mi4", false],
+  ];
+  for (const [pwd, shouldReject] of cases) {
+    const rejected = validate(pwd) !== null;
+    ok(rejected === shouldReject,
+      `密码 "${pwd.slice(0, 12)}" 应${shouldReject ? "被拒绝" : "通过"}，实际${rejected ? "被拒绝" : "通过"}`);
+  }
+}
+
+// ─────────────────────────────────────────────
 function main() {
   console.log("核心链路集成测试\n" + "=".repeat(50));
   const { db, cleanup } = openTestDb();
@@ -291,6 +369,8 @@ function main() {
     testVatFlow(db);
     testTimezone();
     testEnums(db);
+    testIndexes(db);
+    testPasswordPolicy(db);
   } catch (e) {
     failed++;
     failures.push(`测试执行异常: ${e.message}`);
