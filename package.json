@@ -9,8 +9,9 @@
     "backup": "bash scripts/backup.sh",
     "health": "node scripts/health-check.js",
     "check:enums": "node scripts/check-enums.js",
+    "check:dup": "node scripts/check-duplicate-blocks.js",
     "test:flows": "node scripts/test-flows.js",
-    "verify": "npm run check:enums && npm run test:flows && tsc --noEmit",
+    "verify": "npm run check:enums && npm run check:dup && npm run test:flows && tsc --noEmit",
     "lint": "eslint"
   },
   "dependencies": {
