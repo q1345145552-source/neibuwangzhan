@@ -35,9 +35,11 @@ export async function POST(req: NextRequest) {
   const { name, email, role, password } = body;
   if (!name || !email) return NextResponse.json({ error: "请填写姓名和邮箱" }, { status: 400 });
 
+  // 管理员没指定密码时用 123456 兜底，但一律标记 must_change_password：
+  // 新员工首次登录会被要求先设自己的密码，不会一直挂着一个人人皆知的初始密码。
   const hashedPassword = await bcrypt.hash(password || "123456", 10);
   const result = db.prepare(
-    "INSERT INTO employees (name, email, role, password) VALUES (?, ?, ?, ?)"
+    "INSERT INTO employees (name, email, role, password, must_change_password) VALUES (?, ?, ?, ?, 1)"
   ).run(name, email, role || "employee", hashedPassword);
   const emp = db.prepare("SELECT id, name, email, role FROM employees WHERE id = ?").get(result.lastInsertRowid) as { id: number; name: string; email: string; role: string };
   logOperation(auth.name, "添加员工", "employee", String(emp.id));
@@ -63,7 +65,12 @@ export async function PATCH(req: NextRequest) {
   if (name) { sets.push("name = ?"); params.push(name); }
   if (email) { sets.push("email = ?"); params.push(email); }
   if (role) { sets.push("role = ?"); params.push(role); }
-  if (password) { sets.push("password = ?"); params.push(await bcrypt.hash(password, 10)); }
+  // 管理员重置了别人的密码 → 强制对方下次登录改成自己的。
+  // 否则重置出来的临时密码会长期留在管理员和员工两边手上。
+  if (password) {
+    sets.push("password = ?"); params.push(await bcrypt.hash(password, 10));
+    if (Number(id) !== auth.id) sets.push("must_change_password = 1");
+  }
 
   // customer_names：客户账号能在外部端口看到哪些公司的订单（整表替换）
   const updatingScope = Array.isArray(customer_names);

@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 还在用初始密码 123456 的账号，登录后先卡在改密界面，改完才放进系统
+  const [mustChange, setMustChange] = useState(false);
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("authToken");
@@ -47,6 +51,49 @@ export default function LoginPage() {
       localStorage.setItem("authToken", data.token);
       localStorage.setItem("currentUser", JSON.stringify(data.user));
       setLoading(false);
+      if (data.must_change_password) {
+        // 不跳首页，切到改密界面。token 已存，改密接口需要它。
+        setMustChange(true);
+        return;
+      }
+      router.push("/");
+    } catch {
+      setError("网络错误，请重试");
+      setLoading(false);
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    if (newPwd !== confirmPwd) {
+      setError("两次输入的新密码不一致");
+      return;
+    }
+    // 具体的强度规则由后端判定并返回中文提示，这里只挡最基本的
+    if (newPwd.length < 8) {
+      setError("新密码至少 8 位");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+        },
+        body: JSON.stringify({ current_password: password, new_password: newPwd }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "修改失败，请重试");
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
       router.push("/");
     } catch {
       setError("网络错误，请重试");
@@ -71,11 +118,66 @@ export default function LoginPage() {
             湘泰内部管理系统
           </h1>
           <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
-            输入账号密码，开始干活
+            {mustChange ? "先设一个自己的密码，之后用新密码登录" : "输入账号密码，开始干活"}
           </p>
         </div>
 
-        {/* Card */}
+        {/* 还在用初始密码：先改密码，改完才进系统 */}
+        {mustChange ? (
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
+            <form onSubmit={handleChangePassword} className="flex flex-col gap-5">
+              <p className="rounded-md bg-[color-mix(in_oklch,var(--accent),var(--background)_85%)] px-3 py-2 text-xs text-[var(--foreground)]">
+                你的账号还在用初始密码，为了安全需要先改掉。至少 8 位，不能全是数字。
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="newPwd" className="text-sm font-medium text-[var(--foreground)]">
+                  新密码
+                </Label>
+                <Input
+                  id="newPwd"
+                  type="password"
+                  placeholder="至少 8 位"
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  disabled={loading}
+                  autoComplete="new-password"
+                  className="h-10"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="confirmPwd" className="text-sm font-medium text-[var(--foreground)]">
+                  再输一次
+                </Label>
+                <Input
+                  id="confirmPwd"
+                  type="password"
+                  placeholder="确认新密码"
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  disabled={loading}
+                  autoComplete="new-password"
+                  className="h-10"
+                />
+              </div>
+
+              <div role="alert" aria-live="polite">
+                {error && (
+                  <p className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-3 py-2 text-xs text-[var(--destructive)]">
+                    {error}
+                  </p>
+                )}
+              </div>
+
+              <Button type="submit" disabled={loading} size="lg" className="h-10 w-full">
+                {loading ? "保存中..." : "设置新密码并进入"}
+              </Button>
+            </form>
+          </div>
+        ) : (
+
+        /* Card */
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.06)]">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {/* Email */}
@@ -108,9 +210,11 @@ export default function LoginPage() {
                 >
                   密码
                 </Label>
+                {/* 系统没有接邮件服务，做不了自助重置。
+                    原来这里 onClick 只是 console.log，点了完全没反应。 */}
                 <button
                   type="button"
-                  onClick={() => console.log("忘记密码")}
+                  onClick={() => setError("忘记密码请找管理员重置，重置后用初始密码登录会要求你重新设置")}
                   className="text-xs text-[var(--accent-foreground)] transition-colors hover:text-[var(--accent-foreground)]/70 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2"
                 >
                   忘记密码？
@@ -162,6 +266,7 @@ export default function LoginPage() {
             </Button>
           </form>
         </div>
+        )}
 
         <p className="mt-6 text-center text-xs text-[var(--muted-foreground)]">
           登不上？找 IT 帮忙

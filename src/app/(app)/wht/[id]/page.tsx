@@ -101,12 +101,12 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
         setSteps(sts);
         if (docsRes.ok) setDocuments(await docsRes.json());
 
-        const notesMap: Record<number, WhtNote[]> = {};
-        await Promise.all(sts.map(async (s: WhtStep) => {
-          try {
-            notesMap[s.id] = await fetchWithAuth(`/api/wht/records/${id}/steps/${s.id}/notes`).then(r => r.json());
-          } catch { notesMap[s.id] = []; }
-        }));
+        // 一次拿全部步骤的备注（原来是每个步骤一个请求）
+        let notesMap: Record<number, WhtNote[]> = {};
+        try {
+          const r = await fetchWithAuth(`/api/wht/records/${id}/steps/details`, { cache: "no-store" });
+          if (r.ok) notesMap = (await r.json()).notes || {};
+        } catch { /* 拿不到就留空，不影响主体 */ }
         if (!ignore) setStepNotes(notesMap);
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : "加载记录失败");

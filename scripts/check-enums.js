@@ -36,18 +36,27 @@ function parseEnumsTs() {
 }
 
 function parseDbChecks() {
-  let Database;
-  try {
-    Database = require("better-sqlite3");
-  } catch {
-    console.error("需要 better-sqlite3（项目依赖）。请在项目根目录运行。");
-    process.exit(2);
-  }
   if (!fs.existsSync(DB_PATH)) {
     console.error(`找不到 ${DB_PATH}，先启动一次应用生成数据库。`);
     process.exit(2);
   }
-  const db = new Database(DB_PATH, { readonly: true });
+  // 优先用 Node 内置的 node:sqlite（22.5+）。
+  // 原来只用 better-sqlite3，它是按当前系统编译的原生模块——在 macOS 上装好后
+  // 拿到 Linux（CI、Docker）里跑会直接 "invalid ELF header" 崩掉，
+  // 导致 npm run verify 在 CI 里根本没法用。内置模块没有这个问题。
+  let db;
+  try {
+    const { DatabaseSync } = require("node:sqlite");
+    db = new DatabaseSync(DB_PATH, { readOnly: true });
+  } catch {
+    try {
+      const Database = require("better-sqlite3");
+      db = new Database(DB_PATH, { readonly: true });
+    } catch {
+      console.error("需要 Node 22.5+（内置 node:sqlite）或可用的 better-sqlite3。");
+      process.exit(2);
+    }
+  }
   const rows = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL").all();
   const out = {};
   for (const { name, sql } of rows) {

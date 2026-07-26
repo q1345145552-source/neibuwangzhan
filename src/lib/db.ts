@@ -912,6 +912,77 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_cac_employee ON client_account_customers(employee_id);
   `);
 
+  // ── 性能索引 ──
+  // 建库之初只有 4 个索引，53 张表里绝大多数外键列都在裸奔，每次按 order_id /
+  // record_id / influencer_id 查子表都是全表扫描。数据量小的时候看不出来，
+  // vat_step_documents 已经 792 行、vat_record_steps 768 行，再涨就会明显卡。
+  //
+  // 索引不是照着外键无脑建的，是按实际查询模式来的（统计自 API 里的 WHERE 子句）：
+  //   customer_id + year_month  出现 20 次 → 建复合索引，它同时也能服务单独按
+  //                                           customer_id 查的场景（最左前缀）
+  //   record_id / order_id / influencer_id   是各自子表最主要的过滤列
+  //   employee_name + date      考勤查询的固定组合
+  //
+  // 全部 IF NOT EXISTS，重复执行无副作用；线上容器重启会自动补上，不需要停机。
+  // 验证方式：EXPLAIN QUERY PLAN 应显示 SEARCH 而不是 SCAN（见 scripts/test-flows.js）
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_vat_records_customer_id_year_month ON vat_records(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_vat_reconciliation_customer_id_year_month ON vat_reconciliation(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_wht_records_customer_id_year_month ON wht_records(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_wht_reconciliation_customer_id_year_month ON wht_reconciliation(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_vat_record_steps_record_id ON vat_record_steps(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_step_documents_record_id ON vat_step_documents(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_step_documents_step_id ON vat_step_documents(step_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_step_notes_record_id ON vat_step_notes(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_record_documents_record_id ON vat_record_documents(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_record_finances_record_id ON vat_record_finances(record_id);
+    CREATE INDEX IF NOT EXISTS idx_wht_record_steps_record_id ON wht_record_steps(record_id);
+    CREATE INDEX IF NOT EXISTS idx_wht_step_notes_record_id ON wht_step_notes(record_id);
+    CREATE INDEX IF NOT EXISTS idx_wht_record_documents_record_id ON wht_record_documents(record_id);
+    CREATE INDEX IF NOT EXISTS idx_order_steps_order_id ON order_steps(order_id);
+    CREATE INDEX IF NOT EXISTS idx_step_documents_order_id ON step_documents(order_id);
+    CREATE INDEX IF NOT EXISTS idx_step_documents_step_id ON step_documents(step_id);
+    CREATE INDEX IF NOT EXISTS idx_step_notes_order_id ON step_notes(order_id);
+    CREATE INDEX IF NOT EXISTS idx_documents_order_id ON documents(order_id);
+    CREATE INDEX IF NOT EXISTS idx_finances_order_id ON finances(order_id);
+    CREATE INDEX IF NOT EXISTS idx_certificates_order_id ON certificates(order_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_order_id ON tasks(order_id);
+    CREATE INDEX IF NOT EXISTS idx_client_feedback_order_id ON client_feedback(order_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_business_type_id ON orders(business_type_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+    CREATE INDEX IF NOT EXISTS idx_influencer_steps_influencer_id_phase ON influencer_steps(influencer_id, phase);
+    CREATE INDEX IF NOT EXISTS idx_influencer_evaluations_influencer_id ON influencer_evaluations(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_contracts_influencer_id ON contracts(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_documents_influencer_id ON influencer_documents(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_finances_influencer_id ON influencer_finances(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_certificates_influencer_id ON influencer_certificates(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_step_notes_influencer_id ON influencer_step_notes(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_factories_influencer_id ON influencer_factories(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_attendance_employee_name_date ON attendance(employee_name, date);
+    CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_name ON leave_requests(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient);
+    CREATE INDEX IF NOT EXISTS idx_points_records_employee_name ON points_records(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_customer_follow_ups_customer_id ON customer_follow_ups(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_customers_status ON vat_customers(status);
+    CREATE INDEX IF NOT EXISTS idx_issue_tickets_status ON issue_tickets(status);
+  `);
+
+  // ── 强制修改初始密码 ──
+  // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
+  // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
+  // 登录后必须先改密码才能进系统。
+  try { database.exec("ALTER TABLE employees ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // 给现有账号回填：密码仍是 123456 的一律置 1。
+  // 用 bcrypt.compareSync 逐个比对——bcrypt 每次加盐，哈希值不同，不能直接比字符串。
+  try {
+    const users = database.prepare("SELECT id, password FROM employees").all() as { id: number; password: string }[];
+    const mark = database.prepare("UPDATE employees SET must_change_password = 1 WHERE id = ?");
+    for (const u of users) {
+      if (u.password && bcrypt.compareSync("123456", u.password)) mark.run(u.id);
+    }
+  } catch { /* 首次建表时可能还没有数据，忽略 */ }
+
   // 手动改过状态的客户不再被自动流转规则覆盖
   try { database.exec("ALTER TABLE customers ADD COLUMN status_locked INTEGER NOT NULL DEFAULT 0"); } catch {}
 

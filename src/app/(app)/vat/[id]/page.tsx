@@ -131,14 +131,17 @@ export default function VatRecordDetailPage({ params }: { params: Promise<{ id: 
         const sts = data.steps || [];
         setSteps(sts);
 
-        const notesMap: Record<number, TimelineNote[]> = {};
-        const docsMap: Record<number, VatStepDoc[]> = {};
-        await Promise.all(sts.map(async (s: VatStep) => {
-          try { notesMap[s.id] = await fetchWithAuth(`/api/vat/records/${id}/steps/${s.id}/notes`).then(r => r.json()); }
-          catch { notesMap[s.id] = []; }
-          try { docsMap[s.id] = await fetchWithAuth(`/api/vat/records/${id}/steps/${s.id}/documents`).then(r => r.json()); }
-          catch { docsMap[s.id] = []; }
-        }));
+        // 一次拿全部步骤的备注和文件清单（原来是每个步骤 2 个请求）
+        let notesMap: Record<number, TimelineNote[]> = {};
+        let docsMap: Record<number, VatStepDoc[]> = {};
+        try {
+          const r = await fetchWithAuth(`/api/vat/records/${id}/steps/details`, { cache: "no-store" });
+          if (r.ok) {
+            const d = await r.json();
+            notesMap = d.notes || {};
+            docsMap = d.documents || {};
+          }
+        } catch { /* 拿不到就留空，不影响主体 */ }
         if (!ignore) {
           setStepNotes(notesMap);
           setStepDocs(docsMap);
