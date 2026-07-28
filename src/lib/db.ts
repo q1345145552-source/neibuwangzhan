@@ -1305,7 +1305,46 @@ function initTables(database: Database.Database) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // ── 物流板块 ──
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS shipping_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cabinet_number TEXT NOT NULL,
+      warehouse TEXT NOT NULL CHECK(warehouse IN ('义乌','深圳','广州','东莞','揭阳')),
+      progress TEXT NOT NULL DEFAULT '待处理',
+      creator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS shipping_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES shipping_orders(id),
+      step_name TEXT NOT NULL,
+      step_order INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','进行中','已完成','已跳过')),
+      assignee TEXT DEFAULT '可爱',
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS shipping_step_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES shipping_orders(id),
+      step_id INTEGER NOT NULL REFERENCES shipping_steps(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // shipping_steps 补充 started_at 列（按实际计时需要）
+  try { database.exec("ALTER TABLE shipping_steps ADD COLUMN started_at TEXT"); } catch {}
 }
+
+/* ── 积分规则种子 ── */
 
 /* ── 积分规则种子 ── */
 let pointsRulesSeeded = false;
