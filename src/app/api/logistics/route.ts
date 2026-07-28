@@ -14,12 +14,66 @@ const SHIPPING_STEPS = [
   "收到派送单回执(对应物流系统的派送中以及派送完成)",
 ];
 
-// GET /api/logistics - 列表
+// GET /api/logistics - 列表 or ?action=stats
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
+  const action = new URL(req.url).searchParams.get("action");
+
+  if (action === "stats") {
+    // 总数
+    const total = (db.prepare("SELECT COUNT(*) as c FROM shipping_orders").get() as { c: number }).c;
+    // 进行中
+    const inProgress = (db.prepare("SELECT COUNT(*) as c FROM shipping_orders WHERE progress = '进行中'").get() as { c: number }).c;
+    // 本周新增（泰国时区 UTC+7）
+    const thisWeek = (db.prepare(
+      "SELECT COUNT(*) as c FROM shipping_orders WHERE created_at >= datetime('now','localtime','-7 days')"
+    ).get() as { c: number }).c;
+
+    // 仓库分布
+    const warehouses = ["义乌","深圳","广州","东莞","揭阳"];
+    const whCounts: Record<string, number> = {};
+    for (const w of warehouses) {
+      whCounts[w] = (db.prepare("SELECT COUNT(*) as c FROM shipping_orders WHERE warehouse = ?").get(w) as { c: number }).c;
+    }
+
+    // 拆派仓延迟：步骤5 vs 步骤6
+    // 步骤5 = 跟拆派仓确认到仓, 步骤6 = 跟拆派仓确认派送时间
+    const delayRows = db.prepare(`
+      SELECT s5.order_id, s5.completed_at as s5_done, s6.completed_at as s6_done
+      FROM shipping_steps s5
+      JOIN shipping_steps s6 ON s5.order_id = s6.order_id AND s5.step_order = 5 AND s6.step_order = 6
+      WHERE s5.completed_at IS NOT NULL AND s5.completed_at != ''
+        AND s6.completed_at IS NOT NULL AND s6.completed_at != ''
+    `).all() as { order_id: number; s5_done: string; s6_done: string }[];
+
+    let totalDelay = 0;
+    let delayCount = 0;
+    const delayDetails: { order_id: number; days: number }[] = [];
+
+    for (const r of delayRows) {
+      const d5 = new Date(r.s5_done!.replace(" ","T") + "+07:00").getTime();
+      const d6 = new Date(r.s6_done!.replace(" ","T") + "+07:00").getTime();
+      const days = Math.max(0, Math.round((d6 - d5) / 86400000));
+      totalDelay += days;
+      delayCount++;
+      delayDetails.push({ order_id: r.order_id, days });
+    }
+
+    const avgDelay = delayCount > 0 ? +(totalDelay / delayCount).toFixed(1) : 0;
+    // 超平均 50% 标红
+    const threshold = avgDelay * 1.5;
+    const overdueOrders = delayDetails
+      .filter(d => d.days > threshold)
+      .map(d => d.order_id);
+
+    return NextResponse.json({
+      total, inProgress, thisWeek, whCounts, avgDelay, delayCount, overdueOrders,
+    });
+  }
+
   const rows = db.prepare(
     "SELECT * FROM shipping_orders ORDER BY created_at DESC"
   ).all();
