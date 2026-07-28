@@ -32,6 +32,8 @@ import {
   Shield,
   Briefcase,
   Calculator,
+  Package,
+  Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -71,6 +73,10 @@ const agencyNav = [
   { name: "品牌孵化", href: "/agency/incubation", icon: Sparkles },
 ];
 
+const logisticsNav = [
+  { name: "轨迹更新", href: "/logistics", icon: Truck },
+];
+
 const internalNav = [
   { name: "内部管理", href: "/internal", icon: Monitor },
   { name: "奖惩制度", href: "/internal/rewards", icon: Star },
@@ -88,6 +94,7 @@ const utilityNav = [
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/agency") return pathname === "/agency";
+  if (href === "/logistics") return pathname.startsWith("/logistics");
   if (href === "/internal") return pathname === "/internal";
   if (href === "/vat") return pathname.startsWith("/vat");
   if (href === "/customers") return pathname.startsWith("/customers");
@@ -189,6 +196,11 @@ export function Sidebar() {
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
         </div>
         <NavSection items={agencyNav} pathname={pathname} onClose={close} />
+
+        <div className="mt-4 mb-2 px-3">
+          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">物流</span>
+        </div>
+        <NavSection items={logisticsNav} pathname={pathname} onClose={close} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">内部管理</span>
