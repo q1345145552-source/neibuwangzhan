@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
-import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
-import { Plus, Package, MapPin, User, Clock } from "lucide-react";
+import { Plus, Package, MapPin, User, Clock, TrendingUp, Calendar, AlertTriangle, Truck, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ShippingOrder {
@@ -17,11 +16,25 @@ interface ShippingOrder {
   created_at: string;
 }
 
+interface DashboardStats {
+  total: number;
+  inProgress: number;
+  thisWeek: number;
+  whCounts: Record<string, number>;
+  avgDelay: number;
+  delayCount: number;
+  overdueOrders: number[];
+}
+
 const WAREHOUSES = ["义乌", "深圳", "广州", "东莞", "揭阳"];
+const WH_COLORS: Record<string, string> = {
+  "义乌": "bg-blue-500", "深圳": "bg-emerald-500", "广州": "bg-amber-500",
+  "东莞": "bg-purple-500", "揭阳": "bg-rose-500",
+};
 
 export default function LogisticsPage() {
-  const { user } = useAuth();
   const [orders, setOrders] = useState<ShippingOrder[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ cabinet_number: "", warehouse: "义乌" });
@@ -30,10 +43,17 @@ export default function LogisticsPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/logistics");
-      if (!res.ok) throw new Error("加载失败");
-      const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
+      const [resOrders, resStats] = await Promise.all([
+        fetchWithAuth("/api/logistics"),
+        fetchWithAuth("/api/logistics?action=stats"),
+      ]);
+      if (resOrders.ok) {
+        const data = await resOrders.json();
+        setOrders(Array.isArray(data) ? data : []);
+      }
+      if (resStats.ok) {
+        setStats(await resStats.json());
+      }
     } catch { setOrders([]); }
     finally { setLoading(false); }
   }, []);
@@ -65,6 +85,8 @@ export default function LogisticsPage() {
     });
   };
 
+  const maxWh = Math.max(1, ...Object.values(stats?.whCounts || {}));
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -82,6 +104,68 @@ export default function LogisticsPage() {
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
           {error}
+        </div>
+      )}
+
+      {/* ── 看板五卡片 ── */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+            <Package className="size-4 text-blue-500 mb-2" />
+            <p className="text-2xl font-bold text-[var(--foreground)]">{stats.total}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">全部柜号</p>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+            <TrendingUp className="size-4 text-amber-500 mb-2" />
+            <p className="text-2xl font-bold text-[var(--foreground)]">{stats.inProgress}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">进行中</p>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+            <Calendar className="size-4 text-emerald-500 mb-2" />
+            <p className="text-2xl font-bold text-[var(--foreground)]">{stats.thisWeek}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">本周新增</p>
+          </div>
+          <div className={cn("rounded-xl border p-4", stats.avgDelay > 0 && stats.overdueOrders.length > 0 ? "border-orange-300 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/10" : "border-[var(--border)] bg-[var(--card)]")}>
+            <AlertTriangle className={cn("size-4 mb-2", stats.avgDelay > 0 && stats.overdueOrders.length > 0 ? "text-orange-500" : "text-[var(--muted-foreground)]")} />
+            <p className="text-2xl font-bold text-[var(--foreground)]">{stats.avgDelay}<span className="text-sm font-normal text-[var(--muted-foreground)]">天</span></p>
+            <p className="text-xs text-[var(--muted-foreground)]">拆派仓平均延迟</p>
+            {stats.overdueOrders.length > 0 && (
+              <p className="mt-1 text-[0.6rem] text-orange-600 dark:text-orange-400">
+                警告：{stats.overdueOrders.length} 个柜号超过均值的150%
+              </p>
+            )}
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+            <Truck className="size-4 text-purple-500 mb-2" />
+            <p className="text-2xl font-bold text-[var(--foreground)]">{stats.total}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">5个仓库</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── 仓库分布 ── */}
+      {stats && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+          <h3 className="mb-3 text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
+            <BarChart3 className="size-4 text-[var(--muted-foreground)]" />各仓库柜号分布
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-5">
+            {WAREHOUSES.map(w => {
+              const c = stats.whCounts[w] || 0;
+              const pct = maxWh > 0 ? Math.round(c / maxWh * 100) : 0;
+              return (
+                <div key={w} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--foreground)]">{w}</span>
+                    <span className="font-medium text-[var(--foreground)]">{c}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--muted)] overflow-hidden">
+                    <div className={cn("h-full rounded-full transition-all", WH_COLORS[w] || "bg-slate-400")} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
