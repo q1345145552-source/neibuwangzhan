@@ -63,7 +63,7 @@ export default function LogisticsDetailPage({ params }: { params: Promise<{ id: 
   const [sideTab, setSideTab] = useState<"notes" | "files">("notes");
   const [uploading, setUploading] = useState(false);
   const [uploadFileName, setUploadFileName] = useState("");
-  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; url: string }[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: number; name: string; url: string }[]>([]);
 
   // ─── Load ───
   const load = useCallback(async () => {
@@ -75,6 +75,7 @@ export default function LogisticsDetailPage({ params }: { params: Promise<{ id: 
       setOrder(data as ShippingOrder);
       setSteps((data.steps || []) as ShippingStep[]);
       setStepNotes(data.stepNotes || {});
+      if (data.orderFiles?.length) setUploadedFiles(data.orderFiles);
     } catch (e: any) { setError(e?.message || "加载失败"); }
     finally { setLoading(false); }
   }, [id]);
@@ -225,8 +226,23 @@ export default function LogisticsDetailPage({ params }: { params: Promise<{ id: 
     setUploading(true); setUploadFileName(file.name);
     try {
       const url = await uploadFile(file);
-      if (url) setUploadedFiles(p => [...p, { name: file.name, url }]);
-      else setError("文件上传失败");
+      if (!url) { setError("文件上传失败"); return; }
+      // 持久化到数据库 — step_id=0 表示订单级文件
+      const noteRes = await fetchWithAuth(`/api/logistics/${id}/steps/0/notes`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: `[文件] ${file.name} | ${url}`, created_by: user?.name || "系统" }),
+      });
+      if (noteRes.ok) {
+        const notes = await noteRes.json();
+        if (Array.isArray(notes)) {
+          setUploadedFiles(notes.map((n: any) => {
+            const parts = (n.content || "").split("|");
+            return { id: n.id, name: parts[0]?.replace("[文件] ", "").trim() || "", url: parts[1]?.trim() || "" };
+          }));
+        }
+      } else {
+        setError("文件信息保存失败");
+      }
     } catch { setError("文件上传失败"); }
     finally { setUploading(false); setUploadFileName(""); }
   };
@@ -526,7 +542,7 @@ export default function LogisticsDetailPage({ params }: { params: Promise<{ id: 
                       {uploadedFiles.map((f, i) => (
                         <li key={i} className="flex items-center justify-between gap-2 rounded border border-[var(--border)] px-2 py-1.5">
                           <a href={fileUrl(f.url)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--foreground)] hover:text-[var(--primary)] truncate flex-1">{f.name}</a>
-                          <button onClick={() => setUploadedFiles(p => p.filter((_, j) => j !== i))}
+                          <button onClick={async () => { await fetchWithAuth(`/api/logistics/${id}/steps/0/notes?id=${f.id}`, { method: "DELETE" }); setUploadedFiles(p => p.filter(x => x.id !== f.id)); }}
                             className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"><X className="size-3" /></button>
                         </li>
                       ))}
