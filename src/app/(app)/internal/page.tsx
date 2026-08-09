@@ -116,7 +116,7 @@ export default function InternalPage() {
   const [showResolved, setShowResolved] = useState(false);
 
   // Leave form
-  const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
+  const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", destination: "", reason: "" });
   const [leaveErr, setLeaveErr] = useState("");
   const [leaveImages, setLeaveImages] = useState<string[]>([]);
   const [leaveUploading, setLeaveUploading] = useState(false);
@@ -549,8 +549,26 @@ export default function InternalPage() {
     setSupplementLeaveId(null);
   };
 
+  // ── 请假表单校验衍生值 ──
+  const leaveDays = (() => {
+    if (!leaveForm.start_date || !leaveForm.end_date) return 0;
+    const s = new Date(leaveForm.start_date + "T00:00:00+07:00");
+    const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
+    return Math.max(0, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
+  })();
+  const reasonLen = leaveForm.reason.trim().length;
+  const sickNeedFile = leaveForm.leave_type === "病假" && leaveDays >= 2 && leaveImages.length === 0;
+  const reasonTooShort = reasonLen < 10;
+  const needDestination = leaveForm.leave_type === "事假" && !leaveForm.destination.trim();
+  const canSubmitLeave = !leaveForm.start_date || !leaveForm.end_date
+    ? false
+    : !sickNeedFile && !reasonTooShort && !needDestination;
+
   const handleCreateLeave = async () => {
     if (!leaveForm.start_date || !leaveForm.end_date) { setLeaveErr("请选择日期"); return; }
+    if (sickNeedFile) { setLeaveErr("病假两天及以上必须上传证明文件"); return; }
+    if (reasonTooShort) { setLeaveErr(`事由至少10个字，当前${reasonLen}字`); return; }
+    if (needDestination) { setLeaveErr("事假必须填写目的地"); return; }
     setLeaveErr("");
     try {
       const res = await fetchWithAuth("/api/leave", {
@@ -564,10 +582,9 @@ export default function InternalPage() {
         return;
       }
       const newRecord = await res.json();
-      // 直接追加到列表头部，不等全量刷新
       setLeaves(prev => [newRecord, ...prev]);
       setShowLeaveForm(false);
-      setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", reason: "" });
+      setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", destination: "", reason: "" });
       setLeaveImages([]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "网络错误";
@@ -1130,7 +1147,7 @@ export default function InternalPage() {
                         <span className={cn("text-xs font-medium rounded px-1.5 py-0.5", r.status === "已通过" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")}>{r.status}</span>
                       </div>
                       <div className="mt-1 text-xs text-[var(--muted-foreground)]">
-                        <p>类型: {r.leave_type} | 审批人: {r.approved_by || "—"} | 审批时间: {r.approved_at?.slice(0,16) || "—"}</p>
+                        <p>类型: {r.leave_type} | 目的地: {r.destination || "—"} | 审批人: {r.approved_by || "—"} | 审批时间: {r.approved_at?.slice(0,16) || "—"}</p>
                         {r.reason && <p className="mt-0.5">原因: {r.reason}</p>}
                       </div>
                     </div>
@@ -1191,7 +1208,8 @@ export default function InternalPage() {
                     <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium">时间</th>
-                    <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">目的地</th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium">照片</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
@@ -1946,7 +1964,7 @@ export default function InternalPage() {
                 <label className="text-xs font-medium">请假类型</label>
                 <select value={leaveForm.leave_type} onChange={e=>setLeaveForm(p=>({...p,leave_type:e.target.value}))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
-                  <option value="事假">事假</option><option value="病假">病假</option><option value="年假">年假</option><option value="其他">其他</option>
+                  <option value="事假">事假</option><option value="病假">病假</option><option value="年假">年假</option><option value="调休">调休</option><option value="法定假日">法定假日</option><option value="其他">其他</option>
                 </select>
               </div>
               <div><label className="text-xs font-medium">开始日期</label>
@@ -1957,14 +1975,37 @@ export default function InternalPage() {
                 <input type="date" value={leaveForm.end_date} onChange={e=>setLeaveForm(p=>({...p,end_date:e.target.value}))}
                   className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
               </div>
-              <div className="sm:col-span-3">
-                <label className="text-xs font-medium">原因</label>
-                <input value={leaveForm.reason} onChange={e=>setLeaveForm(p=>({...p,reason:e.target.value}))} placeholder="请假原因..."
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              <div>
+                <label className="text-xs font-medium">目的地 {leaveForm.leave_type === "事假" ? <span className="text-red-500">*必填</span> : <span className="text-[var(--muted-foreground)]">(选填)</span>}</label>
+                <input value={leaveForm.destination} onChange={e=>setLeaveForm(p=>({...p,destination:e.target.value}))}
+                  placeholder={leaveForm.leave_type === "事假" ? "事假必填目的地" : "目的地（选填）"}
+                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
+                    needDestination ? "border-red-400 bg-red-50" : "border-[var(--border)]"
+                  )} />
+                {needDestination && <p className="mt-0.5 text-xs text-red-500">事假必须填写目的地</p>}
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium">
+                  事由 <span className={cn(reasonLen < 10 ? "text-red-500" : "text-[var(--muted-foreground)]")}>
+                    ({reasonLen}/10字{reasonLen < 10 ? `，还差${10 - reasonLen}字` : ""})
+                  </span>
+                </label>
+                <input value={leaveForm.reason} onChange={e=>setLeaveForm(p=>({...p,reason:e.target.value}))}
+                  placeholder="请假原因，至少填写10个字..."
+                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
+                    reasonLen > 0 && reasonTooShort ? "border-orange-400" : "border-[var(--border)]"
+                  )} />
+                {reasonTooShort && (
+                  <p className="mt-0.5 text-xs text-orange-500">
+                    事由至少10个字，当前{reasonLen}字，还差{10 - reasonLen}字
+                  </p>
+                )}
               </div>
             </div>
             <div className="mt-3">
-              <label className="text-xs font-medium">附件上传</label>
+              <label className={cn("text-xs font-medium", sickNeedFile ? "text-red-500" : "")}>
+                附件上传 {sickNeedFile ? <span className="text-red-500">*病假两天及以上必须上传证明</span> : ""}
+              </label>
               <div className="mt-1 flex flex-wrap gap-2 items-center">
                 {leaveImages.map((img,idx)=>(
                   <div key={idx} className="relative group w-16 h-16 rounded border border-[var(--border)] overflow-hidden bg-[var(--muted)] shrink-0">
@@ -1972,8 +2013,10 @@ export default function InternalPage() {
                     <button onClick={()=>removeLeaveImage(idx)} className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X className="size-3" /></button>
                   </div>
                 ))}
-                <label className="w-16 h-16 rounded border-2 border-dashed border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--ring)] transition-colors shrink-0">
-                  {leaveUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className="size-5 text-[var(--muted-foreground)]" />}
+                <label className={cn("w-16 h-16 rounded border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors shrink-0",
+                  sickNeedFile ? "border-red-400 hover:border-red-500 bg-red-50" : "border-[var(--border)] hover:border-[var(--ring)]"
+                )}>
+                  {leaveUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className={cn("size-5", sickNeedFile ? "text-red-400" : "text-[var(--muted-foreground)]")} />}
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handleLeaveImageUpload} disabled={leaveUploading} />
                 </label>
               </div>
@@ -1981,7 +2024,7 @@ export default function InternalPage() {
             </div>
             {leaveErr && <p className="mt-2 text-xs text-[var(--destructive)]">{leaveErr}</p>}
             <div className="mt-3 flex gap-2">
-              <Button size="sm" onClick={handleCreateLeave}>提交申请</Button>
+              <Button size="sm" onClick={handleCreateLeave} disabled={!canSubmitLeave}>提交申请</Button>
               <Button variant="ghost" size="sm" onClick={()=>setShowLeaveForm(false)}>取消</Button>
             </div>
           </div>
@@ -2008,6 +2051,7 @@ export default function InternalPage() {
               {isAdmin&&<th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>}
               <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
+              <th className="py-2.5 px-4 text-left text-xs font-medium">目的地</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
@@ -2017,6 +2061,7 @@ export default function InternalPage() {
                 {isAdmin&&<td className="py-2.5 px-4 font-medium">{l.employee_name}</td>}
                 <td className="py-2.5 px-4">{l.leave_type}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date} ~ {l.end_date}</td>
+                <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination||"—"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason||"—"}</td>
                 <td className="py-2.5 px-4">
                   <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium "+(l.status==="已通过"?"bg-green-100 text-green-700":l.status==="已驳回"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700")}>{l.status}</span>
