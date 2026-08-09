@@ -2138,6 +2138,14 @@ export default function InternalPage() {
             if(leaveStatusFilter&&l.status!==leaveStatusFilter)return false;
             return true;
           });
+          // 当月每个员工的病假次数（标红用）
+          const monthPrefix = new Date().toISOString().slice(0, 7);
+          const sickCountByEmployee: Record<string, number> = {};
+          for (const l of leaves) {
+            if (l.leave_type === "病假" && l.start_date?.startsWith(monthPrefix)) {
+              sickCountByEmployee[l.employee_name] = (sickCountByEmployee[l.employee_name] || 0) + 1;
+            }
+          }
           const pending=filtered.filter(l=>l.status==="待审批");
           const history=filtered.filter(l=>l.status!=="待审批");
           if(filtered.length===0)return(<div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>);
@@ -2153,8 +2161,19 @@ export default function InternalPage() {
               {isAdmin && <th className="py-2.5 px-2 text-left text-xs font-medium">拼假</th>}
               <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
             </tr></thead><tbody>{list.map(l=>(
-              <tr key={l.id} className="border-b border-[var(--border)]">
-                {isAdmin&&<td className="py-2.5 px-4 font-medium">{l.employee_name}</td>}
+              <tr key={l.id} className={cn("border-b border-[var(--border)]",
+                    l.status === "待审批" && (Date.now() - new Date(l.created_at.replace(" ","T") + "+07:00").getTime()) > 86400000 ? "bg-amber-50 dark:bg-amber-950/20" : ""
+                  )}>
+                {isAdmin&&(
+                  <td className={cn("py-2.5 px-4 font-medium",
+                    (sickCountByEmployee[l.employee_name] || 0) >= 5 ? "text-red-600" : ""
+                  )}>
+                    {l.employee_name}
+                    {(sickCountByEmployee[l.employee_name] || 0) >= 5 && (
+                      <span className="ml-1 text-xs text-red-500">({sickCountByEmployee[l.employee_name]}次)</span>
+                    )}
+                  </td>
+                )}
                 <td className="py-2.5 px-4">{l.leave_type}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date} ~ {l.end_date}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination||"—"}</td>
