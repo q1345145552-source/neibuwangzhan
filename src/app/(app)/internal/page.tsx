@@ -128,6 +128,7 @@ export default function InternalPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
+  const [leaveDashboard, setLeaveDashboard] = useState<any>(null);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
   const [leaveCustomTo, setLeaveCustomTo] = useState("");
@@ -713,6 +714,14 @@ export default function InternalPage() {
   };
 
   const isAdmin = user?.role === "admin";
+  // 加载请假看板
+  useEffect(() => {
+    if (isAdmin) {
+      fetchWithAuth("/api/leave/dashboard")
+        .then(r => r.json()).then(d => { if (!d.error) setLeaveDashboard(d); })
+        .catch(() => {});
+    }
+  }, [isAdmin]);
   const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","other-today","other-week"]));
 
 
@@ -1978,6 +1987,115 @@ export default function InternalPage() {
         </div>
       )}
 
+
+      {/* ── 请假看板（仅管理员可见） ── */}
+      {isAdmin && leaveDashboard && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2">📊 请假看板</h2>
+          </div>
+          <div className="p-4 space-y-4">
+            {/* 第一行：今日请假 / 待审批 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <p className="text-xs text-[var(--muted-foreground)]">今日请假</p>
+                {leaveDashboard.todayOnLeave.length === 0 ? (
+                  <p className="mt-1 text-sm text-[var(--muted-foreground)]">无</p>
+                ) : (
+                  <div className="mt-1 space-y-1">
+                    {leaveDashboard.todayOnLeave.map((l: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">{l.employee_name}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{l.leave_type}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <p className="text-xs text-[var(--muted-foreground)]">待审批 <span className="font-bold text-amber-600">{leaveDashboard.pendingCount}</span> 条</p>
+                {leaveDashboard.pendingList?.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {leaveDashboard.pendingList.map((l: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                        <span className="font-medium text-[var(--foreground)]">{l.employee_name}</span>
+                        <span>{l.leave_type}</span>
+                        <span>{l.start_date} ~ {l.end_date}</span>
+                        <span className="text-[var(--muted-foreground)]/60">{l.created_at?.slice(0, 10)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 第二行：当月统计 */}
+            {leaveDashboard.monthStats?.length > 0 && (
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <p className="text-xs text-[var(--muted-foreground)] mb-2">当月统计（{leaveDashboard.monthStats.length} 人请假）</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+                        <th className="py-1.5 px-2 text-left font-medium">姓名</th>
+                        <th className="py-1.5 px-2 text-center font-medium">病假</th>
+                        <th className="py-1.5 px-2 text-center font-medium">事假</th>
+                        <th className="py-1.5 px-2 text-center font-medium">年假</th>
+                        <th className="py-1.5 px-2 text-center font-medium">其他</th>
+                        <th className="py-1.5 px-2 text-right font-medium">总天数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaveDashboard.monthStats.map((s: any) => (
+                        <tr key={s.employee_name} className="border-b border-[var(--border)] last:border-0">
+                          <td className="py-1.5 px-2 font-medium">{s.employee_name}</td>
+                          <td className="py-1.5 px-2 text-center">{s.sick || 0}</td>
+                          <td className="py-1.5 px-2 text-center">{s.personal || 0}</td>
+                          <td className="py-1.5 px-2 text-center">{s.annual || 0}</td>
+                          <td className="py-1.5 px-2 text-center">{s.other || 0}</td>
+                          <td className="py-1.5 px-2 text-right font-medium">{s.totalDays}天</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 第三行：病假排行 / 拼假嫌疑 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {leaveDashboard.sickLeaders?.length > 0 && (
+                <div className="rounded-lg border border-red-200 dark:border-red-800 p-3">
+                  <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-2">🔴 病假重点关注</p>
+                  <div className="space-y-1">
+                    {leaveDashboard.sickLeaders.map((s: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="font-medium">{s.employee_name}</span>
+                        <span className="text-red-600 font-bold">{s.sick}次</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {leaveDashboard.bridgeSuspects?.length > 0 && (
+                <div className="rounded-lg border border-orange-200 dark:border-orange-800 p-3">
+                  <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mb-2">⚠️ 拼假嫌疑（{leaveDashboard.bridgeSuspects.length} 条）</p>
+                  <div className="space-y-2">
+                    {leaveDashboard.bridgeSuspects.map((b: any, i: number) => (
+                      <div key={i} className="text-xs">
+                        <p className="font-medium text-[var(--foreground)]">{b.employee_name}</p>
+                        <p className="text-[var(--muted-foreground)]">{b.start_date} ~ {b.end_date}</p>
+                        <p className="text-orange-600">卡到：{b.holidays.map((h: any) => h.date + " " + h.name.split(" (")[0]).join("、")}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 泰国法定假日日历 ── */}
       {holidays.length > 0 && (
