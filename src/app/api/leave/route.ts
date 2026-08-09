@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await readJson(req);
-  const { leave_type, start_date, end_date, destination, reason, images } = body;
+  const { leave_type, start_date, end_date, start_time, end_time, destination, reason, images } = body;
   const _e = validateEnums({ "leave_requests.leave_type": leave_type });
   if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   // 防冒名：普通员工只能给自己提请假，管理员可代提
@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
 
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
   const result = db.prepare(
-    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, destination, reason, images) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(employee_name, leave_type || "事假", start_date, end_date, destination || "", reason || "", imagesJson);
+    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, start_time, end_time, destination, reason, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(employee_name, leave_type || "事假", start_date, end_date, start_time || "09:00", end_time || "17:00", destination || "", reason || "", imagesJson);
   const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
   for (const admin of admins) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -100,7 +100,7 @@ export async function PATCH(req: NextRequest) {
   const db = getDb();
   const body = await readJson(req);
   // 注意：请求体里的 approved_by 一律忽略，审批人取自登录态
-  const { id, status, images, append_images } = body;
+  const { id, status, images, append_images, rejection_reason } = body;
 
   if (!id) return NextResponse.json({ error: "缺少参数 id" }, { status: 400 });
 
