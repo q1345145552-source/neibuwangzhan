@@ -123,6 +123,7 @@ export default function InternalPage() {
   const [supplementLeaveId, setSupplementLeaveId] = useState<number | null>(null);
   const [supplementUploading, setSupplementUploading] = useState(false);
   const supplementInputRef = useRef<HTMLInputElement>(null);
+  const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
   const [leaveCustomTo, setLeaveCustomTo] = useState("");
@@ -300,6 +301,12 @@ export default function InternalPage() {
   };
 
   useEffect(() => { loadAll(); loadAttendance(); loadCalendar(); }, [summaryMonth, calendarMonth, calendarEmployee, user?.name]);
+
+  useEffect(() => {
+    fetchWithAuth("/api/thai-holidays")
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setHolidays(d); })
+      .catch(() => {});
+  }, []);
 
   // ── Photo upload helpers ──
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -573,6 +580,29 @@ export default function InternalPage() {
       if (e < limit) return true;
     }
     return false;
+  })();
+  const isHoliday = (dateStr: string) => holidays.some(h => h.date === dateStr);
+  // 拼假检测：病假日期范围是否跨/贴了法定假日
+  const bridgeHolidays = (() => {
+    if (leaveForm.leave_type !== "病假") return [] as { date: string; name: string }[];
+    if (!leaveForm.start_date || !leaveForm.end_date) return [] as { date: string; name: string }[];
+    const s = new Date(leaveForm.start_date + "T00:00:00+07:00");
+    const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
+    // 扩展两边各一天检测"贴"假日拼假
+    const extS = new Date(s); extS.setDate(s.getDate() - 1);
+    const extE = new Date(e); extE.setDate(e.getDate() + 1);
+    const found: { date: string; name: string }[] = [];
+    for (const h of holidays) {
+      const hd = new Date(h.date + "T00:00:00+07:00");
+      if (hd >= s && hd <= e) {
+        // 法定假日在请假范围内 — 直接卡连休
+        found.push(h);
+      } else if (hd >= extS && hd <= extE) {
+        // 法定假日在请假范围前后各一天 — 疑似拼假
+        found.push(h);
+      }
+    }
+    return found;
   })();
   const reasonLen = leaveForm.reason.trim().length;
   const sickNeedFile = leaveForm.leave_type === "病假" && leaveDays >= 2 && leaveImages.length === 0;
@@ -1231,7 +1261,8 @@ export default function InternalPage() {
               <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium">照片</th>
                     <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
-                  <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+                  {isAdmin && <th className="py-2.5 px-2 text-left text-xs font-medium">拼假</th>}
+              <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1715,7 +1746,8 @@ export default function InternalPage() {
                 <th className="py-2.5 px-4 text-left text-xs font-medium">解决截图</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
-                <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
+                {isAdmin && <th className="py-2.5 px-2 text-left text-xs font-medium">拼假</th>}
+              <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
               </tr></thead>
               <tbody>{list.map(t => (
                 <tr key={t.id} className="border-b border-[var(--border)]">
@@ -1930,6 +1962,29 @@ export default function InternalPage() {
         </div>
       )}
 
+
+      {/* ── 泰国法定假日日历 ── */}
+      {holidays.length > 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2">📅 泰国法定假日日历</h2>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-7 gap-2">
+              {holidays.map(h => {
+                const d = new Date(h.date + "T00:00:00+07:00");
+                const monthNames = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+                return (
+                  <div key={h.date} className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-2 text-center">
+                    <p className="text-[0.6rem] text-amber-600 dark:text-amber-400 font-medium">{monthNames[d.getMonth()]}{d.getDate()}日</p>
+                    <p className="text-[0.65rem] text-[var(--foreground)] mt-0.5 leading-tight">{h.name.split(" (")[0]}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {/* ──    请假审批 / 我的请假 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
@@ -2001,6 +2056,18 @@ export default function InternalPage() {
               {dateTooOld && (
                 <div className="sm:col-span-3">
                   <p className="text-xs text-red-500">不能申请超过七天前的日期，最早可申请 {sevenDaysAgo}</p>
+                </div>
+              )}
+              {bridgeHolidays.length > 0 && (
+                <div className="sm:col-span-3 rounded-lg border border-orange-300 bg-orange-50 dark:bg-orange-950/20 px-3 py-2">
+                  <p className="text-xs font-medium text-orange-700 dark:text-orange-400">
+                    ⚠️ 拼假提醒：病假日期{bridgeHolidays.length}个法定假日{bridgeHolidays.every(h => { const hd = new Date(h.date + "T00:00:00+07:00"); const s = new Date(leaveForm.start_date + "T00:00:00+07:00"); const e = new Date(leaveForm.end_date + "T00:00:00+07:00"); return hd >= s && hd <= e; }) ? "在请假范围内" : "与请假日期相邻"}，疑似拼假连休
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {bridgeHolidays.map(h => (
+                      <li key={h.date} className="text-xs text-orange-600 dark:text-orange-400">{h.date} {h.name}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
               <div>
@@ -2083,6 +2150,7 @@ export default function InternalPage() {
               <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
+              {isAdmin && <th className="py-2.5 px-2 text-left text-xs font-medium">拼假</th>}
               <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
             </tr></thead><tbody>{list.map(l=>(
               <tr key={l.id} className="border-b border-[var(--border)]">
@@ -2094,6 +2162,23 @@ export default function InternalPage() {
                 <td className="py-2.5 px-4">
                   <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium "+(l.status==="已通过"?"bg-green-100 text-green-700":l.status==="已驳回"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700")}>{l.status}</span>
                 </td>
+                {isAdmin && (
+                  <td className="py-2.5 px-2">
+                    {(() => {
+                      if (l.leave_type !== "病假") return <span className="text-[var(--muted-foreground)]/30">—</span>;
+                      const ls = new Date(l.start_date + "T00:00:00+07:00");
+                      const le = new Date(l.end_date + "T00:00:00+07:00");
+                      const extS = new Date(ls); extS.setDate(ls.getDate() - 1);
+                      const extE = new Date(le); extE.setDate(le.getDate() + 1);
+                      const hits = holidays.filter(h => {
+                        const hd = new Date(h.date + "T00:00:00+07:00");
+                        return hd >= extS && hd <= extE;
+                      });
+                      if (hits.length === 0) return <span className="text-[var(--muted-foreground)]/30">—</span>;
+                      return <span className="inline-flex items-center gap-1 text-xs text-orange-600 font-medium" title={hits.map(h => h.date + " " + h.name).join("; ")}>⚠️{hits.length}假</span>;
+                    })()}
+                  </td>
+                )}
                 <td className="py-2.5 px-4">
                   {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
                     <a href={fileUrl((imgs[0] as string).startsWith("/api/files/") ? imgs[0] : "/api/files/" + imgs[0])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:underline cursor-pointer" onClick={(e) => { if (imgs.length > 1) { e.preventDefault(); const urls = imgs.map((f:string) => f.startsWith("/api/files/") ? f : "/api/files/" + f); setLightboxImages(urls); setLightboxIdx(0); } }}>
