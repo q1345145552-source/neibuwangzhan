@@ -721,7 +721,7 @@ function initTables(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention')),
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue')),
       title TEXT DEFAULT '',
       body TEXT DEFAULT '',
       recipient TEXT DEFAULT '',
@@ -731,6 +731,26 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // notifications 迁移：补 leave_overdue 类型
+  try {
+    database.exec("ALTER TABLE notifications RENAME TO notifications_old");
+    database.exec(`
+      CREATE TABLE notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue')),
+        title TEXT DEFAULT '',
+        body TEXT DEFAULT '',
+        recipient TEXT DEFAULT '',
+        related_id TEXT DEFAULT '',
+        related_type TEXT DEFAULT '',
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    database.exec("INSERT INTO notifications SELECT * FROM notifications_old");
+    database.exec("DROP TABLE notifications_old");
+  } catch {}
 
   // 模板库
   database.exec(`
