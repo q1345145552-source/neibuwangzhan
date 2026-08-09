@@ -809,6 +809,8 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+  // 确保 year+date 唯一索引，防止模块热重载时重复写入
+  try { database.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_thai_holidays_year_date ON thai_holidays(year, date)"); } catch {}
   // 写入 2026 年泰国法定假日（13天），INSERT OR IGNORE 防重复
   try {
     const holidayInsert = database.prepare("INSERT OR IGNORE INTO thai_holidays (year, date, name) VALUES (?, ?, ?)");

@@ -1987,7 +1987,7 @@ export default function InternalPage() {
           </div>
           <div className="p-4">
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-7 gap-2">
-              {holidays.map(h => {
+              {holidays.map((h) => {
                 const d = new Date(h.date + "T00:00:00+07:00");
                 const monthNames = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
                 return (
