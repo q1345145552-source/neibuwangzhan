@@ -556,19 +556,38 @@ export default function InternalPage() {
     const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
     return Math.max(0, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
   })();
+  const sevenDaysAgo = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  })();
+  const dateTooOld = (() => {
+    if (!leaveForm.start_date && !leaveForm.end_date) return false;
+    const limit = new Date(sevenDaysAgo + "T00:00:00+07:00");
+    if (leaveForm.start_date) {
+      const s = new Date(leaveForm.start_date + "T00:00:00+07:00");
+      if (s < limit) return true;
+    }
+    if (leaveForm.end_date) {
+      const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
+      if (e < limit) return true;
+    }
+    return false;
+  })();
   const reasonLen = leaveForm.reason.trim().length;
   const sickNeedFile = leaveForm.leave_type === "病假" && leaveDays >= 2 && leaveImages.length === 0;
   const reasonTooShort = reasonLen < 10;
   const needDestination = leaveForm.leave_type === "事假" && !leaveForm.destination.trim();
   const canSubmitLeave = !leaveForm.start_date || !leaveForm.end_date
     ? false
-    : !sickNeedFile && !reasonTooShort && !needDestination;
+    : !sickNeedFile && !reasonTooShort && !needDestination && !dateTooOld;
 
   const handleCreateLeave = async () => {
     if (!leaveForm.start_date || !leaveForm.end_date) { setLeaveErr("请选择日期"); return; }
     if (sickNeedFile) { setLeaveErr("病假两天及以上必须上传证明文件"); return; }
     if (reasonTooShort) { setLeaveErr(`事由至少10个字，当前${reasonLen}字`); return; }
     if (needDestination) { setLeaveErr("事假必须填写目的地"); return; }
+    if (dateTooOld) { setLeaveErr("不能申请超过七天前的日期"); return; }
     setLeaveErr("");
     try {
       const res = await fetchWithAuth("/api/leave", {
@@ -1968,13 +1987,22 @@ export default function InternalPage() {
                 </select>
               </div>
               <div><label className="text-xs font-medium">开始日期</label>
-                <input type="date" value={leaveForm.start_date} onChange={e=>setLeaveForm(p=>({...p,start_date:e.target.value}))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
+                <input type="date" value={leaveForm.start_date} min={sevenDaysAgo} onChange={e=>setLeaveForm(p=>({...p,start_date:e.target.value}))}
+                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
+                    dateTooOld ? "border-red-400 bg-red-50" : "border-[var(--border)]"
+                  )} />
               </div>
               <div><label className="text-xs font-medium">结束日期</label>
-                <input type="date" value={leaveForm.end_date} onChange={e=>setLeaveForm(p=>({...p,end_date:e.target.value}))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
+                <input type="date" value={leaveForm.end_date} min={sevenDaysAgo} onChange={e=>setLeaveForm(p=>({...p,end_date:e.target.value}))}
+                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
+                    dateTooOld ? "border-red-400 bg-red-50" : "border-[var(--border)]"
+                  )} />
               </div>
+              {dateTooOld && (
+                <div className="sm:col-span-3">
+                  <p className="text-xs text-red-500">不能申请超过七天前的日期，最早可申请 {sevenDaysAgo}</p>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-medium">目的地 {leaveForm.leave_type === "事假" ? <span className="text-red-500">*必填</span> : <span className="text-[var(--muted-foreground)]">(选填)</span>}</label>
                 <input value={leaveForm.destination} onChange={e=>setLeaveForm(p=>({...p,destination:e.target.value}))}
