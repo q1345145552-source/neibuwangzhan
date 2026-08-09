@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const db = getDb();
   const body = await readJson(req);
-  const { leave_type, start_date, end_date, reason, images } = body;
+  const { leave_type, start_date, end_date, destination, reason, images } = body;
   const _e = validateEnums({ "leave_requests.leave_type": leave_type });
   if (_e) return NextResponse.json({ error: _e }, { status: 400 });
   // 防冒名：普通员工只能给自己提请假，管理员可代提
@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
   if (end_date < start_date) return NextResponse.json({ error: "结束日期不能早于开始日期" }, { status: 400 });
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
   const result = db.prepare(
-    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, reason, images) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(employee_name, leave_type || "事假", start_date, end_date, reason || "", imagesJson);
+    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, destination, reason, images) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(employee_name, leave_type || "事假", start_date, end_date, destination || "", reason || "", imagesJson);
   const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
   for (const admin of admins) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
