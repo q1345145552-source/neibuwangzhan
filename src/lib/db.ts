@@ -758,15 +758,20 @@ function initTables(database: Database.Database) {
       status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
       approved_by TEXT DEFAULT '',
       approved_at TEXT,
+      rejection_reason TEXT DEFAULT '',
+      start_time TEXT DEFAULT '09:00',
+      end_time TEXT DEFAULT '17:00',
       images TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
 
-  // leave_requests 迁移：补 images 列
+  // leave_requests 迁移：补列
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
-  // leave_requests 迁移：补 destination 列
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN destination TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_requests ADD COLUMN rejection_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_requests ADD COLUMN start_time TEXT DEFAULT '09:00'"); } catch {}
+  try { database.exec("ALTER TABLE leave_requests ADD COLUMN end_time TEXT DEFAULT '17:00'"); } catch {}
   // leave_requests 迁移：更新 leave_type CHECK 约束（调休/法定假日）
   try {
     database.exec("ALTER TABLE leave_requests RENAME TO leave_requests_old");
@@ -782,11 +787,14 @@ function initTables(database: Database.Database) {
         status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
         approved_by TEXT DEFAULT '',
         approved_at TEXT,
+        rejection_reason TEXT DEFAULT '',
+        start_time TEXT DEFAULT '09:00',
+        end_time TEXT DEFAULT '17:00',
         images TEXT DEFAULT '[]',
         created_at TEXT DEFAULT (datetime('now'))
       );
     `);
-    database.exec("INSERT INTO leave_requests SELECT id, employee_name, leave_type, start_date, end_date, COALESCE(destination,''), reason, status, approved_by, approved_at, COALESCE(images,'[]'), created_at FROM leave_requests_old");
+    database.exec("INSERT INTO leave_requests SELECT id, employee_name, leave_type, start_date, end_date, COALESCE(destination,''), reason, status, approved_by, approved_at, COALESCE(rejection_reason,''), COALESCE(start_time,'09:00'), COALESCE(end_time,'17:00'), COALESCE(images,'[]'), created_at FROM leave_requests_old");
     database.exec("DROP TABLE leave_requests_old");
   } catch {}
 

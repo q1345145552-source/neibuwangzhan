@@ -116,13 +116,17 @@ export default function InternalPage() {
   const [showResolved, setShowResolved] = useState(false);
 
   // Leave form
-  const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", destination: "", reason: "" });
+  const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", start_time: "09:00", end_time: "17:00", destination: "", reason: "" });
   const [leaveErr, setLeaveErr] = useState("");
   const [leaveImages, setLeaveImages] = useState<string[]>([]);
   const [leaveUploading, setLeaveUploading] = useState(false);
   const [supplementLeaveId, setSupplementLeaveId] = useState<number | null>(null);
   const [supplementUploading, setSupplementUploading] = useState(false);
   const supplementInputRef = useRef<HTMLInputElement>(null);
+  // 驳回原因弹窗
+  const [rejectModal, setRejectModal] = useState<{ id: number; employee: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
@@ -633,7 +637,7 @@ export default function InternalPage() {
       const newRecord = await res.json();
       setLeaves(prev => [newRecord, ...prev]);
       setShowLeaveForm(false);
-      setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", destination: "", reason: "" });
+      setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", start_time: "09:00", end_time: "17:00", destination: "", reason: "" });
       setLeaveImages([]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "网络错误";
@@ -643,10 +647,21 @@ export default function InternalPage() {
   };
 
   const handleApproveLeave = async (id: number, status: string) => {
-    // 失败要提示：后端可能返回 403（非管理员）或 400（状态非法），
-    // 之前不看返回值直接 loadAll()，用户只会觉得"点了没反应"
+    if (status === "已驳回") {
+      setRejectModal({ id, employee: "" });
+      setRejectReason("");
+      return;
+    }
     const ok = await apiCall("/api/leave", { method: "PATCH", body: { id, status } });
     if (ok) loadAll();
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectModal || !rejectReason.trim()) return;
+    setRejecting(true);
+    const ok = await apiCall("/api/leave", { method: "PATCH", body: { id: rejectModal.id, status: "已驳回", rejection_reason: rejectReason.trim() } });
+    setRejecting(false);
+    if (ok) { setRejectModal(null); setRejectReason(""); loadAll(); }
   };
 
   // 补卡
@@ -1197,6 +1212,7 @@ export default function InternalPage() {
                       </div>
                       <div className="mt-1 text-xs text-[var(--muted-foreground)]">
                         <p>类型: {r.leave_type} | 目的地: {r.destination || "—"} | 审批人: {r.approved_by || "—"} | 审批时间: {r.approved_at?.slice(0,16) || "—"}</p>
+                        {r.rejection_reason && <p className="mt-0.5 text-red-600">驳回原因: {r.rejection_reason}</p>}
                         {r.reason && <p className="mt-0.5">原因: {r.reason}</p>}
                       </div>
                     </div>
@@ -2003,6 +2019,12 @@ export default function InternalPage() {
             }).length;
           })()})</h2>
           <Button size="sm" className="h-7 text-xs" variant="outline" onClick={()=>setShowLeaveForm(true)}><Plus className="size-3" />申请请假</Button>
+          {isAdmin && (
+            <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => {
+              const m = new Date().toISOString().slice(0, 7);
+              window.open(`/api/leave/export?month=${m}`, "_blank");
+            }}>📥 导出当月报表</Button>
+          )}
         </div>
         {/* Filters */}
         <div className="px-5 py-3 border-b border-[var(--border)] flex flex-wrap items-center gap-2">
@@ -2052,6 +2074,14 @@ export default function InternalPage() {
                   className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
                     dateTooOld ? "border-red-400 bg-red-50" : "border-[var(--border)]"
                   )} />
+              </div>
+              <div><label className="text-xs font-medium">开始时间</label>
+                <input type="time" value={leaveForm.start_time} onChange={e=>setLeaveForm(p=>({...p,start_time:e.target.value}))}
+                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
+              </div>
+              <div><label className="text-xs font-medium">结束时间</label>
+                <input type="time" value={leaveForm.end_time} onChange={e=>setLeaveForm(p=>({...p,end_time:e.target.value}))}
+                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
               </div>
               {dateTooOld && (
                 <div className="sm:col-span-3">
@@ -2175,7 +2205,7 @@ export default function InternalPage() {
                   </td>
                 )}
                 <td className="py-2.5 px-4">{l.leave_type}</td>
-                <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date} ~ {l.end_date}</td>
+                <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date} {l.start_time || "09:00"} ~ {l.end_date} {l.end_time || "17:00"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination||"—"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason||"—"}</td>
                 <td className="py-2.5 px-4">
@@ -2244,6 +2274,29 @@ export default function InternalPage() {
             </div>
           );
         })()}
+      {/* Reject reason modal */}
+      {rejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRejectModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-[var(--foreground)]">驳回请假申请</p>
+            <p className="text-xs text-[var(--muted-foreground)] mt-1">请填写驳回原因（必填）</p>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="驳回原因..."
+              className="mt-3 w-full h-24 rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none"
+              autoFocus
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && rejectReason.trim()) { e.preventDefault(); handleConfirmReject(); } }}
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setRejectModal(null); setRejectReason(""); }}>取消</Button>
+              <Button size="sm" onClick={handleConfirmReject} disabled={!rejectReason.trim() || rejecting}
+                className="bg-red-500 hover:bg-red-600 text-white">{rejecting ? "驳回中…" : "确认驳回"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
 
     </div>
