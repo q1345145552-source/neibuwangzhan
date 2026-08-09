@@ -750,9 +750,10 @@ function initTables(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS leave_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_name TEXT NOT NULL,
-      leave_type TEXT DEFAULT '事假' CHECK(leave_type IN ('事假','病假','年假','其他')),
+      leave_type TEXT DEFAULT '事假' CHECK(leave_type IN ('事假','病假','年假','调休','法定假日','其他')),
       start_date TEXT NOT NULL,
       end_date TEXT NOT NULL,
+      destination TEXT DEFAULT '',
       reason TEXT DEFAULT '',
       status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
       approved_by TEXT DEFAULT '',
@@ -764,6 +765,62 @@ function initTables(database: Database.Database) {
 
   // leave_requests 迁移：补 images 列
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
+  // leave_requests 迁移：补 destination 列
+  try { database.exec("ALTER TABLE leave_requests ADD COLUMN destination TEXT DEFAULT ''"); } catch {}
+  // leave_requests 迁移：更新 leave_type CHECK 约束（调休/法定假日）
+  try {
+    database.exec("ALTER TABLE leave_requests RENAME TO leave_requests_old");
+    database.exec(`
+      CREATE TABLE leave_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_name TEXT NOT NULL,
+        leave_type TEXT DEFAULT '事假' CHECK(leave_type IN ('事假','病假','年假','调休','法定假日','其他')),
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        destination TEXT DEFAULT '',
+        reason TEXT DEFAULT '',
+        status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
+        approved_by TEXT DEFAULT '',
+        approved_at TEXT,
+        images TEXT DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    database.exec("INSERT INTO leave_requests SELECT id, employee_name, leave_type, start_date, end_date, COALESCE(destination,''), reason, status, approved_by, approved_at, COALESCE(images,'[]'), created_at FROM leave_requests_old");
+    database.exec("DROP TABLE leave_requests_old");
+  } catch {}
+
+
+  // 泰国法定假日表（每年13天固定假日）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS thai_holidays (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      year INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  // 写入 2026 年泰国法定假日（13天），INSERT OR IGNORE 防重复
+  try {
+    const holidayInsert = database.prepare("INSERT OR IGNORE INTO thai_holidays (year, date, name) VALUES (?, ?, ?)");
+    const holidays2026 = [
+      ["2026-01-01", "元旦 (วันขึ้นปีใหม่)"],
+      ["2026-03-03", "万佛节 (วันมาฆบูชา)"],
+      ["2026-04-06", "扎克里王朝纪念日 (วันจักรี)"],
+      ["2026-04-13", "宋干节·泼水节 (วันสงกรานต์)"],
+      ["2026-04-14", "宋干节·家庭日 (วันสงกรานต์)"],
+      ["2026-04-15", "宋干节·敬老日 (วันสงกรานต์)"],
+      ["2026-05-01", "劳动节 (วันแรงงานแห่งชาติ)"],
+      ["2026-05-04", "国王加冕纪念日 (วันฉัตรมงคล)"],
+      ["2026-05-24", "佛诞节 (วันวิสาขบูชา)"],
+      ["2026-07-28", "国王诞辰 (วันเฉลิมพระชนมพรรษา)"],
+      ["2026-08-12", "母亲节 (วันแม่แห่งชาติ)"],
+      ["2026-10-13", "拉玛九世纪念日 (วันคล้ายวันสวรรคต)"],
+      ["2026-12-05", "父亲节 (วันพ่อแห่งชาติ)"],
+    ];
+    for (const h of holidays2026) holidayInsert.run(2026, h[0], h[1]);
+  } catch {}
 
   // 奖惩制度 - 积分规则表
   database.exec(`
