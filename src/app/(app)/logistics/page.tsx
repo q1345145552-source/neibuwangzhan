@@ -75,14 +75,16 @@ export default function LogisticsPage() {
     if (t === "all") return orders;
     if (t === "in_progress") return orders.filter(o => o.progress !== "已完成");
     if (t === "this_week") {
-      const now = new Date();
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
+      // 用曼谷时间算本周起点，避免本地时区偏差导致误判
+      const bkkNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+      const bkkDow = bkkNow.getDay();
+      const bkkStart = new Date(bkkNow);
+      bkkStart.setDate(bkkNow.getDate() - bkkDow);
+      bkkStart.setHours(0, 0, 0, 0);
       return orders.filter(o => {
         if (!o.created_at) return false;
         const d = new Date(o.created_at.replace(" ", "T") + "+07:00");
-        return d >= startOfWeek;
+        return d >= bkkStart;
       });
     }
     if (t === "delayed") {
@@ -332,7 +334,7 @@ export default function LogisticsPage() {
       ) : searchedOrders.length === 0 ? (
         <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">
           <Package className="size-8 mx-auto mb-2 opacity-30" />
-          {activeFilter ? "当前筛选无匹配结果" : "暂无轨迹记录，点击「新建订单」开始"}
+          {(activeFilter || search) ? "当前筛选无匹配结果" : "暂无轨迹记录，点击「新建订单」开始"}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
