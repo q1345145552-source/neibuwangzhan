@@ -5,7 +5,7 @@ import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Plus, Package, MapPin, User, Clock, TrendingUp, Calendar, AlertTriangle, BarChart3 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, toThaiTime } from "@/lib/utils";
 
 interface ShippingOrder {
   id: number;
@@ -125,12 +125,6 @@ export default function LogisticsPage() {
     finally { setSaving(false); }
   };
 
-  const formatTime = (t: string) => {
-    if (!t) return "—";
-    return new Date(t.replace(" ", "T") + "+07:00").toLocaleString("zh-CN", {
-      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
-    });
-  };
 
   const maxWh = Math.max(1, ...Object.values(stats?.whCounts || {}));
 
@@ -373,7 +367,7 @@ export default function LogisticsPage() {
                     <span className="inline-flex items-center gap-1"><User className="size-3" />{o.creator || "—"}</span>
                   </td>
                   <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">
-                    <span className="inline-flex items-center gap-1"><Clock className="size-3" />{formatTime(o.created_at)}</span>
+                    <span className="inline-flex items-center gap-1"><Clock className="size-3" />{toThaiTime(o.created_at)}</span>
                   </td>
                 </tr>
               ))}
