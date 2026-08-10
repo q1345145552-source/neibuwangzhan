@@ -43,6 +43,7 @@ export default function LogisticsPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterState | null>(null);
+  const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ cabinet_number: "", warehouse: "义乌" });
   const [saving, setSaving] = useState(false);
@@ -94,6 +95,18 @@ export default function LogisticsPage() {
     return orders;
   })();
 
+  // ── 搜索过滤：柜号/仓库/创建人/进度 任意字段匹配 ──
+  const searchedOrders = (() => {
+    if (!search.trim()) return filteredOrders;
+    const q = search.trim().toLowerCase();
+    return filteredOrders.filter(o =>
+      o.cabinet_number.toLowerCase().includes(q) ||
+      o.warehouse.toLowerCase().includes(q) ||
+      o.creator.toLowerCase().includes(q) ||
+      o.progress.toLowerCase().includes(q)
+    );
+  })();
+
   const handleCreate = async () => {
     if (!form.cabinet_number.trim()) { setError("请输入柜号"); return; }
     setSaving(true);
@@ -140,6 +153,20 @@ export default function LogisticsPage() {
             <Plus className="size-4 mr-1.5" />新建订单
           </Button>
         </div>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="搜索柜号、仓库、创建人、进度..."
+          className="h-9 w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+        />
+        {search && (
+          <Button variant="ghost" size="sm" onClick={() => setSearch("")}>清除</Button>
+        )}
       </div>
 
       {/* Error */}
@@ -308,7 +335,7 @@ export default function LogisticsPage() {
       {/* Table */}
       {loading ? (
         <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">加载中…</div>
-      ) : filteredOrders.length === 0 ? (
+      ) : searchedOrders.length === 0 ? (
         <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">
           <Package className="size-8 mx-auto mb-2 opacity-30" />
           {activeFilter ? "当前筛选无匹配结果" : "暂无轨迹记录，点击「新建订单」开始"}
@@ -326,7 +353,7 @@ export default function LogisticsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map(o => (
+              {searchedOrders.map(o => (
                 <tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]/30 transition-colors">
                   <td className="py-3 px-5 font-medium text-[var(--foreground)]">
                     <Link href={`/logistics/${o.id}`} className="hover:underline">{o.cabinet_number}</Link>
