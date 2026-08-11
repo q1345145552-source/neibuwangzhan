@@ -182,18 +182,29 @@ export default function InternalPage() {
   };
 
   const loadAll = async () => {
-    if (!user?.name) return; // 等待认证加载完成
-    // 每个接口独立请求，单个失败不影响其他数据更新
+    if (!user?.name) return;
     const leaveUrl = isAdmin ? "/api/leave" : `/api/leave?employee=${encodeURIComponent(user?.name || "")}`;
-    
-    fetchWithAuth("/api/internal/workload", { cache: "no-store" })
-      .then(r => r.json()).then(setWl).catch(e => console.error("[内部管理] 工作量加载失败", e));
-    fetchWithAuth("/api/issues", { cache: "no-store" })
-      .then(r => r.json()).then(setIssues).catch(e => console.error("[内部管理] 工单加载失败", e));
-    fetchWithAuth(leaveUrl, { cache: "no-store" })
-      .then(r => r.json()).then(setLeaves).catch(e => console.error("[内部管理] 请假加载失败", e));
-    fetchWithAuth(`/api/notifications?recipient=${encodeURIComponent(user?.name || "")}&limit=30`, { cache: "no-store" })
-      .then(r => r.json()).then(setNotifications).catch(e => console.error("[内部管理] 通知加载失败", e));
+
+    // 安全加载 JSON — 每个接口独立请求，验证数据格式，单个失败不影响其他
+    const safeLoad = async (url: string, label: string, validator: (d: any) => boolean): Promise<any> => {
+      try {
+        const res = await fetchWithAuth(url, { cache: "no-store" });
+        if (!res.ok) { console.error(`[内部管理] ${label} HTTP ${res.status}`); return null; }
+        const raw = await res.json().catch(() => null);
+        if (raw == null) { console.error(`[内部管理] ${label} 响应非 JSON`); return null; }
+        if (!validator(raw)) { console.error(`[内部管理] ${label} 数据格式异常`, raw); return null; }
+        return raw;
+      } catch (e) { console.error(`[内部管理] ${label} 加载失败`, e); return null; }
+    };
+
+    safeLoad("/api/internal/workload", "工作量", (d: any) => d && Array.isArray(d?.employees))
+      .then(d => { if (d) setWl(d as WorkloadData); });
+    safeLoad("/api/issues", "工单", (d: any) => Array.isArray(d))
+      .then(d => { if (d) setIssues(d as IssueTicket[]); });
+    safeLoad(leaveUrl, "请假", (d: any) => Array.isArray(d))
+      .then(d => { if (d) setLeaves(d as LeaveRequest[]); });
+    safeLoad(`/api/notifications?recipient=${encodeURIComponent(user?.name || "")}&limit=30`, "通知", (d: any) => Array.isArray(d))
+      .then(d => { if (d) setNotifications(d as Notification[]); });
   };
 
   const isWithinDays = (dateStr: string, days: number) => {
@@ -894,7 +905,7 @@ export default function InternalPage() {
           </div>
           <div className="p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {todayStatuses.map(s => (
+              {(Array.isArray(todayStatuses) ? todayStatuses : []).map(s => (
                 <div key={s.name} className={cn(
                   "rounded-lg border p-3 text-center",
                   s.isOnLeave ? "border-blue-200 bg-blue-50 dark:bg-blue-950/20" :
@@ -950,10 +961,10 @@ export default function InternalPage() {
               </tr>
             </thead>
             <tbody>
-              {monthlySummaries.length === 0 ? (
+              {(Array.isArray(monthlySummaries) ? monthlySummaries : []).length === 0 ? (
                 <tr><td colSpan={8} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
               ) : (
-                monthlySummaries.map(m => (
+                (Array.isArray(monthlySummaries) ? monthlySummaries : []).map(m => (
                   <tr key={m.name} className="border-b border-[var(--border)] hover:bg-[var(--muted)]/20">
                     <td className="py-2.5 px-4 font-medium">{m.name}</td>
                     <td className="py-2.5 px-3 text-center tabular-nums">{m.totalHours}</td>
@@ -1046,7 +1057,7 @@ export default function InternalPage() {
               for (let i = 0; i < offset; i++) cells.push(<div key={"e"+i} className="rounded" />);
               for (let d2 = 1; d2 <= lastDate; d2++) {
                 const ds = `${calendarMonth}-${String(d2).padStart(2,"0")}`;
-                const rec = calendarData.find((r:any) => r.date === ds);
+                const rec = (Array.isArray(calendarData) ? calendarData : []).find((r:any) => r.date === ds);
                 const isSunday = bangkokDayOfWeek(`${yr}-${String(mo).padStart(2,"0")}-${String(d2).padStart(2,"0")}`) === 0;
                 let bg = "bg-gray-50 dark:bg-gray-900/20";
                 let label = "";
@@ -1270,7 +1281,7 @@ export default function InternalPage() {
           <div className="px-5 py-4 border-b border-[var(--border)]">
             <h2 className="text-sm font-medium flex items-center gap-2"><History className="size-4" />补卡审批</h2>
           </div>
-          {attendanceRequests.filter(r => r.status === "待审批").length === 0 ? (
+          {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status === "待审批").length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无待审批的补卡申请</div>
           ) : (
             <div className="overflow-x-auto">
@@ -1289,7 +1300,7 @@ export default function InternalPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {attendanceRequests.filter(r => r.status === "待审批").map(r => (
+                  {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status === "待审批").map(r => (
                     <tr key={r.id} className="border-b border-[var(--border)]">
                       <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>
                       <td className="py-2.5 px-4">{r.date}</td>
@@ -1308,14 +1319,14 @@ export default function InternalPage() {
               </table>
             </div>
           )}
-        {attendanceRequests.filter(r => r.status !== "待审批").length > 0 && (
+        {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批").length > 0 && (
           <div className="border-t border-[var(--border)]">
             {!showAtdHistory ? (
               <button
                 className="w-full px-5 py-3 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors text-left"
                 onClick={() => setShowAtdHistory(true)}
               >
-                历史记录 ({attendanceRequests.filter(r => r.status !== "待审批").length})
+                历史记录 ({(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批").length})
               </button>
             ) : (
               <div className="px-5 py-3">
@@ -1337,18 +1348,18 @@ export default function InternalPage() {
                   <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]" onClick={() => setShowAtdHistory(false)}>收起</button>
                 </div>
                 {(atdHistoryFilter === "7d"
-                  ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 7))
+                  ? (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 7))
                   : atdHistoryFilter === "30d"
-                  ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
-                  : attendanceRequests.filter(r => r.status !== "待审批")
+                  ? (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
+                  : (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批")
                 ).length === 0 ? (
                   <p className="text-xs text-[var(--muted-foreground)] py-2">该时间段内无记录</p>
                 ) : (
                   (atdHistoryFilter === "7d"
-                    ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 7))
+                    ? (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 7))
                     : atdHistoryFilter === "30d"
-                    ? attendanceRequests.filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
-                    : attendanceRequests.filter(r => r.status !== "待审批")
+                    ? (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
+                    : (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批")
                   ).map(r => (
                     <div key={r.id} className="flex items-center justify-between py-1 text-xs">
                       <span>{r.employee_name} · {r.date} {r.time}</span>
@@ -1367,11 +1378,11 @@ export default function InternalPage() {
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="text-sm font-medium flex items-center gap-2"><Bell className="size-4" />通知中心</h2>
-          {notifications.some(n => n.is_read === 0) && (
+          {(Array.isArray(notifications) ? notifications : []).some(n => n.is_read === 0) && (
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={markAllNotifRead}>全部已读</Button>
           )}
         </div>
-        {notifications.length === 0 ? (
+        {(Array.isArray(notifications) ? notifications : []).length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无通知</div>
         ) : (
           <div className="max-h-[480px] overflow-y-auto">
@@ -1649,7 +1660,7 @@ export default function InternalPage() {
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-medium flex items-center gap-2"><FileEdit className="size-4" />问题工单 ({(() => {
             const now = Date.now(); const today = new Date().toDateString();
-            return issues.filter(t => {
+            return (Array.isArray(issues) ? issues : []).filter(t => {
               const d = new Date(t.created_at);
               if (issueDateFilter === "today" && d.toDateString() !== today) return false;
               if (issueDateFilter === "7" && d < new Date(now - 7*86400000)) return false;
@@ -1686,7 +1697,7 @@ export default function InternalPage() {
           </select>
           <select value={issueCreatorFilter} onChange={e=>setIssueCreatorFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部创建人</option>
-            {[...new Set(issues.map(t=>t.created_by).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+            {[...new Set((Array.isArray(issues)?issues:[]).map(t=>t.created_by).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
           </select>
         </div>
 
@@ -1741,7 +1752,7 @@ export default function InternalPage() {
 
         {(() => {
           const now = Date.now(); const today = new Date().toDateString();
-          const filtered = issues.filter(t => {
+          const filtered = (Array.isArray(issues) ? issues : []).filter(t => {
             const d = new Date(t.created_at);
             if (issueDateFilter === "today" && d.toDateString() !== today) return false;
             if (issueDateFilter === "7" && d < new Date(now-7*86400000)) return false;
@@ -2013,7 +2024,7 @@ export default function InternalPage() {
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />{isAdmin ? "请假审批" : "我的请假"} ({(()=>{
             const now=Date.now();const today=new Date().toDateString();
-            return leaves.filter(l=>{
+            return (Array.isArray(leaves) ? leaves : []).filter(l=>{
               const d=new Date(l.created_at);
               if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
               if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
@@ -2052,7 +2063,7 @@ export default function InternalPage() {
           <span className="text-[var(--border)] mx-1">|</span>
           <select value={leaveEmployeeFilter} onChange={e=>setLeaveEmployeeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部申请人</option>
-            {[...new Set(leaves.map(l=>l.employee_name).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+            {[...new Set((Array.isArray(leaves)?leaves:[]).map(l=>l.employee_name).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
           </select>
           <select value={leaveStatusFilter} onChange={e=>setLeaveStatusFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部状态</option>
@@ -2164,7 +2175,7 @@ export default function InternalPage() {
 
         {(() => {
           const now=Date.now();const today=new Date().toDateString();
-          const filtered=leaves.filter(l=>{
+          const filtered=(Array.isArray(leaves)?leaves:[]).filter(l=>{
             const d=new Date(l.created_at);
             if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
             if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
