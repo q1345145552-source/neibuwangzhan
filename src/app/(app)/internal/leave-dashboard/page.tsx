@@ -7,6 +7,9 @@ import { cn } from "@/lib/utils";
 export default function LeaveDashboardPage() {
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [detailModal, setDetailModal] = useState<{ employee: string; month: string } | null>(null);
+  const [detailRecords, setDetailRecords] = useState<any[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/leave/dashboard")
@@ -35,6 +38,23 @@ export default function LeaveDashboardPage() {
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  const loadDetail = async (employee: string, month: string) => {
+    setDetailModal({ employee, month });
+    setDetailLoading(true);
+    setDetailRecords([]);
+    try {
+      const res = await fetchWithAuth(`/api/leave?employee=${encodeURIComponent(employee)}&month=${month}`, { cache: "no-store" });
+      if (!res.ok) { console.error("加载详情失败", res.status); setDetailRecords([]); }
+      else {
+        const data = await res.json();
+        setDetailRecords(Array.isArray(data) ? data : []);
+      }
+    } catch (e) { console.error("加载详情异常", e); }
+    setDetailLoading(false);
   };
 
   if (loading) return <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">加载中…</div>;
@@ -118,8 +138,8 @@ export default function LeaveDashboardPage() {
                 </thead>
                 <tbody>
                   {dashboard.monthStats.map((s: any) => (
-                    <tr key={s.employee_name} className="border-b border-[var(--border)] last:border-0">
-                      <td className="py-2 px-3 font-medium">{s.employee_name}</td>
+                    <tr key={s.employee_name} className="border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-[var(--muted)]/30 transition-colors" onClick={() => loadDetail(s.employee_name, currentMonth)}>
+                      <td className="py-2 px-3 font-medium text-blue-600 hover:underline">{s.employee_name}</td>
                       <td className="py-2 px-3 text-center">{s.sick || 0}</td>
                       <td className="py-2 px-3 text-center">{s.personal || 0}</td>
                       <td className="py-2 px-3 text-center">{s.annual || 0}</td>
@@ -147,9 +167,9 @@ export default function LeaveDashboardPage() {
               <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-3">🔴 病假重点关注</p>
               <div className="space-y-2">
                 {dashboard.sickLeaders.map((s: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="font-medium">{s.employee_name}</span>
-                    <span className="text-red-600 font-bold">{s.sick}次</span>
+                  <div key={i} className="flex items-center justify-between cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => loadDetail(s.employee_name, currentMonth)}>
+                    <span className="font-medium text-blue-600 hover:underline">{s.employee_name}</span>
+                    <span className="text-red-600 font-bold">{s.sick}次 ▸</span>
                   </div>
                 ))}
               </div>
@@ -167,8 +187,8 @@ export default function LeaveDashboardPage() {
               <p className="text-sm font-medium text-orange-600 dark:text-orange-400 mb-3">⚠️ 拼假嫌疑（{dashboard.bridgeSuspects.length} 条）</p>
               <div className="space-y-3">
                 {dashboard.bridgeSuspects.map((b: any, i: number) => (
-                  <div key={i} className="text-sm">
-                    <p className="font-medium text-[var(--foreground)]">{b.employee_name}</p>
+                  <div key={i} className="text-sm cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => loadDetail(b.employee_name, currentMonth)}>
+                    <p className="font-medium text-blue-600 hover:underline">{b.employee_name}</p>
                     <p className="text-xs text-[var(--muted-foreground)]">{b.start_date} ~ {b.end_date}</p>
                     <p className="text-xs text-orange-600">卡到：{b.holidays.map((h: any) => h.date + " " + h.name.split(" (")[0]).join("、")}</p>
                   </div>
@@ -183,6 +203,53 @@ export default function LeaveDashboardPage() {
           )}
         </div>
       </div>
+      {/* ── 请假明细弹窗 ── */}
+      {detailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDetailModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-lg w-full mx-4 max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">{detailModal.employee} · {detailModal.month} 请假明细</h3>
+              <button onClick={() => setDetailModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {detailLoading ? (
+              <p className="text-sm text-[var(--muted-foreground)] text-center py-8">加载中…</p>
+            ) : detailRecords.length === 0 ? (
+              <p className="text-sm text-[var(--muted-foreground)] text-center py-8">{detailModal.month} 无请假记录</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+                    <th className="py-2 px-3 text-left text-xs font-medium">类型</th>
+                    <th className="py-2 px-3 text-left text-xs font-medium">日期</th>
+                    <th className="py-2 px-3 text-right text-xs font-medium">天数</th>
+                    <th className="py-2 px-3 text-center text-xs font-medium">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailRecords.map((r: any, i: number) => {
+                    const s = new Date(r.start_date);
+                    const e = new Date(r.end_date);
+                    const days = Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
+                    return (
+                      <tr key={i} className="border-b border-[var(--border)] last:border-0">
+                        <td className="py-2 px-3">{r.leave_type}</td>
+                        <td className="py-2 px-3 text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</td>
+                        <td className="py-2 px-3 text-right">{days}天</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
