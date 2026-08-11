@@ -235,24 +235,31 @@ export default function InternalPage() {
 
   const latestAttendance = useLatestRequest();
   const loadAttendance = async () => {
-    // 领号：切换统计月份时旧响应不能覆盖新的
     const run = latestAttendance();
-    try {
-      const today = new Date().toISOString().split("T")[0];
-      const [attRes, todayRes, sumRes, reqRes] = await Promise.all([
-        fetchWithAuth(`/api/attendance?employee=${user?.name || ""}`, { cache: "no-store" }),
-        fetchWithAuth("/api/attendance/today", { cache: "no-store" }),
-        fetchWithAuth(`/api/attendance/summary?month=${summaryMonth}`, { cache: "no-store" }),
-        fetchWithAuth("/api/attendance/request", { cache: "no-store" }),
-      ]);
-      const attData = await attRes.json();
-      const [todayData, sumData, reqData] = await Promise.all([todayRes.json(), sumRes.json(), reqRes.json()]);
-      if (!run.isLatest()) return;
-      setTodayRecord((Array.isArray(attData) ? attData : []).find((r: any) => r.date === today) || null);
-      setTodayStatuses(todayData);
-      setMonthlySummaries(sumData);
-      setAttendanceRequests(reqData);
-    } catch (e) { console.error("[内部管理] 加载考勤数据失败", e); }
+    const today = new Date().toISOString().split("T")[0];
+
+    // 四个考勤接口各自独立加载，互不拖垮
+    const safeFetch = async (url: string, label: string) => {
+      try {
+        const res = await fetchWithAuth(url, { cache: "no-store" });
+        if (!res.ok) { console.error(`[内部管理] ${label} HTTP ${res.status}`); return []; }
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (e) { console.error(`[内部管理] ${label} 加载失败`, e); return []; }
+    };
+
+    const [attData, todayData, sumData, reqData] = await Promise.all([
+      safeFetch(`/api/attendance?employee=${user?.name || ""}`, "考勤记录"),
+      safeFetch("/api/attendance/today", "今日考勤"),
+      safeFetch(`/api/attendance/summary?month=${summaryMonth}`, "考勤汇总"),
+      safeFetch("/api/attendance/request", "补卡请求"),
+    ]);
+
+    if (!run.isLatest()) return;
+    setTodayRecord((attData).find((r: any) => r.date === today) || null);
+    setTodayStatuses(todayData);
+    setMonthlySummaries(sumData);
+    setAttendanceRequests(reqData);
   };
 
   useEffect(() => {
