@@ -1,39 +1,54 @@
-const CACHE_NAME = "xiangtai-v3-" + Date.now();
+const CACHE_NAME = "xiangtai-v4-" + Date.now();
 
-// 不缓存任何 API 请求
+// API 请求不拦截
 function isApiRequest(url) {
   return url.pathname.startsWith("/api/");
 }
 
-self.addEventListener("install", (event) => {
-  // 安装时直接激活，不等待旧 worker 关闭
+// 只缓存静态资源文件，不缓存页面 HTML
+function isStaticAsset(url) {
+  var ext = url.pathname.split(".").pop();
+  if (!ext) return false;
+  ext = ext.toLowerCase();
+  var exts = ["js","css","png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot","webp","avif","mp3","mp4","json","xml"];
+  return exts.indexOf(ext) !== -1;
+}
+
+self.addEventListener("install", function(event) {
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
-  // 清空所有旧缓存
+self.addEventListener("activate", function(event) {
   event.waitUntil(
-    caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n))))
+    caches.keys().then(function(names) {
+      return Promise.all(names.map(function(n) { return caches.delete(n); }));
+    })
   );
-  // 立即接管所有页面
   event.waitUntil(clients.claim());
 });
 
-self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== "GET") return;
-  if (isApiRequest(url)) return; // API 请求不走缓存
+self.addEventListener("fetch", function(event) {
+  try {
+    var url = new URL(event.request.url);
+    if (event.request.method !== "GET") return;
+    if (isApiRequest(url)) return;
+    // 页面请求直接放行，不做任何拦截
+    if (!isStaticAsset(url)) return;
 
-  // 网络优先策略：先走网络，网络失败才用缓存
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+    // 静态资源：网络优先，失败降级缓存
+    event.respondWith(
+      fetch(event.request).then(function(response) {
+        if (response.ok) {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) { cache.put(event.request, clone); });
         }
         return response;
+      }).catch(function() {
+        return caches.match(event.request);
       })
-      .catch(() => caches.match(event.request))
-  );
+    );
+  } catch (e) {
+    // SW 内部异常时直接放行，不拦截页面
+    return;
+  }
 });
