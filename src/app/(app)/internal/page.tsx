@@ -2025,7 +2025,7 @@ export default function InternalPage() {
           <h2 className="text-sm font-medium flex items-center gap-2"><UserCheck className="size-4" />{isAdmin ? "请假审批" : "我的请假"} ({(()=>{
             const now=Date.now();const today=new Date().toDateString();
             return (Array.isArray(leaves) ? leaves : []).filter(l=>{
-              const d=new Date(l.created_at);
+              const d=l.created_at?new Date(l.created_at):new Date(0);
               if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
               if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
               if(leaveDateFilter==="30"&&d<new Date(now-30*86400000))return false;
@@ -2176,7 +2176,7 @@ export default function InternalPage() {
         {(() => {
           const now=Date.now();const today=new Date().toDateString();
           const filtered=(Array.isArray(leaves)?leaves:[]).filter(l=>{
-            const d=new Date(l.created_at);
+            const d=l.created_at?new Date(l.created_at):new Date(0);
             if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
             if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
             if(leaveDateFilter==="30"&&d<new Date(now-30*86400000))return false;
@@ -2210,7 +2210,7 @@ export default function InternalPage() {
               <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
             </tr></thead><tbody>{list.map(l=>(
               <tr key={l.id} className={cn("border-b border-[var(--border)]",
-                    l.status === "待审批" && (Date.now() - new Date(l.created_at.replace(" ","T") + "+07:00").getTime()) > 86400000 ? "bg-amber-50 dark:bg-amber-950/20" : ""
+                    l.status === "待审批" && l.created_at && (Date.now() - new Date(l.created_at.replace(" ","T") + "+07:00").getTime()) > 86400000 ? "bg-amber-50 dark:bg-amber-950/20" : ""
                   )}>
                 {isAdmin&&(
                   <td className={cn("py-2.5 px-4 font-medium",
@@ -2223,7 +2223,7 @@ export default function InternalPage() {
                   </td>
                 )}
                 <td className="py-2.5 px-4">{l.leave_type}</td>
-                <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date} {l.start_time || "09:00"} ~ {l.end_date} {l.end_time || "17:00"}</td>
+                <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination||"—"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason||"—"}</td>
                 <td className="py-2.5 px-4">
@@ -2233,6 +2233,7 @@ export default function InternalPage() {
                   <td className="py-2.5 px-2">
                     {(() => {
                       if (l.leave_type !== "病假") return <span className="text-[var(--muted-foreground)]/30">—</span>;
+                      if (!l.start_date || !l.end_date) return <span className="text-[var(--muted-foreground)]/30">—</span>;
                       const ls = new Date(l.start_date + "T00:00:00+07:00");
                       const le = new Date(l.end_date + "T00:00:00+07:00");
                       const extS = new Date(ls); extS.setDate(ls.getDate() - 1);
