@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Plus, Package, MapPin, User, Clock, TrendingUp, Calendar, AlertTriangle, BarChart3 } from "lucide-react";
+import { Plus, Package, MapPin, User, Clock, TrendingUp, Calendar, AlertTriangle, BarChart3, Trash2 } from "lucide-react";
 import { cn, toThaiTime } from "@/lib/utils";
 
 interface ShippingOrder {
@@ -48,6 +48,9 @@ export default function LogisticsPage() {
   const [form, setForm] = useState({ cabinet_number: "", warehouse: "义乌" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ShippingOrder | null>(null);
+  const [deleteErr, setDeleteErr] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -108,6 +111,23 @@ export default function LogisticsPage() {
       o.progress.toLowerCase().includes(q)
     );
   })();
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    setDeleteErr("");
+    try {
+      const res = await fetchWithAuth(`/api/logistics/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setDeleteTarget(null);
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setDeleteErr(e.error || "删除失败");
+      }
+    } catch { setDeleteErr("网络错误，请重试"); }
+    finally { setDeletingId(null); }
+  };
 
   const handleCreate = async () => {
     if (!form.cabinet_number.trim()) { setError("请输入柜号"); return; }
@@ -346,6 +366,7 @@ export default function LogisticsPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">进度</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">创建人</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">创建时间</th>
+                <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -371,10 +392,51 @@ export default function LogisticsPage() {
                   <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">
                     <span className="inline-flex items-center gap-1"><Clock className="size-3" />{toThaiTime(o.created_at)}</span>
                   </td>
+                  <td className="py-3 px-4 text-right">
+                    <button
+                      onClick={() => { setDeleteTarget(o); setDeleteErr(""); }}
+                      disabled={deletingId === o.id}
+                      className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                      title="删除柜号订单"
+                    >
+                      <Trash2 className="size-3.5" />删除
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !deletingId && setDeleteTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">删除柜号订单</h3>
+              <button onClick={() => !deletingId && setDeleteTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">×</button>
+            </div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              确认删除柜号 <span className="font-medium text-[var(--foreground)]">{deleteTarget.cabinet_number}</span>？
+            </p>
+            <p className="mt-1 text-xs text-red-500">
+              该柜号、八步流程、所有备注和上传文件都会被彻底删除，无法恢复。
+            </p>
+            {deleteErr && <p className="mt-2 text-xs text-[var(--destructive)]">{deleteErr}</p>}
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={handleDelete}
+                disabled={deletingId === deleteTarget.id}
+                className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >{deletingId === deleteTarget.id ? "删除中…" : "确认删除"}</button>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingId === deleteTarget.id}
+                className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+              >取消</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
