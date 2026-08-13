@@ -1,17 +1,57 @@
 import Database from "better-sqlite3";
+import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
 
-const DB_PATH = path.join(process.cwd(), "data.db");
+// 默认取 cwd/data.db（容器里 start.sh 会把它软链到挂载卷）。
+// 允许用 DB_PATH 覆盖，方便排查"到底连的是哪个库"。
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), "data.db");
 
 let db: Database.Database;
 
 export function getDb(): Database.Database {
   if (!db) {
+    // 开库之前先看文件在不在。better-sqlite3 打不开会自动新建一个空库，
+    // 空库 → 种子数据 → 所有账号密码变回 123456，而且业务数据全空。
+    // 这正是"每次部署密码都被重置"的表现：不是密码被改了，是根本换了个库。
+    // 起因通常是挂载没生效（compose 的 volumes 改了、命名卷换成 bind mount、
+    // 宿主机目录不存在），应用于是在容器内部自己建了个库，重启就没。
+    const existedBefore = fs.existsSync(DB_PATH);
+
     db = new Database(DB_PATH);
     db.pragma("journal_mode = DELETE");
     db.pragma("foreign_keys = ON");
+
+    if (!existedBefore) {
+      const msg = [
+        "",
+        "============================================================",
+        "  ⚠️  数据库文件不存在，已新建一个空库",
+        `      路径: ${DB_PATH}`,
+        "",
+        "      如果这不是首次部署，说明挂载没生效——你正在往一个",
+        "      临时的空库里写数据，容器重建后会全部丢失，",
+        "      且所有账号密码会重置为初始密码。",
+        "",
+        "      排查：docker inspect <容器> 看 /app/data 挂到了哪，",
+        "            确认宿主机目录里有 data.db，且 /app/data.db",
+        "            是指向它的软链接。",
+        "============================================================",
+        "",
+      ].join("\n");
+      console.error(msg);
+      // 生产环境默认拒绝启动：宁可起不来让人立刻发现，也不要静默地
+      // 往空库里写一整天数据，第二天部署时全部蒸发。
+      // 确实是首次部署 / 有意重建时，设 ALLOW_EMPTY_DB=1 放行。
+      if (process.env.NODE_ENV === "production" && process.env.ALLOW_EMPTY_DB !== "1") {
+        throw new Error(
+          `数据库 ${DB_PATH} 不存在。若确为首次部署，请设置环境变量 ALLOW_EMPTY_DB=1 后重启；` +
+          `否则请检查数据卷挂载——继续运行会导致数据丢失和密码重置。`
+        );
+      }
+    }
+
     initTables(db);
     seedData(db);
     migrateInfluencersCheck(db);

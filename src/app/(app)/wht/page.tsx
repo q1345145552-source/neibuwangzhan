@@ -133,6 +133,9 @@ export default function WhtPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
   const [profileCustomerId, setProfileCustomerId] = useState<number | null>(null);
+  const [singleGenOpen, setSingleGenOpen] = useState(false);
+  const [singleCustomerId, setSingleCustomerId] = useState<number | "">("");
+  const [singleGenLoading, setSingleGenLoading] = useState(false);
 
   // Import
   const [importingCsv, setImportingCsv] = useState(false);
@@ -395,6 +398,32 @@ export default function WhtPage() {
     finally { setLoading(false); }
   };
 
+  // Single customer generate
+  const handleSingleGenerate = async () => {
+    if (!singleCustomerId) { setError("请选择客户"); return; }
+    const subtype = activeTab === "wht1" ? "ภ.ง.ด.1" : "ภ.ง.ด.53";
+    setSingleGenLoading(true);
+    setError("");
+    try {
+      const res = await fetchWithAuth("/api/wht/records", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: singleCustomerId, year_month: recordMonth, subtype }),
+      });
+      if (res.ok) {
+        const row = await res.json();
+        setError("");
+        setSingleGenOpen(false);
+        setSingleCustomerId("");
+        alert(`已为「${row.company_name || ""}」生成 ${recordMonth} 的 ${subtype} 申报记录`);
+        loadRecords();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.error || "生成失败");
+      }
+    } catch { setError("生成失败，请检查网络"); }
+    finally { setSingleGenLoading(false); }
+  };
+
   // Expand/collapse record steps
   const toggleExpand = async (recordId: number) => {
     if (expandedRecord === recordId) { setExpandedRecord(null); return; }
@@ -643,6 +672,9 @@ export default function WhtPage() {
                 className="rounded border px-3 py-2 text-sm" />
               <Button size="sm" onClick={handleGenerate} disabled={loading} className="gap-1.5">
                 <Plus className="size-3.5" />批量生成当月记录
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setSingleGenOpen(true); setError(""); }} className="gap-1.5">
+                <Plus className="size-3.5" />单个生成
               </Button>
             </div>
           </div>
@@ -1100,6 +1132,52 @@ export default function WhtPage() {
         </div>
       )}
 
+
+      {/* Single customer generate modal */}
+      {singleGenOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !singleGenLoading && setSingleGenOpen(false)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">单个生成申报记录</h3>
+              <button onClick={() => !singleGenLoading && setSingleGenOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">申报类型</span><span className="font-medium">{activeTab === "wht1" ? "ภ.ง.ด.1" : "ภ.ง.ด.53"}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">申报月份</span><span className="font-medium">{recordMonth}</span></div>
+              <div>
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">选择客户（仅启用状态）</label>
+                <select
+                  value={singleCustomerId}
+                  onChange={e => setSingleCustomerId(e.target.value ? Number(e.target.value) : "")}
+                  className="mt-1 w-full h-10 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                >
+                  <option value="">请选择客户…</option>
+                  {customers.filter((c: WhtCustomer) => c.status === "启用").map((c: WhtCustomer) => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
+                {customers.filter((c: WhtCustomer) => c.status === "启用").length === 0 && (
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">暂无启用状态的客户</p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSingleGenerate}
+                disabled={singleGenLoading || !singleCustomerId}
+                className="flex-1 py-2 rounded-lg bg-[var(--primary)] hover:opacity-90 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >{singleGenLoading ? "生成中…" : "生成"}</button>
+              <button
+                onClick={() => setSingleGenOpen(false)}
+                disabled={singleGenLoading}
+                className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+              >取消</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Customer Profile Panel */}
       {profileCustomerId && (
