@@ -14,9 +14,10 @@ export async function GET(req: NextRequest) {
   let sql = "SELECT * FROM issue_tickets WHERE 1=1";
   const params: any[] = [];
   // 员工只能看自己的工单（指派给自己的、或自己创建的），管理员看全部
+  // assignee 现在支持多选，以逗号分隔存储，用包含匹配判断是否被指派
   if (auth.role !== "admin") {
-    sql += " AND (assignee = ? OR created_by = ?)";
-    params.push(auth.name, auth.name);
+    sql += " AND (',' || assignee || ',' LIKE ? OR created_by = ?)";
+    params.push("%," + auth.name + ",%", auth.name);
   } else {
     if (status) { sql += " AND status = ?"; params.push(status); }
     if (assignee) { sql += " AND assignee = ?"; params.push(assignee); }
@@ -33,15 +34,22 @@ export async function POST(req: NextRequest) {
   const body = await readJson(req);
   const { ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images } = body;
   if (!description?.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
+  // assignee 支持多选：数组转逗号分隔字符串，单个字符串兼容旧调用
+  const assigneeList = Array.isArray(assignee)
+    ? assignee.map((s: any) => String(s).trim()).filter(Boolean)
+    : (typeof assignee === "string" ? [assignee.trim()] : []);
+  const assigneeStr = assigneeList.join(",");
+  if (assigneeList.length === 0) return NextResponse.json({ error: "请至少指定一个解决人" }, { status: 400 });
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
   const result = db.prepare(
     `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assignee || "", created_by || "", imagesJson);
+  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assigneeStr, created_by || "", imagesJson);
   const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
-  if (assignee) {
+  // 每个被指派的员工都发一条通知
+  for (const name of assigneeList) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
-      "issue_assigned", "新问题工单", description, assignee, String(result.lastInsertRowid), "issue"
+      "issue_assigned", "新问题工单", description, name, String(result.lastInsertRowid), "issue"
     );
   }
   return NextResponse.json(row, { status: 201 });
@@ -65,19 +73,27 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "无效的优先级" }, { status: 400 });
   }
 
-  // 归属校验：GET 和 DELETE 都限定了本人，PATCH 却没有——
-  // 任何员工都能改/关闭别人的工单，而"解决工单"是会加分的（issue_resolved +3/个）
-  const ticket = db.prepare("SELECT assignee, created_by FROM issue_tickets WHERE id = ?").get(id) as
-    { assignee: string; created_by: string } | undefined;
+  // 归属校验：员工只能处理指派给自己的或自己创建的工单，管理员可处理全部
+  const ticket = db.prepare("SELECT assignee, created_by, status FROM issue_tickets WHERE id = ?").get(id) as
+    { assignee: string; created_by: string; status: string } | undefined;
   if (!ticket) return NextResponse.json({ error: "工单不存在" }, { status: 404 });
-  if (auth.role !== "admin" && ticket.assignee !== auth.name && ticket.created_by !== auth.name) {
+  const assigneeList = (ticket.assignee || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const isAssignee = assigneeList.includes(auth.name);
+  if (auth.role !== "admin" && !isAssignee && ticket.created_by !== auth.name) {
     return NextResponse.json({ error: "只能处理指派给自己或自己创建的工单" }, { status: 403 });
+  }
+  // 待处理 → 处理中（开始处理）：只有被指派的员工或管理员能操作，创建人不能替别人开工
+  if (auth.role !== "admin" && status === "处理中" && ticket.status === "待处理" && !isAssignee) {
+    return NextResponse.json({ error: "只有被指派的员工才能开始处理此工单" }, { status: 403 });
   }
 
   const sets: string[] = []; const vals: any[] = [];
   // resolved_by 取登录态，不信任请求体
   if (status) { sets.push("status = ?"); vals.push(status); if (status === "已解决") { sets.push("resolved_at = datetime('now')"); sets.push("resolved_by = ?"); vals.push(auth.name); } }
-  if (assignee) { sets.push("assignee = ?"); vals.push(assignee); }
+  if (assignee) {
+    sets.push("assignee = ?");
+    vals.push(Array.isArray(assignee) ? assignee.map((s: any) => String(s).trim()).filter(Boolean).join(",") : assignee);
+  }
   if (body.withdrawn_by) { sets.push("withdrawn_by = ?"); vals.push(body.withdrawn_by); sets.push("withdrawn_at = datetime('now')"); }
   if (description) { sets.push("description = ?"); vals.push(description); }
   if (priority) { sets.push("priority = ?"); vals.push(priority); }
