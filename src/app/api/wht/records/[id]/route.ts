@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
+import { existsSync, unlinkSync } from "fs";
+import path from "path";
+import os from "os";
 
 export async function GET(
   req: NextRequest,
@@ -109,4 +112,76 @@ function syncWhtReconciliation(db: ReturnType<typeof getDb>, customerId: number,
       WHERE customer_id = ? AND year_month = ?
     `).run(total, total, customerId, yearMonth);
   }
+}
+
+
+// DELETE /api/wht/records/[id] — 删除整条申报记录（含步骤、备注、文件、对账）
+// 权限：管理员、Eve、Pop 可删，其他人无权限
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
+  if (auth.role !== "admin" && auth.name !== "Eve" && auth.name !== "Pop") {
+    return NextResponse.json({ error: "没有权限删除申报记录" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const db = getDb();
+
+  const record = db.prepare("SELECT * FROM wht_records WHERE id = ?").get(id) as
+    { id: number; customer_id: number; year_month: string } | undefined;
+  if (!record) return NextResponse.json({ error: "申报记录不存在" }, { status: 404 });
+
+  // 收集所有文件 URL，删除磁盘文件
+  const uploadDirs = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
+  const safeNames = new Set<string>();
+
+  // 1) 步骤备注里的文件引用（"上传文件: xxx (/api/files/xxx)" 等形式）
+  const stepNotes = db.prepare("SELECT content FROM wht_step_notes WHERE record_id = ?").all(id) as { content: string }[];
+  for (const n of stepNotes) {
+    for (const m of (n.content || "").matchAll(/\/api\/files\/([A-Za-z0-9._-]+)/g)) {
+      safeNames.add(m[1]);
+    }
+  }
+  // 2) 记录文档里的 file_url
+  const docs = db.prepare("SELECT file_url FROM wht_record_documents WHERE record_id = ?").all(id) as { file_url: string }[];
+  for (const d of docs) {
+    for (const m of (d.file_url || "").matchAll(/\/api\/files\/([A-Za-z0-9._-]+)/g)) {
+      safeNames.add(m[1]);
+    }
+  }
+
+  // 事务删除：备注 → 文档 → 步骤 → 记录
+  db.transaction(() => {
+    db.prepare("DELETE FROM wht_step_notes WHERE record_id = ?").run(id);
+    db.prepare("DELETE FROM wht_record_documents WHERE record_id = ?").run(id);
+    db.prepare("DELETE FROM wht_record_steps WHERE record_id = ?").run(id);
+    db.prepare("DELETE FROM wht_records WHERE id = ?").run(id);
+  })();
+
+  // 对账表：该客户该月若无剩余记录则删除对账行，否则重算
+  const remaining = (db.prepare(
+    "SELECT COUNT(*) as c FROM wht_records WHERE customer_id = ? AND year_month = ?"
+  ).get(record.customer_id, record.year_month) as { c: number }).c;
+  if (remaining === 0) {
+    db.prepare("DELETE FROM wht_reconciliation WHERE customer_id = ? AND year_month = ?").run(record.customer_id, record.year_month);
+  } else {
+    syncWhtReconciliation(db, record.customer_id, record.year_month);
+  }
+
+  // 删除磁盘文件（事务成功后执行）
+  for (const safeName of safeNames) {
+    const base = path.basename(safeName);
+    for (const dir of uploadDirs) {
+      const fp = path.join(dir, base);
+      if (existsSync(fp)) {
+        try { unlinkSync(fp); } catch (e) { console.error("[WHT删除] 删除文件失败", fp, e); }
+      }
+    }
+  }
+
+  return NextResponse.json({ success: true, deletedFiles: safeNames.size });
 }

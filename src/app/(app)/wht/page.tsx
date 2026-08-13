@@ -136,6 +136,9 @@ export default function WhtPage() {
   const [singleGenOpen, setSingleGenOpen] = useState(false);
   const [singleCustomerId, setSingleCustomerId] = useState<number | "">("");
   const [singleGenLoading, setSingleGenLoading] = useState(false);
+  const [deleteRecordTarget, setDeleteRecordTarget] = useState<WhtRecord | null>(null);
+  const [deletingRecordId, setDeletingRecordId] = useState<number | null>(null);
+  const [deleteRecordErr, setDeleteRecordErr] = useState("");
 
   // Import
   const [importingCsv, setImportingCsv] = useState(false);
@@ -422,6 +425,25 @@ export default function WhtPage() {
       }
     } catch { setError("生成失败，请检查网络"); }
     finally { setSingleGenLoading(false); }
+  };
+
+  // Delete record
+  const handleDeleteRecord = async () => {
+    if (!deleteRecordTarget) return;
+    setDeletingRecordId(deleteRecordTarget.id);
+    setDeleteRecordErr("");
+    try {
+      const res = await fetchWithAuth(`/api/wht/records/${deleteRecordTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setDeleteRecordTarget(null);
+        setSelectedIds(prev => prev.filter(x => x !== deleteRecordTarget.id));
+        loadRecords();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setDeleteRecordErr(e.error || "删除失败");
+      }
+    } catch { setDeleteRecordErr("网络错误，请重试"); }
+    finally { setDeletingRecordId(null); }
   };
 
   // Expand/collapse record steps
@@ -793,6 +815,14 @@ export default function WhtPage() {
                           "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
                           r.progress === "归档" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
                         )}>{r.progress}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteRecordTarget(r); setDeleteRecordErr(""); }}
+                          disabled={deletingRecordId === r.id}
+                          className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 disabled:opacity-50 transition-colors"
+                          title="删除申报记录"
+                        >
+                          <Trash2 className="size-3.5" />删除
+                        </button>
                       </div>
                       {expandedRecord === r.id && (
                         <div className="border-t px-4 py-3">
@@ -1172,6 +1202,37 @@ export default function WhtPage() {
               <button
                 onClick={() => setSingleGenOpen(false)}
                 disabled={singleGenLoading}
+                className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+              >取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete record confirm dialog */}
+      {deleteRecordTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => !deletingRecordId && setDeleteRecordTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">删除申报记录</h3>
+              <button onClick={() => !deletingRecordId && setDeleteRecordTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">×</button>
+            </div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              确认删除 <span className="font-medium text-[var(--foreground)]">{deleteRecordTarget.company_name}</span> 的 {deleteRecordTarget.year_month} {deleteRecordTarget.subtype} 申报记录？
+            </p>
+            <p className="mt-1 text-xs text-red-500">
+              该记录、所有步骤、备注、上传文件和对账记录都会被彻底删除，无法恢复。
+            </p>
+            {deleteRecordErr && <p className="mt-2 text-xs text-[var(--destructive)]">{deleteRecordErr}</p>}
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={handleDeleteRecord}
+                disabled={deletingRecordId === deleteRecordTarget.id}
+                className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >{deletingRecordId === deleteRecordTarget.id ? "删除中…" : "确认删除"}</button>
+              <button
+                onClick={() => setDeleteRecordTarget(null)}
+                disabled={deletingRecordId === deleteRecordTarget.id}
                 className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
               >取消</button>
             </div>
