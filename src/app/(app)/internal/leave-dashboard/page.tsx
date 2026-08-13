@@ -10,6 +10,8 @@ export default function LeaveDashboardPage() {
   const [detailModal, setDetailModal] = useState<{ employee: string; month: string } | null>(null);
   const [detailRecords, setDetailRecords] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [pendingDetail, setPendingDetail] = useState<any>(null);
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/leave/dashboard")
@@ -55,6 +57,29 @@ export default function LeaveDashboardPage() {
       }
     } catch (e) { console.error("加载详情异常", e); }
     setDetailLoading(false);
+  };
+
+  const handleApprove = async (id: number, status: string) => {
+    setApproving(true);
+    try {
+      const res = await fetchWithAuth("/api/leave", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "操作失败");
+      } else {
+        setPendingDetail(null);
+        // 刷新看板数据
+        fetchWithAuth("/api/leave/dashboard")
+          .then(r => r.json())
+          .then(d => { if (!d.error) setDashboard(d); })
+          .catch(() => {});
+      }
+    } catch (e) { alert("网络错误"); }
+    setApproving(false);
   };
 
   if (loading) return <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">加载中…</div>;
@@ -107,11 +132,12 @@ export default function LeaveDashboardPage() {
           {dashboard.pendingList?.length > 0 && (
             <div className="mt-1 space-y-1">
               {dashboard.pendingList.map((l: any, i: number) => (
-                <div key={i} className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                  <span className="font-medium text-[var(--foreground)]">{l.employee_name}</span>
-                  <span>{l.leave_type}</span>
+                <div key={i} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => setPendingDetail(l)}>
+                  <span className="font-medium text-blue-600 hover:underline">{l.employee_name}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700">{l.leave_type}</span>
                   <span>{l.start_date} ~ {l.end_date}</span>
                   <span className="text-[var(--muted-foreground)]/60">{l.created_at?.slice(0, 10)}</span>
+                  <span className="ml-auto text-[var(--muted-foreground)]/40">▸</span>
                 </div>
               ))}
             </div>
@@ -203,6 +229,50 @@ export default function LeaveDashboardPage() {
           )}
         </div>
       </div>
+      {/* ── 待审批详情弹窗 ── */}
+      {pendingDetail && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => !approving && setPendingDetail(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">请假审批</h3>
+              <button onClick={() => !approving && setPendingDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]" disabled={approving}>
+                <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">申请人</span><span className="font-medium">{pendingDetail.employee_name}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">类型</span><span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 text-xs font-medium">{pendingDetail.leave_type}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">日期</span><span>{pendingDetail.start_date} ~ {pendingDetail.end_date}</span></div>
+              {pendingDetail.start_time && <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">时间</span><span>{pendingDetail.start_time} ~ {pendingDetail.end_time || pendingDetail.start_time}</span></div>}
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">提交时间</span><span className="text-xs">{pendingDetail.created_at?.replace("T", " ").slice(0, 16) || "—"}</span></div>
+              {pendingDetail.reason && (
+                <div>
+                  <span className="text-[var(--muted-foreground)] text-xs">原因</span>
+                  <p className="mt-1 text-sm bg-[var(--muted)]/30 rounded p-2">{pendingDetail.reason}</p>
+                </div>
+              )}
+              {pendingDetail.destination && <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">目的地</span><span>{pendingDetail.destination}</span></div>}
+              {pendingDetail.images && (() => {
+                try { const imgs = JSON.parse(pendingDetail.images); if (Array.isArray(imgs) && imgs.length > 0) return <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">附件</span><span className="text-blue-600">{imgs.length} 个文件</span></div>; } catch {}
+                return null;
+              })()}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => handleApprove(pendingDetail.id, "已通过")}
+                disabled={approving}
+                className="flex-1 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >{approving ? "处理中…" : "✅ 通过"}</button>
+              <button
+                onClick={() => handleApprove(pendingDetail.id, "已驳回")}
+                disabled={approving}
+                className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >{approving ? "处理中…" : "❌ 驳回"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 请假明细弹窗 ── */}
       {detailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDetailModal(null)}>
