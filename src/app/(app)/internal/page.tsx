@@ -6,12 +6,12 @@ import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn, fileUrl, toThaiDate } from "@/lib/utils";
+import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
 import { StepTimerStatic } from "@/components/step-timer";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2, Play } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -100,7 +100,7 @@ export default function InternalPage() {
   const resolveScreenshotInputRef = useRef<HTMLInputElement>(null);
 
   // Issue form
-  const [issueForm, setIssueForm] = useState({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
+  const [issueForm, setIssueForm] = useState({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: [] as string[] });
   const [issueImages, setIssueImages] = useState<string[]>([]);
   const [issueUploading, setIssueUploading] = useState(false);
   const [issueDetailModal, setIssueDetailModal] = useState<IssueTicket | null>(null);
@@ -435,7 +435,7 @@ export default function InternalPage() {
 
   const handleCreateIssue = async () => {
     if (!issueForm.description.trim()) { setIssueErr("请填写问题描述"); return; }
-    if (!issueForm.assignee) { setIssueErr("请指定解决人"); return; }
+    if (!issueForm.assignee.length) { setIssueErr("请至少指定一个解决人"); return; }
     setIssueSaving(true);
     try {
       await fetchWithAuth("/api/issues", {
@@ -444,7 +444,7 @@ export default function InternalPage() {
         body: JSON.stringify({ ...issueForm, created_by: user?.name, images: issueImages.map((url: string) => url.replace("/api/files/", "")) }),
       });
       setShowIssueForm(false);
-      setIssueForm({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: "" });
+      setIssueForm({ ref_id: "", ref_type: "influencer", description: "", priority: "medium", assignee: [] });
       setIssueImages([]);
       setIssueErr("");
       loadAll();
@@ -524,6 +524,23 @@ export default function InternalPage() {
       await fetchWithAuth("/api/issues?id=" + id, { method: "DELETE" });
       loadAll();
     } catch (e) { console.error(e); }
+  };
+
+  // 被指派员工手动开始处理工单：待处理 → 处理中
+  const handleStartIssue = async (t: IssueTicket) => {
+    try {
+      const res = await fetchWithAuth("/api/issues", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id, status: "处理中" }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "操作失败");
+        return;
+      }
+      loadAll();
+    } catch (e) { console.error("[内部管理] 开始处理工单失败", e); }
   };
 
   const handleLeaveImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1715,11 +1732,31 @@ export default function InternalPage() {
                 </select>
               </div>
               <div className="sm:col-span-2">
-                <label className="text-xs font-medium">指定解决人 <span className="text-[var(--destructive)]">*</span></label>
-                <select value={issueForm.assignee} onChange={e=>setIssueForm(p=>({...p,assignee:e.target.value}))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
-                  <option value="">请选择员工</option>
-                  {staffNames.map(n=><option key={n} value={n}>{n}</option>)}
-                </select>
+                <label className="text-xs font-medium">指定解决人 <span className="text-[var(--destructive)]">*</span>（可多选）</label>
+                <div className="mt-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 rounded border border-[var(--border)] p-3 max-h-40 overflow-y-auto">
+                  {staffNames.map(n => {
+                    const checked = issueForm.assignee.includes(n);
+                    return (
+                      <label key={n} className={cn(
+                        "flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer transition-colors",
+                        checked ? "bg-[var(--primary)]/10 text-[var(--foreground)]" : "hover:bg-[var(--muted)]/30"
+                      )}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={e => {
+                            const next = e.target.checked
+                              ? [...issueForm.assignee, n]
+                              : issueForm.assignee.filter(x => x !== n);
+                            setIssueForm(p => ({ ...p, assignee: next }));
+                          }}
+                          className="size-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                        />
+                        <span className="truncate">{n}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">问题描述</label>
@@ -1779,6 +1816,7 @@ export default function InternalPage() {
                 <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">解决截图</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">创建时间</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium w-10"></th>
                 {isAdmin && <th className="py-2.5 px-2 text-left text-xs font-medium">拼假</th>}
               <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
@@ -1788,7 +1826,7 @@ export default function InternalPage() {
                   <td className="py-2.5 px-4 font-mono text-xs">{t.ticket_number || `#${t.id}`}</td>
                   <td className="py-2.5 px-4 text-xs">{t.ref_id ? `${t.ref_type==="influencer"?"达人:":"订单:"}${t.ref_id}` : "—"}</td>
                   <td className="py-2.5 px-4 max-w-[200px] truncate">{t.description}</td>
-                  <td className="py-2.5 px-4">{t.assignee || "—"}</td>
+                  <td className="py-2.5 px-4 text-xs">{t.assignee ? t.assignee.split(",").map(s => s.trim()).filter(Boolean).join("、") : "—"}</td>
                   <td className="py-2.5 px-4">
                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
                       t.status==="已解决"&&"bg-green-100 text-green-700",
@@ -1808,6 +1846,7 @@ export default function InternalPage() {
                     )}
                   </td>
                   <td className="py-2.5 px-4">{t.created_by}</td>
+                  <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.created_at) || "—"}</td>
                   <td className="py-2.5 px-4">
                     {(()=>{const imgs=safeJsonParseArray(t.images);return imgs.length>0?(
                       <button onClick={()=>{setLightboxImages(imgs.map((f:string)=>`/api/files/${f}`));setLightboxIdx(0);}} className="inline-flex items-center gap-0.5 text-blue-600 hover:underline cursor-pointer">
@@ -1818,6 +1857,11 @@ export default function InternalPage() {
                     <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情">
                       <ExternalLink className="size-3.5" />
                     </button>
+                    {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
+                      <Button size="sm" variant="outline" className="h-6 text-xs mr-1" onClick={() => handleStartIssue(t)}>
+                        <Play className="size-3 mr-1" />开始处理
+                      </Button>
+                    )}
                     {t.status!=="已解决" ? (
                       <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}>
                         <CheckCircle2 className="size-3 mr-1" />解决
