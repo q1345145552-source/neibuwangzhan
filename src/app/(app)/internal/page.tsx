@@ -134,6 +134,12 @@ export default function InternalPage() {
   const [leaveEmployeeFilter, setLeaveEmployeeFilter] = useState("");
   const [leaveStatusFilter, setLeaveStatusFilter] = useState("");
   const [showLeaveHistory, setShowLeaveHistory] = useState(false);
+  // 已审批记录（折叠区）独立筛选
+  const [historyDateFilter, setHistoryDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
+  const [historyCustomFrom, setHistoryCustomFrom] = useState("");
+  const [historyCustomTo, setHistoryCustomTo] = useState("");
+  const [historyEmployeeFilter, setHistoryEmployeeFilter] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("");
 
   // History toggles & date filters
   const [showAtdHistory, setShowAtdHistory] = useState(false);
@@ -2219,7 +2225,17 @@ export default function InternalPage() {
 
         {(() => {
           const now=Date.now();const today=new Date().toDateString();
-          const filtered=(Array.isArray(leaves)?leaves:[]).filter(l=>{
+          // 当月每个员工的病假次数（标红用）
+          const monthPrefix = new Date().toISOString().slice(0, 7);
+          const sickCountByEmployee: Record<string, number> = {};
+          for (const l of leaves) {
+            if (l.leave_type === "病假" && l.start_date?.startsWith(monthPrefix)) {
+              sickCountByEmployee[l.employee_name] = (sickCountByEmployee[l.employee_name] || 0) + 1;
+            }
+          }
+          // 待审批：用页面顶部的旧筛选
+          const pending=(Array.isArray(leaves)?leaves:[]).filter(l=>{
+            if(l.status!=="待审批")return false;
             const d=l.created_at?new Date(l.created_at):new Date(0);
             if(leaveDateFilter==="today"&&d.toDateString()!==today)return false;
             if(leaveDateFilter==="7"&&d<new Date(now-7*86400000))return false;
@@ -2230,17 +2246,20 @@ export default function InternalPage() {
             if(leaveStatusFilter&&l.status!==leaveStatusFilter)return false;
             return true;
           });
-          // 当月每个员工的病假次数（标红用）
-          const monthPrefix = new Date().toISOString().slice(0, 7);
-          const sickCountByEmployee: Record<string, number> = {};
-          for (const l of leaves) {
-            if (l.leave_type === "病假" && l.start_date?.startsWith(monthPrefix)) {
-              sickCountByEmployee[l.employee_name] = (sickCountByEmployee[l.employee_name] || 0) + 1;
-            }
-          }
-          const pending=filtered.filter(l=>l.status==="待审批");
-          const history=filtered.filter(l=>l.status!=="待审批");
-          if(filtered.length===0)return(<div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>);
+          // 已审批：用折叠区里的独立筛选
+          const history=(Array.isArray(leaves)?leaves:[]).filter(l=>{
+            if(l.status==="待审批")return false;
+            const d=l.created_at?new Date(l.created_at):new Date(0);
+            if(historyDateFilter==="today"&&d.toDateString()!==today)return false;
+            if(historyDateFilter==="7"&&d<new Date(now-7*86400000))return false;
+            if(historyDateFilter==="30"&&d<new Date(now-30*86400000))return false;
+            if(historyDateFilter==="custom"&&historyCustomFrom&&d<new Date(historyCustomFrom))return false;
+            if(historyDateFilter==="custom"&&historyCustomTo&&d>new Date(historyCustomTo+"T23:59:59"))return false;
+            if(historyEmployeeFilter&&l.employee_name!==historyEmployeeFilter)return false;
+            if(historyStatusFilter&&l.status!==historyStatusFilter)return false;
+            return true;
+          });
+          if(pending.length===0&&history.length===0)return(<div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>);
           const renderLeaveTable=(list: any[])=>(
             <table className="w-full text-sm"><thead><tr className="border-b border-[var(--border)]">
               {isAdmin&&<th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>}
@@ -2331,7 +2350,37 @@ export default function InternalPage() {
                     <span className="font-medium text-[var(--muted-foreground)]">{isAdmin?"已审批记录":"历史记录"} ({history.length})</span>
                     <span className={"text-xs transition-transform "+(showLeaveHistory?"rotate-180":"")}>&#9660;</span>
                   </button>
-                  {showLeaveHistory&&<div className="overflow-x-auto">{renderLeaveTable(history)}</div>}
+                  {showLeaveHistory&&(
+                    <>
+                      {/* 已审批记录独立筛选 */}
+                      <div className="px-5 py-3 border-b border-[var(--border)] flex flex-wrap items-center gap-2">
+                        <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
+                          {([["all","全部"],["today","今天"],["7","7天"],["30","30天"],["custom","自定义"]] as [string,string][]).map(([k,l])=>(
+                            <button key={k} onClick={()=>setHistoryDateFilter(k as any)}
+                              className={"rounded px-2.5 py-1 text-xs font-medium transition-colors "+(historyDateFilter===k?"bg-[var(--background)] text-[var(--foreground)] shadow-sm":"text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}
+                            >{l}</button>
+                          ))}
+                        </div>
+                        {historyDateFilter==="custom"&&(
+                          <div className="flex items-center gap-1 text-xs">
+                            <input type="date" value={historyCustomFrom} onChange={e=>setHistoryCustomFrom(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+                            <span className="text-[var(--muted-foreground)]">至</span>
+                            <input type="date" value={historyCustomTo} onChange={e=>setHistoryCustomTo(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+                          </div>
+                        )}
+                        <span className="text-[var(--border)] mx-1">|</span>
+                        <select value={historyEmployeeFilter} onChange={e=>setHistoryEmployeeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+                          <option value="">全部申请人</option>
+                          {[...new Set((Array.isArray(leaves)?leaves:[]).map(l=>l.employee_name).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+                        </select>
+                        <select value={historyStatusFilter} onChange={e=>setHistoryStatusFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+                          <option value="">全部状态</option>
+                          <option value="已通过">已通过</option><option value="已驳回">已驳回</option>
+                        </select>
+                      </div>
+                      <div className="overflow-x-auto">{renderLeaveTable(history)}</div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
