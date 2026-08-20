@@ -12,6 +12,7 @@ import { cn, toThaiTime } from "@/lib/utils";
 import { StepTimer } from "@/components/step-timer";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { bangkokDateStr } from "@/lib/time";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 function getBackUrl(inf: any) {
   if (!inf) return "/agency/influencers";
   if (inf.phase === "contract" || inf.phase === "completed_contract") return "/agency/contracts";
@@ -204,7 +205,7 @@ function SafeImg({ src, alt, className, onClick }: { src: string; alt: string; c
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   if (!mounted) return <span className={className} />;
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const token = getStoredAuthToken();
   const finalSrc = token ? src + (src.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : src;
   return <img src={finalSrc} alt={alt} className={className} onClick={onClick} />;
 }
@@ -214,7 +215,7 @@ function SafeLink({ href, className, children }: { href: string; className?: str
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   if (!mounted) return <span className={className}>{children}</span>;
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const token = getStoredAuthToken();
   const finalHref = token ? href + (href.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : href;
   return <a href={finalHref} target="_blank" rel="noopener noreferrer" className={className}>{children}</a>;
 }
@@ -222,7 +223,7 @@ function SafeLink({ href, className, children }: { href: string; className?: str
 // 获取安全的预览URL（只在客户端调用）
 function safePreviewUrl(url: string): string {
   if (typeof window === "undefined") return url;
-  const token = localStorage.getItem("authToken");
+  const token = getStoredAuthToken();
   if (!token) return url;
   return url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
 }
@@ -1309,7 +1310,7 @@ export default function InfluencerDetailPage({ params }: { params: Promise<{ id:
                                           const ftMatch = n.content.match(/上传文件:\s*(.+?)\s*\(\/api\/files\/([^)]+)\)/);
                                           if (ftMatch) {
                                             const [, ftName, ftPath] = ftMatch;
-                                            return <a href={"/api/files/" + ftPath + "?token=" + (typeof window !== "undefined" ? localStorage.getItem("authToken") || "" : "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
+                                            return <a href={"/api/files/" + ftPath + "?token=" + (getStoredAuthToken() || "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
                                               <FileText className="size-3.5 shrink-0" />
                                               <span className="truncate max-w-[200px]">{ftName}</span>
                                             </a>;

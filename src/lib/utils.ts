@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { toThaiTime as _toThai, toThaiDate as _toThaiDate, bangkokDateStr } from "@/lib/time";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -20,7 +21,7 @@ export function fileUrl(url: string | null | undefined): string {
   if (!url) return "";
   if (!url.startsWith("/api/files/")) return url;
   if (typeof window === "undefined") return url;
-  const token = localStorage.getItem("authToken");
+  const token = getStoredAuthToken();
   if (!token) return url;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}token=${encodeURIComponent(token)}`;

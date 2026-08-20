@@ -15,7 +15,8 @@ const WEAK = new Set([
 export function validatePassword(pwd: unknown, current?: string): string | null {
   if (typeof pwd !== "string" || !pwd) return "请输入新密码";
   if (pwd.length < 8) return "新密码至少 8 位";
-  if (pwd.length > 72) return "新密码最长 72 位"; // bcrypt 超过 72 字节会静默截断
+  const byteLength = new TextEncoder().encode(pwd).byteLength;
+  if (byteLength > 72) return "新密码不能超过 72 字节（中文通常每个字占 3 字节）";
   if (WEAK.has(pwd.toLowerCase())) return "这个密码太常见了，换一个";
   // 纯数字或纯字母都太容易猜
   if (/^\d+$/.test(pwd)) return "新密码不能全是数字";
@@ -33,7 +34,8 @@ export function validatePassword(pwd: unknown, current?: string): string | null 
  * 还在用初始密码的账号登录后会被要求先改密码。
  */
 export async function POST(req: NextRequest) {
-  const auth = await verifyAuth(req);
+  // 必须改密的受限凭证只能通过这个入口使用，其他业务接口仍由 verifyAuth 拦截。
+  const auth = await verifyAuth(req, { allowPasswordChangeRequired: true });
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { current_password, new_password } = await readJson(req);
@@ -53,7 +55,9 @@ export async function POST(req: NextRequest) {
   if (!valid) return NextResponse.json({ error: "当前密码不正确" }, { status: 401 });
 
   const hash = await bcrypt.hash(new_password, 10);
-  db.prepare("UPDATE employees SET password = ?, must_change_password = 0 WHERE id = ?").run(hash, user.id);
+  db.prepare(
+    "UPDATE employees SET password = ?, must_change_password = 0, auth_version = auth_version + 1 WHERE id = ?"
+  ).run(hash, user.id);
 
   // 只记录"改过密码"这件事，不记录任何密码内容
   logOperation(auth.name, "修改密码", "employee", String(user.id));

@@ -448,6 +448,10 @@ function initTables(database: Database.Database) {
       email TEXT DEFAULT '',
       role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client')),
       password TEXT DEFAULT '',
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      auth_version INTEGER NOT NULL DEFAULT 0,
+      failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until INTEGER NOT NULL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -1100,6 +1104,10 @@ function initTables(database: Database.Database) {
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
   // 登录后必须先改密码才能进系统。
   try { database.exec("ALTER TABLE employees ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // 每次改密/重置都递增。JWT 内的版本必须与数据库一致，旧凭证因此立即失效。
+  try { database.exec("ALTER TABLE employees ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"); } catch {}
   // 给现有账号回填：密码仍是 123456 的一律置 1。
   // 用 bcrypt.compareSync 逐个比对——bcrypt 每次加盐，哈希值不同，不能直接比字符串。
   try {
@@ -1509,7 +1517,7 @@ function seedPointsRulesZ(database: Database.Database) {
 function seedData(database: Database.Database) {
   const empCount = database.prepare("SELECT COUNT(*) as c FROM employees").get() as { c: number };
   if (empCount.c === 0) {
-    const insert = database.prepare("INSERT INTO employees (name, email, role, password) VALUES (?, ?, ?, ?)");
+    const insert = database.prepare("INSERT INTO employees (name, email, role, password, must_change_password) VALUES (?, ?, ?, ?, 1)");
     const teamEmps: [string, string][] = [
       ["Bam","bam@xiangtai.com"], ["Fern","fern@xiangtai.com"], ["Ing","ing@xiangtai.com"],
       ["Pop","pop@xiangtai.com"], ["Eve","eve@xiangtai.com"],

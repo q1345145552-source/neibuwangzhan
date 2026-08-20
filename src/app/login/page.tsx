@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getStoredAuthToken, storeAuthSession } from "@/lib/auth-storage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,11 +17,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   // 还在用初始密码 123456 的账号，登录后先卡在改密界面，改完才放进系统
   const [mustChange, setMustChange] = useState(false);
+  const [changeToken, setChangeToken] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem("authToken");
+    const stored = getStoredAuthToken();
     if (stored) router.push("/");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -39,7 +41,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, remember }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -48,14 +50,14 @@ export default function LoginPage() {
         return;
       }
       const data = await res.json();
-      localStorage.setItem("authToken", data.token);
-      localStorage.setItem("currentUser", JSON.stringify(data.user));
       setLoading(false);
       if (data.must_change_password) {
-        // 不跳首页，切到改密界面。token 已存，改密接口需要它。
+        // 受限凭证只保存在当前页面内；服务端也会拒绝它访问所有业务接口。
+        setChangeToken(data.token);
         setMustChange(true);
         return;
       }
+      storeAuthSession(data.token, data.user, remember);
       router.push("/");
     } catch {
       setError("网络错误，请重试");
@@ -83,7 +85,7 @@ export default function LoginPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+          Authorization: `Bearer ${changeToken}`,
         },
         body: JSON.stringify({ current_password: password, new_password: newPwd }),
       });
@@ -93,8 +95,13 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+      setChangeToken("");
+      setMustChange(false);
+      setPassword("");
+      setNewPwd("");
+      setConfirmPwd("");
+      setError("密码已修改，请使用新密码重新登录");
       setLoading(false);
-      router.push("/");
     } catch {
       setError("网络错误，请重试");
       setLoading(false);

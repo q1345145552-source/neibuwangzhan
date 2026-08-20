@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { clearStoredAuthSession, getStoredAuthToken, storeCurrentUser } from "@/lib/auth-storage";
 
 export interface AuthUser {
   id: number;
@@ -23,8 +24,7 @@ export function useAuth() {
 }
 
 export function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("authToken");
+  return getStoredAuthToken();
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 启动时用 token 验证登录态
   useEffect(() => {
-    const storedToken = localStorage.getItem("authToken");
+    const storedToken = getStoredAuthToken();
     if (!storedToken) {
       Promise.resolve().then(() => setLoading(false));
       return;
@@ -50,11 +50,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(storedToken);
         setUserState(userData);
         // 同步存一份用户信息方便读取（不敏感）
-        localStorage.setItem("currentUser", JSON.stringify(userData));
+        storeCurrentUser(userData);
       })
       .catch(() => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("currentUser");
+        clearStoredAuthSession();
         setToken(null);
       })
       .finally(() => setLoading(false));
@@ -62,15 +61,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setUser = useCallback((u: AuthUser | null) => {
     setUserState(u);
-    if (u) localStorage.setItem("currentUser", JSON.stringify(u));
-    else localStorage.removeItem("currentUser");
+    if (u) storeCurrentUser(u);
+    else clearStoredAuthSession();
   }, []);
 
   const logout = useCallback(() => {
     setUserState(null);
     setToken(null);
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("currentUser");
+    clearStoredAuthSession();
   }, []);
 
   if (loading) return null;

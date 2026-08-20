@@ -1,3 +1,5 @@
+import { getStoredAuthToken } from "@/lib/auth-storage";
+
 export interface Order {
   id: string;
   customer_name: string;
@@ -121,14 +123,14 @@ export interface DashboardStats {
 // ---- Auth helper ----
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("authToken");
+  const token = getStoredAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 
 // 统一封装带认证的 fetch，防止后退导航时 token 丢失导致错误冒泡
 export async function fetchWithAuth(url: string, options?: RequestInit): Promise<Response> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  const token = getStoredAuthToken();
   // token 为空时不发请求，避免 401 污染页面
   if (!token) throw new Error("NO_TOKEN");
   const headers: Record<string, string> = { ...(options?.headers as Record<string, string> || {}) };

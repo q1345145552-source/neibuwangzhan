@@ -14,6 +14,7 @@ import { getStepDocs } from "@/lib/constants";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { bangkokDateStr } from "@/lib/time";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -828,7 +829,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                           const ftMatch = n.content.match(/上传文件:\s*(.+?)\s*\(\/api\/files\/([^)]+)\)/);
                                           if (ftMatch) {
                                             const [, ftName, ftPath] = ftMatch;
-                                            return <a href={"/api/files/" + ftPath + "?token=" + (typeof window !== "undefined" ? localStorage.getItem("authToken") || "" : "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
+                                            return <a href={"/api/files/" + ftPath + "?token=" + (getStoredAuthToken() || "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
                                               <FileText className="size-3.5 shrink-0" />
                                               <span className="truncate max-w-[200px]">{ftName}</span>
                                             </a>;

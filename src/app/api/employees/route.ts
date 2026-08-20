@@ -69,6 +69,7 @@ export async function PATCH(req: NextRequest) {
   // 否则重置出来的临时密码会长期留在管理员和员工两边手上。
   if (password) {
     sets.push("password = ?"); params.push(await bcrypt.hash(password, 10));
+    sets.push("auth_version = auth_version + 1");
     if (Number(id) !== auth.id) sets.push("must_change_password = 1");
   }
 
