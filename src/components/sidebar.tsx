@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 import {
   BarChart3,
   Layers,
@@ -144,7 +145,7 @@ export function Sidebar() {
   useEffect(() => {
     if (!user?.name) return;
     const fetchUnread = () => {
-      const token = localStorage.getItem("authToken");
+      const token = getStoredAuthToken();
       if (!token) return;
       fetch(`/api/notifications?recipient=${encodeURIComponent(user.name)}&unread=1`, {
         headers: { Authorization: `Bearer ${token}` },

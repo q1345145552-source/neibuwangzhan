@@ -9,6 +9,7 @@ import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth } from "@/lib/api";
 import { cn, fileUrl } from "@/lib/utils";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 
 // ===== Types =====
 interface WhtStep {
@@ -529,7 +530,7 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
                                           const ftMatch = n.content.match(/上传文件:\s*(.+?)\s*\(\/api\/files\/([^)]+)\)/);
                                           if (ftMatch) {
                                             const [, ftName, ftPath] = ftMatch;
-                                            return <a href={"/api/files/" + ftPath + "?token=" + (typeof window !== "undefined" ? localStorage.getItem("authToken") || "" : "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
+                                            return <a href={"/api/files/" + ftPath + "?token=" + (getStoredAuthToken() || "")} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[var(--primary)] hover:underline">
                                               <FileText className="size-3.5 shrink-0" />
                                               <span className="truncate max-w-[200px]">{ftName}</span>
                                             </a>;

@@ -8,9 +8,11 @@ import { Plus, Save, Pencil, Trash2, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee, fetchOrderCustomerNames, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
+import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const router = useRouter();
   const isAdmin = user?.role === "admin";
   const [saved, setSaved] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -65,8 +67,9 @@ export default function SettingsPage() {
         setPwdMsg({ ok: false, text: d.error || "修改失败，请重试" });
         return;
       }
-      setPwdMsg({ ok: true, text: "密码已修改，下次登录用新密码" });
-      setCurPwd(""); setNewPwd(""); setConfirmPwd("");
+      // 改密会使当前凭证立即失效，清掉本地状态并要求使用新密码重新登录。
+      logout();
+      router.replace("/login");
     } catch {
       setPwdMsg({ ok: false, text: "网络错误，请重试" });
     } finally {

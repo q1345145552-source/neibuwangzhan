@@ -3,14 +3,14 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
-import { AuthProvider, useAuth } from "@/components/auth-provider";
+import { AuthProvider, getAuthToken, useAuth } from "@/components/auth-provider";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
+    const token = getAuthToken();
     if (!token) router.replace("/login");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -9,6 +9,7 @@ import { fetchAllDocuments, uploadGlobalDocument, fetchOrders, fetchBusinessType
 import { useAuth } from "@/components/auth-provider";
 import type { Order } from "@/lib/api";
 import { cn, fileUrl } from "@/lib/utils";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 
 const statusClass: Record<string, string> = {
   approved: "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
@@ -121,7 +122,7 @@ export default function DocumentsPage() {
       formData.append("file", file);
       const uploadRes = await fetch("/api/upload", { 
         method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+        headers: { Authorization: `Bearer ${getStoredAuthToken()}` },
         body: formData,
       });
       const uploadData = await uploadRes.json();
