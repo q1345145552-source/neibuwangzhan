@@ -1103,20 +1103,24 @@ function initTables(database: Database.Database) {
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
   // 登录后必须先改密码才能进系统。
-  try { database.exec("ALTER TABLE employees ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"); } catch {}
+  let addedMustChange = false;
+  try { database.exec("ALTER TABLE employees ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"); addedMustChange = true; } catch {}
   // 每次改密/重置都递增。JWT 内的版本必须与数据库一致，旧凭证因此立即失效。
   try { database.exec("ALTER TABLE employees ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"); } catch {}
-  // 给现有账号回填：密码仍是 123456 的一律置 1。
-  // 用 bcrypt.compareSync 逐个比对——bcrypt 每次加盐，哈希值不同，不能直接比字符串。
-  try {
-    const users = database.prepare("SELECT id, password FROM employees").all() as { id: number; password: string }[];
-    const mark = database.prepare("UPDATE employees SET must_change_password = 1 WHERE id = ?");
-    for (const u of users) {
-      if (u.password && bcrypt.compareSync("123456", u.password)) mark.run(u.id);
-    }
-  } catch { /* 首次建表时可能还没有数据，忽略 */ }
+  // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
+  // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
+  // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。
+  if (addedMustChange) {
+    try {
+      const users = database.prepare("SELECT id, password FROM employees").all() as { id: number; password: string }[];
+      const mark = database.prepare("UPDATE employees SET must_change_password = 1 WHERE id = ?");
+      for (const u of users) {
+        if (u.password && bcrypt.compareSync("123456", u.password)) mark.run(u.id);
+      }
+    } catch { /* 首次建表时可能还没有数据，忽略 */ }
+  }
 
   // 手动改过状态的客户不再被自动流转规则覆盖
   try { database.exec("ALTER TABLE customers ADD COLUMN status_locked INTEGER NOT NULL DEFAULT 0"); } catch {}
