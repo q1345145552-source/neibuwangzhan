@@ -70,7 +70,9 @@ export async function PATCH(req: NextRequest) {
   if (password) {
     sets.push("password = ?"); params.push(await bcrypt.hash(password, 10));
     sets.push("auth_version = auth_version + 1");
-    if (Number(id) !== auth.id) sets.push("must_change_password = 1");
+    // 管理员重置密码后不再强制对方改密：强制改密会叠加短 token，
+    // 造成「重置 → 登录 → 被踢 → 再重置」的死循环。改密入口仍保留，需要的人可自行改。
+    sets.push("must_change_password = 0");
   }
 
   // customer_names：客户账号能在外部端口看到哪些公司的订单（整表替换）
