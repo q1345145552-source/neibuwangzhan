@@ -39,7 +39,7 @@ interface SignTokenOptions {
 
 export async function signToken(user: TokenUser, options: SignTokenOptions = {}): Promise<string> {
   // 强制改密凭证只用于完成改密；普通会话 12 小时，记住我延长到 30 天。
-  const expiresIn = user.must_change_password === 1 ? "15m" : options.remember ? "30d" : "12h";
+  const expiresIn = user.must_change_password === 1 ? "24h" : options.remember ? "30d" : "12h";
   return new SignJWT({
     id: user.id,
     name: user.name,
