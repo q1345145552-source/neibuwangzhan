@@ -26,12 +26,15 @@ function ChartSkeleton() {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  // 轨迹更新小板块：仅「可爱(keai)」和管理员可见
+  const canSeeTracking = user?.role === "admin" || user?.name === "keai";
   const [stats, setStats] = useState({ total_orders: 0, in_progress: 0, completed: 0, today_todos: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
   const [stepsLoaded, setStepsLoaded] = useState(false);
   const [leaveDashboard, setLeaveDashboard] = useState<{ todayOnLeave: Array<{ employee_name: string; leave_type: string; start_date: string; end_date: string }>; pendingCount: number; recent: any[] } | null>(null);
+  const [logisticsStats, setLogisticsStats] = useState<{ total: number; pending: number; inProgress: number; completed: number; thisWeek: number; avgDelay: number; delayCount: number; overdueOrders: number[]; overdueCabinets: string[]; whCounts: Record<string, number> } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -59,6 +62,13 @@ export default function DashboardPage() {
     if (user?.role === "admin") {
       fetchWithAuth("/api/leave/dashboard", { cache: "no-store" })
         .then(r => r.json()).then(setLeaveDashboard).catch(() => {});
+    }
+    // 可爱 + 管理员加载轨迹更新统计（与物流板块共用同一接口，数字一致）
+    if (canSeeTracking) {
+      fetchWithAuth("/api/logistics?action=stats", { cache: "no-store" })
+        .then(r => (r.ok ? r.json() : null))
+        .then(setLogisticsStats)
+        .catch(() => {});
     }
   }, []);
 
@@ -89,6 +99,91 @@ export default function DashboardPage() {
         <StatCard label="已完成" value={stats.completed} href="/orders?status=已完成" />
         <StatCard label="今日待办" value={stats.today_todos} href="/tasks" />
       </div>
+
+      {canSeeTracking && logisticsStats && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-[var(--foreground)]">轨迹更新</h2>
+            <Link href="/logistics?filter=all" className="text-xs text-[var(--primary)] hover:underline">查看全部</Link>
+          </div>
+
+          {/* 四个状态卡片 */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Link href="/logistics?filter=all" className="block rounded-lg bg-[var(--secondary)]/50 px-3 py-3 transition-colors hover:bg-[var(--secondary)]">
+              <p className="text-2xl font-bold text-[var(--foreground)]">{logisticsStats.total}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">全部柜号</p>
+            </Link>
+            <div className="rounded-lg bg-[var(--secondary)]/50 px-3 py-3">
+              <p className="text-2xl font-bold text-[var(--foreground)]">{logisticsStats.pending}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">待处理</p>
+            </div>
+            <Link href="/logistics?filter=in_progress" className="block rounded-lg bg-[var(--secondary)]/50 px-3 py-3 transition-colors hover:bg-[var(--secondary)]">
+              <p className="text-2xl font-bold text-[var(--foreground)]">{logisticsStats.inProgress}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">进行中</p>
+            </Link>
+            <div className="rounded-lg bg-[var(--secondary)]/50 px-3 py-3">
+              <p className="text-2xl font-bold text-[var(--foreground)]">{logisticsStats.completed}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">已完成</p>
+            </div>
+          </div>
+
+          {/* 进度占比条 */}
+          <div className="mt-3">
+            <div className="flex h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+              <div className="bg-amber-500" style={{ width: `${logisticsStats.total ? Math.round((logisticsStats.pending / logisticsStats.total) * 100) : 0}%` }} />
+              <div className="bg-blue-500" style={{ width: `${logisticsStats.total ? Math.round((logisticsStats.inProgress / logisticsStats.total) * 100) : 0}%` }} />
+              <div className="bg-emerald-500" style={{ width: `${logisticsStats.total ? Math.round((logisticsStats.completed / logisticsStats.total) * 100) : 0}%` }} />
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
+              <span className="inline-flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-amber-500" />待处理 {logisticsStats.pending}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-blue-500" />进行中 {logisticsStats.inProgress}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="inline-block size-2 rounded-full bg-emerald-500" />已完成 {logisticsStats.completed}</span>
+            </div>
+          </div>
+
+          {/* 仓库分布 */}
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">仓库分布</p>
+            <div className="grid grid-cols-5 gap-2">
+              {["义乌", "深圳", "广州", "东莞", "揭阳"].map((w) => {
+                const count = logisticsStats.whCounts?.[w] || 0;
+                const maxWh = Math.max(1, ...["义乌", "深圳", "广州", "东莞", "揭阳"].map((x) => logisticsStats.whCounts?.[x] || 0));
+                return (
+                  <div key={w} className="flex flex-col gap-1">
+                    <span className="text-xs text-[var(--muted-foreground)]">{w}</span>
+                    <span className="text-sm font-bold text-[var(--foreground)]">{count}</span>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+                      <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${Math.round((count / maxWh) * 100)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 拆派仓延迟 */}
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-3 dark:border-red-800 dark:bg-red-950/30">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs font-medium text-[var(--muted-foreground)]">拆派仓平均延迟</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                {logisticsStats.delayCount > 0 ? `${logisticsStats.avgDelay.toFixed(1)}天` : "—"}
+              </p>
+            </div>
+            {logisticsStats.overdueCabinets && logisticsStats.overdueCabinets.length > 0 ? (
+              <div className="mt-2">
+                <p className="text-xs text-red-700 dark:text-red-400">延迟超标柜号（{logisticsStats.overdueCabinets.length}）：</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {logisticsStats.overdueCabinets.map((c, i) => (
+                    <span key={i} className="rounded bg-red-100 px-2 py-0.5 font-mono text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300">{c}</span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">暂无延迟超标柜号</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {stepsLoaded && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-5">

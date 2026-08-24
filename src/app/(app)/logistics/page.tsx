@@ -71,6 +71,19 @@ export default function LogisticsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 从 URL 读 ?filter= 参数，进入页面即自动套用对应筛选（首页「轨迹更新」卡片跳转用）
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("filter");
+    if (!p) return;
+    const map: Record<string, FilterState> = {
+      all: { type: "all", label: "全部" },
+      in_progress: { type: "in_progress", label: "进行中" },
+      this_week: { type: "this_week", label: "本周新增" },
+      delayed: { type: "delayed", label: "延迟超标" },
+    };
+    if (map[p]) setActiveFilter(map[p]);
+  }, []);
+
   // ── 客户端筛选 ──
   const filteredOrders = (() => {
     if (!activeFilter) return orders;
