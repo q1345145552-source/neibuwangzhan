@@ -404,19 +404,19 @@ export default function InternalPage() {
 
   const handleExportAttendanceDetail = async () => {
     try {
-      const res = await fetchWithAuth(`/api/attendance/export?type=detail&month=${bangkokMonthKey()}`, { cache: "no-store" });
+      const res = await fetchWithAuth(`/api/attendance/export?type=detail&month=${attendanceMonth}`, { cache: "no-store" });
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || "导出失败"); return; }
       const blob = await res.blob();
-      downloadXlsx(blob, `考勤明细_${bangkokMonthKey()}.xlsx`);
+      downloadXlsx(blob, `考勤明细_${attendanceMonth}.xlsx`);
     } catch { alert("导出失败"); }
   };
 
   const handleExportAttendanceSummary = async () => {
     try {
-      const res = await fetchWithAuth(`/api/attendance/export?type=summary&month=${bangkokMonthKey()}`, { cache: "no-store" });
+      const res = await fetchWithAuth(`/api/attendance/export?type=summary&month=${attendanceMonth}`, { cache: "no-store" });
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || "导出失败"); return; }
       const blob = await res.blob();
-      downloadXlsx(blob, `考勤汇总_${bangkokMonthKey()}.xlsx`);
+      downloadXlsx(blob, `考勤汇总_${attendanceMonth}.xlsx`);
     } catch { alert("导出失败"); }
   };
 
@@ -763,6 +763,8 @@ export default function InternalPage() {
   };
 
   const isAdmin = user?.role === "admin";
+  // 考勤导出选中的月份（默认当前曼谷月，切换后明细/汇总导出都按这个月导出）
+  const [attendanceMonth, setAttendanceMonth] = useState(bangkokMonthKey());
   const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","other-today","other-week"]));
 
 
@@ -785,6 +787,12 @@ export default function InternalPage() {
           <div className="flex items-center gap-2">
             {isAdmin && (
               <>
+                <input
+                  type="month"
+                  value={attendanceMonth}
+                  onChange={(e) => setAttendanceMonth(e.target.value)}
+                  className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                />
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendanceDetail}><Download className="size-3" />明细导出</Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendanceSummary}><Download className="size-3" />汇总导出</Button>
               </>
