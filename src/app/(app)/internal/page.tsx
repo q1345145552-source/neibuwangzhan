@@ -10,7 +10,6 @@ import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
 import { StepTimerStatic } from "@/components/step-timer";
-import { exportToExcel, type ExportColumn } from "@/lib/export";
 import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2, Play } from "lucide-react";
 
 interface Workload {
@@ -392,23 +391,33 @@ export default function InternalPage() {
     setUploading(false);
   };
 
-  const handleExportAttendance = async () => {
+  const downloadXlsx = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportAttendanceDetail = async () => {
     try {
-      const res = await fetchWithAuth("/api/attendance", { cache: "no-store" });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
-      const data = await res.json();
-      const arr = Array.isArray(data) ? data : [];
-      const cols: ExportColumn<any>[] = [
-        { header: "员工", key: "employee_name" },
-        { header: "日期", key: "date" },
-        { header: "签到时间", render: (r) => toBangkokTime(r.check_in) },
-        { header: "签退时间", render: (r) => toBangkokTime(r.check_out) },
-        { header: "工时(小时)", render: (r) => r.work_hours != null ? String(r.work_hours) : "—" },
-        { header: "签到照片", render: (r) => r.check_in_photo || "—" },
-        { header: "签退照片", render: (r) => r.check_out_photo || "—" },
-      ];
-      exportToExcel(arr, cols, `考勤记录_${bangkokDateStr()}`);
-    } catch (e) { console.error("[内部管理] 导出考勤失败", e); }
+      const res = await fetchWithAuth(`/api/attendance/export?type=detail&month=${bangkokMonthKey()}`, { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || "导出失败"); return; }
+      const blob = await res.blob();
+      downloadXlsx(blob, `考勤明细_${bangkokMonthKey()}.xlsx`);
+    } catch { alert("导出失败"); }
+  };
+
+  const handleExportAttendanceSummary = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/attendance/export?type=summary&month=${bangkokMonthKey()}`, { cache: "no-store" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || "导出失败"); return; }
+      const blob = await res.blob();
+      downloadXlsx(blob, `考勤汇总_${bangkokMonthKey()}.xlsx`);
+    } catch { alert("导出失败"); }
   };
 
   const handleIssueImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -774,7 +783,12 @@ export default function InternalPage() {
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />今日考勤打卡</h2>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendance}><Download className="size-3" />导出考勤</Button>
+            {isAdmin && (
+              <>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendanceDetail}><Download className="size-3" />明细导出</Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportAttendanceSummary}><Download className="size-3" />汇总导出</Button>
+              </>
+            )}
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowRequestForm(!showRequestForm)}><History className="size-3" />补卡申请</Button>
           </div>
         </div>
