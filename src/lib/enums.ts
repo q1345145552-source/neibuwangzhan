@@ -21,6 +21,7 @@ export const ENUMS = {
   "discovery_tasks.status": ["active", "completed"],
   "documents.direction": ["client_to_us", "us_to_client"],
   "employees.role": ["admin", "employee", "client"],
+  "employees.status": ["在职", "离职"],
   "factories.phase": ["discovery", "completed_discovery", "contract", "completed_contract", "incubation", "completed_incubation"],
   "finances.currency": ["CNY", "THB"],
   "finances.type": ["income", "expense"],

@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const rows = db.prepare("SELECT id, name, email, role FROM employees").all() as
-    { id: number; name: string; email: string; role: string }[];
+  const rows = db.prepare("SELECT id, name, email, role, status FROM employees").all() as
+    { id: number; name: string; email: string; role: string; status: string }[];
 
   // 客户账号带上它能看到哪些公司的订单（外部客户端口的可见范围）
   const scoped = rows.map((r) => {
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO employees (name, email, role, password, must_change_password) VALUES (?, ?, ?, ?, 1)"
   ).run(name, email, role || "employee", hashedPassword);
-  const emp = db.prepare("SELECT id, name, email, role FROM employees WHERE id = ?").get(result.lastInsertRowid) as { id: number; name: string; email: string; role: string };
+  const emp = db.prepare("SELECT id, name, email, role, status FROM employees WHERE id = ?").get(result.lastInsertRowid) as { id: number; name: string; email: string; role: string; status: string };
   logOperation(auth.name, "添加员工", "employee", String(emp.id));
     return NextResponse.json(emp, { status: 201 });
 }
@@ -54,10 +54,10 @@ export async function PATCH(req: NextRequest) {
   const db = getDb();
 
   const body = await readJson(req);
-  const { id, name, email, role, password, customer_names } = body;
+  const { id, name, email, role, password, status, customer_names } = body;
   if (!id) return NextResponse.json({ error: "请提供员工ID" }, { status: 400 });
 
-  const enumErr = validateEnums({ "employees.role": role });
+  const enumErr = validateEnums({ "employees.role": role, "employees.status": status });
   if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
 
   const sets: string[] = [];
@@ -65,6 +65,19 @@ export async function PATCH(req: NextRequest) {
   if (name) { sets.push("name = ?"); params.push(name); }
   if (email) { sets.push("email = ?"); params.push(email); }
   if (role) { sets.push("role = ?"); params.push(role); }
+  // 标记离职 / 恢复在职
+  if (status) {
+    if (status === "离职") {
+      if (Number(id) === auth.id) return NextResponse.json({ error: "不能标记自己离职" }, { status: 400 });
+      const target = db.prepare("SELECT role FROM employees WHERE id = ?").get(id) as { role: string } | undefined;
+      if (!target) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
+      if (target.role === "admin") {
+        const adminCount = (db.prepare("SELECT COUNT(*) as c FROM employees WHERE role = 'admin' AND status = '在职'").get() as { c: number }).c;
+        if (adminCount <= 1) return NextResponse.json({ error: "不能标记最后一个在职管理员离职" }, { status: 400 });
+      }
+    }
+    sets.push("status = ?"); params.push(status);
+  }
   // 管理员重置了别人的密码 → 强制对方下次登录改成自己的。
   // 否则重置出来的临时密码会长期留在管理员和员工两边手上。
   if (password) {
@@ -98,8 +111,8 @@ export async function PATCH(req: NextRequest) {
       `可见公司: ${(customer_names as unknown[]).join("、") || "（清空）"}`);
   }
 
-  const emp = db.prepare("SELECT id, name, email, role FROM employees WHERE id = ?").get(id) as
-    { id: number; role: string } | undefined;
+  const emp = db.prepare("SELECT id, name, email, role, status FROM employees WHERE id = ?").get(id) as
+    { id: number; role: string; status: string } | undefined;
   const scope = db.prepare(
     "SELECT customer_name FROM client_account_customers WHERE employee_id = ? ORDER BY customer_name"
   ).all(id) as { customer_name: string }[];

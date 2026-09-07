@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Save, Pencil, Trash2, Building2 } from "lucide-react";
+import { Plus, Save, Pencil, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type Employee, fetchEmployees, createEmployee, updateEmployee, deleteEmployee, fetchOrderCustomerNames, fetchWithAuth } from "@/lib/api";
+import { type Employee, fetchEmployees, createEmployee, updateEmployee, fetchOrderCustomerNames, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 
@@ -141,15 +141,26 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("确认删除该员工？")) return;
+  const handleMarkLeft = async (id: number, name: string) => {
+    if (!confirm(`确认将「${name}」标记为离职？标记后该员工将无法登录，历史数据保留。`)) return;
     setEmpError("");
     try {
-      await deleteEmployee(id);
-      setEmployees(prev => prev.filter(e => e.id !== id));
+      const emp = await updateEmployee(id, { status: "离职" });
+      setEmployees(prev => prev.map(e => e.id === id ? emp : e));
     } catch (err) {
-      console.error("Delete employee failed:", err);
-      setEmpError("删除失败，仅管理员可操作");
+      console.error("Mark left failed:", err);
+      setEmpError("操作失败，仅管理员可操作");
+    }
+  };
+
+  const handleRestore = async (id: number) => {
+    setEmpError("");
+    try {
+      const emp = await updateEmployee(id, { status: "在职" });
+      setEmployees(prev => prev.map(e => e.id === id ? emp : e));
+    } catch (err) {
+      console.error("Restore failed:", err);
+      setEmpError("操作失败，仅管理员可操作");
     }
   };
 
@@ -226,7 +237,12 @@ export default function SettingsPage() {
                             {emp.name.slice(0, 1)}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-[var(--foreground)]">{emp.name}</p>
+                            <p className="text-sm font-medium text-[var(--foreground)]">
+                              {emp.name}
+                              {emp.status === "离职" && (
+                                <span className="ml-2 inline-flex rounded-full bg-[color-mix(in_oklch,var(--muted-foreground),var(--background)_85%)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">离职</span>
+                              )}
+                            </p>
                             <p className="text-xs text-[var(--muted-foreground)] max-sm:hidden">{emp.email}</p>
                           </div>
                         </div>
@@ -270,8 +286,12 @@ export default function SettingsPage() {
                               <Building2 className="size-3" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(emp)}><Pencil className="size-3" /></Button>
-                          <Button variant="ghost" size="icon-xs" onClick={() => handleDelete(emp.id)} className="text-[var(--destructive)] hover:text-[var(--destructive)]"><Trash2 className="size-3" /></Button>
+                          <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(emp)} title="编辑"><Pencil className="size-3" /></Button>
+                          {emp.status === "离职" ? (
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--success)] hover:text-[var(--success)]" onClick={() => handleRestore(emp.id)}>恢复在职</Button>
+                          ) : (
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--destructive)] hover:text-[var(--destructive)]" onClick={() => handleMarkLeft(emp.id, emp.name)}>标记离职</Button>
+                          )}
                         </div>
                       )}
                     </td>

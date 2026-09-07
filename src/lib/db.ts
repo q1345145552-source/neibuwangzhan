@@ -452,6 +452,7 @@ function initTables(database: Database.Database) {
       auth_version INTEGER NOT NULL DEFAULT 0,
       failed_login_attempts INTEGER NOT NULL DEFAULT 0,
       locked_until INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职')),
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -1109,6 +1110,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职'))"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。
