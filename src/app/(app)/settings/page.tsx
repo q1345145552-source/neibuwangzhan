@@ -27,6 +27,8 @@ export default function SettingsPage() {
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
   const [editPassword, setEditPassword] = useState("");
+  // 员工列表是否显示离职员工（默认只显示在职）
+  const [showLeft, setShowLeft] = useState(false);
 
   // 客户账号可见范围：该账号在外部客户端口能看到哪些公司的订单
   const [scopeTarget, setScopeTarget] = useState<Employee | null>(null);
@@ -44,7 +46,8 @@ export default function SettingsPage() {
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    fetchEmployees().then(setEmployees).catch(() => {});
+    // 员工管理需要看到离职员工（以便恢复在职），所以拉全部，前端按开关过滤显示
+    fetchEmployees({ include_left: true }).then(setEmployees).catch(() => {});
   }, []);
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -187,6 +190,12 @@ export default function SettingsPage() {
             <h3 className="text-sm font-medium text-[var(--foreground)]">员工管理</h3>
             {isAdmin && <Button variant="outline" size="icon-xs" aria-label="添加员工" onClick={() => setShowAddForm(v => !v)}><Plus className="size-3.5" aria-hidden="true" /></Button>}
           </div>
+          {isAdmin && (
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+              <input type="checkbox" checked={showLeft} onChange={(e) => setShowLeft(e.target.checked)} className="size-3.5 accent-[var(--primary)]" />
+              显示离职员工
+            </label>
+          )}
           {!isAdmin && <p className="text-xs text-[var(--muted-foreground)]">仅管理员可以添加、编辑或删除员工</p>}
           {empError && <p className="text-xs text-[var(--destructive)]">{empError}</p>}
 
@@ -217,7 +226,7 @@ export default function SettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((emp) => (
+                {employees.filter((emp) => showLeft || emp.status !== "离职").map((emp) => (
                   <tr key={emp.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
                     <td className="py-2.5 pr-4">
                       {editingId === emp.id ? (
@@ -240,7 +249,7 @@ export default function SettingsPage() {
                             <p className="text-sm font-medium text-[var(--foreground)]">
                               {emp.name}
                               {emp.status === "离职" && (
-                                <span className="ml-2 inline-flex rounded-full bg-[color-mix(in_oklch,var(--muted-foreground),var(--background)_85%)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">离职</span>
+                                <span className="ml-2 inline-flex rounded-full bg-[color-mix(in_oklch,var(--muted-foreground),var(--background)_85%)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">已离职</span>
                               )}
                             </p>
                             <p className="text-xs text-[var(--muted-foreground)] max-sm:hidden">{emp.email}</p>

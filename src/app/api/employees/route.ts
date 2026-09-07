@@ -10,7 +10,12 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const rows = db.prepare("SELECT id, name, email, role, status FROM employees").all() as
+  // 默认只返回在职员工（供选人下拉框用，避免给离职员工派活）；?include_left=1 时返回全部（含离职）。
+  const includeLeft = new URL(req.url).searchParams.get("include_left") === "1";
+  const sql = includeLeft
+    ? "SELECT id, name, email, role, status FROM employees"
+    : "SELECT id, name, email, role, status FROM employees WHERE status != '离职'";
+  const rows = db.prepare(sql).all() as
     { id: number; name: string; email: string; role: string; status: string }[];
 
   // 客户账号带上它能看到哪些公司的订单（外部客户端口的可见范围）
