@@ -205,8 +205,9 @@ export async function fetchBusinessTypes() {
   return res.json() as Promise<BusinessType[]>;
 }
 
-export async function fetchEmployees() {
-  const res = await fetch("/api/employees", { headers: authHeaders(), cache: "no-store" });
+export async function fetchEmployees(params?: { include_left?: boolean }) {
+  const q = params?.include_left ? "?include_left=1" : "";
+  const res = await fetch(`/api/employees${q}`, { headers: authHeaders(), cache: "no-store" });
   if (!res.ok) throw new Error("获取员工列表失败");
   return res.json() as Promise<Employee[]>;
 }
