@@ -12,8 +12,9 @@ export async function POST(req: NextRequest) {
   if (!email || !password) return NextResponse.json({ error: "请输入邮箱和密码" }, { status: 400 });
 
   const db = getDb();
-  const user = db.prepare("SELECT id, name, email, role, password, must_change_password, auth_version FROM employees WHERE email = ?").get(email) as { id: number; name: string; email: string; role: string; password: string; must_change_password: number; auth_version: number } | undefined;
+  const user = db.prepare("SELECT id, name, email, role, password, must_change_password, auth_version, status FROM employees WHERE email = ?").get(email) as { id: number; name: string; email: string; role: string; password: string; must_change_password: number; auth_version: number; status: string } | undefined;
   if (!user) return NextResponse.json({ error: "邮箱或密码错误" }, { status: 401 });
+  if (user.status === "离职") return NextResponse.json({ error: "账号已停用" }, { status: 403 });
 
   const existingLock = getLoginLock(db, user.id);
   if (existingLock) {

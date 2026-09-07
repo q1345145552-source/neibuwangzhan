@@ -61,15 +61,17 @@ export async function verifyToken(token: string, options: VerifyOptions = {}): P
 
     // JWT 只证明它由本系统签发；账号当前是否还能使用，必须以数据库为准。
     const user = getDb().prepare(
-      "SELECT name, role, must_change_password, auth_version FROM employees WHERE id = ?"
+      "SELECT name, role, must_change_password, auth_version, status FROM employees WHERE id = ?"
     ).get(tokenPayload.id) as {
       name: string;
       role: string;
       must_change_password: number;
       auth_version: number;
+      status: string;
     } | undefined;
 
     if (!user || user.auth_version !== tokenPayload.authVersion) return null;
+    if (user.status === "离职") return null;
     if (user.must_change_password === 1 && !options.allowPasswordChangeRequired) return null;
 
     return {
