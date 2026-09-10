@@ -141,6 +141,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
             <option value="待处理">待处理</option>
             <option value="进行中">进行中</option>
             <option value="已完成">已完成</option>
+            <option value="客户取消">客户取消</option>
           </select>
         </div>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">

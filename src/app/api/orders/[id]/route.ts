@@ -56,6 +56,23 @@ export async function PATCH(
   if (body.currency !== undefined) { fields.push("currency = ?"); values.push(body.currency || "CNY"); }
   if (body.trademark_name !== undefined) { fields.push("trademark_name = ?"); values.push(body.trademark_name); }
 
+  // 取消订单：必须填取消原因
+  if (body.cancel === true) {
+    const reason = String(body.cancel_reason || "").trim();
+    if (!reason) return NextResponse.json({ error: "请填写取消原因" }, { status: 400 });
+    fields.push("status = ?"); values.push("客户取消");
+    fields.push("cancel_reason = ?"); values.push(reason);
+  }
+  // 恢复订单：按步骤重新计算状态（回到跟着步骤走）
+  if (body.restore === true) {
+    const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
+    const allDone = steps.length > 0 && steps.every((s) => s.status === "已完成");
+    const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
+    const newStatus = allDone ? "已完成" : anyActivity ? "进行中" : "待处理";
+    fields.push("status = ?"); values.push(newStatus);
+    fields.push("cancel_reason = ?"); values.push("");
+  }
+
   if (fields.length === 0) return NextResponse.json({ error: "没有要更新的字段" }, { status: 400 });
 
   fields.push("updated_at = ?");

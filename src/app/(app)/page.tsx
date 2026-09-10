@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   // 轨迹更新小板块：仅「可爱(keai)」和管理员可见
   const canSeeTracking = user?.role === "admin" || user?.name === "keai";
-  const [stats, setStats] = useState({ total_orders: 0, in_progress: 0, completed: 0, today_todos: 0 });
+  const [stats, setStats] = useState({ total_orders: 0, in_progress: 0, completed: 0, canceled: 0, today_todos: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
@@ -91,12 +91,11 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="sm:col-span-2 lg:col-span-1">
-          <StatCard label="总订单" value={stats.total_orders} href="/orders" />
-        </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard label="总订单" value={stats.total_orders} href="/orders" />
         <StatCard label="进行中" value={stats.in_progress} href="/orders?status=进行中" />
         <StatCard label="已完成" value={stats.completed} href="/orders?status=已完成" />
+        <StatCard label="已取消" value={stats.canceled} href="/orders?status=客户取消" />
         <StatCard label="今日待办" value={stats.today_todos} href="/tasks" />
       </div>
 

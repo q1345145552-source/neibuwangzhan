@@ -81,16 +81,19 @@ export async function PATCH(
 
   const updated = db.prepare("SELECT * FROM order_steps WHERE id = ?").get(step_id);
 
-  // 同步订单状态
-  const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
-  // 只有全部步骤真正"已完成"才算订单完成（此前全部"阻塞"也会被标成已完成）
-  const allDone = steps.every((s) => s.status === "已完成");
-  const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
-  if (steps.length > 0) {
-    let orderStatus = "待处理";
-    if (allDone) orderStatus = "已完成";
-    else if (anyActivity) orderStatus = "进行中";
-    db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(orderStatus, id);
+  // 同步订单状态：客户取消的订单状态粘住，步骤怎么动都不改，只有点恢复才重新跟着步骤变
+  const orderStatusRow = db.prepare("SELECT status FROM orders WHERE id = ?").get(id) as { status: string } | undefined;
+  if (!orderStatusRow || orderStatusRow.status !== "客户取消") {
+    const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
+    // 只有全部步骤真正"已完成"才算订单完成（此前全部"阻塞"也会被标成已完成）
+    const allDone = steps.every((s) => s.status === "已完成");
+    const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
+    if (steps.length > 0) {
+      let orderStatus = "待处理";
+      if (allDone) orderStatus = "已完成";
+      else if (anyActivity) orderStatus = "进行中";
+      db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(orderStatus, id);
+    }
   }
 
   logOperation(auth.name || "系统", `更新步骤:${status || "已撤回"}`, "step", String(step_id), `订单:${id}`);

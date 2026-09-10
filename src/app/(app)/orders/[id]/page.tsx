@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2 } from "lucide-react";
+import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2, Ban } from "lucide-react";
 import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
@@ -53,6 +53,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs">("finances");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSaving, setCancelSaving] = useState(false);
 
   // ── 反馈链接 ──
   const loadFeedbackLink = async () => {
@@ -416,6 +419,35 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const handleCancelOrder = async () => {
+    if (!order) return;
+    const reason = cancelReason.trim();
+    if (!reason) { setError("请填写取消原因"); return; }
+    setCancelSaving(true);
+    try {
+      const updated = await updateOrder(order.id, { cancel: true, cancel_reason: reason });
+      setOrder(updated);
+      setShowCancelModal(false);
+      setCancelReason("");
+    } catch (err) {
+      console.error("取消订单失败:", err);
+      setError(err instanceof Error ? err.message : "取消订单失败");
+    } finally {
+      setCancelSaving(false);
+    }
+  };
+
+  const handleRestoreOrder = async () => {
+    if (!order) return;
+    try {
+      const updated = await updateOrder(order.id, { restore: true });
+      setOrder(updated);
+    } catch (err) {
+      console.error("恢复订单失败:", err);
+      setError(err instanceof Error ? err.message : "恢复订单失败");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
@@ -471,6 +503,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {!editingOrder ? (
                 <>
                   <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
+                  {order.status === "客户取消" ? (
+                    <Button variant="outline" size="sm" onClick={handleRestoreOrder} className="gap-1.5 text-[var(--success)] border-[var(--success)]/30 hover:bg-[var(--success)]/10"><Undo2 className="size-3.5" />恢复</Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>
                 </>
               ) : (
@@ -1208,6 +1245,29 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <button onClick={handleDeleteDoc} disabled={deletingDoc} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
                 {deletingDoc ? "删除中..." : "确认删除"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 取消订单弹窗 */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { if (!cancelSaving) setShowCancelModal(false); }}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">取消订单</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              取消后订单状态变为「客户取消」，下方步骤全部原样保留。请填写取消原因（必填）：
+            </p>
+            <textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="例如：客户选了别家 / 客户预算不够 / 客户不做了"
+              rows={3}
+              className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowCancelModal(false)} disabled={cancelSaving}>取消</Button>
+              <Button size="sm" onClick={handleCancelOrder} disabled={cancelSaving} className="bg-[var(--warning)] text-[var(--warning-foreground)]">{cancelSaving ? "取消中…" : "确认取消"}</Button>
             </div>
           </div>
         </div>

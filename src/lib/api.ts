@@ -13,6 +13,7 @@ export interface Order {
   total_amount: number;
   currency?: string;
   trademark_name?: string;
+  cancel_reason?: string;
   created_at: string;
   updated_at: string;
   steps?: OrderStep[];
@@ -116,6 +117,7 @@ export interface DashboardStats {
   total_orders: number;
   in_progress: number;
   completed: number;
+  canceled: number;
   today_todos: number;
 }
 
@@ -179,7 +181,7 @@ export async function createOrder(data: {
   return resData as Order;
 }
 
-export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string }>) {
+export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string; cancel?: boolean; restore?: boolean; cancel_reason?: string }>) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -389,6 +391,7 @@ export const statusLabels: Record<string, string> = {
   "进行中": "进行中",
   "已完成": "已完成",
   "已逾期": "已逾期",
+  "客户取消": "客户取消",
 };
 
 export const statusClass: Record<string, string> = {
@@ -396,6 +399,7 @@ export const statusClass: Record<string, string> = {
   "进行中": "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[oklch(0.38_0.10_240)]",
   "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
   "已逾期": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
+  "客户取消": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
 
