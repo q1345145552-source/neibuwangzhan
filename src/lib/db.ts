@@ -1479,10 +1479,43 @@ function initTables(database: Database.Database) {
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS shipping_order_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES shipping_orders(id),
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // shipping_steps 补充 started_at 列（按实际计时需要）
   try { database.exec("ALTER TABLE shipping_steps ADD COLUMN started_at TEXT"); } catch {}
+
+  // 迁移：把备注表里 step_id=0 的订单级文件（格式 [文件] name | url）搬到独立文件表。
+  // 只搬不删，原备注原样保留。用 user_version=1 标记只跑一次，避免重复迁移或复活已删除文件。
+  try {
+    const ver = database.pragma("user_version", { simple: true }) as number;
+    if (ver < 1) {
+      const notes = database.prepare(
+        "SELECT id, order_id, content, created_by, created_at FROM shipping_step_notes WHERE step_id = 0"
+      ).all() as { order_id: number; content: string; created_by: string; created_at: string }[];
+      const insert = database.prepare(
+        "INSERT INTO shipping_order_files (order_id, name, url, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?)"
+      );
+      let moved = 0;
+      for (const n of notes) {
+        const m = (n.content || "").match(/^\[文件\]\s*(.+?)\s*\|\s*(.+)$/);
+        if (m) {
+          insert.run(n.order_id, m[1].trim(), m[2].trim(), n.created_by || "", n.created_at);
+          moved++;
+        }
+      }
+      database.pragma("user_version = 1");
+      if (moved) console.log(`[DB] 已迁移 ${moved} 条订单级文件到 shipping_order_files`);
+    }
+  } catch (e) { console.error("[DB] 迁移订单级文件失败:", e); }
 }
 
 /* ── 积分规则种子 ── */
