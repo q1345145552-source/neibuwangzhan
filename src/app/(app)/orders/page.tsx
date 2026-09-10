@@ -152,6 +152,7 @@ export default function OrdersPage() {
           <option value="进行中">进行中</option>
           <option value="已完成">已完成</option>
           <option value="已逾期">已逾期</option>
+          <option value="客户取消">客户取消</option>
         </select>
         <select value={businessFilter} onChange={(e) => setBusinessFilter(e.target.value)} aria-label="按业务线筛选" className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
           <option value="all">全部业务线</option>

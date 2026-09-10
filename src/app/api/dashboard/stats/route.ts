@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const totalOrders = (db.prepare("SELECT COUNT(*) as c FROM orders").get() as { c: number }).c;
   const inProgress = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = '进行中'").get() as { c: number }).c;
   const completed = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = '已完成'").get() as { c: number }).c;
+  const canceled = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = '客户取消'").get() as { c: number }).c;
 
   // 今日待办：当前用户名下所有未完成的步骤数（LIKE 匹配多负责人格式）
   const userName = auth.name || "";
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
     total_orders: totalOrders,
     in_progress: inProgress,
     completed: completed,
+    canceled: canceled,
     today_todos: todayTodos,
   });
 }

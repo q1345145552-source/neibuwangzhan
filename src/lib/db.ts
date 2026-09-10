@@ -475,6 +475,7 @@ function initTables(database: Database.Database) {
       total_amount REAL DEFAULT 0,
       currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB')),
       trademark_name TEXT DEFAULT '',
+      cancel_reason TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       phase TEXT NOT NULL DEFAULT 'discovery' CHECK(phase IN ('discovery','completed_discovery','contract','completed_contract','incubation','completed_incubation'))
@@ -1294,6 +1295,7 @@ function initTables(database: Database.Database) {
     }
   } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE orders ADD COLUMN cancel_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE audit_logs ADD COLUMN old_value TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE audit_logs ADD COLUMN new_value TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE audit_logs ADD COLUMN field_name TEXT DEFAULT ''"); } catch {}
