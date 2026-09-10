@@ -227,21 +227,17 @@ export default function LogisticsDetailPage({ params }: { params: Promise<{ id: 
     try {
       const url = await uploadFile(file);
       if (!url) { setError("文件上传失败"); return; }
-      // 持久化到数据库 — step_id=0 表示订单级文件
-      const noteRes = await fetchWithAuth(`/api/logistics/${id}/steps/0/notes`, {
+      // 写入独立订单文件表（不再借用备注表）
+      const res = await fetchWithAuth(`/api/logistics/${id}/files`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: `[文件] ${file.name} | ${url}`, created_by: user?.name || "系统" }),
+        body: JSON.stringify({ name: file.name, url }),
       });
-      if (noteRes.ok) {
-        const notes = await noteRes.json();
-        if (Array.isArray(notes)) {
-          setUploadedFiles(notes.map((n: any) => {
-            const parts = (n.content || "").split("|");
-            return { id: n.id, name: parts[0]?.replace("[文件] ", "").trim() || "", url: parts[1]?.trim() || "" };
-          }));
-        }
+      if (res.ok) {
+        const created = await res.json();
+        setUploadedFiles(p => [...p, created]);
       } else {
-        setError("文件信息保存失败");
+        const e = await res.json().catch(() => ({}));
+        setError(e.error || "文件信息保存失败");
       }
     } catch { setError("文件上传失败"); }
     finally { setUploading(false); setUploadFileName(""); }
@@ -542,7 +538,7 @@ export default function LogisticsDetailPage({ params }: { params: Promise<{ id: 
                       {uploadedFiles.map((f, i) => (
                         <li key={i} className="flex items-center justify-between gap-2 rounded border border-[var(--border)] px-2 py-1.5">
                           <a href={fileUrl(f.url)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--foreground)] hover:text-[var(--primary)] truncate flex-1">{f.name}</a>
-                          <button onClick={async () => { await fetchWithAuth(`/api/logistics/${id}/steps/0/notes?id=${f.id}`, { method: "DELETE" }); setUploadedFiles(p => p.filter(x => x.id !== f.id)); }}
+                          <button onClick={async () => { await fetchWithAuth(`/api/logistics/${id}/files?id=${f.id}`, { method: "DELETE" }); setUploadedFiles(p => p.filter(x => x.id !== f.id)); }}
                             className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"><X className="size-3" /></button>
                         </li>
                       ))}

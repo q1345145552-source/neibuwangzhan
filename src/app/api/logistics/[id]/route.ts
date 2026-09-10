@@ -22,22 +22,20 @@ export async function GET(
   const steps = db.prepare("SELECT * FROM shipping_steps WHERE order_id = ? ORDER BY step_order").all(id);
 
   const stepNotes: Record<number, any[]> = {};
-  const orderFiles: { id: number; name: string; url: string; created_by: string; created_at: string }[] = [];
   const allNotes = db.prepare(
     "SELECT * FROM shipping_step_notes WHERE order_id = ? ORDER BY created_at"
   ).all(id) as any[];
   for (const n of allNotes) {
-    if (n.step_id === 0) {
-      // 格式: [文件] filename | url
-      const m = (n.content as string).match(/^\[文件\]\s*(.+?)\s*\|\s*(.+)$/);
-      if (m) {
-        orderFiles.push({ id: n.id, name: m[1].trim(), url: m[2].trim(), created_by: n.created_by, created_at: n.created_at });
-      }
-    } else {
-      if (!stepNotes[n.step_id]) stepNotes[n.step_id] = [];
-      stepNotes[n.step_id].push(n);
-    }
+    // step_id=0 是旧的订单级文件备注，已迁移到 shipping_order_files，这里跳过（备注仍保留，但不再作为文件读取）
+    if (n.step_id === 0) continue;
+    if (!stepNotes[n.step_id]) stepNotes[n.step_id] = [];
+    stepNotes[n.step_id].push(n);
   }
+
+  // 订单级文件直接从独立文件表查
+  const orderFiles = db.prepare(
+    "SELECT id, name, url, uploaded_by as created_by, created_at FROM shipping_order_files WHERE order_id = ? ORDER BY created_at"
+  ).all(id) as { id: number; name: string; url: string; created_by: string; created_at: string }[];
 
   return NextResponse.json({ ...(order as object), steps, stepNotes, orderFiles });
 }
@@ -63,23 +61,29 @@ export async function DELETE(
     return NextResponse.json({ error: "没有权限删除别人的柜号订单" }, { status: 403 });
   }
 
-  // 收集所有备注中的文件 URL，删除磁盘上的实际文件
+  // 收集文件 URL（独立文件表 + 备注表），删除磁盘上的实际文件
+  const uploadDirs = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
+  const safeNames = new Set<string>();
+  // 1) 独立文件表里的订单级文件
+  const orderFiles = db.prepare("SELECT url FROM shipping_order_files WHERE order_id = ?").all(id) as { url: string }[];
+  for (const f of orderFiles) {
+    const m = (f.url || "").match(/\/api\/files\/([A-Za-z0-9._-]+)/);
+    if (m) safeNames.add(m[1]);
+  }
+  // 2) 备注里的步骤级文件（沿用原正则，兼容 [标签] /api/files/xxx 等格式）
   const allNotes = db.prepare(
     "SELECT content FROM shipping_step_notes WHERE order_id = ?"
   ).all(id) as { content: string }[];
-
-  const uploadDirs = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
-  const safeNames = new Set<string>();
   for (const n of allNotes) {
-    // 提取 /api/files/xxx 形式的所有文件引用
     const matches = (n.content || "").matchAll(/\/api\/files\/([A-Za-z0-9._-]+)/g);
     for (const m of matches) {
       safeNames.add(m[1]);
     }
   }
 
-  // 事务删除：备注 → 步骤 → 订单
+  // 事务删除：文件表 → 备注 → 步骤 → 订单
   db.transaction(() => {
+    db.prepare("DELETE FROM shipping_order_files WHERE order_id = ?").run(id);
     db.prepare("DELETE FROM shipping_step_notes WHERE order_id = ?").run(id);
     db.prepare("DELETE FROM shipping_steps WHERE order_id = ?").run(id);
     db.prepare("DELETE FROM shipping_orders WHERE id = ?").run(id);
