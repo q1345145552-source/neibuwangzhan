@@ -359,10 +359,16 @@ export interface StepTemplateWithDocs extends StepTemplate {
 export function getOrderStepsWithDocs(businessTypeId: number, subServiceType?: string, addressType?: string): StepTemplateWithDocs[] {
   const base = getBusinessSteps(businessTypeId, subServiceType);
   const docsMap = getStepDocs(businessTypeId, subServiceType);
-  const withDocs: StepTemplateWithDocs[] = base.map((s, i) => ({ ...s, docs: docsMap[i + 1] || [] }));
+  // 所有业务线流程最前面加「方案确认」第一步：负责人留空（谁都能操作），
+  // 后续步骤序号整体后移。方案确认步骤可传附件（不强制），完成前后面的步骤点不了开始。
+  const withDocs: StepTemplateWithDocs[] = [
+    { name: "方案确认", assignee: "", docs: [] },
+    ...base.map((s, i) => ({ ...s, docs: docsMap[i + 1] || [] })),
+  ];
   if (businessTypeId === 7 && addressType === "xiangtai") {
-    withDocs.splice(3, 0, { name: "签订租赁合同", assignee: "Pop", docs: ["租赁合同"] });
-    withDocs.splice(4, 0, { name: "收取首月租金", assignee: "Ing", docs: ["租金收款凭证"] });
+    // 湘泰地址的额外两步：原本插在原第 3 步后，方案确认前置后整体后移一位
+    withDocs.splice(4, 0, { name: "签订租赁合同", assignee: "Pop", docs: ["租赁合同"] });
+    withDocs.splice(5, 0, { name: "收取首月租金", assignee: "Ing", docs: ["租金收款凭证"] });
   }
   return withDocs;
 }
