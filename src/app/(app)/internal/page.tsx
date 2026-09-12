@@ -60,6 +60,8 @@ export default function InternalPage() {
   const { user } = useAuth();
   const [staffNames, setStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
+  // 机构业务总开关：关闭时工作量里隐藏达人相关列
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
   const [issues, setIssues] = useState<IssueTicket[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -283,6 +285,14 @@ export default function InternalPage() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
+  }, []);
+
+  // 读取机构业务总开关
+  useEffect(() => {
+    fetchWithAuth("/api/settings", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .catch(() => {});
   }, []);
 
   // 加载员工列表（供工单指派人下拉框使用）
@@ -1540,8 +1550,8 @@ export default function InternalPage() {
               <tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
                 <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">订单笔数</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">达人个数</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">签约跟进</th>
+                {agencyEnabled && <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">达人个数</th>}
+                {agencyEnabled && <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">签约跟进</th>}
                 <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">合计</th>
               </tr>
             </thead>
@@ -1564,20 +1574,24 @@ export default function InternalPage() {
                       </button>
                     ) : "0"}
                   </td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">
-                    {e.influencerSteps > 0 ? (
-                      <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
-                        {e.influencerSteps}<ExternalLink className="size-2.5 opacity-60" />
-                      </button>
-                    ) : "0"}
-                  </td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">
-                    {e.contractInfs > 0 ? (
-                      <button onClick={() => handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
-                        {e.contractInfs}<ExternalLink className="size-2.5 opacity-60" />
-                      </button>
-                    ) : "0"}
-                  </td>
+                  {agencyEnabled && (
+                    <td className="py-2.5 px-4 text-center tabular-nums">
+                      {e.influencerSteps > 0 ? (
+                        <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                          {e.influencerSteps}<ExternalLink className="size-2.5 opacity-60" />
+                        </button>
+                      ) : "0"}
+                    </td>
+                  )}
+                  {agencyEnabled && (
+                    <td className="py-2.5 px-4 text-center tabular-nums">
+                      {e.contractInfs > 0 ? (
+                        <button onClick={() => handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                          {e.contractInfs}<ExternalLink className="size-2.5 opacity-60" />
+                        </button>
+                      ) : "0"}
+                    </td>
+                  )}
                   <td className={cn(
                     "py-2.5 px-4 text-center tabular-nums font-semibold",
                     e.level === "critical" && "text-red-600",
@@ -1586,7 +1600,7 @@ export default function InternalPage() {
                 </tr>
               ))}
               {(!wl || wl.employees.length === 0) && (
-                <tr><td colSpan={5} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
+                <tr><td colSpan={agencyEnabled ? 5 : 3} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
               )}
             </tbody>
           </table>

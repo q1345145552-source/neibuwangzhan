@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, isAgencyEnabled } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -19,13 +19,16 @@ export async function GET(req: NextRequest) {
   orderSql += " GROUP BY assignee ORDER BY cnt DESC";
   const orderStats: { assignee: string; cnt: number }[] = db.prepare(orderSql).all(...orderParams) as any[];
 
+  // 机构业务总开关：关闭时不统计达人评估和签订合同
+  const agencyOn = isAgencyEnabled();
+
   // 2. Influencer evaluations by evaluated_by
   let evalSql = "SELECT evaluated_by as assignee, COUNT(*) as cnt FROM influencer_evaluations WHERE 1=1";
   const evalParams: any[] = [];
   if (from) { evalSql += " AND created_at >= ?"; evalParams.push(from); }
   if (to) { evalSql += " AND created_at <= ?"; evalParams.push(to + " 23:59:59"); }
   evalSql += " GROUP BY evaluated_by ORDER BY cnt DESC";
-  const evalStats: { assignee: string; cnt: number }[] = db.prepare(evalSql).all(...evalParams) as any[];
+  const evalStats: { assignee: string; cnt: number }[] = agencyOn ? db.prepare(evalSql).all(...evalParams) as any[] : [];
 
   // 3. Contracts created (from influencers.created_by via join)
   let contractSql = "SELECT i.created_by as assignee, COUNT(*) as cnt FROM contracts c JOIN influencers i ON c.influencer_id = i.id WHERE 1=1";
@@ -33,7 +36,7 @@ export async function GET(req: NextRequest) {
   if (from) { contractSql += " AND c.created_at >= ?"; contractParams.push(from); }
   if (to) { contractSql += " AND c.created_at <= ?"; contractParams.push(to + " 23:59:59"); }
   contractSql += " GROUP BY i.created_by ORDER BY cnt DESC";
-  const contractStats: { assignee: string; cnt: number }[] = db.prepare(contractSql).all(...contractParams) as any[];
+  const contractStats: { assignee: string; cnt: number }[] = agencyOn ? db.prepare(contractSql).all(...contractParams) as any[] : [];
 
   // 4. Issues resolved by resolved_by
   let issueSql = "SELECT resolved_by as assignee, COUNT(*) as cnt FROM issue_tickets WHERE status = '已解决'";
