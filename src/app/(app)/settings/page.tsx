@@ -44,11 +44,41 @@ export default function SettingsPage() {
   const [confirmPwd, setConfirmPwd] = useState("");
   const [pwdSaving, setPwdSaving] = useState(false);
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // 机构业务总开关
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
+  const [agencySaving, setAgencySaving] = useState(false);
 
   useEffect(() => {
     // 员工管理需要看到离职员工（以便恢复在职），所以拉全部，前端按开关过滤显示
     fetchEmployees({ include_left: true }).then(setEmployees).catch(() => {});
   }, []);
+
+  // 读取机构业务总开关
+  useEffect(() => {
+    fetchWithAuth("/api/settings", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleAgency = async () => {
+    setAgencySaving(true);
+    try {
+      const res = await fetchWithAuth("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agency_enabled: !agencyEnabled }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setAgencyEnabled(d.agency_enabled);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "保存失败");
+      }
+    } catch { alert("保存失败"); }
+    finally { setAgencySaving(false); }
+  };
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -431,6 +461,37 @@ export default function SettingsPage() {
               {pwdSaving ? "保存中..." : "修改密码"}
             </Button>
           </form>
+        </div>
+
+        {/* 机构业务总开关 */}
+        <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">机构业务</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              控制达人发现、签约跟进、品牌孵化等机构功能的显示。关闭后相关入口和统计会隐藏，数据不会删除。
+            </p>
+          </div>
+          {isAdmin ? (
+            <label className="flex cursor-pointer items-center justify-between gap-4">
+              <span className="text-sm text-[var(--foreground)]">{agencySaving ? "保存中..." : agencyEnabled ? "已开启" : "已关闭"}</span>
+              <button
+                type="button"
+                onClick={handleToggleAgency}
+                disabled={agencySaving}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
+                  agencyEnabled ? "bg-[var(--primary)]" : "bg-[var(--muted)]"
+                )}
+              >
+                <span className={cn(
+                  "absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform",
+                  agencyEnabled && "translate-x-5"
+                )} />
+              </button>
+            </label>
+          ) : (
+            <p className="text-xs text-[var(--muted-foreground)]">仅管理员可配置</p>
+          )}
         </div>
 
         {/* Basic settings form */}

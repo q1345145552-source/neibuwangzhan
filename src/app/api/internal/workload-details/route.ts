@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, isAgencyEnabled } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 
 // 员工英文名到步骤中文名/泰文名的对照
@@ -35,6 +35,9 @@ export async function GET(req: NextRequest) {
 
   let data: any[] = [];
 
+  // 机构业务总开关：关闭时不返回达人/签约达人明细
+  const agencyOn = isAgencyEnabled();
+
   if (type === "order_steps") {
     // 按订单分组，一笔订单一条记录
     data = db.prepare(`
@@ -50,7 +53,7 @@ export async function GET(req: NextRequest) {
       GROUP BY o.id
       ORDER BY o.created_at DESC
     `).all(...params);
-  } else if (type === "influencer_steps") {
+  } else if (type === "influencer_steps" && agencyOn) {
     // 按达人分组，一个达人一条记录
     data = db.prepare(`
       SELECT i.id as influencer_id, i.name as influencer_name, i.code, i.phase, i.status as influencer_status,
@@ -63,7 +66,7 @@ export async function GET(req: NextRequest) {
       GROUP BY i.id
       ORDER BY i.name ASC
     `).all(...params);
-  } else if (type === "contract_infs") {
+  } else if (type === "contract_infs" && agencyOn) {
     data = db.prepare(`
       SELECT DISTINCT i.id, i.name, i.code, i.phase, i.status,
              c.id as contract_id, c.base_salary, c.commission, c.live_sessions,

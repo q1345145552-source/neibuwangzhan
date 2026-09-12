@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, isAgencyEnabled } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
 
   let sql = "SELECT * FROM notifications WHERE 1=1";
   const params: any[] = [];
+  // 机构业务总开关：关闭时不返回达人评估、签约相关的通知
+  if (!isAgencyEnabled()) { sql += " AND type NOT IN ('eval_done', 'contract_overdue')"; }
   if (recipient) { sql += " AND (recipient = ? OR recipient = '')"; params.push(recipient); }
   if (unreadOnly) { sql += " AND is_read = 0"; }
   sql += " ORDER BY created_at DESC LIMIT ?";

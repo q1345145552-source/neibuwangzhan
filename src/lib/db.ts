@@ -1524,6 +1524,31 @@ function initTables(database: Database.Database) {
       if (moved) console.log(`[DB] 已迁移 ${moved} 条订单级文件到 shipping_order_files`);
     }
   } catch (e) { console.error("[DB] 迁移订单级文件失败:", e); }
+
+  // 系统设置（键值对，用于全局开关等）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    );
+  `);
+}
+
+/* ── 系统设置读写 ── */
+export function getSystemSetting(key: string): string {
+  const row = getDb().prepare("SELECT value FROM system_settings WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value || "";
+}
+
+export function setSystemSetting(key: string, value: string): void {
+  getDb().prepare(
+    "INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(key, value);
+}
+
+/** 机构业务总开关是否开启（默认关闭） */
+export function isAgencyEnabled(): boolean {
+  return getSystemSetting("agency_enabled") === "1";
 }
 
 /* ── 积分规则种子 ── */

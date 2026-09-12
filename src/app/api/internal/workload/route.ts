@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, isAgencyEnabled } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 
 const DEFAULT_WARN = 5;
@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
 
   const result: { name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical" }[] = [];
 
+  // 机构业务总开关：关闭时不统计达人个数和签约达人
+  const agencyOn = isAgencyEnabled();
+
   for (const emp of employees) {
     const cond = buildMatchCondition(emp.name);
 
@@ -43,17 +46,17 @@ export async function GET(req: NextRequest) {
     ).all() as { c: number }[])[0]?.c || 0;
 
     // 达人个数：该员工参与且未完成的达人（去重计数，不是步骤数）
-    const influencerSteps = (db.prepare(
+    const influencerSteps = agencyOn ? (db.prepare(
       `SELECT COUNT(DISTINCT ist.influencer_id) as c FROM influencer_steps ist
        WHERE (${cond}) AND ist.status NOT IN ('已完成','已停止')`
-    ).all() as { c: number }[])[0]?.c || 0;
+    ).all() as { c: number }[])[0]?.c || 0 : 0;
 
     // 签约中的达人（该员工有未完成步骤的签约达人）
-    const contractInfs = (db.prepare(
+    const contractInfs = agencyOn ? (db.prepare(
       `SELECT COUNT(DISTINCT i.id) as c FROM influencers i
        JOIN influencer_steps s ON s.influencer_id = i.id
        WHERE i.phase = 'contract' AND (${cond}) AND s.status NOT IN ('已完成','已停止')`
-    ).all() as { c: number }[])[0]?.c || 0;
+    ).all() as { c: number }[])[0]?.c || 0 : 0;
 
     const total = orderSteps + influencerSteps + contractInfs;
     let level: "ok" | "warn" | "critical" = "ok";

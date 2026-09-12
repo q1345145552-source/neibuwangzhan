@@ -141,6 +141,7 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   useEffect(() => {
     if (!user?.name) return;
@@ -158,6 +159,16 @@ export function Sidebar() {
     const interval = setInterval(fetchUnread, 30000); // poll every 30s
     return () => clearInterval(interval);
   }, [user?.name]);
+
+  // 机构业务总开关：关闭时隐藏机构入口
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (!token) return;
+    fetch("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .catch(() => {});
+  }, []);
 
   // 路由变化时关闭移动端菜单：渲染期间派生状态，避免在 effect 中直接 setState
   const [prevPathname, setPrevPathname] = useState(pathname);
@@ -194,10 +205,14 @@ export function Sidebar() {
         </div>
         <NavSection items={businessLines} pathname={pathname} onClose={close} />
 
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
-        </div>
-        <NavSection items={agencyNav} pathname={pathname} onClose={close} />
+        {agencyEnabled && (
+          <>
+            <div className="mt-4 mb-2 px-3">
+              <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
+            </div>
+            <NavSection items={agencyNav} pathname={pathname} onClose={close} />
+          </>
+        )}
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">物流</span>

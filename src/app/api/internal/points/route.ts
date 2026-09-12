@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, isAgencyEnabled } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokMonthKey, bangkokMonthBounds, bangkokDayOfWeek, bangkokToday, bangkokLastDayOfMonth, bangkokTimeToUtc, utcNowStr } from "@/lib/time";
@@ -368,13 +368,15 @@ function computeAutoPoints(db: any, month: string) {
     ).get(en, utcFrom, utcTo) as { c: number }).c;
     if (ri > 0) addPoints(en, ri * 3, `${month} 解决工单${ri}个，加${ri * 3}分`, "issue_resolved");
 
-    // A级评估
+    // A级评估（机构业务关闭时跳过）
     // LIKE 'A%' 而不是 = 'A'：直播占比≥50% 的 A 级会被打成 'A+'，
     // 用等号会把最好的那批全漏掉（改之前这条规则从来没发过分）
-    const ag = (db.prepare(
-      "SELECT COUNT(*) as c FROM influencer_evaluations WHERE evaluated_by = ? AND final_rating LIKE 'A%' AND created_at >= ? AND created_at <= ?"
-    ).get(en, utcFrom, utcTo) as { c: number }).c;
-    if (ag > 0) addPoints(en, ag * 5, `${month} A级达人评估${ag}个，加${ag * 5}分`, "influencer_a_grade");
+    if (isAgencyEnabled()) {
+      const ag = (db.prepare(
+        "SELECT COUNT(*) as c FROM influencer_evaluations WHERE evaluated_by = ? AND final_rating LIKE 'A%' AND created_at >= ? AND created_at <= ?"
+      ).get(en, utcFrom, utcTo) as { c: number }).c;
+      if (ag > 0) addPoints(en, ag * 5, `${month} A级达人评估${ag}个，加${ag * 5}分`, "influencer_a_grade");
+    }
   }
 
   // 互评点赞积分（已由 POST 实时写入，这里只做已有记录的核查）
