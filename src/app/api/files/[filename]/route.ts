@@ -1,3 +1,4 @@
+import { isClientFileVisible } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
@@ -36,12 +37,16 @@ export async function GET(
   const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   const queryToken = req.nextUrl.searchParams.get("token");
   const token = headerToken || queryToken;
-  if (!token || !(await verifyToken(token))) {
+  const auth = token ? await verifyToken(token) : null;
+  if (!auth) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
 
   const { filename } = await params;
   const safeName = path.basename(filename);
+  if (auth.role === "client" && !isClientFileVisible(auth.id, auth.name, safeName)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const filePath = findFile(safeName);
 
   if (!filePath) {
@@ -55,7 +60,8 @@ export async function GET(
     return new NextResponse(buffer, {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "private, no-store",
+        "Vary": "Authorization",
       },
     });
   } catch {

@@ -13,7 +13,8 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const DB_PATH = path.join(ROOT, "data.db");
+const { databasePath: DB_PATH } = require("../src/lib/runtime-config.cjs");
+const { preflight } = require("../src/lib/database-policy.cjs");
 const ENUMS_TS = path.join(ROOT, "src", "lib", "enums.ts");
 
 function parseEnumsTs() {
@@ -36,6 +37,7 @@ function parseEnumsTs() {
 }
 
 function parseDbChecks() {
+  try { preflight(DB_PATH, "internal", false); } catch (error) { console.error(error.message); process.exit(2); }
   if (!fs.existsSync(DB_PATH)) {
     console.error(`找不到 ${DB_PATH}，先启动一次应用生成数据库。`);
     process.exit(2);

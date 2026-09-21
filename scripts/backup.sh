@@ -1,35 +1,37 @@
 #!/bin/bash
-# 数据库 + 文件备份脚本
-# 用法: ./scripts/backup.sh
-# 建议 cron: 0 2 * * * /path/to/project/scripts/backup.sh
-
-set -e
+# Consistent database path + online SQLite snapshot + attachment archives.
+set -euo pipefail
 cd "$(dirname "$0")/.."
-
-BACKUP_DIR="./backups"
+APP_ROOT="$PWD"
+DB_HELPER="$APP_ROOT/scripts/backup-source.cjs"
+# Source preflight happens before backup directory creation, never auto-creates a DB.
+DB_PATH=$(node "$DB_HELPER" path) || exit 10
+BACKUP_DIR="${BACKUP_DIR:-$APP_ROOT/backups}"
 DATE=$(date +%Y%m%d_%H%M%S)
-DB_PATH="./data.db"
-UPLOADS_DIR="./uploads"
-TMP_UPLOADS="/tmp/xiangtai-uploads"
-
+UPLOADS_DIR="${UPLOADS_DIR:-$APP_ROOT/uploads}"
+FILES_DIR="${FILES_DIR:-$APP_ROOT/files}"
+TMP_UPLOADS="${TMP_UPLOADS:-/tmp/xiangtai-uploads}"
 mkdir -p "$BACKUP_DIR"
-
-# 1. 备份数据库（SQLite 在线备份，safe）
+chmod 700 "$BACKUP_DIR"
+LOCK_DIR="$BACKUP_DIR/backup.lock.d"
+mkdir "$LOCK_DIR" 2>/dev/null || { echo "Backup already running: $LOCK_DIR" >&2; exit 1; }
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+umask 077
+DB_BACKUP="$BACKUP_DIR/data_$DATE.db"
+[ ! -e "$DB_BACKUP" ] || { echo 'Backup timestamp already exists' >&2; exit 1; }
 echo "[$DATE] 备份数据库..."
-sqlite3 "$DB_PATH" ".backup '$BACKUP_DIR/data_$DATE.db'" 2>/dev/null || cp "$DB_PATH" "$BACKUP_DIR/data_$DATE.db"
-echo "  -> $BACKUP_DIR/data_$DATE.db"
-
-# 2. 备份上传文件（如果有）
-for DIR in "$UPLOADS_DIR" "$TMP_UPLOADS"; do
-  if [ -d "$DIR" ] && [ "$(ls -A "$DIR" 2>/dev/null)" ]; then
-    TAR_NAME="uploads_${DATE}_$(basename "$DIR").tar.gz"
-    tar -czf "$BACKUP_DIR/$TAR_NAME" -C "$(dirname "$DIR")" "$(basename "$DIR")" 2>/dev/null || true
-    echo "  -> $BACKUP_DIR/$TAR_NAME"
+node "$DB_HELPER" backup "$DB_BACKUP" > "$BACKUP_DIR/data_$DATE.json"
+# Never copy a live SQLite file as a fallback. Any DB or attachment error exits
+# before retention cleanup, leaving all older recovery points untouched.
+for ENTRY in "uploads:$UPLOADS_DIR" "files:$FILES_DIR" "temporary:$TMP_UPLOADS"; do
+  LABEL="${ENTRY%%:*}"
+  DIR="${ENTRY#*:}"
+  if [ -d "$DIR" ]; then
+    tar -czf "$BACKUP_DIR/uploads_${DATE}_${LABEL}.tar.gz" -C "$(dirname "$DIR")" "$(basename "$DIR")"
+    tar -tzf "$BACKUP_DIR/uploads_${DATE}_${LABEL}.tar.gz" >/dev/null
   fi
 done
-
-# 3. 清理 30 天前的旧备份
-find "$BACKUP_DIR" -name "data_*.db" -mtime +30 -delete 2>/dev/null || true
-find "$BACKUP_DIR" -name "uploads_*.tar.gz" -mtime +30 -delete 2>/dev/null || true
-
-echo "[$DATE] 备份完成，保留最近 30 天。"
+find "$BACKUP_DIR" -name 'data_*.db' -mtime +30 -delete
+find "$BACKUP_DIR" -name 'data_*.json' -mtime +30 -delete
+find "$BACKUP_DIR" -name 'uploads_*.tar.gz' -mtime +30 -delete
+echo "[$DATE] 备份完成（已校验业务库，附件打包成功），保留最近 30 天。"

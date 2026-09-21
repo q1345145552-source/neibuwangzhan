@@ -1,5 +1,7 @@
+import { publicOrder } from "@/lib/client-view";
+import { getClientCustomerNames, customerNameFilter } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
@@ -14,9 +16,15 @@ export async function GET(req: NextRequest) {
   const businessTypeId = searchParams.get("business_type_id");
   const status = searchParams.get("status");
 
-  let sql = "SELECT * FROM orders";
+  let sql = "SELECT o.* FROM orders o";
   const conditions: string[] = [];
   const params: unknown[] = [];
+  if (auth.role === "client") {
+    const { names } = getClientCustomerNames(auth.id, auth.name);
+    const scope = customerNameFilter(names);
+    conditions.push(scope.clause);
+    params.push(...scope.params);
+  }
 
   if (businessTypeId) {
     conditions.push("business_type_id = ?");
@@ -32,13 +40,15 @@ export async function GET(req: NextRequest) {
   sql += " ORDER BY created_at DESC";
 
   const rows = db.prepare(sql).all(...params);
-  return NextResponse.json(rows);
+  return NextResponse.json(auth.role === "client" ? rows.map(publicOrder) : rows);
 }
 
 // POST /api/orders
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const db = getDb();
 

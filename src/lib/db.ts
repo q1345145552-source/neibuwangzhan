@@ -1,60 +1,35 @@
 import Database from "better-sqlite3";
-import fs from "fs";
-import path from "path";
 import bcrypt from "bcryptjs";
+import { initializeSyncSchema } from "./sync-schema";
+import { ensureAccessSchema } from "./access-schema";
+import { expandLegacyCheck } from "./legacy-check-schema";
+import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
 
-// 默认取 cwd/data.db（容器里 start.sh 会把它软链到挂载卷）。
-// 允许用 DB_PATH 覆盖，方便排查"到底连的是哪个库"。
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), "data.db");
+import { databasePath } from "./runtime-config.cjs";
+import { openChecked } from "./database-policy.cjs";
 
 let db: Database.Database;
 
 export function getDb(): Database.Database {
   if (!db) {
-    // 开库之前先看文件在不在。better-sqlite3 打不开会自动新建一个空库，
-    // 空库 → 种子数据 → 所有账号密码变回 123456，而且业务数据全空。
-    // 这正是"每次部署密码都被重置"的表现：不是密码被改了，是根本换了个库。
-    // 起因通常是挂载没生效（compose 的 volumes 改了、命名卷换成 bind mount、
-    // 宿主机目录不存在），应用于是在容器内部自己建了个库，重启就没。
-    const existedBefore = fs.existsSync(DB_PATH);
-
-    db = new Database(DB_PATH);
-    db.pragma("journal_mode = DELETE");
-    db.pragma("foreign_keys = ON");
-
-    if (!existedBefore) {
-      const msg = [
-        "",
-        "============================================================",
-        "  ⚠️  数据库文件不存在，已新建一个空库",
-        `      路径: ${DB_PATH}`,
-        "",
-        "      如果这不是首次部署，说明挂载没生效——你正在往一个",
-        "      临时的空库里写数据，容器重建后会全部丢失，",
-        "      且所有账号密码会重置为初始密码。",
-        "",
-        "      排查：docker inspect <容器> 看 /app/data 挂到了哪，",
-        "            确认宿主机目录里有 data.db，且 /app/data.db",
-        "            是指向它的软链接。",
-        "============================================================",
-        "",
-      ].join("\n");
-      console.error(msg);
-      // 生产环境默认拒绝启动：宁可起不来让人立刻发现，也不要静默地
-      // 往空库里写一整天数据，第二天部署时全部蒸发。
-      // 确实是首次部署 / 有意重建时，设 ALLOW_EMPTY_DB=1 放行。
-      if (process.env.NODE_ENV === "production" && process.env.ALLOW_EMPTY_DB !== "1") {
-        throw new Error(
-          `数据库 ${DB_PATH} 不存在。若确为首次部署，请设置环境变量 ALLOW_EMPTY_DB=1 后重启；` +
-          `否则请检查数据卷挂载——继续运行会导致数据丢失和密码重置。`
-        );
-      }
+    // Validate the source read-only before opening a writable connection. A failed call
+    // leaves no cached handle; repeated calls face the same missing/empty/identity guard.
+    const database = openChecked(databasePath, "internal", process.env.ALLOW_EMPTY_DB === "1" || process.env.NODE_ENV === "test");
+    try {
+      database.pragma("journal_mode = DELETE");
+      database.pragma("foreign_keys = ON");
+      initTables(database);
+      seedData(database);
+      migrateInfluencersCheck(database);
+      ensureAccessSchema(database);
+      if (commercePilotEnabled()) ensureCommerceSchema(database);
+    } catch (error) {
+      database.close();
+      throw error;
     }
 
-    initTables(db);
-    seedData(db);
-    migrateInfluencersCheck(db);
+    db = database;
   }
   return db;
 }
@@ -262,6 +237,12 @@ const businessSteps: Record<number, StepTemplate[]> = {
 };
 
 export function getBusinessSteps(businessTypeId: number, subServiceType?: string): StepTemplate[] {
+  // 客户站同步来的未匹配订单（映射无归属时打此标记）：只给一个归类步骤，
+  // 管理员确认业务线后改派。放最前面，避免被下面按业务线 ID 的分支抢先；
+  // 也不依赖业务线 ID，避免自增 ID 在不同环境的库里漂移。
+  if (subServiceType === "storefront-unclassified") {
+    return [{ name: "确认归属并派单（客户站同步单，未匹配业务线）", assignee: "" }];
+  }
   // 子服务分支必须限定在对应业务线内，避免不同业务线出现同名 key 时拿错模板
   if (businessTypeId === 2 && subServiceType === "international") return internationalTrademarkSteps;
   if (businessTypeId === 2 && subServiceType === "buy-r") return buyRTrademarkSteps;
@@ -784,25 +765,8 @@ function initTables(database: Database.Database) {
     );
   `);
 
-  // notifications 迁移：补 leave_overdue 类型
-  try {
-    database.exec("ALTER TABLE notifications RENAME TO notifications_old");
-    database.exec(`
-      CREATE TABLE notifications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue')),
-        title TEXT DEFAULT '',
-        body TEXT DEFAULT '',
-        recipient TEXT DEFAULT '',
-        related_id TEXT DEFAULT '',
-        related_type TEXT DEFAULT '',
-        is_read INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-    `);
-    database.exec("INSERT INTO notifications SELECT * FROM notifications_old");
-    database.exec("DROP TABLE notifications_old");
-  } catch {}
+  // Already-current tables are untouched; old CHECK extensions are atomic across workers.
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue"]);
 
   // 模板库
   database.exec(`
@@ -844,31 +808,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN rejection_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN start_time TEXT DEFAULT '09:00'"); } catch {}
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN end_time TEXT DEFAULT '17:00'"); } catch {}
-  // leave_requests 迁移：更新 leave_type CHECK 约束（调休/法定假日）
-  try {
-    database.exec("ALTER TABLE leave_requests RENAME TO leave_requests_old");
-    database.exec(`
-      CREATE TABLE leave_requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_name TEXT NOT NULL,
-        leave_type TEXT DEFAULT '事假' CHECK(leave_type IN ('事假','病假','年假','调休','法定假日','其他')),
-        start_date TEXT NOT NULL,
-        end_date TEXT NOT NULL,
-        destination TEXT DEFAULT '',
-        reason TEXT DEFAULT '',
-        status TEXT DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
-        approved_by TEXT DEFAULT '',
-        approved_at TEXT,
-        rejection_reason TEXT DEFAULT '',
-        start_time TEXT DEFAULT '09:00',
-        end_time TEXT DEFAULT '17:00',
-        images TEXT DEFAULT '[]',
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-    `);
-    database.exec("INSERT INTO leave_requests SELECT id, employee_name, leave_type, start_date, end_date, COALESCE(destination,''), reason, status, approved_by, approved_at, COALESCE(rejection_reason,''), COALESCE(start_time,'09:00'), COALESCE(end_time,'17:00'), COALESCE(images,'[]'), created_at FROM leave_requests_old");
-    database.exec("DROP TABLE leave_requests_old");
-  } catch {}
+  expandLegacyCheck(database, "leave_requests", "leave_type", ["调休", "法定假日"]);
 
 
   // 泰国法定假日表（每年13天固定假日）
@@ -1012,8 +952,7 @@ function initTables(database: Database.Database) {
 
   // 50ทวิ 证书需要「收入额」和「税率」：wht_records.amount 是应扣税额（对账表里进 tax_payable），
   // 之前证书把它当成收入额再乘 3% 算税，数字整个是错的
-  try { database.exec("ALTER TABLE wht_records ADD COLUMN income_amount REAL NOT NULL DEFAULT 0"); } catch {}
-  try { database.exec("ALTER TABLE wht_records ADD COLUMN tax_rate REAL NOT NULL DEFAULT 3"); } catch {}
+  // WHT amount/rate columns are created/migrated after wht_records exists (below).
 
   // 一次性数据订正：阶段完成后的达人状态。
   // 旧代码三个阶段完成一律写「已入池」，签约走完的达人被标成"回池子里了"，业务含义正好相反。
@@ -1052,6 +991,11 @@ function initTables(database: Database.Database) {
   `);
 
   // ── 性能索引 ──
+  // 2026-09-11 修复全新空库初始化必炸的问题：这个索引块原本排在建表语句中间，
+  // 而 vat_records / wht_records / influencer_documents 等表在它之后才创建——
+  // 老库表早就存在所以从不发作，空库第一次 initTables 就在这里抛
+  // "no such table"，建表半途中断。整块移到 initTables 末尾（所有表之后），
+  // 语句一字未改，对存量库无影响（全部 IF NOT EXISTS）。
   // 建库之初只有 4 个索引，53 张表里绝大多数外键列都在裸奔，每次按 order_id /
   // record_id / influencer_id 查子表都是全表扫描。数据量小的时候看不出来，
   // vat_step_documents 已经 792 行、vat_record_steps 768 行，再涨就会明显卡。
@@ -1064,48 +1008,9 @@ function initTables(database: Database.Database) {
   //
   // 全部 IF NOT EXISTS，重复执行无副作用；线上容器重启会自动补上，不需要停机。
   // 验证方式：EXPLAIN QUERY PLAN 应显示 SEARCH 而不是 SCAN（见 scripts/test-flows.js）
-  database.exec(`
-    CREATE INDEX IF NOT EXISTS idx_vat_records_customer_id_year_month ON vat_records(customer_id, year_month);
-    CREATE INDEX IF NOT EXISTS idx_vat_reconciliation_customer_id_year_month ON vat_reconciliation(customer_id, year_month);
-    CREATE INDEX IF NOT EXISTS idx_wht_records_customer_id_year_month ON wht_records(customer_id, year_month);
-    CREATE INDEX IF NOT EXISTS idx_wht_reconciliation_customer_id_year_month ON wht_reconciliation(customer_id, year_month);
-    CREATE INDEX IF NOT EXISTS idx_vat_record_steps_record_id ON vat_record_steps(record_id);
-    CREATE INDEX IF NOT EXISTS idx_vat_step_documents_record_id ON vat_step_documents(record_id);
-    CREATE INDEX IF NOT EXISTS idx_vat_step_documents_step_id ON vat_step_documents(step_id);
-    CREATE INDEX IF NOT EXISTS idx_vat_step_notes_record_id ON vat_step_notes(record_id);
-    CREATE INDEX IF NOT EXISTS idx_vat_record_documents_record_id ON vat_record_documents(record_id);
-    CREATE INDEX IF NOT EXISTS idx_vat_record_finances_record_id ON vat_record_finances(record_id);
-    CREATE INDEX IF NOT EXISTS idx_wht_record_steps_record_id ON wht_record_steps(record_id);
-    CREATE INDEX IF NOT EXISTS idx_wht_step_notes_record_id ON wht_step_notes(record_id);
-    CREATE INDEX IF NOT EXISTS idx_wht_record_documents_record_id ON wht_record_documents(record_id);
-    CREATE INDEX IF NOT EXISTS idx_order_steps_order_id ON order_steps(order_id);
-    CREATE INDEX IF NOT EXISTS idx_step_documents_order_id ON step_documents(order_id);
-    CREATE INDEX IF NOT EXISTS idx_step_documents_step_id ON step_documents(step_id);
-    CREATE INDEX IF NOT EXISTS idx_step_notes_order_id ON step_notes(order_id);
-    CREATE INDEX IF NOT EXISTS idx_documents_order_id ON documents(order_id);
-    CREATE INDEX IF NOT EXISTS idx_finances_order_id ON finances(order_id);
-    CREATE INDEX IF NOT EXISTS idx_certificates_order_id ON certificates(order_id);
-    CREATE INDEX IF NOT EXISTS idx_tasks_order_id ON tasks(order_id);
-    CREATE INDEX IF NOT EXISTS idx_client_feedback_order_id ON client_feedback(order_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_business_type_id ON orders(business_type_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-    CREATE INDEX IF NOT EXISTS idx_influencer_steps_influencer_id_phase ON influencer_steps(influencer_id, phase);
-    CREATE INDEX IF NOT EXISTS idx_influencer_evaluations_influencer_id ON influencer_evaluations(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_contracts_influencer_id ON contracts(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_influencer_documents_influencer_id ON influencer_documents(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_influencer_finances_influencer_id ON influencer_finances(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_influencer_certificates_influencer_id ON influencer_certificates(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_influencer_step_notes_influencer_id ON influencer_step_notes(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_influencer_factories_influencer_id ON influencer_factories(influencer_id);
-    CREATE INDEX IF NOT EXISTS idx_attendance_employee_name_date ON attendance(employee_name, date);
-    CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_name ON leave_requests(employee_name);
-    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-    CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient);
-    CREATE INDEX IF NOT EXISTS idx_points_records_employee_name ON points_records(employee_name);
-    CREATE INDEX IF NOT EXISTS idx_customer_follow_ups_customer_id ON customer_follow_ups(customer_id);
-    CREATE INDEX IF NOT EXISTS idx_vat_customers_status ON vat_customers(status);
-    CREATE INDEX IF NOT EXISTS idx_issue_tickets_status ON issue_tickets(status);
-  `);
+  // （本块已移至 initTables 末尾，紧跟建表语句之后）
+
+
 
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
@@ -1136,8 +1041,7 @@ function initTables(database: Database.Database) {
 
   // VAT/WHT 客户改为软删除：物理删除会让已归档申报记录的 customer_id 悬空，
   // 而列表用的是 INNER JOIN，历史记录会彻底查不到（还得为此全局关外键）
-  try { database.exec("ALTER TABLE vat_customers ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"); } catch {}
-  try { database.exec("ALTER TABLE wht_customers ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Additive soft-delete migration runs only after BOTH customer tables exist (below).
 
   // ref_type 区分评价对象：'order' = 业务订单（order_id 形如 ORD-xxx）
   // 'vat' = VAT 申报记录（order_id 形如 VAT-12，加前缀避免与订单号撞 UNIQUE 约束）
@@ -1151,6 +1055,7 @@ function initTables(database: Database.Database) {
       company_name TEXT NOT NULL,
       tax_id TEXT DEFAULT '',
       contact TEXT DEFAULT '',
+      deleted INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT '启用' CHECK(status IN ('启用','暂停','已终止')),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -1410,6 +1315,7 @@ function initTables(database: Database.Database) {
       company_name TEXT NOT NULL,
       tax_id TEXT DEFAULT '',
       contact TEXT DEFAULT '',
+      deleted INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT '启用' CHECK(status IN ('启用','暂停','已终止')),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -1424,6 +1330,8 @@ function initTables(database: Database.Database) {
       notes TEXT DEFAULT '',
       reminded INTEGER DEFAULT 0,
       amount REAL DEFAULT 0,
+      income_amount REAL NOT NULL DEFAULT 0,
+      tax_rate REAL NOT NULL DEFAULT 3,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -1440,6 +1348,19 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Both tables now exist even on the first startup. Do not swallow a missing table
+  // and accidentally defer the required columns until a second process restart.
+  for (const table of ["vat_customers", "wht_customers"]) {
+    const columns = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some(column => column.name === "deleted")) {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`);
+    }
+  }
+
+  const whtColumns = new Set((database.prepare("PRAGMA table_info(wht_records)").all() as { name: string }[]).map(column => column.name));
+  if (!whtColumns.has("income_amount")) database.exec("ALTER TABLE wht_records ADD COLUMN income_amount REAL NOT NULL DEFAULT 0");
+  if (!whtColumns.has("tax_rate")) database.exec("ALTER TABLE wht_records ADD COLUMN tax_rate REAL NOT NULL DEFAULT 3");
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS wht_reconciliation (
@@ -1524,6 +1445,81 @@ function initTables(database: Database.Database) {
       if (moved) console.log(`[DB] 已迁移 ${moved} 条订单级文件到 shipping_order_files`);
     }
   } catch (e) { console.error("[DB] 迁移订单级文件失败:", e); }
+
+  // ── 性能索引（原位于建表语句中间，2026-09-11 移到所有表之后——
+  //    空库首次初始化时前面的表尚不存在，CREATE INDEX 会抛 "no such table" 并中断建表）──
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_vat_records_customer_id_year_month ON vat_records(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_vat_reconciliation_customer_id_year_month ON vat_reconciliation(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_wht_records_customer_id_year_month ON wht_records(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_wht_reconciliation_customer_id_year_month ON wht_reconciliation(customer_id, year_month);
+    CREATE INDEX IF NOT EXISTS idx_vat_record_steps_record_id ON vat_record_steps(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_step_documents_record_id ON vat_step_documents(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_step_documents_step_id ON vat_step_documents(step_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_step_notes_record_id ON vat_step_notes(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_record_documents_record_id ON vat_record_documents(record_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_record_finances_record_id ON vat_record_finances(record_id);
+    CREATE INDEX IF NOT EXISTS idx_wht_record_steps_record_id ON wht_record_steps(record_id);
+    CREATE INDEX IF NOT EXISTS idx_wht_step_notes_record_id ON wht_step_notes(record_id);
+    CREATE INDEX IF NOT EXISTS idx_wht_record_documents_record_id ON wht_record_documents(record_id);
+    CREATE INDEX IF NOT EXISTS idx_order_steps_order_id ON order_steps(order_id);
+    CREATE INDEX IF NOT EXISTS idx_step_documents_order_id ON step_documents(order_id);
+    CREATE INDEX IF NOT EXISTS idx_step_documents_step_id ON step_documents(step_id);
+    CREATE INDEX IF NOT EXISTS idx_step_notes_order_id ON step_notes(order_id);
+    CREATE INDEX IF NOT EXISTS idx_documents_order_id ON documents(order_id);
+    CREATE INDEX IF NOT EXISTS idx_finances_order_id ON finances(order_id);
+    CREATE INDEX IF NOT EXISTS idx_certificates_order_id ON certificates(order_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_order_id ON tasks(order_id);
+    CREATE INDEX IF NOT EXISTS idx_client_feedback_order_id ON client_feedback(order_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_business_type_id ON orders(business_type_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+    CREATE INDEX IF NOT EXISTS idx_influencer_steps_influencer_id_phase ON influencer_steps(influencer_id, phase);
+    CREATE INDEX IF NOT EXISTS idx_influencer_evaluations_influencer_id ON influencer_evaluations(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_contracts_influencer_id ON contracts(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_documents_influencer_id ON influencer_documents(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_finances_influencer_id ON influencer_finances(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_certificates_influencer_id ON influencer_certificates(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_step_notes_influencer_id ON influencer_step_notes(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_influencer_factories_influencer_id ON influencer_factories(influencer_id);
+    CREATE INDEX IF NOT EXISTS idx_attendance_employee_name_date ON attendance(employee_name, date);
+    CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_name ON leave_requests(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient);
+    CREATE INDEX IF NOT EXISTS idx_points_records_employee_name ON points_records(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_customer_follow_ups_customer_id ON customer_follow_ups(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_vat_customers_status ON vat_customers(status);
+    CREATE INDEX IF NOT EXISTS idx_issue_tickets_status ON issue_tickets(status);
+  `);
+
+  // Buyer identity, integer allocations and old inbox schema upgrades must succeed together.
+  // Failure is fatal to initialization: never run with partially upgraded access controls.
+  initializeSyncSchema(database);
+
+  // 进度回传事件队列：同步单的公开进度（状态+步骤名）变化时入队，
+  // 由 flushProgress 推回客户站。payload 是显式白名单字段，绝不包含
+  // 步骤备注/费用/负责人等内部字段（业务规则 13）。
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS sync_progress_outbox (
+        id TEXT PRIMARY KEY,
+        inbox_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT DEFAULT (datetime('now')),
+        sent_at TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        last_error TEXT
+      );
+    `);
+    const columns = new Set((database.prepare('PRAGMA table_info(sync_progress_outbox)').all() as {name:string}[]).map(c => c.name));
+    if (!columns.has('attempts')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+    if (!columns.has('next_attempt_at')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN next_attempt_at TEXT');
+    if (!columns.has('last_error')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN last_error TEXT');
+  } catch (e) { console.error("[DB] sync_progress_outbox 创建失败:", e); throw e; }
+
+  // 「待分类」业务线的种子已移到 seedData 里业务线计数种子之后——
+  // 若放在这里的 initTables，会把 btCount.c 变成非 0，11 条基础业务线种子会被整体跳过。
 }
 
 /* ── 积分规则种子 ── */
@@ -1599,6 +1595,17 @@ function seedData(database: Database.Database) {
     if (!ssExists) {
       database.prepare("INSERT INTO business_types (name) VALUES ('社保开户')").run();
       console.log("[DB] 已插入社保开户业务线");
+    }
+  } catch {}
+
+  // 迁移：确保「待分类」业务线存在（客户站同步单匹配不到映射时落入，业务规则 6）。
+  // 注意必须放在上面的计数种子之后：提前插入会让 btCount.c 非 0，
+  // 11 条基础业务线的种子会被整体跳过（2026-09-11 本地测试踩过这个坑）。
+  try {
+    const unclassifiedExists = database.prepare("SELECT 1 FROM business_types WHERE name = '待分类'").get();
+    if (!unclassifiedExists) {
+      database.prepare("INSERT INTO business_types (name) VALUES ('待分类')").run();
+      console.log("[DB] 已插入待分类业务线");
     }
   } catch {}
 

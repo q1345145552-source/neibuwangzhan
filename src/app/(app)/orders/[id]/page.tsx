@@ -1,5 +1,7 @@
 "use client";
 
+import { CommerceTermsSummary } from "@/components/commerce-terms";
+
 import React, { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -26,7 +28,11 @@ const stepStatusClass: Record<string, string> = {
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const { user } = useAuth();
+  const isClient = user?.role === "client";
   const [order, setOrder] = useState<Order | null>(null);
+  const isNativeCommerce = order?.source_system === "commerce";
+  const isCommerceCancelled = isNativeCommerce && order?.status === "客户取消";
   const [steps, setSteps] = useState<OrderStep[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [finances, setFinances] = useState<Finance[]>([]);
@@ -47,9 +53,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
 
   useEffect(() => {
+    if (!user || isClient) return;
     fetchEmployees().then(setEmployees).catch(() => {});
     fetchBusinessTypes().then(setBusinessTypes).catch(() => {});
-  }, []);
+  }, [user, isClient]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"finances" | "docs">("finances");
@@ -135,6 +142,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [newFinDesc, setNewFinDesc] = useState("");
   const [newFinAmount, setNewFinAmount] = useState("");
   const [newFinType, setNewFinType] = useState("income");
+  const effectiveFinType = isNativeCommerce ? "expense" : newFinType;
   const [newFinCurrency, setNewFinCurrency] = useState("CNY");
   const [exchangeRate, setExchangeRateState] = useState<number>(() => {
     if (typeof window === "undefined") return 5;
@@ -164,8 +172,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [copyingLink, setCopyingLink] = useState(false);
   const [copyModalLink, setCopyModalLink] = useState<string | null>(null);
-  const { user } = useAuth();
-  const isClient = user?.role === "client";
   // 编辑模式
   const [editingOrder, setEditingOrder] = useState(false);
   const [editFields, setEditFields] = useState<Partial<Order>>({});
@@ -188,13 +194,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
+    if (!user) return;
+    if (isClient) setSidebarTab("docs");
     let ignore = false;
     async function run() {
       try {
         const [data, docs, fins, certs] = await Promise.all([
           fetchOrder(id),
           fetchDocuments(id),
-          fetchFinances(id),
+          isClient ? Promise.resolve([] as Finance[]) : fetchFinances(id),
           fetchCertificates(id),
         ]);
         if (ignore) return;
@@ -211,11 +219,20 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         let notesMap: Record<number, StepNote[]> = {};
         let docsMap: Record<number, StepDocument[]> = {};
         try {
+          if (isClient) {
+            const publicSteps = await Promise.all(sts.map(async step => ({
+              stepId: step.id,
+              notes: await fetchStepNotes(id, step.id),
+              documents: await fetchStepDocuments(id, step.id),
+            })));
+            for (const step of publicSteps) { notesMap[step.stepId] = step.notes; docsMap[step.stepId] = step.documents; }
+          } else {
           const r = await fetchWithAuth(`/api/orders/${id}/steps/details`, { cache: "no-store" });
           if (r.ok) {
             const d = await r.json();
             notesMap = d.notes || {};
             docsMap = d.documents || {};
+          }
           }
         } catch { /* 详情拿不到不影响主体展示，留空即可 */ }
         if (ignore) return;
@@ -229,7 +246,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
     run();
     return () => { ignore = true; };
-  }, [id, refreshKey]);
+  }, [id, refreshKey, user, isClient]);
 
   const toggleExpand = (stepId: number) => {
     setExpandedSteps((prev) => ({ ...prev, [stepId]: !prev[stepId] }));
@@ -336,6 +353,20 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       setDeleteCertTarget(null);
       reload();
     } catch (e) { console.error("[订单] 删除证书失败", e); setError("删除证书失败"); setDeletingCert(false); setDeleteCertTarget(null); }
+  };
+
+  const handleReviewDocument = async (documentId: number, publish: boolean) => {
+    if (publish && !window.confirm("确认已核对这份资料，可向该订单客户公开？")) return;
+    setDocErrorMsg("");
+    try {
+      const response = await fetchWithAuth(`/api/orders/${id}/documents`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_id: documentId, status: "已审核", ...(publish ? { direction: "us_to_client" } : {}) }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "审核失败");
+      reload();
+    } catch (error) { setDocErrorMsg(error instanceof Error ? error.message : "审核失败"); }
   };
 
   // 文档删除
@@ -481,6 +512,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <button onClick={() => setError("")} className="ml-3 text-[var(--destructive)] hover:opacity-70 text-lg leading-none">&times;</button>
         </div>
       )}
+      {isNativeCommerce && <div className="rounded-lg border border-[var(--border)] p-3 text-sm">
+        本单来自同库商城，购买资料与金额固定。此处继续办理、审核资料及记录成本；
+        <a className="underline" href={order.commerce_purchase ? "/commerce#" + order.commerce_purchase.sale_id : "/commerce"}>收款请到商城账单</a>。取消审核、账单减免与实际退款也在商城统一处理；此处保留原办理资料。
+        {isCommerceCancelled && <p className="mt-2 font-medium">本份服务已批准取消，办理状态已锁定；保留历史进度，仍可补充资料、备注及已发生的成本。</p>}
+        <div className="mt-3"><CommerceTermsSummary terms={order.commerce_purchase?.terms}/></div>
+      </div>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回订单列表"><ArrowLeft className="size-4" aria-hidden="true" /></Button>
@@ -493,12 +530,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <span className="text-xs text-[var(--muted-foreground)]">{formatCurrency(order.total_amount, order.currency)}</span>
               <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
               {/* 任务级"开始"按钮：仅第一步待处理时显示 */}
-              {steps.length > 0 && steps[0].status === "待处理" && !isClient && (
+              {steps.length > 0 && steps[0].status === "待处理" && !isClient && !isCommerceCancelled && (
                 <button onClick={() => handleStepUpdate(steps[0].id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-3 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] transition-colors">开始任务</button>
               )}
             </div>
           </div>
-          {!isClient && (
+          {!isClient && !isNativeCommerce && (
             <div className="flex items-center gap-2 shrink-0">
               {!editingOrder ? (
                 <>
@@ -717,7 +754,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 const newAssignee = e.target.value;
                                 if (newAssignee === step.assignee) { setEditingAssigneeStepId(null); return; }
                                 try {
-                                  await updateStep(id, step.id, { status: step.status, assignee: newAssignee });
+                                  await updateStep(id, step.id, { assignee: newAssignee });
                                   setEditingAssigneeStepId(null);
                                   reload();
                                 } catch { /* ignore */ }
@@ -739,7 +776,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <span className="text-xs font-medium text-[var(--info)]">提交 {step.submission_count}/2 · 剩{2 - step.submission_count}次</span>
                           )}
                         </div>
-                        {step.status !== "已完成" && step.status !== "阻塞" && (
+                        {!isCommerceCancelled && step.status !== "已完成" && step.status !== "阻塞" && (
                           <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             {confirmingStepId === step.id ? (
                               <>
@@ -782,7 +819,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 <StepTimer created_at={step.created_at} completed_at={step.completed_at} status="已完成" prev_completed_at={i > 0 ? steps[i-1].completed_at : null} started_at={step.started_at} />
                               </div>
                             )}
-                            {!isClient && (
+                            {!isClient && !isCommerceCancelled && (
                               <button onClick={() => handleRollback(step.id)} className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                                 <Undo2 className="size-3" />撤回
                               </button>
@@ -903,7 +940,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                           {isUploaded ? <CheckCircle2 className="size-3 text-[var(--success)]" /> : <Circle className="size-3 text-[var(--muted-foreground)]" />}
                                           <span className={isUploaded ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}>{docName}</span>
                                         </div>
-                                        {!isUploaded && existingDoc && (
+                                        {!isClient && !isUploaded && existingDoc && (
                                           <button onClick={() => handleMarkUploaded(step.id, existingDoc.id)} className="rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)]">标记已上传</button>
                                         )}
                                       </li>
@@ -926,11 +963,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         {/* Sidebar */}
         <div className="flex flex-col gap-4">
           <div className="flex rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5">
-            <button onClick={() => setSidebarTab("finances")} className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors", sidebarTab === "finances" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}><DollarSign className="mr-1 inline size-3" />费用</button>
+            {!isClient && <button onClick={() => setSidebarTab("finances")} className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors", sidebarTab === "finances" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}><DollarSign className="mr-1 inline size-3" />费用</button>}
             <button onClick={() => setSidebarTab("docs")} className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors", sidebarTab === "docs" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}><Paperclip className="mr-1 inline size-3" />文档</button>
           </div>
 
-          {sidebarTab === "finances" && (() => {
+          {!isClient && sidebarTab === "finances" && (() => {
               const toTHB = (amount: number, cur?: string) => cur === "CNY" ? amount * (exchangeRate || 1) : amount;
               const totalIncomeRaw = finances.filter(f => f.type === "income").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const totalExpenseRaw = finances.filter(f => f.type === "expense").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
@@ -940,6 +977,20 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               const pendingPay = Math.round(pendingPayRaw);
               return (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+              {isNativeCommerce ? <div className="mb-3 space-y-2 text-xs">
+                <p>商城收款与成本按原币种分别列示，不自动换汇。</p>
+                {["CNY", "THB"].filter(currency => currency === "CNY" || finances.some(f => f.currency === currency)).map(currency => {
+                  const rows = finances.filter(f => (f.currency || "CNY") === currency && !f.commerce_refund);
+                  const refunded = finances.filter(f=>f.commerce_refund && (f.currency || "CNY")===currency).reduce((n,f)=>n+Number(f.amount),0);
+                  const sum = (type: string, status?: string) => rows.filter(f => f.type === type && (!status || f.status === status)).reduce((total, f) => total + Math.round(f.amount * 100), 0) / 100;
+                  return <div key={currency} className="rounded border border-[var(--border)] p-2">
+                    <p>已收款 {formatCurrency(sum("income", "paid"), currency)}</p>
+                    <p>已退款 {formatCurrency(refunded, currency)}（单列，不算办理成本）</p>
+                    <p>成本合计 {formatCurrency(sum("expense"), currency)}</p>
+                    <p>待付成本 {formatCurrency(sum("expense", "pending"), currency)}</p>
+                  </div>;
+                })}
+              </div> : <>
               {/* Exchange rate input */}
               <div className="mb-3 flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1.5">
                 <span className="text-xs text-[var(--muted-foreground)] shrink-0">汇率 1¥ =</span>
@@ -963,6 +1014,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                 </div>
               )}
+              </>}
               {finances.length === 0 ? <p className="py-4 text-center text-xs text-[var(--muted-foreground)]">暂无费用记录</p> : (
                 <ul className="flex flex-col gap-2">
                   {finances.map((f) => (
@@ -970,8 +1022,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       {editingFinanceId === f.id ? (
                         <div className="space-y-1.5">
                           <div className="flex gap-1.5">
-                            <select value={editFinanceFields.type || f.type} onChange={(e) => setEditFinanceFields(p => ({ ...p, type: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
-                              <option value="income">收入</option>
+                            <select disabled={isNativeCommerce} value={editFinanceFields.type || f.type} onChange={(e) => setEditFinanceFields(p => ({ ...p, type: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                              {!isNativeCommerce && <option value="income">收入</option>}
                               <option value="expense">支出</option>
                             </select>
                             <input type="number" value={editFinanceFields.amount ?? f.amount} onChange={(e) => setEditFinanceFields(p => ({ ...p, amount: Number(e.target.value) }))} className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
@@ -998,10 +1050,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       ) : (
                         <>
                           <div className="flex items-center gap-2">
-                            <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[0.6rem] font-medium", f.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]")}>{f.type === "income" ? "收入" : "支出"}</span>
+                            <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[0.6rem] font-medium", f.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]")}>{f.commerce_refund ? "退款" : f.type === "income" ? "收入" : "支出"}</span>
                             <span className="text-xs font-mono font-medium text-[var(--foreground)]">{f.type === "income" ? "+" : "-"}{formatCurrency(f.amount, f.currency)}</span>
                             <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium ml-auto", f.status === "paid" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : f.status === "pending" ? "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]" : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{f.status === "paid" ? "已付" : f.status === "pending" ? "待付" : "已取消"}</span>
-                            {!isClient && (
+                            {!isClient && (!isNativeCommerce || (f.type === "expense" && !f.commerce_refund)) && (
                               <div className="flex items-center gap-0.5">
                                 <button onClick={() => { setEditingFinanceId(f.id); setEditFinanceFields({ type: f.type, amount: f.amount, description: f.description, payment_method: f.payment_method, slip_number: f.slip_number, status: f.status }); }} className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="编辑"><Pencil className="size-3" /></button>
                                 <button onClick={() => setDeleteFinanceTarget(f.id)} className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除"><Trash2 className="size-3" /></button>
@@ -1030,8 +1082,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <div className="flex gap-1.5">
                   <input placeholder="描述…" value={newFinDesc} onChange={(e) => { setNewFinDesc(e.target.value); setFinErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                   <input type="number" placeholder="金额" value={newFinAmount} onChange={(e) => { setNewFinAmount(e.target.value); setFinErrorMsg(""); }} className="w-20 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <select value={newFinType} onChange={(e) => setNewFinType(e.target.value)} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
-                    <option value="income">收入</option>
+                  <select disabled={isNativeCommerce} value={effectiveFinType} onChange={(e) => setNewFinType(e.target.value)} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                    {!isNativeCommerce && <option value="income">收入</option>}
                     <option value="expense">支出</option>
                   </select>
                   <select value={newFinCurrency} onChange={(e) => setNewFinCurrency(e.target.value)} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
@@ -1044,10 +1096,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <input placeholder="流水单号（可选）" value={newFinSlip} onChange={(e) => setNewFinSlip(e.target.value)} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                   <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="上传水单">
                     <Paperclip className="size-3" />
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingFin(true); setFinFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setFinSlipFile(data.url); await addFinance(id, { type: newFinType, amount: Number(newFinAmount || "0"), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: data.url, status: newFinType === "income" ? "paid" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("水单上传失败:", err); setFinErrorMsg("上传失败"); setFinFileName(""); } finally { setUploadingFin(false); } }} disabled={uploadingFin} />
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingFin(true); setFinFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setFinSlipFile(data.url); await addFinance(id, { type: effectiveFinType, amount: Number(newFinAmount || "0"), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: data.url, status: effectiveFinType === "income" ? "paid" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("水单上传失败:", err); setFinErrorMsg("上传失败"); setFinFileName(""); } finally { setUploadingFin(false); } }} disabled={uploadingFin} />
                   </label>
                   {(uploadingFin || finFileName) && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px] self-center">{uploadingFin ? "上传中..." : finFileName}</span>}
-                  <button onClick={async () => { if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; } setFinErrorMsg(""); try { await addFinance(id, { type: newFinType, amount: Number(newFinAmount), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: finSlipFile, status: newFinType === "income" ? "paid" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("添加费用失败:", err); } }} disabled={uploadingFin} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] disabled:opacity-50">{uploadingFin ? "上传中..." : "添加"}</button>
+                  <button onClick={async () => { if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; } setFinErrorMsg(""); try { await addFinance(id, { type: effectiveFinType, amount: Number(newFinAmount), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: finSlipFile, status: effectiveFinType === "income" ? "paid" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("添加费用失败:", err); setFinErrorMsg(err instanceof Error ? err.message : "添加费用失败"); } }} disabled={uploadingFin} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] disabled:opacity-50">{uploadingFin ? "上传中..." : "添加"}</button>
                 </div>
                 {finErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{finErrorMsg}</p>}
               </div>
@@ -1059,10 +1111,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <div className="flex flex-col gap-4">
               {/* Client-provided docs */}
               {(() => {
-                const clientDocs = documents.filter(d => !d.direction || d.direction === "client_to_us");
+                const clientDocs = documents;
                 return (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-                <h4 className="mb-3 text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)] border-b border-[var(--border)] pb-2">客户提供</h4>
+                <h4 className="mb-3 text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)] border-b border-[var(--border)] pb-2">往来资料</h4>
                 {clientDocs.length === 0 ? <p className="py-2 text-center text-xs text-[var(--muted-foreground)]">暂无</p> : (
                   <ul className="flex flex-col gap-2">
                     {clientDocs.map((doc) => (
@@ -1077,7 +1129,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         )}</p>
                           <span className={cn("text-xs", doc.status === "已审核" ? "text-[var(--success)]" : "text-[var(--warning)]")}>{doc.status}</span></div>
                         {!isClient && (
+                          <>
+                          {doc.status !== "已审核" && <button onClick={() => handleReviewDocument(doc.id, false)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--success)] hover:bg-[var(--muted)]">审核通过</button>}
+                          {!(doc.publication_verified === 1 && doc.direction === "us_to_client" && doc.status === "已审核") && <button onClick={() => handleReviewDocument(doc.id, true)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)]">核对后对客公开</button>}
                           <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>
+                          </>
                         )}
                       </li>
                     ))}

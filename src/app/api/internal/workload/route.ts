@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 
 const DEFAULT_WARN = 5;
 const DEFAULT_CRITICAL = 8;
@@ -23,6 +23,8 @@ function buildMatchCondition(name: string): string {
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const db = getDb();
 
   const warnThreshold = parseInt(req.nextUrl.searchParams.get("warn") || `${DEFAULT_WARN}`);
