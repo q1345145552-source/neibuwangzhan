@@ -16,7 +16,8 @@ const { DatabaseSync } = require("node:sqlite");
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "..", "data.db");
+const { databasePath: DB_PATH } = require("../src/lib/runtime-config.cjs");
+const { preflight } = require("../src/lib/database-policy.cjs");
 
 let passed = 0;
 let failed = 0;
@@ -30,6 +31,7 @@ function section(name) { console.log(`\n── ${name}`); }
 
 /** 复制真实库到临时文件，测试跑在副本上 */
 function openTestDb() {
+  try { preflight(DB_PATH, "internal", false); } catch (error) { console.error(error.message); process.exit(2); }
   if (!fs.existsSync(DB_PATH)) {
     console.error(`找不到 ${DB_PATH}，先启动一次应用生成数据库。`);
     process.exit(2);

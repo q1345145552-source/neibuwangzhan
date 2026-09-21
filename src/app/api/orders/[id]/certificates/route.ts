@@ -1,5 +1,7 @@
+import { publicCertificate } from "@/lib/client-view";
+import { isClientOrderVisible } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
@@ -11,9 +13,12 @@ export async function GET(
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const rows = db.prepare("SELECT * FROM certificates WHERE order_id = ? ORDER BY created_at DESC").all(id);
-  return NextResponse.json(rows);
+  return NextResponse.json(auth.role === "client" ? rows.map(publicCertificate) : rows);
 }
 
 export async function POST(
@@ -22,9 +27,13 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const body = await readJson(req);
   const { certificate_number, product_name, issue_date, expiry_date, notes, file_url } = body;
@@ -50,9 +59,13 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const body = await readJson(req);
   const { cert_id, certificate_number, product_name, issue_date, expiry_date, status, nsw_registration, nsw_download_status, notes, file_url } = body;
@@ -97,9 +110,13 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const body = await readJson(req);
   const { cert_id } = body;

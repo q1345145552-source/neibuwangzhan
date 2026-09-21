@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { getDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
+import { writeFile, mkdir, unlink } from "fs/promises";
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
 import path from "path";
 import os from "os";
@@ -76,11 +78,19 @@ export async function POST(req: NextRequest) {
     const uploadsDir = getUploadsDir();
     await ensureDir(uploadsDir);
 
-    const timestamp = Date.now();
+    const timestamp = randomUUID();
     const safeName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const filePath = path.join(uploadsDir, safeName);
 
-    await writeFile(filePath, buffer);
+    await writeFile(filePath, buffer, { flag: "wx" });
+    try {
+      getDb().prepare("INSERT INTO file_uploads (filename, uploaded_by_id, uploaded_by_role, mime_type, size) VALUES (?, ?, ?, ?, ?)")
+        .run(safeName, auth.id, auth.role, file.type, buffer.length);
+    } catch (error) {
+      // An unregistered write is not exposed as an uploaded file.
+      await unlink(filePath);
+      throw error;
+    }
 
     return NextResponse.json({ url: `/api/files/${safeName}`, name: file.name });
   } catch (err) {

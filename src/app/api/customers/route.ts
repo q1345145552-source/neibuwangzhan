@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
@@ -62,6 +62,8 @@ function applyAutoFlow(db: any) {
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const url = new URL(req.url);
   const search = url.searchParams.get("search") || "";
@@ -192,6 +194,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const body = await readJson(req);
 
@@ -460,6 +464,8 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const body = await readJson(req);
   const { id } = body;
@@ -522,6 +528,8 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const url = new URL(req.url);

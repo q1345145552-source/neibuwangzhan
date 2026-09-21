@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
 
 // PATCH /api/orders/:id/steps
 export async function PATCH(
@@ -10,6 +11,7 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
@@ -44,12 +46,8 @@ export async function PATCH(
     values.push(notes);
   }
   if (assignee !== undefined) {
-    const oldAssignee = (step as any).assignee || "";
     updates.push("assignee = ?");
     values.push(assignee);
-    if (oldAssignee !== assignee) {
-      logOperation(auth.name, "修改负责人", "step", String(step_id), `${(step as any).step_name}: ${oldAssignee} → ${assignee}`, oldAssignee, assignee, "assignee");
-    }
   }
   if (approval_status !== undefined) {
     updates.push("approval_status = ?");
@@ -77,25 +75,43 @@ export async function PATCH(
   }
 
   values.push(step_id, id);
-  db.prepare(`UPDATE order_steps SET ${updates.join(", ")} WHERE id = ? AND order_id = ?`).run(...values);
+  let result: { queued: number; step: unknown; cancelled?: boolean };
+  try {
+    result = db.transaction(() => {
+      // Serialize against admin cancellation: check before the first step write.
+      // Historical manual orders keep their existing restore/workflow behavior.
+      const currentOrder = db.prepare("SELECT source_system, status FROM orders WHERE id = ?").get(id) as { source_system: string | null; status: string } | undefined;
+      if (status !== undefined && currentOrder?.source_system === "commerce" && currentOrder.status === "客户取消") {
+        return { queued: 0, step: null, cancelled: true };
+      }
+      db.prepare(`UPDATE order_steps SET ${updates.join(", ")} WHERE id = ? AND order_id = ?`).run(...values);
 
-  const updated = db.prepare("SELECT * FROM order_steps WHERE id = ?").get(step_id);
+      // 取消状态粘住；恢复动作仍由订单接口按真实步骤状态计算。
+      const orderStatusRow = db.prepare("SELECT status FROM orders WHERE id = ?").get(id) as { status: string } | undefined;
+      if (!orderStatusRow || orderStatusRow.status !== "客户取消") {
+        const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
+        const allDone = steps.every((s) => s.status === "已完成");
+        const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
+        if (steps.length > 0) {
+          const orderStatus = allDone ? "已完成" : anyActivity ? "进行中" : "待处理";
+          db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(orderStatus, id);
+        }
+      }
 
-  // 同步订单状态：客户取消的订单状态粘住，步骤怎么动都不改，只有点恢复才重新跟着步骤变
-  const orderStatusRow = db.prepare("SELECT status FROM orders WHERE id = ?").get(id) as { status: string } | undefined;
-  if (!orderStatusRow || orderStatusRow.status !== "客户取消") {
-    const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
-    // 只有全部步骤真正"已完成"才算订单完成（此前全部"阻塞"也会被标成已完成）
-    const allDone = steps.every((s) => s.status === "已完成");
-    const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
-    if (steps.length > 0) {
-      let orderStatus = "待处理";
-      if (allDone) orderStatus = "已完成";
-      else if (anyActivity) orderStatus = "进行中";
-      db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(orderStatus, id);
-    }
+      const queued = queueProgressEventsForOrder(id, db);
+      return { queued, step: db.prepare("SELECT * FROM order_steps WHERE id = ?").get(step_id) };
+    }).immediate();
+  } catch (error) {
+    console.error("[orders/steps] 保存步骤/进度事务失败:", error);
+    return NextResponse.json({ error: "保存失败，步骤、订单与进度均未提交，请重试" }, { status: 500 });
   }
 
+  if (result.cancelled) return NextResponse.json({ error: "本服务已批准取消，保留原步骤；仍可补充资料与备注" }, { status: 409 });
+  if (result.queued > 0) requestProgressFlush();
+  const oldAssignee = (step as { assignee: string }).assignee || "";
+  if (assignee !== undefined && oldAssignee !== assignee) {
+    logOperation(auth.name, "修改负责人", "step", String(step_id), `${(step as { step_name: string }).step_name}: ${oldAssignee} → ${assignee}`, oldAssignee, assignee, "assignee");
+  }
   logOperation(auth.name || "系统", `更新步骤:${status || "已撤回"}`, "step", String(step_id), `订单:${id}`);
-  return NextResponse.json(updated);
+  return NextResponse.json(result.step);
 }

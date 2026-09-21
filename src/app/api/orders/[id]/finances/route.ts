@@ -1,7 +1,11 @@
+import { isClientOrderVisible } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { isCommerceRefund } from "@/lib/commerce-ledger";
+import { isCommerceOrder } from "@/lib/commerce-schema";
+import { moneyToCents } from "@/lib/sync-money";
 
 export async function GET(
   req: NextRequest,
@@ -9,11 +13,15 @@ export async function GET(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const rows = db.prepare("SELECT * FROM finances WHERE order_id = ? ORDER BY created_at DESC").all(id);
-  return NextResponse.json(rows);
+  return NextResponse.json((rows as {id:number}[]).map(row=>({...row,commerce_refund:isCommerceRefund(db,row.id)})));
 }
 
 export async function POST(
@@ -22,12 +30,23 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const body = await readJson(req);
   const { type, amount, description, payment_method, slip_number, slip_file, status, currency } = body;
+  if (isCommerceOrder(db,id) && type !== "expense") {
+    return NextResponse.json({ error: "商城收款统一由管理员在商城账单确认；此处仅录成本" }, { status: 409 });
+  }
+  if (isCommerceOrder(db,id)) {
+    try { moneyToCents(amount,"成本金额"); }
+    catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "成本金额有误" },{ status: 400 }); }
+  }
   // amount 用 == null 判断而不是取反，否则金额 0 会被误拒
   if (!type || amount == null || amount === "") return NextResponse.json({ error: "请提供类型和金额" }, { status: 400 });
   if (type !== "income" && type !== "expense") return NextResponse.json({ error: "type 必须是 income 或 expense" }, { status: 400 });
@@ -49,9 +68,13 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const body = await readJson(req);
   const { finance_id, type, amount, description, payment_method, slip_number, slip_file, status, currency } = body;
@@ -60,6 +83,15 @@ export async function PATCH(
 
   const existing = db.prepare("SELECT * FROM finances WHERE id = ? AND order_id = ?").get(finance_id, id);
   if (!existing) return NextResponse.json({ error: "费用记录不存在" }, { status: 404 });
+
+  if (isCommerceRefund(db,Number(finance_id))) return NextResponse.json({error:"商城退款记录请保留凭证，不从成本入口修改"},{status:409});
+  if (isCommerceOrder(db,id) && ((existing as { type: string }).type !== "expense" || (type !== undefined && type !== "expense"))) {
+    return NextResponse.json({ error: "商城收入记录关联账单，请保留原收款记录" }, { status: 409 });
+  }
+  if (isCommerceOrder(db,id) && amount !== undefined) {
+    try { moneyToCents(amount,"成本金额"); }
+    catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "成本金额有误" },{ status: 400 }); }
+  }
 
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -86,9 +118,13 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
+  if (auth.role === "client" && !isClientOrderVisible(auth.id, auth.name, id)) {
+    return NextResponse.json({ error: "无权限" }, { status: 403 });
+  }
   const db = getDb();
   const body = await readJson(req);
   const { finance_id } = body;
@@ -97,6 +133,11 @@ export async function DELETE(
 
   const existing = db.prepare("SELECT * FROM finances WHERE id = ? AND order_id = ?").get(finance_id, id);
   if (!existing) return NextResponse.json({ error: "费用记录不存在" }, { status: 404 });
+
+  if (isCommerceRefund(db,Number(finance_id))) return NextResponse.json({error:"商城退款记录请保留凭证，不从成本入口删除"},{status:409});
+  if (isCommerceOrder(db,id) && (existing as { type: string }).type !== "expense") {
+    return NextResponse.json({ error: "商城收入记录关联账单，请保留原收款记录" }, { status: 409 });
+  }
 
   db.prepare("DELETE FROM finances WHERE id = ?").run(finance_id);
   logOperation(auth.name, "删除费用", "finance", String(finance_id), `订单:${id}`);

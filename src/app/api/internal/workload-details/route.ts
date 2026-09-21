@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 
 // 员工英文名到步骤中文名/泰文名的对照
 const NAME_ALIASES: Record<string, string[]> = {
@@ -22,6 +22,8 @@ function buildLikeClause(name: string): { clause: string; params: string[] } {
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const db = getDb();
   const employee = req.nextUrl.searchParams.get("employee") || "";
