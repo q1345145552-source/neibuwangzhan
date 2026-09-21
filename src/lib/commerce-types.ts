@@ -1,0 +1,74 @@
+export interface CompanyRegistrationTerms {
+  version: string;
+  quantity_basis: "company";
+  company_structure: "foreign" | "joint";
+  company_registration: "included";
+  vat_registration: "included" | "excluded";
+  other_services: "not_specified";
+}
+export interface ThaiTrademarkTerms {
+  version: "thai-trademark-v1";
+  quantity_basis: "trademark";
+  registration_country: "TH";
+  major_classes_per_copy: 1;
+  minor_items_per_copy: 1 | 2 | 3 | 4 | 5;
+  other_services: "not_specified";
+}
+// 未核对流程商品的兜底条款：下单照常成立，fulfillment 挂「待分类」业务线。
+// 归属经员工/老板确认后改派，已售订单的快照不受影响。
+export interface UnclassifiedTerms {
+  version: "unclassified-v1";
+  quantity_basis: "unclassified";
+}
+export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms;
+export interface CommerceCart { revision: number; lines: CommerceSelection[] }
+export interface CommerceOrderPurchase {
+  sale_id: string; sku: string; copy_no: number; terms: CommerceTerms | null;
+}
+export interface CommerceProduct {
+  id: string; sku: string; name: string; price_cents: number; currency: "CNY";
+  revision: number; active: number; terms: CommerceTerms;
+}
+export interface CommerceSelection { product_id: string; quantity: number; revision: number; terms_version?: string }
+export interface CommerceQuote {
+  lines: (CommerceSelection & { sku: string; name: string; unit_cents: number; total_cents: number; terms: CommerceTerms })[];
+  total_cents: number; currency: "CNY";
+}
+export interface CommerceInvoice {
+  id: string; total_cents: number; currency: "CNY"; status: "unpaid" | "paid"; paid_at: string | null;
+}
+export interface CommerceDocument {
+  id: number; name: string; status: string; direction: string; file_url: string;
+}
+export interface CommerceSale {
+  id: string; buyer_account_id: number; buyer_name: string; total_cents: number; currency: "CNY"; created_at: string;
+  invoice: CommerceInvoice;
+  billing: CommerceBilling;
+  cancellations: CommerceCancellation[];
+  lines: {
+    id: string; sku: string; name: string; unit_cents: number; quantity: number; total_cents: number; terms: CommerceTerms | null;
+    fulfillments: {
+      order_id: string; copy_no: number; allocated_cents: number; status: string;
+      steps: { id: number; step_order: number; name: string; status: string }[];
+      documents: CommerceDocument[];
+    }[];
+  }[];
+}
+
+export interface CommerceAllocationBalance {
+  order_id: string; original_cents: number; credited_cents: number; adjusted_cents: number;
+  received_cents: number; refunded_cents: number; refund_due_cents: number;
+}
+export interface CommerceBilling {
+  revision: number; original_cents: number; credited_cents: number; adjusted_cents: number;
+  received_cents: number; refunded_cents: number; balance_due_cents: number; refund_due_cents: number;
+  settlement: "unpaid" | "paid" | "voided" | "refund_due" | "refunded";
+  allocations: CommerceAllocationBalance[];
+  adjustments: { id:string; reason:string; created_at:string; items:{order_id:string;credit_cents:number}[] }[];
+  refunds: { id:string; reason:string; reference:string; created_at:string; items:{order_id:string;amount_cents:number}[] }[];
+}
+export interface CommerceCancellation {
+  id:string; reason:string; order_ids:string[]; status:"pending"|"approved"|"rejected"|"withdrawn";
+  public_note:string; created_at:string; decided_at:string|null;
+}
+export interface CommerceSalePage { items:CommerceSale[]; next_cursor:string|null }
