@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation, sendNotification } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { existsSync, unlinkSync } from "fs";
+import path from "path";
+import os from "os";
+
+const UPLOAD_DIRS = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
+
+/** 从 /api/files/xxx 地址解析出文件名并删除磁盘文件 */
+function deleteDiskFile(url: string): void {
+  const m = (url || "").match(/\/api\/files\/([A-Za-z0-9._-]+)/);
+  if (!m) return;
+  const base = path.basename(m[1]);
+  for (const dir of UPLOAD_DIRS) {
+    const fp = path.join(dir, base);
+    if (existsSync(fp)) {
+      try { unlinkSync(fp); } catch (e) { console.error("[问题附件] 删除磁盘文件失败", fp, e); }
+    }
+  }
+}
 
 // GET /api/problems/:id — 问题详情（含跟进记录，按时间倒序）
 export async function GET(
@@ -149,4 +167,42 @@ export async function PATCH(
 
   const updated = db.prepare("SELECT * FROM problems WHERE id = ?").get(id);
   return NextResponse.json(updated);
+}
+
+// DELETE /api/problems/:id — 删除问题（仅负责人/管理员，仅已解决/搁置状态）
+// 级联删除跟进记录 + 附件（含磁盘文件），不留孤儿数据
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+  const { id } = await params;
+  const db = getDb();
+  const problem = db.prepare("SELECT assignee, status FROM problems WHERE id = ?").get(id) as { assignee: string; status: string } | undefined;
+  if (!problem) return NextResponse.json({ error: "问题不存在" }, { status: 404 });
+
+  // 权限：只有负责人或管理员能删除
+  if (auth.role !== "admin" && auth.name !== problem.assignee) {
+    return NextResponse.json({ error: "只有负责人或管理员能删除问题" }, { status: 403 });
+  }
+
+  // 状态限制：只有已解决/搁置能删除
+  if (problem.status !== "已解决" && problem.status !== "搁置") {
+    return NextResponse.json({ error: "当前状态不能删除，只有已解决或搁置的问题能删除" }, { status: 400 });
+  }
+
+  // 先取出所有附件的磁盘文件地址，删除记录后一并清磁盘
+  const attachments = db.prepare("SELECT url FROM problem_attachments WHERE problem_id = ?").all(id) as { url: string }[];
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM problem_follow_ups WHERE problem_id = ?").run(id);
+    db.prepare("DELETE FROM problem_attachments WHERE problem_id = ?").run(id);
+    db.prepare("DELETE FROM problems WHERE id = ?").run(id);
+  })();
+
+  for (const a of attachments) deleteDiskFile(a.url);
+  logOperation(auth.name, "删除问题", "problem", String(id));
+  return NextResponse.json({ success: true });
 }

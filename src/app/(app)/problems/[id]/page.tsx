@@ -93,6 +93,7 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
   const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
   const [orderId, setOrderId] = useState("");
   const [linking, setLinking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     fetchWithAuth(`/api/problems/${id}`, { cache: "no-store" })
@@ -223,6 +224,30 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
     finally { setLinking(false); }
   };
 
+  const handleDelete = async () => {
+    if (!problem) return;
+    // 权限：只有负责人或管理员能删
+    if (!canManage) { alert("只有负责人或管理员能删除问题"); return; }
+    // 状态限制：只有已解决/搁置能删
+    if (problem.status !== "已解决" && problem.status !== "搁置") {
+      alert("当前状态不能删除，只有已解决或搁置的问题能删除");
+      return;
+    }
+    // 确认框：写清楚级联删除 + 无法恢复
+    if (!confirm("确认删除该问题？将连同它的所有跟进记录和附件一起删除，无法恢复！")) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/problems/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/problems");
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "删除失败");
+      }
+    } catch { alert("删除失败"); }
+    finally { setDeleting(false); }
+  };
+
   if (loading) return <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>;
   if (!problem) return <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">问题不存在</div>;
 
@@ -232,10 +257,13 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回问题列表"><ArrowLeft className="size-4" /></Button>
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{problem.problem_number}</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">{problem.company_name}</p>
         </div>
+        <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting} className="gap-1.5">
+          <Trash2 className="size-4" />{deleting ? "删除中…" : "删除"}
+        </Button>
       </div>
 
       {/* 状态流转操作（仅负责人/管理员；验收/退回仅老板） */}
