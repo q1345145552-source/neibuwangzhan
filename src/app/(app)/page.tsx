@@ -7,8 +7,8 @@ import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TodoList } from "@/components/dashboard/todo-list";
-import { fetchDashboardStats, fetchOrders, fetchAssignedSteps, fetchWithAuth } from "@/lib/api";
-import type { Order } from "@/lib/api";
+import { fetchDashboardStats, fetchOrders, fetchAssignedSteps, fetchWithAuth, fetchBusinessTypes, statusLabels, statusClass } from "@/lib/api";
+import type { Order, BusinessType } from "@/lib/api";
 
 const BusinessChart = dynamic(
   () => import("@/components/dashboard/business-chart").then((mod) => mod.BusinessChart),
@@ -30,6 +30,8 @@ export default function DashboardPage() {
   const canSeeTracking = user?.role === "admin" || user?.name === "keai";
   const [stats, setStats] = useState({ total_orders: 0, in_progress: 0, completed: 0, canceled: 0, today_todos: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
+  const [orderSearch, setOrderSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
   const [stepsLoaded, setStepsLoaded] = useState(false);
@@ -39,12 +41,14 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [s, o] = await Promise.all([
+        const [s, o, bt] = await Promise.all([
           fetchDashboardStats(),
           fetchOrders(),
+          fetchBusinessTypes(),
         ]);
         setStats(s);
         setOrders(o);
+        setBusinessTypes(bt);
 
         if (user?.name) {
           const steps = await fetchAssignedSteps(user.name);
@@ -80,6 +84,24 @@ export default function DashboardPage() {
     return map;
   }, [orders]);
 
+  // 订单搜索：只按订单号模糊匹配（不区分大小写）
+  const orderSearchResults = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
+    if (!q) return [];
+    return orders.filter((o) => o.id.toLowerCase().includes(q));
+  }, [orders, orderSearch]);
+
+  // 搜索结果按业务线分组
+  const orderSearchGrouped = useMemo(() => {
+    const map: Record<number, Order[]> = {};
+    for (const o of orderSearchResults) {
+      (map[o.business_type_id] ||= []).push(o);
+    }
+    return map;
+  }, [orderSearchResults]);
+
+  const bizName = (id: number) => businessTypes.find((b) => b.id === id)?.name || "其他";
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -89,6 +111,45 @@ export default function DashboardPage() {
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           {loading ? "正在加载..." : `早上好，${user?.name || "用户"}。今天有 ${stats.today_todos} 件事等着你。`}
         </p>
+      </div>
+
+      {/* 订单搜索 */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-4">
+        <input
+          type="text"
+          value={orderSearch}
+          onChange={(e) => setOrderSearch(e.target.value)}
+          placeholder="搜索订单号（输入部分即可，如 ORD）..."
+          className="h-9 w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+        />
+        {orderSearch.trim() !== "" && (
+          <div className="mt-3">
+            {orderSearchResults.length === 0 ? (
+              <p className="py-4 text-center text-sm text-[var(--muted-foreground)]">没有找到相关订单</p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(orderSearchGrouped).map(([bizId, list]) => (
+                  <div key={bizId}>
+                    <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">{bizName(Number(bizId))}</p>
+                    <div className="space-y-1">
+                      {list.map((o) => (
+                        <Link
+                          key={o.id}
+                          href={`/orders/${o.id}`}
+                          className="flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2 transition-colors hover:bg-[var(--muted)]/30"
+                        >
+                          <span className="font-mono text-sm font-medium text-[var(--primary)]">{o.id}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{o.customer_name}</span>
+                          <span className={cn("inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
