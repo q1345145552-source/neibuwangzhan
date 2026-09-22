@@ -1532,6 +1532,33 @@ function initTables(database: Database.Database) {
       value TEXT NOT NULL DEFAULT ''
     );
   `);
+
+  // ── 问题跟踪 ──
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS problems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_number TEXT NOT NULL UNIQUE,
+      company_name TEXT NOT NULL,
+      problem_type TEXT NOT NULL DEFAULT '税务问题' CHECK(problem_type IN ('税务问题','证件问题','地址变更问题','年审问题','代持问题','合同问题','金额问题')),
+      status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','跟进中','已解决','老板验收','搁置')),
+      assignee TEXT DEFAULT '',
+      priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('普通','紧急')),
+      description TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS problem_follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_problem_follow_ups_problem_id ON problem_follow_ups(problem_id);
+  `);
 }
 
 /* ── 系统设置读写 ── */
@@ -1549,6 +1576,12 @@ export function setSystemSetting(key: string, value: string): void {
 /** 机构业务总开关是否开启（默认关闭） */
 export function isAgencyEnabled(): boolean {
   return getSystemSetting("agency_enabled") === "1";
+}
+
+/** 生成问题编号：Q + 4 位数字（按现有最大 id 递增），每个唯一 */
+export function generateProblemNumber(): string {
+  const row = getDb().prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM problems").get() as { next: number };
+  return `Q${String(row.next).padStart(4, "0")}`;
 }
 
 /* ── 积分规则种子 ── */

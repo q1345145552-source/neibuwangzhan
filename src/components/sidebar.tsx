@@ -35,6 +35,7 @@ import {
   Calculator,
   Package,
   Truck,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -59,6 +60,7 @@ const businessLines = [
 
 const customerNav = [
   { name: "客户管理", href: "/customers", icon: Building2 },
+  { name: "问题跟踪", href: "/problems", icon: AlertCircle },
 ];
 
 
