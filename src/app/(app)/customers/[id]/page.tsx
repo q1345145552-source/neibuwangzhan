@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Building2, Tag, User, Calendar, DollarSign, Edit3, Save, X, Send, Plus,
-  Clock, MessageSquare, Star, TrendingUp, Unlock
+  Clock, MessageSquare, Star, TrendingUp, Unlock, AlertCircle
 } from "lucide-react";
 
 interface CustomerDetail {
@@ -40,6 +41,23 @@ const statusColor: Record<string, string> = {
   "沉睡": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 };
 
+interface ProblemItem {
+  id: number;
+  problem_number: string;
+  problem_type: string;
+  status: string;
+  assignee: string;
+  priority: string;
+}
+
+const problemStatusClass: Record<string, string> = {
+  "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
+  "跟进中": "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[oklch(0.38_0.10_240)]",
+  "已解决": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
+  "老板验收": "bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]",
+  "搁置": "bg-[var(--muted)] text-[var(--muted-foreground)]",
+};
+
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
@@ -51,6 +69,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [followUpNext, setFollowUpNext] = useState("");
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [problems, setProblems] = useState<ProblemItem[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -64,6 +83,15 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     }
     load();
   }, [id]);
+
+  // 客户联动：拉这家公司名下所有问题
+  useEffect(() => {
+    if (!customer?.company_name) return;
+    fetchWithAuth(`/api/problems?company_name=${encodeURIComponent(customer.company_name)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setProblems(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [customer?.company_name]);
 
   const reload = async () => {
     try {
@@ -232,6 +260,27 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               </div>
             ) : (
               <p className="text-sm text-[var(--muted-foreground)]">暂无跟进记录</p>
+            )}
+          </div>
+
+          {/* 名下问题（客户联动） */}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+            <h3 className="mb-4 text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="size-4 text-[var(--muted-foreground)]" />名下问题
+            </h3>
+            {problems.length === 0 ? (
+              <p className="text-sm text-[var(--muted-foreground)]">暂无关联问题</p>
+            ) : (
+              <div className="space-y-2">
+                {problems.map((p) => (
+                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2">
+                    <Link href={`/problems/${p.id}`} className="font-mono text-sm text-[var(--primary)] hover:underline">{p.problem_number}</Link>
+                    <span className="text-sm text-[var(--muted-foreground)]">{p.problem_type}</span>
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", problemStatusClass[p.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{p.status}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{p.assignee || "—"}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

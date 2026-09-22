@@ -773,7 +773,7 @@ function initTables(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue')),
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected')),
       title TEXT DEFAULT '',
       body TEXT DEFAULT '',
       recipient TEXT DEFAULT '',
@@ -784,13 +784,13 @@ function initTables(database: Database.Database) {
     );
   `);
 
-  // notifications 迁移：补 leave_overdue 类型
+  // notifications 迁移：补 leave_overdue / problem_* 类型
   try {
     database.exec("ALTER TABLE notifications RENAME TO notifications_old");
     database.exec(`
       CREATE TABLE notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue')),
+        type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected')),
         title TEXT DEFAULT '',
         body TEXT DEFAULT '',
         recipient TEXT DEFAULT '',
@@ -1542,8 +1542,15 @@ function initTables(database: Database.Database) {
       problem_type TEXT NOT NULL DEFAULT '税务问题' CHECK(problem_type IN ('税务问题','证件问题','地址变更问题','年审问题','代持问题','合同问题','金额问题')),
       status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','跟进中','已解决','老板验收','搁置')),
       assignee TEXT DEFAULT '',
-      priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('普通','紧急')),
+      priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
+      source TEXT NOT NULL DEFAULT '客户反馈' CHECK(source IN ('客户反馈','内部发现')),
       description TEXT DEFAULT '',
+      customer_requirement TEXT DEFAULT '',
+      deadline TEXT DEFAULT '',
+      resolve_note TEXT DEFAULT '',
+      resolved_at TEXT DEFAULT '',
+      suspend_reason TEXT DEFAULT '',
+      order_id TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -1557,8 +1564,59 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS problem_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id),
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_problem_follow_ups_problem_id ON problem_follow_ups(problem_id);
+    CREATE INDEX IF NOT EXISTS idx_problem_attachments_problem_id ON problem_attachments(problem_id);
   `);
+
+  // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
+  try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN customer_requirement TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN deadline TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN resolve_note TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN resolved_at TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN suspend_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+  try {
+    const p = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='problems'").get() as { sql: string } | undefined;
+    if (p && !p.sql.includes("'不急'")) {
+      database.exec(`
+        ALTER TABLE problems RENAME TO problems_old;
+        CREATE TABLE problems (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          problem_number TEXT NOT NULL UNIQUE,
+          company_name TEXT NOT NULL,
+          problem_type TEXT NOT NULL DEFAULT '税务问题' CHECK(problem_type IN ('税务问题','证件问题','地址变更问题','年审问题','代持问题','合同问题','金额问题')),
+          status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','跟进中','已解决','老板验收','搁置')),
+          assignee TEXT DEFAULT '',
+          priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
+          source TEXT NOT NULL DEFAULT '客户反馈' CHECK(source IN ('客户反馈','内部发现')),
+          description TEXT DEFAULT '',
+          customer_requirement TEXT DEFAULT '',
+          deadline TEXT DEFAULT '',
+          resolve_note TEXT DEFAULT '',
+          resolved_at TEXT DEFAULT '',
+          suspend_reason TEXT DEFAULT '',
+          order_id TEXT DEFAULT '',
+          created_by TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO problems (id, problem_number, company_name, problem_type, status, assignee, priority, source, description, customer_requirement, deadline, resolve_note, resolved_at, suspend_reason, order_id, created_by, created_at, updated_at)
+          SELECT id, problem_number, company_name, problem_type, status, assignee, priority, source, description, customer_requirement, deadline, resolve_note, resolved_at, suspend_reason, order_id, created_by, created_at, updated_at FROM problems_old;
+        DROP TABLE problems_old;
+      `);
+      console.log("[DB] problems 表已升级：新增来源/客户需求/截止日期，紧急程度扩展为 3 档");
+    }
+  } catch (e) { console.error("[DB] problems 迁移失败:", e); }
 }
 
 /* ── 系统设置读写 ── */
@@ -1582,6 +1640,28 @@ export function isAgencyEnabled(): boolean {
 export function generateProblemNumber(): string {
   const row = getDb().prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM problems").get() as { next: number };
   return `Q${String(row.next).padStart(4, "0")}`;
+}
+
+/** 发送站内通知（recipient 为员工姓名） */
+export function sendNotification(
+  type: string,
+  title: string,
+  body: string,
+  recipient: string,
+  relatedId = "",
+  relatedType = ""
+): void {
+  getDb().prepare(
+    "INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(type, title, body, recipient, relatedId, relatedType);
+}
+
+/** 给所有管理员（老板）各发一条站内通知 */
+export function notifyAdmins(type: string, title: string, body: string, relatedId = "", relatedType = ""): void {
+  const admins = getDb().prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
+  for (const a of admins) {
+    if (a.name) sendNotification(type, title, body, a.name, relatedId, relatedType);
+  }
 }
 
 /* ── 积分规则种子 ── */
