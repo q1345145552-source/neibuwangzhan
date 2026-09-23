@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation, sendNotification } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { validateEnums } from "@/lib/enums";
 import { existsSync, unlinkSync } from "fs";
 import path from "path";
 import os from "os";
@@ -64,7 +65,7 @@ export async function PATCH(
   const isAdmin = auth.role === "admin";
   const isAssignee = auth.name === problem.assignee;
   if (!isAdmin && !isAssignee) {
-    return NextResponse.json({ error: "只有负责人或管理员能修改状态" }, { status: 403 });
+    return NextResponse.json({ error: "只有负责人或管理员能操作" }, { status: 403 });
   }
 
   const body = await readJson(req);
@@ -83,6 +84,39 @@ export async function PATCH(
     logOperation(auth.name, target ? "关联订单" : "取消关联订单", "problem", String(id), target || "无");
     const linked = db.prepare("SELECT * FROM problems WHERE id = ?").get(id);
     return NextResponse.json(linked);
+  }
+
+  // 编辑模式：请求不带 status（状态流转）时，按编辑处理，可改 公司名/描述/类型/来源/负责人/紧急程度/截止日期/客户需求
+  if (status === undefined) {
+    const { company_name, description, problem_type, source, assignee, priority, deadline, customer_requirement } = body;
+    if (!company_name?.trim()) return NextResponse.json({ error: "请填写公司名" }, { status: 400 });
+    if (!description?.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
+    if (!assignee?.trim()) return NextResponse.json({ error: "请选择负责人" }, { status: 400 });
+    if (!source?.trim()) return NextResponse.json({ error: "请选择来源" }, { status: 400 });
+
+    const enumErr = validateEnums({
+      "problems.problem_type": problem_type,
+      "problems.priority": priority,
+      "problems.source": source,
+    });
+    if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
+
+    db.prepare(
+      "UPDATE problems SET company_name = ?, description = ?, problem_type = ?, source = ?, assignee = ?, priority = ?, deadline = ?, customer_requirement = ?, updated_at = datetime('now') WHERE id = ?"
+    ).run(
+      company_name.trim(),
+      description.trim(),
+      problem_type || "税务问题",
+      source.trim(),
+      assignee.trim(),
+      priority || "普通",
+      deadline || "",
+      customer_requirement || "",
+      id
+    );
+    logOperation(auth.name, "编辑问题", "problem", String(id));
+    const edited = db.prepare("SELECT * FROM problems WHERE id = ?").get(id);
+    return NextResponse.json(edited);
   }
 
   const validStatuses = ["待处理", "跟进中", "已解决", "老板验收", "搁置"];
