@@ -8,7 +8,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { bangkokToday } from "@/lib/time";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Paperclip, Trash2 } from "lucide-react";
+import { ArrowLeft, Paperclip, Trash2, Pencil, X } from "lucide-react";
 
 interface FollowUp {
   id: number;
@@ -57,6 +57,10 @@ const STATUS_CLASS: Record<string, string> = {
   "搁置": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
+const PROBLEM_TYPES = ["税务问题", "证件问题", "地址变更问题", "年审问题", "代持问题", "合同问题", "金额问题"];
+const PRIORITIES = ["普通", "紧急", "不急"];
+const SOURCES = ["客户反馈", "内部发现"];
+
 // 截止日期预警：未解决的问题，已超期标红、3 天内到期标黄
 function deadlineState(deadline: string | undefined | null, status: string): "overdue" | "soon" | null {
   if (!deadline || status === "已解决") return null;
@@ -94,6 +98,19 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
   const [orderId, setOrderId] = useState("");
   const [linking, setLinking] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    company_name: "",
+    description: "",
+    problem_type: "税务问题",
+    source: "客户反馈",
+    assignee: "",
+    priority: "普通",
+    deadline: "",
+    customer_requirement: "",
+  });
 
   const load = () => {
     fetchWithAuth(`/api/problems/${id}`, { cache: "no-store" })
@@ -105,9 +122,10 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => { load(); }, [id]);
 
-  // 拉订单列表（关联订单选择）
+  // 拉订单列表（关联订单选择）+ 员工列表（编辑负责人）
   useEffect(() => {
     fetchWithAuth("/api/orders").then((r) => r.json()).then((d) => setOrders(Array.isArray(d) ? d : [])).catch(() => {});
+    fetchWithAuth("/api/employees").then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // 问题加载后同步当前关联订单
@@ -248,6 +266,43 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
     finally { setDeleting(false); }
   };
 
+  const openEdit = () => {
+    if (!problem) return;
+    setEditForm({
+      company_name: problem.company_name || "",
+      description: problem.description || "",
+      problem_type: problem.problem_type || "税务问题",
+      source: problem.source || "客户反馈",
+      assignee: problem.assignee || "",
+      priority: problem.priority || "普通",
+      deadline: problem.deadline || "",
+      customer_requirement: problem.customer_requirement || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSave = async () => {
+    if (!editForm.company_name.trim()) { alert("请填写公司名"); return; }
+    if (!editForm.description.trim()) { alert("请填写问题描述"); return; }
+    if (!editForm.assignee) { alert("请选择负责人"); return; }
+    setSavingEdit(true);
+    try {
+      const res = await fetchWithAuth(`/api/problems/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      if (res.ok) {
+        setShowEditModal(false);
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "保存失败");
+      }
+    } catch { alert("保存失败"); }
+    finally { setSavingEdit(false); }
+  };
+
   if (loading) return <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>;
   if (!problem) return <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">问题不存在</div>;
 
@@ -261,6 +316,11 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{problem.problem_number}</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">{problem.company_name}</p>
         </div>
+        {canManage && (
+          <Button size="sm" variant="outline" onClick={openEdit} className="gap-1.5">
+            <Pencil className="size-4" />编辑
+          </Button>
+        )}
         <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting} className="gap-1.5">
           <Trash2 className="size-4" />{deleting ? "删除中…" : "删除"}
         </Button>
@@ -504,6 +564,111 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowSuspendModal(false)}>取消</Button>
               <Button size="sm" onClick={handleSuspend}>确认搁置</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 编辑问题弹窗 */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { if (!savingEdit) setShowEditModal(false); }}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">编辑问题</h3>
+              <button onClick={() => setShowEditModal(false)} disabled={savingEdit} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">公司名</label>
+                <input
+                  value={editForm.company_name}
+                  onChange={(e) => setEditForm((p) => ({ ...p, company_name: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">问题描述</label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--muted-foreground)]">问题类型</label>
+                  <select
+                    value={editForm.problem_type}
+                    onChange={(e) => setEditForm((p) => ({ ...p, problem_type: e.target.value }))}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                  >
+                    {PROBLEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--muted-foreground)]">来源</label>
+                  <select
+                    value={editForm.source}
+                    onChange={(e) => setEditForm((p) => ({ ...p, source: e.target.value }))}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                  >
+                    {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--muted-foreground)]">负责人</label>
+                  <select
+                    value={editForm.assignee}
+                    onChange={(e) => setEditForm((p) => ({ ...p, assignee: e.target.value }))}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                  >
+                    <option value="">请选择</option>
+                    {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--muted-foreground)]">紧急程度</label>
+                  <select
+                    value={editForm.priority}
+                    onChange={(e) => setEditForm((p) => ({ ...p, priority: e.target.value }))}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                  >
+                    {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">截止日期</label>
+                <input
+                  type="date"
+                  value={editForm.deadline}
+                  onChange={(e) => setEditForm((p) => ({ ...p, deadline: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">客户需求</label>
+                <textarea
+                  value={editForm.customer_requirement}
+                  onChange={(e) => setEditForm((p) => ({ ...p, customer_requirement: e.target.value }))}
+                  rows={2}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowEditModal(false)} disabled={savingEdit}>取消</Button>
+              <Button size="sm" onClick={handleEditSave} disabled={savingEdit}>{savingEdit ? "保存中…" : "保存"}</Button>
             </div>
           </div>
         </div>
