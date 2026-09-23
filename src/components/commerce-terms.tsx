@@ -37,6 +37,34 @@ export function CommerceTermsSummary({ terms }: { terms: CommerceTerms | null | 
     <p>NBTC 认证：每份为 1 类产品的认证办理，总周期约 3-4 个月。</p>
     <p className="text-[var(--muted-foreground)]">检测与官方规费以实际发生为准；清关配合事项办理中另行通知。</p>
   </div>;
+  if (terms.quantity_basis === "company-service") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>{terms.service === "vat" ? "VAT 税号注册" : terms.service === "bank" ? "银行开户（对公账户）" : "注册地址服务"}：每份为 1 项独立办理。</p>
+    <p className="text-[var(--muted-foreground)]">办理进度暂按公司注册全流程展示，实际以本项服务内容为准；不含其他附属服务。</p>
+  </div>;
+  if (terms.quantity_basis === "company-change") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>公司变更：地址迁移、董事/股东变更、增减资、改印章、经营范围等，收资料后递交官方办理。</p>
+    <p className="text-[var(--muted-foreground)]">具体变更类型以提交的资料为准；政府规费按变更事项另计。</p>
+  </div>;
+  if (terms.quantity_basis === "address-cert") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>FDA 场地认证：为产品认证办理合规场地确认（含 FDA 系统开通与官方现场检查）。</p>
+    <p className="text-[var(--muted-foreground)]">使用湘泰场地的含租赁合同与首月租金；客户自有场地不含租赁环节。</p>
+  </div>;
+  if (terms.quantity_basis === "mall-enterprise") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>企业店入驻（{terms.platform === "shopee" ? "Shopee" : terms.platform === "lazada" ? "Lazada" : "TikTok"}）：每份为 1 个店铺的入驻办理。</p>
+    <p className="text-[var(--muted-foreground)]">与 Mall 店（品牌认证型）为不同店铺类型；平台费用以平台账单为准。</p>
+  </div>;
+  if (terms.quantity_basis === "trademark-buy-r") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>商标转让：匹配已注册商标（R标）并办理权利转让登记。</p>
+    <p className="text-[var(--muted-foreground)]">商标编号与类别以沟通确认为准；转让登记规费按规定另计。</p>
+  </div>;
+  if (terms.quantity_basis === "trademark-th-plus") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>泰国商标注册（1 个大类 6 个及以上小类）：一口价，不随小类数量加价。</p>
+    <p className="text-[var(--muted-foreground)]">政府注册登记费按小类数另计；建议同一大类不超过 10-20 个小类。</p>
+  </div>;
+  if (terms.quantity_basis === "fda-product") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>FDA 产品注册（{terms.category === "cosmetics" ? "化妆品" : terms.category === "food" ? "食品（含保健食品）" : terms.category === "hazard" ? "危险物质" : "医疗器械"}）：每份为 1 个产品的注册备案。</p>
+    <p className="text-[var(--muted-foreground)]">官方审核周期以品类为准；补件或检测产生的官方费用另计。</p>
+  </div>;
   return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
     <p>公司类型：{terms.company_structure === "foreign" ? "纯外资" : "合资"} · 公司注册：包含 · VAT 登记：{terms.vat_registration === "included" ? "包含" : "不包含"}</p>
     <p>1 份 = 1 家公司独立办理。{terms.vat_registration === "included" ? "本商品包含 VAT 登记，不另建收费单。" : "本商品不包含 VAT 登记，保留核对步骤不代表购买该服务。"}</p>
