@@ -25,7 +25,7 @@ export function saveProduct(db: Database.Database, actor: TokenPayload, input: u
   const body = recordBody(input);
   only(body, ["id", "sku", "name", "price_cents", "active", "revision"]);
   const sku = boundedText(body.sku, 30, "商品编号");
-  if (!productTerms(sku)) return fail(400, "PILOT_PRODUCT_ONLY", "仅接入已核对的公司注册与泰国商标 1～5 小项规格，其他商品待核验");
+  if (!productTerms(sku)) return fail(400, "PILOT_PRODUCT_ONLY", "仅可维护已接入下单目录（83 项快照清单）内的商品");
   const name = boundedText(body.name, 120, "商品名称");
   if (typeof body.price_cents !== "number" || !Number.isSafeInteger(body.price_cents) || body.price_cents < 1 || body.price_cents > 100_000_000) return fail(400, "INVALID_PRICE", "售价请按整数分填写，范围 1 分至 100 万元");
   if (typeof body.active !== "boolean") return fail(400, "INVALID_INPUT", "请明确商品上架状态");
@@ -66,6 +66,8 @@ function quoteLines(db: Database.Database, lines: CommerceSelection[]): Commerce
     if (!product || !product.active || product.revision !== line.revision) return fail(409,"QUOTE_CHANGED","商品报价或上架状态已变化，请重新加载并确认后下单");
     if (product.currency !== "CNY") return fail(409,"INVALID_CURRENCY","商品币种待管理员核对");
     const terms = withTerms(product).terms;
+    // 附加费用不构成独立服务：报价/下单入口拦截单独购买（随主服务一并收取）
+    if (terms.quantity_basis === "attachment") return fail(409, "ATTACHMENT_ONLY", "该项为附加费用，随对应主服务一并收取，不能单独购买");
     if ((line.terms_version ?? LEGACY_TERMS_VERSION) !== terms.version) return fail(409,"QUOTE_CHANGED","服务权益版本已变化，请重新核对报价和服务内容");
     const amount = product.price_cents * line.quantity;
     total += amount;

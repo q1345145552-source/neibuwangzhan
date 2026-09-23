@@ -1,7 +1,11 @@
-import type { CommerceTerms, ThaiTrademarkTerms } from "./commerce-types";
+import type { CommerceTerms, ThaiTrademarkTerms, MallStoreTerms } from "./commerce-types";
 
 // This is a reviewed allowlist, not a name-matching classifier or an imported price list.
-export const COMMERCE_SKUS = ["COM-001","COM-002","COM-003","COM-004","TRA-001","TRA-002","TRA-003","TRA-005","TRA-006"] as const;
+// 2026-09-20 放行：公司注册 4 + 泰国商标 5 + 社保登记 1 + Mall 三平台 + 国际商标 5 + DLD + NBTC。
+// 暂缓：COM-026/COM-027/TAX-001（开公户、VAT 注册）——内部尚无专属子服务模板（现为全套注册 12 步），
+// 补齐流程前走 unclassified 兜底，防「只买 VAT 注册却按全套注册办理」。
+export const COMMERCE_SKUS = ["COM-001","COM-002","COM-003","COM-004","TRA-001","TRA-002","TRA-003","TRA-005","TRA-006",
+  "TAX-003","PLA-001","PLA-002","PLA-003","TM-PH","TM-MY","TM-VN","TM-ID","TM-SG","OTH-002","CERT-NBTC"] as const;
 export const COMMERCE_MAX_LINES = COMMERCE_SKUS.length;
 // Immutable fallback for first-slice company requests. New business families require explicit versions.
 export const LEGACY_TERMS_VERSION = "company-registration-v1";
@@ -37,8 +41,17 @@ export const ORDERABLE_SKUS = [
 export const UNCLASSIFIED_TERMS_VERSION = "unclassified-v1";
 const UNCLASSIFIED_TERMS: CommerceTerms = { version: UNCLASSIFIED_TERMS_VERSION, quantity_basis: "unclassified" };
 
+// 附加费 SKU：随主服务收取，不可单独购买（报价/下单入口拦截，不建办理单）。
+const ATTACHMENT_SKUS = new Set(["OTH-007", "OTH-008"]);
+
 const TRADEMARK_ITEMS: Readonly<Record<string, ThaiTrademarkTerms["minor_items_per_copy"]>> = {
   "TRA-001": 1, "TRA-002": 2, "TRA-003": 3, "TRA-005": 4, "TRA-006": 5,
+};
+const MALL_PLATFORMS: Readonly<Record<string, MallStoreTerms["platform"]>> = {
+  "PLA-001": "shopee", "PLA-002": "lazada", "PLA-003": "tiktok",
+};
+const INTERNATIONAL_COUNTRIES: Readonly<Record<string, string>> = {
+  "TM-PH": "PH", "TM-MY": "MY", "TM-VN": "VN", "TM-ID": "ID", "TM-SG": "SG",
 };
 export function productTerms(sku: string): CommerceTerms | null {
   if (["COM-001","COM-002","COM-003","COM-004"].includes(sku)) return {
@@ -50,6 +63,14 @@ export function productTerms(sku: string): CommerceTerms | null {
   const items = TRADEMARK_ITEMS[sku];
   if (items) return { version: "thai-trademark-v1", quantity_basis: "trademark", registration_country: "TH",
     major_classes_per_copy: 1, minor_items_per_copy: items, other_services: "not_specified" };
+  if (sku === "TAX-003") return { version: "social-security-v1", quantity_basis: "social-security" };
+  const platform = MALL_PLATFORMS[sku];
+  if (platform) return { version: "mall-store-v1", quantity_basis: "mall-store", platform };
+  const country = INTERNATIONAL_COUNTRIES[sku];
+  if (country) return { version: "international-trademark-v1", quantity_basis: "trademark-international", registration_country: country };
+  if (sku === "OTH-002") return { version: "dld-product-v1", quantity_basis: "dld-product" };
+  if (sku === "CERT-NBTC") return { version: "nbtc-v1", quantity_basis: "nbtc" };
+  if (ATTACHMENT_SKUS.has(sku)) return { version: "attachment-v1", quantity_basis: "attachment" };
   // 目录内但未核对流程：接单走兜底条款（用户 2026-09-20 拍板，规则 6：不拒单）；
   // 目录之外仍返回 null——防脏数据，不是拒客户。
   if ((ORDERABLE_SKUS as readonly string[]).includes(sku)) return UNCLASSIFIED_TERMS;

@@ -20,7 +20,36 @@ export interface UnclassifiedTerms {
   version: "unclassified-v1";
   quantity_basis: "unclassified";
 }
-export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms;
+// 附加费用（场地设备配置费、泰籍法人代表费等）：随对应主服务一并收取，
+// 不构成独立服务，不可单独购买（2026-09-20 全量清单第五组方案）。
+export interface AttachmentTerms {
+  version: "attachment-v1";
+  quantity_basis: "attachment";
+}
+// 以下五族为 2026-09-20 放行的已核对家族（内部均有专属步骤模板，hash 锁定）。
+export interface SocialSecurityTerms {
+  version: "social-security-v1";
+  quantity_basis: "social-security";
+}
+export interface MallStoreTerms {
+  version: "mall-store-v1";
+  quantity_basis: "mall-store";
+  platform: "shopee" | "lazada" | "tiktok";
+}
+export interface InternationalTrademarkTerms {
+  version: "international-trademark-v1";
+  quantity_basis: "trademark-international";
+  registration_country: string;
+}
+export interface DldProductTerms {
+  version: "dld-product-v1";
+  quantity_basis: "dld-product";
+}
+export interface NbtcTerms {
+  version: "nbtc-v1";
+  quantity_basis: "nbtc";
+}
+export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms | AttachmentTerms | SocialSecurityTerms | MallStoreTerms | InternationalTrademarkTerms | DldProductTerms | NbtcTerms;
 export interface CommerceCart { revision: number; lines: CommerceSelection[] }
 export interface CommerceOrderPurchase {
   sale_id: string; sku: string; copy_no: number; terms: CommerceTerms | null;

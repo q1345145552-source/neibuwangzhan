@@ -8,11 +8,34 @@ export function CommerceTermsSummary({ terms }: { terms: CommerceTerms | null | 
     <p>份数是独立申请份数；小项是每份包含的规格，不额外拆单或乘一次价格。</p>
     <p className="text-[var(--muted-foreground)]">商标名称、类别与图样下单后按原流程提交核对；国际商标、转让、专利及额外费用不在本项声明。</p>
   </div>;
-  // 未核对流程的兜底条款：如实告知「已接单、待归类」，不虚构权益内容。
   if (terms.quantity_basis === "unclassified") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
     <p>该服务的办理流程尚未核对，订单已受理并进入「待分类」。</p>
     <p>工作人员确认归属后会按对应业务的正式流程办理，届时更新服务内容说明。</p>
     <p className="text-[var(--muted-foreground)]">成交价格以下单快照为准；归类不改变已成交价格。</p>
+  </div>;
+  if (terms.quantity_basis === "attachment") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>附加费用：随对应主服务一并收取，不能单独购买。</p>
+    <p className="text-[var(--muted-foreground)]">请先选购对应的主服务，该项费用将随主服务一并结算与办理。</p>
+  </div>;
+  if (terms.quantity_basis === "social-security") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>公司社保登记：每份为一家公司的社保开户登记。</p>
+    <p className="text-[var(--muted-foreground)]">雇员参保名单与金额在办理中按社保局要求提交核对；每月代缴不在本项声明。</p>
+  </div>;
+  if (terms.quantity_basis === "mall-store") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>Mall 店入驻（{terms.platform === "shopee" ? "Shopee" : terms.platform === "lazada" ? "Lazada" : "TikTok"}）：每份为一个店铺的入驻办理。</p>
+    <p className="text-[var(--muted-foreground)]">平台套餐费与保证金等第三方费用以平台账单为准，不包含在本项服务费内。</p>
+  </div>;
+  if (terms.quantity_basis === "trademark-international") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>国际商标注册（{terms.registration_country}）：每份为 1 个商标在该国家/地区的注册申请。</p>
+    <p className="text-[var(--muted-foreground)]">商标名称、类别与图样下单后按原流程提交核对。</p>
+  </div>;
+  if (terms.quantity_basis === "dld-product") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>DLD 宠物饲料注册：每份为 1 个产品的注册办理。</p>
+    <p className="text-[var(--muted-foreground)]">产品配方与工序资料在办理中提交核对；场地检查以官方安排为准。</p>
+  </div>;
+  if (terms.quantity_basis === "nbtc") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>NBTC 认证：每份为 1 类产品的认证办理，总周期约 3-4 个月。</p>
+    <p className="text-[var(--muted-foreground)]">检测与官方规费以实际发生为准；清关配合事项办理中另行通知。</p>
   </div>;
   return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
     <p>公司类型：{terms.company_structure === "foreign" ? "纯外资" : "合资"} · 公司注册：包含 · VAT 登记：{terms.vat_registration === "included" ? "包含" : "不包含"}</p>
