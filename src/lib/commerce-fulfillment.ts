@@ -76,6 +76,10 @@ const DEFINITIONS = {
       medical:{ subService:"medical", namesHash:"07be597759584aeff41939aa760101c9c19a3497575e689a9a0cc081ee7a3539",
         publicNames:["方案确认","收集资料","送样检测","提交申请","缴费","取得证书交付"] },
     } },
+  // TISI 办理（2026-09-22 裁决 B 面议下单）：办理周期约 3-4 个月，公开名提示周期
+  tisi: { key:"tisi-negotiable-v1", businessName:"TISI", businessId:4, subService:"tisi-main", addressType:"",
+    namesHash:"93d7c9206da9cf0accb74175f1d020157c45c58125d243567763d068b5bebc2e",
+    publicNames:["方案确认","提供产品图与规格书","确认是否需要 TISI","准备全套文件","系统注册登记","准备授权委托书","补充文件","审批通过与清关准备","获取进口单据","货物送达 TISI","送样检测","等待检测结果","取得 TISI 证书（周期约 3-4 个月）"] },
 } as const;
 
 /** Select only a reviewed original workflow; nothing in a product name controls dispatch. */

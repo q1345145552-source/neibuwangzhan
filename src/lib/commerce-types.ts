@@ -83,7 +83,14 @@ export interface FdaProductTerms {
   quantity_basis: "fda-product";
   category: "cosmetics" | "food" | "hazard" | "medical";
 }
-export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms | AttachmentTerms | SocialSecurityTerms | MallStoreTerms | InternationalTrademarkTerms | DldProductTerms | NbtcTerms | CompanyServiceTerms | CompanyChangeTerms | AddressCertTerms | MallEnterpriseTerms | TrademarkBuyRTerms | ThaiTrademarkPlusTerms | FdaProductTerms;
+// TISI 办理（2026-09-22 裁决 B 面议下单）：价格因产品差异需咨询，core 表价格存 0=面议，
+// 客户下单必须提供报价 offer_cents，成交价以报价快照为准（实证：老站同模式成交过 ¥290,000 一单）。
+export interface TisiNegotiableTerms {
+  version: "tisi-negotiable-v1";
+  quantity_basis: "tisi";
+  negotiable: true;
+}
+export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms | AttachmentTerms | SocialSecurityTerms | MallStoreTerms | InternationalTrademarkTerms | DldProductTerms | NbtcTerms | CompanyServiceTerms | CompanyChangeTerms | AddressCertTerms | MallEnterpriseTerms | TrademarkBuyRTerms | ThaiTrademarkPlusTerms | FdaProductTerms | TisiNegotiableTerms;
 export interface CommerceCart { revision: number; lines: CommerceSelection[] }
 export interface CommerceOrderPurchase {
   sale_id: string; sku: string; copy_no: number; terms: CommerceTerms | null;
@@ -92,7 +99,7 @@ export interface CommerceProduct {
   id: string; sku: string; name: string; price_cents: number; currency: "CNY";
   revision: number; active: number; terms: CommerceTerms;
 }
-export interface CommerceSelection { product_id: string; quantity: number; revision: number; terms_version?: string }
+export interface CommerceSelection { product_id: string; quantity: number; revision: number; terms_version?: string; offer_cents?: number }
 export interface CommerceQuote {
   lines: (CommerceSelection & { sku: string; name: string; unit_cents: number; total_cents: number; terms: CommerceTerms })[];
   total_cents: number; currency: "CNY";
