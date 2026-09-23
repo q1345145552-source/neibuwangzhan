@@ -65,6 +65,11 @@ export async function PATCH(req: NextRequest) {
   const enumErr = validateEnums({ "employees.role": role, "employees.status": status });
   if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
 
+  // 改名时记录旧名字，用于同步考勤/补签/请假三张表里的历史记录
+  const oldName = name
+    ? (db.prepare("SELECT name FROM employees WHERE id = ?").get(id) as { name: string } | undefined)?.name
+    : undefined;
+
   const sets: string[] = [];
   const params: unknown[] = [];
   if (name) { sets.push("name = ?"); params.push(name); }
@@ -100,6 +105,12 @@ export async function PATCH(req: NextRequest) {
   db.transaction(() => {
     if (sets.length > 0) {
       db.prepare(`UPDATE employees SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
+    }
+    // 改名同步：考勤表、补签表、请假表里的 employee_name 一起改成新名字
+    if (name && oldName && name !== oldName) {
+      db.prepare("UPDATE attendance SET employee_name = ? WHERE employee_name = ?").run(name, oldName);
+      db.prepare("UPDATE attendance_requests SET employee_name = ? WHERE employee_name = ?").run(name, oldName);
+      db.prepare("UPDATE leave_requests SET employee_name = ? WHERE employee_name = ?").run(name, oldName);
     }
     if (updatingScope) {
       db.prepare("DELETE FROM client_account_customers WHERE employee_id = ?").run(id);
