@@ -14,7 +14,7 @@ export function ensureCommerceSchema(db: Database.Database): void {
       id TEXT PRIMARY KEY,
       sku TEXT NOT NULL UNIQUE CHECK(sku IN (${ORDERABLE_SKUS.map(sku=>"'"+sku+"'").join(",")})),
       name TEXT NOT NULL,
-      price_cents INTEGER NOT NULL CHECK(typeof(price_cents)='integer' AND price_cents>0 AND price_cents<=100000000),
+      price_cents INTEGER NOT NULL CHECK(typeof(price_cents)='integer' AND price_cents>=0 AND price_cents<=100000000),
       currency TEXT NOT NULL DEFAULT 'CNY' CHECK(currency='CNY'),
       revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
       active INTEGER NOT NULL DEFAULT 0 CHECK(active IN (0,1)),
@@ -42,7 +42,7 @@ export function ensureCommerceSchema(db: Database.Database): void {
       unit_cents INTEGER NOT NULL CHECK(unit_cents>0),
       quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 10),
       total_cents INTEGER NOT NULL CHECK(total_cents=unit_cents*quantity),
-      template_key TEXT NOT NULL CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1','social-security-v1','mall-store-v1','international-trademark-v1','dld-product-v1','nbtc-v1','company-service-v1','company-change-v1','address-cert-v1','mall-enterprise-v1','trademark-buy-r-v1','thai-trademark-plus-v1','fda-product-v1')),
+      template_key TEXT NOT NULL CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1','social-security-v1','mall-store-v1','international-trademark-v1','dld-product-v1','nbtc-v1','company-service-v1','company-change-v1','address-cert-v1','mall-enterprise-v1','trademark-buy-r-v1','thai-trademark-plus-v1','fda-product-v1','tisi-negotiable-v1')),
       UNIQUE(sale_id,line_no)
     );
     CREATE TABLE IF NOT EXISTS commerce_fulfillments (
@@ -98,8 +98,8 @@ function expandReviewedCatalog(db: Database.Database): void {
   // 检测逻辑：提取表上现有的 CHECK 列表，全部条目都在全集内即视为「已认识的旧形式」，可安全扩为全集；
   // 出现任何不认识的 SKU/key 就抛错，保持「不猜测覆盖」。
   const fullProducts = "CHECK(sku IN (" + ORDERABLE_SKUS.map(sku=>"'"+sku+"'").join(",") + "))";
-  const fullLines = "CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1','social-security-v1','mall-store-v1','international-trademark-v1','dld-product-v1','nbtc-v1','company-service-v1','company-change-v1','address-cert-v1','mall-enterprise-v1','trademark-buy-r-v1','thai-trademark-plus-v1','fda-product-v1'))";
-  const knownTemplateKeys = new Set(["company-registration-v1","thai-trademark-v1","unclassified-v1","social-security-v1","mall-store-v1","international-trademark-v1","dld-product-v1","nbtc-v1","company-service-v1","company-change-v1","address-cert-v1","mall-enterprise-v1","trademark-buy-r-v1","thai-trademark-plus-v1","fda-product-v1"]);
+  const fullLines = "CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1','social-security-v1','mall-store-v1','international-trademark-v1','dld-product-v1','nbtc-v1','company-service-v1','company-change-v1','address-cert-v1','mall-enterprise-v1','trademark-buy-r-v1','thai-trademark-plus-v1','fda-product-v1','tisi-negotiable-v1'))";
+  const knownTemplateKeys = new Set(["company-registration-v1","thai-trademark-v1","unclassified-v1","social-security-v1","mall-store-v1","international-trademark-v1","dld-product-v1","nbtc-v1","company-service-v1","company-change-v1","address-cert-v1","mall-enterprise-v1","trademark-buy-r-v1","thai-trademark-plus-v1","fda-product-v1","tisi-negotiable-v1"]);
   const productMatch = productSql.match(/CHECK\(sku IN \(([^)]*)\)\)/);
   const listedSkus = (productMatch?.[1] ?? "").split(",").map(s=>s.trim().replace(/^'|'$/g,"")).filter(Boolean);
   if (!productMatch || listedSkus.length === 0 || !listedSkus.every(sku => (ORDERABLE_SKUS as readonly string[]).includes(sku)))
@@ -110,10 +110,17 @@ function expandReviewedCatalog(db: Database.Database): void {
     : (lineMatch?.[1] ?? "").split(",").map(s=>s.trim().replace(/^'|'$/g,"")).filter(Boolean);
   if (listedKeys.length === 0 || !listedKeys.every(k => knownTemplateKeys.has(k)))
     throw new Error("商城约束形式已变化，先复核升级，不猜测覆盖");
+  // 价格约束：旧形式 >0 → 新形式 >=0（0=面议商品，2026-09-22 TISI 裁决）；旧库任何形式都识别升级
+  const oldPriceCheck = "CHECK(typeof(price_cents)='integer' AND price_cents>0 AND price_cents<=100000000)";
+  const newPriceCheck = "CHECK(typeof(price_cents)='integer' AND price_cents>=0 AND price_cents<=100000000)";
+  const priceNeedsUpgrade = productSql.includes(oldPriceCheck);
   const changes: {table:string; sql:string; columns:string[]}[] = [];
-  if (listedSkus.length !== ORDERABLE_SKUS.length) changes.push({ table:"commerce_products",
-    sql:productSql.replace(/CHECK\(sku IN \([^)]*\)\)/, fullProducts),
-    columns:["id","sku","name","price_cents","currency","revision","active","updated_at"] });
+  if (listedSkus.length !== ORDERABLE_SKUS.length || priceNeedsUpgrade) {
+    let sql = productSql.replace(/CHECK\(sku IN \([^)]*\)\)/, fullProducts);
+    if (priceNeedsUpgrade) sql = sql.replace(oldPriceCheck, newPriceCheck);
+    changes.push({ table:"commerce_products", sql,
+      columns:["id","sku","name","price_cents","currency","revision","active","updated_at"] });
+  }
   if (listedKeys.length !== knownTemplateKeys.size) changes.push({ table:"commerce_lines",
     sql:lineSql.replace(/CHECK\(template_key[^)]*\)?\)?/, fullLines),
     columns:["id","sale_id","line_no","product_id","sku","name","product_revision","unit_cents","quantity","total_cents","template_key"] });

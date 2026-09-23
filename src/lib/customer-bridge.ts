@@ -51,7 +51,9 @@ function selectedProduct(db:Db, actor:TokenPayload, body:Row):CommerceProduct {
   if(!raw || raw.status!=="active") return fail(409,"PRODUCT_UNAVAILABLE","商品已下架，请重新选择");
   const product=listProducts(db,actor).find(row=>row.sku===raw.sku_code && row.active);
   if(!product) return fail(409,"WORKFLOW_NOT_CONNECTED","该商品的内部办理数据映射尚未接通，本次未下单");
-  if(body.currency!=="CNY" || body.price!==product.price_cents/100) return fail(409,"QUOTE_CHANGED","商品报价已变化，请重新加载商品后确认");
+  // 面议商品（core 价 0）价格由客户报价承接，quote/checkout 层校验；固定价商品仍严格比对
+  const negotiable = "negotiable" in product.terms && (product.terms as {negotiable?:boolean}).negotiable === true;
+  if(body.currency!=="CNY" || (!negotiable && body.price!==product.price_cents/100)) return fail(409,"QUOTE_CHANGED","商品报价已变化，请重新加载商品后确认");
   return product;
 }
 function quantity(value:unknown):number {

@@ -61,6 +61,10 @@ export function CommerceTermsSummary({ terms }: { terms: CommerceTerms | null | 
     <p>泰国商标注册（1 个大类 6 个及以上小类）：一口价，不随小类数量加价。</p>
     <p className="text-[var(--muted-foreground)]">政府注册登记费按小类数另计；建议同一大类不超过 10-20 个小类。</p>
   </div>;
+  if (terms.quantity_basis === "tisi") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
+    <p>TISI 认证：价格面议，以下单时确认的报价为准；总周期约 3-4 个月。</p>
+    <p className="text-[var(--muted-foreground)]">是否属于强制认证范围以官方确认为准；检测与官方规费按实际发生另计。</p>
+  </div>;
   if (terms.quantity_basis === "fda-product") return <div className="space-y-1 text-sm" data-commerce-terms={terms.version}>
     <p>FDA 产品注册（{terms.category === "cosmetics" ? "化妆品" : terms.category === "food" ? "食品（含保健食品）" : terms.category === "hazard" ? "危险物质" : "医疗器械"}）：每份为 1 个产品的注册备案。</p>
     <p className="text-[var(--muted-foreground)]">官方审核周期以品类为准；补件或检测产生的官方费用另计。</p>

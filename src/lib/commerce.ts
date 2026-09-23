@@ -48,13 +48,17 @@ export function saveProduct(db: Database.Database, actor: TokenPayload, input: u
 function selections(value: unknown, allowEmpty = false): CommerceSelection[] {
   if (!Array.isArray(value) || value.length < (allowEmpty ? 0 : 1) || value.length > COMMERCE_MAX_LINES) return fail(400, "INVALID_CART", "请选择 1 至 " + COMMERCE_MAX_LINES + " 种服务");
   const result = value.map(item => {
-    const line = recordBody(item); only(line, ["product_id", "quantity", "revision", "terms_version"]);
+    const line = recordBody(item); only(line, ["product_id", "quantity", "revision", "terms_version", "offer_cents"]);
     const product_id = boundedText(line.product_id,64,"商品 ID");
     const { quantity, revision } = line;
     if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) return fail(400,"INVALID_QUANTITY","每种服务限 1 至 10 份");
     if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 1) return fail(400,"INVALID_REVISION","请重新获取报价");
     const terms_version = line.terms_version === undefined ? undefined : boundedText(line.terms_version,80,"权益版本");
-    return { product_id, quantity, revision, ...(terms_version === undefined ? {} : { terms_version }) };
+    // offer_cents 仅面议商品有效（范围在 quoteLines 按 terms 判定）；此处仅透传保持原始请求参与幂等指纹
+    const offer_cents = line.offer_cents;
+    if (offer_cents !== undefined && (typeof offer_cents !== "number" || !Number.isSafeInteger(offer_cents)))
+      return fail(400,"INVALID_OFFER","报价请填写整数金额（单位：分）");
+    return { product_id, quantity, revision, ...(terms_version === undefined ? {} : { terms_version }), ...(offer_cents === undefined ? {} : { offer_cents }) };
   });
   if (new Set(result.map(line => line.product_id)).size !== result.length) return fail(400,"DUPLICATE_LINE","同种服务请合并数量");
   return result.sort((a,b) => a.product_id.localeCompare(b.product_id));
@@ -68,10 +72,20 @@ function quoteLines(db: Database.Database, lines: CommerceSelection[]): Commerce
     const terms = withTerms(product).terms;
     // 附加费用不构成独立服务：报价/下单入口拦截单独购买（随主服务一并收取）
     if (terms.quantity_basis === "attachment") return fail(409, "ATTACHMENT_ONLY", "该项为附加费用，随对应主服务一并收取，不能单独购买");
+    // 面议商品（如 TISI）：成交价=客户报价快照，必须提供且在合理范围；
+    // 非面议商品绝不接受 offer_cents——堵死"自填低价绕过服务端定价"的口子
+    const negotiable = "negotiable" in terms && terms.negotiable === true;
+    if (negotiable) {
+      if (line.offer_cents === undefined || line.offer_cents <= 0 || line.offer_cents > 1_000_000_000)
+        return fail(400, "OFFER_REQUIRED", "该项为面议服务，请填写与服务商协商后的报价（1 分至 1000 万元）");
+    } else if (line.offer_cents !== undefined) {
+      return fail(400, "OFFER_NOT_ALLOWED", "该商品为固定售价，不接受自定义报价");
+    }
+    const unit_cents = negotiable ? line.offer_cents as number : product.price_cents;
     if ((line.terms_version ?? LEGACY_TERMS_VERSION) !== terms.version) return fail(409,"QUOTE_CHANGED","服务权益版本已变化，请重新核对报价和服务内容");
-    const amount = product.price_cents * line.quantity;
+    const amount = unit_cents * line.quantity;
     total += amount;
-    return { ...line, sku: product.sku, name: product.name, unit_cents: product.price_cents, total_cents: amount, terms };
+    return { ...line, sku: product.sku, name: product.name, unit_cents, total_cents: amount, terms };
   });
   if (!Number.isSafeInteger(total) || total <= 0 || total > 1_000_000_000) return fail(400,"AMOUNT_LIMIT","订单金额超出首批测试范围");
   return { lines: current, total_cents: total, currency: "CNY" };

@@ -11,7 +11,7 @@ export const COMMERCE_SKUS = ["COM-001","COM-002","COM-003","COM-004","TRA-001",
   "COM-018","COM-019","COM-026","COM-027","TAX-001",
   "OTH-003","OTH-004","OTH-005","OTH-006",
   "PLA-004","PLA-005","PLA-006",
-  "TRA-007","TRA-008","OTH-013",
+  "TRA-007","TRA-008","OTH-013","OTH-001",
   "FDA-COS-PROD","FDA-FOOD-PROD","FDA-HAZ-PROD","FDA-MED-PROD","OTH-009","OTH-010","OTH-011","OTH-012"] as const;
 export const COMMERCE_MAX_LINES = COMMERCE_SKUS.length;
 // Immutable fallback for first-slice company requests. New business families require explicit versions.
@@ -101,6 +101,7 @@ export function productTerms(sku: string): CommerceTerms | null {
   if (enterprise) return { version: "mall-enterprise-v1", quantity_basis: "mall-enterprise", platform: enterprise };
   if (sku === "TRA-008") return { version: "trademark-buy-r-v1", quantity_basis: "trademark-buy-r" };
   if (sku === "TRA-007") return { version: "thai-trademark-plus-v1", quantity_basis: "trademark-th-plus" };
+  if (sku === "OTH-001") return { version: "tisi-negotiable-v1", quantity_basis: "tisi", negotiable: true };
   const fdaCategory = FDA_CATEGORIES[sku];
   if (fdaCategory) return { version: "fda-product-v1", quantity_basis: "fda-product", category: fdaCategory };
   // 目录内但未核对流程：接单走兜底条款（用户 2026-09-20 拍板，规则 6：不拒单）；
