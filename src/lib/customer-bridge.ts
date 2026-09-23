@@ -60,8 +60,19 @@ function quantity(value:unknown):number {
   if(typeof value!=="number" || !Number.isInteger(value) || value<1 || value>10) return fail(400,"INVALID_QUANTITY","每种服务请选择 1 至 10 份");
   return value;
 }
-function selection(product:CommerceProduct, value:number):CommerceSelection {
-  return {product_id:product.id,quantity:value,revision:product.revision,terms_version:product.terms.version};
+function selection(product:CommerceProduct, value:number, offerCents?:number):CommerceSelection {
+  // 面议商品（core 价 0）：原页面 body.price 即客户协商报价，转分快照进购物车行
+  const negotiable = "negotiable" in product.terms && (product.terms as {negotiable?:boolean}).negotiable === true;
+  return {product_id:product.id,quantity:value,revision:product.revision,terms_version:product.terms.version,
+    ...(negotiable && offerCents !== undefined ? {offer_cents:offerCents} : {})};
+}
+// 面议报价校验：元 → 分，必须为有效正数（范围上限与商城口径一致：1000 万元）
+function offerCentsFrom(body:Row):number|undefined {
+  const price = Number(body.price);
+  if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) return fail(400,"INVALID_OFFER","请填写有效的协商报价金额（1 分至 1000 万元）") as unknown as number;
+  const cents = Math.round(price*100);
+  if (!Number.isSafeInteger(cents) || cents <= 0) return fail(400,"INVALID_OFFER","请填写有效的协商报价金额") as unknown as number;
+  return cents;
 }
 function rememberQuote(db:Db, actor:TokenPayload, product:CommerceProduct, revision=product.revision) {
   db.prepare("INSERT OR IGNORE INTO commerce_customer_quotes(account_id,product_id,revision,unit_cents,name) VALUES (?,?,?,?,?)")
@@ -77,7 +88,8 @@ export function customerCart(db:Db, actor:TokenPayload) {
       rememberQuote(db,actor,product,line.revision);
       const cached=db.prepare("SELECT unit_cents,name FROM commerce_customer_quotes WHERE account_id=? AND product_id=? AND revision=?").get(actor.id,product.id,line.revision) as {unit_cents:number;name:string};
       const raw=sourceForCore(db,product);
-      return {id:product.id,product_id:raw?.id??product.id,sku_code:product.sku,sku_name:cached.name,service_name:raw?.category_name??"",sub_category:raw?.sub_category??"",price:cached.unit_cents/100,currency:"CNY",quantity:line.quantity,
+      const negotiable = "negotiable" in product.terms && (product.terms as {negotiable?:boolean}).negotiable === true;
+      return {id:product.id,product_id:raw?.id??product.id,sku_code:product.sku,sku_name:cached.name,service_name:raw?.category_name??"",sub_category:raw?.sub_category??"",price:negotiable&&line.offer_cents?line.offer_cents/100:cached.unit_cents/100,currency:"CNY",quantity:line.quantity,
         core_product_id:product.id,product_revision:line.revision,terms_version:line.terms_version,cart_revision:saved.revision};
     });
     return {revision:saved.revision,items,lines:saved.lines};
@@ -101,7 +113,9 @@ export function changeCustomerCart(db:Db,actor:TokenPayload,path:string,method:s
     let lines=current.lines.map(row=>({...row}));
     if(path==="cart" && method==="POST"){
       const product=selectedProduct(db,actor,body),q=quantity(body.quantity??1),existing=lines.find(row=>row.product_id===product.id);
-      if(existing){quantity(existing.quantity+q);existing.quantity+=q;}else lines.push(selection(product,q));
+      const negotiable = "negotiable" in product.terms && (product.terms as {negotiable?:boolean}).negotiable === true;
+      const offer = negotiable ? offerCentsFrom(body) : undefined;
+      if(existing){quantity(existing.quantity+q);existing.quantity+=q;if(offer!==undefined)existing.offer_cents=offer;}else lines.push(selection(product,q,offer));
       rememberQuote(db,actor,product);
     }else if(path==="cart/refresh-prices" && method==="POST"){
       const products=listProducts(db,actor);
@@ -144,7 +158,10 @@ export function purchaseCustomerCart(db:Db,actor:TokenPayload,body:Row) {
 }
 export function purchaseCustomerProduct(db:Db,actor:TokenPayload,body:Row) {
   return command(db,actor,body.request_id,{action:"direct-purchase",body},()=>{
-    const product=selectedProduct(db,actor,body);const result=checkout(db,actor,{request_id:body.request_id,lines:[selection(product,quantity(body.quantity??1))]});
+    const product=selectedProduct(db,actor,body);
+    const negotiable = "negotiable" in product.terms && (product.terms as {negotiable?:boolean}).negotiable === true;
+    const offer = negotiable ? offerCentsFrom(body) : undefined;
+    const result=checkout(db,actor,{request_id:body.request_id,lines:[selection(product,quantity(body.quantity??1),offer)]});
     return {id:result.sale.id,order_no:result.sale.id};
   });
 }

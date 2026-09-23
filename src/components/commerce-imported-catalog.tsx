@@ -6,9 +6,11 @@ import type { CommerceProduct,CommerceSelection } from "@/lib/commerce-types";
 import type { ImportedCatalog,ImportedCatalogKind } from "@/lib/commerce-imported-catalog-types";
 import { CommerceTermsSummary } from "./commerce-terms";
 
-type Props={accountId:number;products:CommerceProduct[];cart:CommerceSelection[];disabled:boolean;onSelect?:(product:CommerceProduct,quantity:number)=>void};
+type Props={accountId:number;products:CommerceProduct[];cart:CommerceSelection[];disabled:boolean;onSelect?:(product:CommerceProduct,quantity:number,offerCents?:number)=>void};
 const field="w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-2";
 export function CommerceImportedCatalog({accountId,products,cart,disabled,onSelect}:Props) {
+  const [offers,setOffers]=useState<Record<string,string>>({});
+  const [offerError,setOfferError]=useState("");
   const [catalog,setCatalog]=useState<ImportedCatalog|null>(null),[error,setError]=useState("");
   const [search,setSearch]=useState(""),[kind,setKind]=useState<ImportedCatalogKind|"all">("products");
   useEffect(()=>{
@@ -38,9 +40,9 @@ export function CommerceImportedCatalog({accountId,products,cart,disabled,onSele
       const product=products.find(p=>p.id===item.product_id),canBuy=!!product&&item.status==="active";
       return <article key={item.key} className="space-y-2 rounded-lg border border-[var(--border)] p-4" data-imported-product={item.key}>
         <h3 className="font-medium">{item.name}</h3><p className="text-sm text-[var(--muted-foreground)]">{item.sku||item.category} · {item.category}{item.sub_category?" / "+item.sub_category:""}</p>
-        <p className="font-semibold">{item.price===null?"按客户约定计价":`${item.currency||"币种待核对"} ${item.price.toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}`}</p>
+        <p className="font-semibold">{item.price===null||item.price===0?"价格面议 · 下单时填写协商报价":`${item.currency||"币种待核对"} ${item.price.toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}`}</p>
         {item.status!=="active"&&<p className="text-sm">线上状态：{item.status==="hidden"?"隐藏":item.status==="sold"?"已售":item.status}</p>}
-        {canBuy&&product?<><CommerceTermsSummary terms={product.terms}/>{onSelect?<label className="block text-sm">加入购物车 · 份数<select className={field} aria-label={product.sku+" 份数"} disabled={disabled} value={cart.find(line=>line.product_id===product.id)?.quantity||0} onChange={e=>onSelect(product,Number(e.target.value))}>{Array.from({length:11},(_,n)=><option key={n} value={n}>{n===0?"不选择":n+" 份"}</option>)}</select></label>:<p className="text-sm">已接入本地下单流程</p>}</>:<p className="text-sm">{item.status!=="active"?"当前不参与下单":item.kind==="subscription_products"?"订阅计费流程待接入":item.kind==="spot_items"?"现货交易流程待接入；原币种保留，不自动换汇":item.sku==="CLASS-LIST"?"参考资料，不作为办理商品下单":"办理流程待接入，暂仅核对目录"}</p>}
+        {canBuy&&product?(()=>{const negotiable="negotiable" in product.terms&&product.terms.negotiable===true;return <><CommerceTermsSummary terms={product.terms}/>{onSelect&&negotiable?<label className="block text-sm">报价（元）<input className={field} type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="请填写与服务商协商后的金额" disabled={disabled} value={offers[product.sku]??""} onChange={e=>{setOffers(prev=>({...prev,[product.sku]:e.target.value}));setOfferError("");}}/></label>:null}{offerError&&negotiable?<p role="alert" className="text-sm text-red-600">{offerError}</p>:null}{onSelect?<label className="block text-sm">加入购物车 · 份数<select className={field} aria-label={product.sku+" 份数"} disabled={disabled} value={cart.find(line=>line.product_id===product.id)?.quantity||0} onChange={e=>{const n=Number(e.target.value);if(n>0&&negotiable){const yuan=Number(offers[product.sku]);const cents=Math.round(yuan*100);if(!(yuan>0)||!Number.isSafeInteger(cents)||cents<=0){setOfferError("请先填写有效报价（大于 0 的金额）");return;}onSelect(product,n,cents);}else onSelect(product,n);}}>{Array.from({length:11},(_,n)=><option key={n} value={n}>{n===0?"不选择":n+" 份"}</option>)}</select></label>:<p className="text-sm">已接入本地下单流程</p>}</>;})():<p className="text-sm">{item.status!=="active"?"当前不参与下单":item.kind==="subscription_products"?"订阅计费流程待接入":item.kind==="spot_items"?"现货交易流程待接入；原币种保留，不自动换汇":item.sku==="CLASS-LIST"?"参考资料，不作为办理商品下单":"办理流程待接入，暂仅核对目录"}</p>}
       </article>;
     })}</div>
   </div>;

@@ -183,10 +183,12 @@ function Portal({ staff,importedCatalog }: { staff: boolean;importedCatalog:bool
       throw e;
     }
   }
-  function select(product: CommerceProduct, quantity: number) {
+  function select(product: CommerceProduct, quantity: number, offerCents?: number) {
     if (pending || busy || !cartLoaded) return;
+    const negotiable = "negotiable" in product.terms && product.terms.negotiable === true;
+    if (quantity > 0 && negotiable && !(typeof offerCents === "number" && Number.isSafeInteger(offerCents) && offerCents > 0)) return;
     const lines = [...cart.filter(x => x.product_id !== product.id),
-      ...(quantity > 0 ? [{ product_id: product.id, quantity, revision: product.revision, terms_version: product.terms.version }] : [])];
+      ...(quantity > 0 ? [{ product_id: product.id, quantity, revision: product.revision, terms_version: product.terms.version, ...(negotiable ? { offer_cents: offerCents as number } : {}) }] : [])];
     void act(async () => { await replaceCart(lines); });
   }
   async function purchase() {
@@ -266,12 +268,12 @@ function Portal({ staff,importedCatalog }: { staff: boolean;importedCatalog:bool
         {staff&&importedCatalog&&<section className={panel}><h2 className="mb-3 text-lg font-semibold">线上完整商品目录</h2><CommerceImportedCatalog key={user.id} accountId={user.id} products={products} cart={[]} disabled={true}/></section>}
         {!staff && <section className={panel + " space-y-4"}>
           <h2 className="text-lg font-semibold">选择服务</h2>
-          <p className="text-sm text-[var(--muted-foreground)]">现已接入公司注册与泰国商标 1～5 小项规格。6 小项以上、附加费、现货、税务和订阅等仍待迁移。</p>
+          <p className="text-sm text-[var(--muted-foreground)]">已接入公司注册、商标（含 6+ 小类与转让）、FDA 认证、场地认证、Mall/企业店、社保、国际商标、DLD、NBTC、开公户/VAT 注册、地址挂靠与 TISI（面议）等 53 项；做账报税等待接入。</p>
           {products.length === 0 && <p>暂无上架商品，请由管理员配置测试商品。</p>}
           {importedCatalog?<CommerceImportedCatalog key={user.id} accountId={user.id} products={products} cart={cart} disabled={busy||!!pending||!cartLoaded} onSelect={select}/>:
           <div className="grid gap-4 sm:grid-cols-2">{products.map(p => <div key={p.id} className={panel}>
             <h3>{p.name}</h3><p className="text-sm text-[var(--muted-foreground)]">{p.sku}</p>
-            <p className="my-2 font-semibold">{money(p.price_cents)} / 份</p>
+            <p className="my-2 font-semibold">{"negotiable" in p.terms && p.terms.negotiable === true ? "价格面议 · 下单时填写协商报价" : money(p.price_cents) + " / 份"}</p>
             <CommerceTermsSummary terms={p.terms}/>
             <label>份数<select className={field} aria-label={p.sku + " 份数"} disabled={busy || !!pending || !cartLoaded}
               value={cart.find(x=>x.product_id===p.id)?.quantity || 0} onChange={e=>select(p,Number(e.target.value))}>{Array.from({length:11},(_,n)=><option key={n} value={n}>{n === 0 ? "不选择" : n + " 份"}</option>)}</select></label>
@@ -279,7 +281,7 @@ function Portal({ staff,importedCatalog }: { staff: boolean;importedCatalog:bool
           <div id="commerce-cart" className="scroll-mt-4 space-y-3 rounded-lg border border-[var(--border)] p-4" aria-label="购物车">
           <h3 className="text-lg font-semibold">购物车 · {cart.length} 种服务 / {cart.reduce((sum,line)=>sum+line.quantity,0)} 份</h3>
           {!cart.length&&<p className="text-sm">购物车为空，在商品卡片选择份数即可加入。</p>}
-          {cart.map(line=>{const product=products.find(p=>p.id===line.product_id);return product?<div key={line.product_id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{product.name} · {line.quantity} 份</span><Button variant="outline" disabled={busy||!!pending||!cartLoaded} onClick={()=>act(async()=>{await replaceCart(cart.filter(row=>row.product_id!==line.product_id));})}>{"移除 "+product.sku}</Button></div>:null;})}
+          {cart.map(line=>{const product=products.find(p=>p.id===line.product_id);return product?<div key={line.product_id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{product.name} · {line.quantity} 份{line.offer_cents ? ` · 报价 ${money(line.offer_cents)}` : ""}</span><Button variant="outline" disabled={busy||!!pending||!cartLoaded} onClick={()=>act(async()=>{await replaceCart(cart.filter(row=>row.product_id!==line.product_id));})}>{"移除 "+product.sku}</Button></div>:null;})}
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <p>{cartLoaded ? "购物车已保存到当前账号 · 版本 " + cartVersion : pending ? "当前保留的是待确认订单，不改写服务器购物车。" : "购物车尚未加载或保存结果待核对。"}</p>
             <Button variant="outline" disabled={busy || !!pending} onClick={()=>act(reloadCart)}>重新加载购物车</Button>
@@ -304,7 +306,7 @@ function Portal({ staff,importedCatalog }: { staff: boolean;importedCatalog:bool
                 quoteVersionRef.current=saved.revision; setQuoted(result);
               })}>核对当前报价</Button>
               {quoted && <div className="w-full space-y-3" data-quoted-terms>
-                {quoted.lines.map(line=><div className={panel} key={line.product_id}><p>{line.sku} · {line.quantity} {line.terms.quantity_basis === "company" ? "家公司" : "份商标申请"} · {money(line.total_cents)}</p><CommerceTermsSummary terms={line.terms}/></div>)}
+                {quoted.lines.map(line=><div className={panel} key={line.product_id}><p>{line.sku} · {line.quantity} {line.terms.quantity_basis === "company" ? "家公司" : line.terms.quantity_basis === "tisi" ? "份认证申请（面议价）" : line.terms.quantity_basis === "trademark" || line.terms.quantity_basis === "trademark-th-plus" ? "份商标申请" : "份服务"} · {money(line.total_cents)}</p><CommerceTermsSummary terms={line.terms}/></div>)}
                 <strong>本次合计 {money(quoted.total_cents)}</strong> <Button disabled={busy} onClick={purchase}>确认下单</Button>
               </div>}
             </div>}
