@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { COMMERCE_SKUS, ORDERABLE_SKUS } from "./commerce-catalog";
+import { ORDERABLE_SKUS } from "./commerce-catalog";
 import { ensureAftercareSchema } from "./commerce-aftercare-schema";
 
 /** Local merger pilot: off unless explicitly selected; never auto-import catalog or accounts. */
@@ -42,7 +42,7 @@ export function ensureCommerceSchema(db: Database.Database): void {
       unit_cents INTEGER NOT NULL CHECK(unit_cents>0),
       quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 10),
       total_cents INTEGER NOT NULL CHECK(total_cents=unit_cents*quantity),
-      template_key TEXT NOT NULL CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1')),
+      template_key TEXT NOT NULL CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1','social-security-v1','mall-store-v1','international-trademark-v1','dld-product-v1','nbtc-v1')),
       UNIQUE(sale_id,line_no)
     );
     CREATE TABLE IF NOT EXISTS commerce_fulfillments (
@@ -94,20 +94,27 @@ export function ensureCommerceSchema(db: Database.Database): void {
 function expandReviewedCatalog(db: Database.Database): void {
   const productSql = (db.prepare("SELECT sql FROM sqlite_master WHERE name='commerce_products'").get() as {sql:string}).sql;
   const lineSql = (db.prepare("SELECT sql FROM sqlite_master WHERE name='commerce_lines'").get() as {sql:string}).sql;
-  // 已知约束形式：首档 4 SKU → 已核对 9 SKU → 可下单全集 83 SKU（2026-09-20 接单不拒单拍板后）。
-  const oldProducts = "CHECK(sku IN ('COM-001','COM-002','COM-003','COM-004'))";
-  const reviewedProducts = "CHECK(sku IN (" + COMMERCE_SKUS.map(sku=>"'"+sku+"'").join(",") + "))";
+  // 已知约束形式：首档 4 SKU → 已核对白名单（历史各档）→ 可下单全集 83 SKU。
+  // 检测逻辑：提取表上现有的 CHECK 列表，全部条目都在全集内即视为「已认识的旧形式」，可安全扩为全集；
+  // 出现任何不认识的 SKU/key 就抛错，保持「不猜测覆盖」。
   const fullProducts = "CHECK(sku IN (" + ORDERABLE_SKUS.map(sku=>"'"+sku+"'").join(",") + "))";
-  const oldLines = "CHECK(template_key='company-registration-v1')";
-  const reviewedLines = "CHECK(template_key IN ('company-registration-v1','thai-trademark-v1'))";
-  const fullLines = "CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1'))";
-  if (![oldProducts, reviewedProducts, fullProducts].some(form => productSql.includes(form)) ||
-      ![oldLines, reviewedLines, fullLines].some(form => lineSql.includes(form))) throw new Error("商城约束形式已变化，先复核升级，不猜测覆盖");
+  const fullLines = "CHECK(template_key IN ('company-registration-v1','thai-trademark-v1','unclassified-v1','social-security-v1','mall-store-v1','international-trademark-v1','dld-product-v1','nbtc-v1'))";
+  const knownTemplateKeys = new Set(["company-registration-v1","thai-trademark-v1","unclassified-v1","social-security-v1","mall-store-v1","international-trademark-v1","dld-product-v1","nbtc-v1"]);
+  const productMatch = productSql.match(/CHECK\(sku IN \(([^)]*)\)\)/);
+  const listedSkus = (productMatch?.[1] ?? "").split(",").map(s=>s.trim().replace(/^'|'$/g,"")).filter(Boolean);
+  if (!productMatch || listedSkus.length === 0 || !listedSkus.every(sku => (ORDERABLE_SKUS as readonly string[]).includes(sku)))
+    throw new Error("商城约束形式已变化，先复核升级，不猜测覆盖");
+  const lineMatch = lineSql.match(/CHECK\(template_key IN \(([^)]*)\)\)/);
+  const singleLine = "CHECK(template_key='company-registration-v1')";
+  const listedKeys = lineSql.includes(singleLine) ? ["company-registration-v1"]
+    : (lineMatch?.[1] ?? "").split(",").map(s=>s.trim().replace(/^'|'$/g,"")).filter(Boolean);
+  if (listedKeys.length === 0 || !listedKeys.every(k => knownTemplateKeys.has(k)))
+    throw new Error("商城约束形式已变化，先复核升级，不猜测覆盖");
   const changes: {table:string; sql:string; columns:string[]}[] = [];
-  if (productSql.includes(oldProducts) || productSql.includes(reviewedProducts)) changes.push({ table:"commerce_products",
+  if (listedSkus.length !== ORDERABLE_SKUS.length) changes.push({ table:"commerce_products",
     sql:productSql.replace(/CHECK\(sku IN \([^)]*\)\)/, fullProducts),
     columns:["id","sku","name","price_cents","currency","revision","active","updated_at"] });
-  if (lineSql.includes(oldLines) || lineSql.includes(reviewedLines)) changes.push({ table:"commerce_lines",
+  if (listedKeys.length !== knownTemplateKeys.size) changes.push({ table:"commerce_lines",
     sql:lineSql.replace(/CHECK\(template_key[^)]*\)?\)?/, fullLines),
     columns:["id","sale_id","line_no","product_id","sku","name","product_revision","unit_cents","quantity","total_cents","template_key"] });
   if (!changes.length) return;
