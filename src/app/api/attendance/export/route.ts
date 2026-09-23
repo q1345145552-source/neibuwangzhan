@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   // 与考勤月度汇总一致的员工范围（排除 Pop、张三，且不含客户角色）
   const employees = db.prepare(
-    "SELECT name FROM employees WHERE role IN ('admin','employee') AND name NOT IN ('Pop','张三') ORDER BY name"
+    "SELECT name FROM employees WHERE role IN ('admin','employee') AND status = '在职' AND name NOT IN ('Pop','张三') ORDER BY name"
   ).all() as { name: string }[];
 
   const isSummary = type === "summary";
