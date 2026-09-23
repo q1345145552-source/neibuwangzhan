@@ -1,11 +1,18 @@
 import type { CommerceTerms, ThaiTrademarkTerms, MallStoreTerms } from "./commerce-types";
 
 // This is a reviewed allowlist, not a name-matching classifier or an imported price list.
-// 2026-09-20 放行：公司注册 4 + 泰国商标 5 + 社保登记 1 + Mall 三平台 + 国际商标 5 + DLD + NBTC。
-// 暂缓：COM-026/COM-027/TAX-001（开公户、VAT 注册）——内部尚无专属子服务模板（现为全套注册 12 步），
-// 补齐流程前走 unclassified 兜底，防「只买 VAT 注册却按全套注册办理」。
+// 2026-09-20 首批：公司注册 4 + 泰国商标 5 + 社保 1 + Mall×3 + 国际商标×5 + DLD + NBTC。
+// 2026-09-22 逐项裁决第二批：FDA 四品类 8 + 变更 9 + 场地认证 4 + 企业店 3 + 挂靠 2 + 商标转让 1
+// + TRA-007 一口价 + 保健食品（OTH-013）+ vat/bank 3 个（裁决「先套公司流程」）。
+// 下架：FDA-SUP-PROD（裁决确认与 OTH-013 重复，productTerms 返回 null）。
 export const COMMERCE_SKUS = ["COM-001","COM-002","COM-003","COM-004","TRA-001","TRA-002","TRA-003","TRA-005","TRA-006",
-  "TAX-003","PLA-001","PLA-002","PLA-003","TM-PH","TM-MY","TM-VN","TM-ID","TM-SG","OTH-002","CERT-NBTC"] as const;
+  "TAX-003","PLA-001","PLA-002","PLA-003","TM-PH","TM-MY","TM-VN","TM-ID","TM-SG","OTH-002","CERT-NBTC",
+  "COM-005","COM-006","COM-007","COM-008","COM-009","COM-010","COM-011","COM-012","COM-013",
+  "COM-018","COM-019","COM-026","COM-027","TAX-001",
+  "OTH-003","OTH-004","OTH-005","OTH-006",
+  "PLA-004","PLA-005","PLA-006",
+  "TRA-007","TRA-008","OTH-013",
+  "FDA-COS-PROD","FDA-FOOD-PROD","FDA-HAZ-PROD","FDA-MED-PROD","OTH-009","OTH-010","OTH-011","OTH-012"] as const;
 export const COMMERCE_MAX_LINES = COMMERCE_SKUS.length;
 // Immutable fallback for first-slice company requests. New business families require explicit versions.
 export const LEGACY_TERMS_VERSION = "company-registration-v1";
@@ -43,6 +50,19 @@ const UNCLASSIFIED_TERMS: CommerceTerms = { version: UNCLASSIFIED_TERMS_VERSION,
 
 // 附加费 SKU：随主服务收取，不可单独购买（报价/下单入口拦截，不建办理单）。
 const ATTACHMENT_SKUS = new Set(["OTH-007", "OTH-008"]);
+// 2026-09-22 裁决下架：与 OTH-013（FDA保健食品 产品注册）确认为重复上架。
+// 返回 null 即不可购买；线上老站下架列入部署清单（后台操作）。
+const RETIRED_SKUS = new Set(["FDA-SUP-PROD"]);
+const CHANGE_SKUS = new Set(["COM-005","COM-006","COM-007","COM-008","COM-009","COM-010","COM-011","COM-012","COM-013"]);
+const FDA_CATEGORIES: Readonly<Record<string, "cosmetics"|"food"|"hazard"|"medical">> = {
+  "FDA-COS-PROD":"cosmetics","OTH-009":"cosmetics",
+  "FDA-FOOD-PROD":"food","OTH-010":"food","OTH-013":"food",
+  "FDA-HAZ-PROD":"hazard","OTH-011":"hazard",
+  "FDA-MED-PROD":"medical","OTH-012":"medical",
+};
+const ENTERPRISE_PLATFORMS: Readonly<Record<string, "shopee"|"lazada"|"tiktok">> = {
+  "PLA-004":"shopee","PLA-005":"lazada","PLA-006":"tiktok",
+};
 
 const TRADEMARK_ITEMS: Readonly<Record<string, ThaiTrademarkTerms["minor_items_per_copy"]>> = {
   "TRA-001": 1, "TRA-002": 2, "TRA-003": 3, "TRA-005": 4, "TRA-006": 5,
@@ -71,6 +91,18 @@ export function productTerms(sku: string): CommerceTerms | null {
   if (sku === "OTH-002") return { version: "dld-product-v1", quantity_basis: "dld-product" };
   if (sku === "CERT-NBTC") return { version: "nbtc-v1", quantity_basis: "nbtc" };
   if (ATTACHMENT_SKUS.has(sku)) return { version: "attachment-v1", quantity_basis: "attachment" };
+  if (RETIRED_SKUS.has(sku)) return null;
+  if (CHANGE_SKUS.has(sku)) return { version: "company-change-v1", quantity_basis: "company-change" };
+  if (sku === "COM-027" || sku === "TAX-001") return { version: "company-service-v1", quantity_basis: "company-service", service: "vat" };
+  if (sku === "COM-026") return { version: "company-service-v1", quantity_basis: "company-service", service: "bank" };
+  if (sku === "COM-018" || sku === "COM-019") return { version: "company-service-v1", quantity_basis: "company-service", service: "address" };
+  if (sku === "OTH-003" || sku === "OTH-004" || sku === "OTH-005" || sku === "OTH-006") return { version: "address-cert-v1", quantity_basis: "address-cert" };
+  const enterprise = ENTERPRISE_PLATFORMS[sku];
+  if (enterprise) return { version: "mall-enterprise-v1", quantity_basis: "mall-enterprise", platform: enterprise };
+  if (sku === "TRA-008") return { version: "trademark-buy-r-v1", quantity_basis: "trademark-buy-r" };
+  if (sku === "TRA-007") return { version: "thai-trademark-plus-v1", quantity_basis: "trademark-th-plus" };
+  const fdaCategory = FDA_CATEGORIES[sku];
+  if (fdaCategory) return { version: "fda-product-v1", quantity_basis: "fda-product", category: fdaCategory };
   // 目录内但未核对流程：接单走兜底条款（用户 2026-09-20 拍板，规则 6：不拒单）；
   // 目录之外仍返回 null——防脏数据，不是拒客户。
   if ((ORDERABLE_SKUS as readonly string[]).includes(sku)) return UNCLASSIFIED_TERMS;

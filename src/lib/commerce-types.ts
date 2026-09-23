@@ -49,7 +49,41 @@ export interface NbtcTerms {
   version: "nbtc-v1";
   quantity_basis: "nbtc";
 }
-export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms | AttachmentTerms | SocialSecurityTerms | MallStoreTerms | InternationalTrademarkTerms | DldProductTerms | NbtcTerms;
+// ── 2026-09-22 逐项裁决放行的七族 ──
+// 线1附属服务（VAT注册/银行开户/地址服务）：裁决「先套公司全套流程」，专属精简模板后续再换
+export interface CompanyServiceTerms {
+  version: "company-service-v1";
+  quantity_basis: "company-service";
+  service: "vat" | "bank" | "address";
+}
+export interface CompanyChangeTerms {
+  version: "company-change-v1";
+  quantity_basis: "company-change";
+}
+export interface AddressCertTerms {
+  version: "address-cert-v1";
+  quantity_basis: "address-cert";
+}
+export interface MallEnterpriseTerms {
+  version: "mall-enterprise-v1";
+  quantity_basis: "mall-enterprise";
+  platform: "shopee" | "lazada" | "tiktok";
+}
+export interface TrademarkBuyRTerms {
+  version: "trademark-buy-r-v1";
+  quantity_basis: "trademark-buy-r";
+}
+// 泰国商标 6 小类以上：一口价（2026-09-22 计费表裁决，18,000 泰铢≈¥3,870 不随小类数涨）
+export interface ThaiTrademarkPlusTerms {
+  version: "thai-trademark-plus-v1";
+  quantity_basis: "trademark-th-plus";
+}
+export interface FdaProductTerms {
+  version: "fda-product-v1";
+  quantity_basis: "fda-product";
+  category: "cosmetics" | "food" | "hazard" | "medical";
+}
+export type CommerceTerms = CompanyRegistrationTerms | ThaiTrademarkTerms | UnclassifiedTerms | AttachmentTerms | SocialSecurityTerms | MallStoreTerms | InternationalTrademarkTerms | DldProductTerms | NbtcTerms | CompanyServiceTerms | CompanyChangeTerms | AddressCertTerms | MallEnterpriseTerms | TrademarkBuyRTerms | ThaiTrademarkPlusTerms | FdaProductTerms;
 export interface CommerceCart { revision: number; lines: CommerceSelection[] }
 export interface CommerceOrderPurchase {
   sale_id: string; sku: string; copy_no: number; terms: CommerceTerms | null;

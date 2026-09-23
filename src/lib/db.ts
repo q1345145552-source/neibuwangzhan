@@ -243,6 +243,23 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
   if (subServiceType === "storefront-unclassified") {
     return [{ name: "确认归属并派单（客户站同步单，未匹配业务线）", assignee: "" }];
   }
+  // 公司变更（2026-09-22 裁决：变更类 9 个商品共用一套笼统流程）。
+  // assignee 留空：不预设经办人，认领的员工自己填。
+  if (businessTypeId === 1 && subServiceType === "change") {
+    return [
+      { name: "收齐变更资料", assignee: "" },
+      { name: "递交官方办理变更", assignee: "" },
+      { name: "办结交付客户", assignee: "" },
+    ];
+  }
+  // 企业店入驻（2026-09-22 裁决：与 Mall 店分开，独立岗位，笼统三步；9-04 老板口径）。
+  if (businessTypeId === 8 && subServiceType === "enterprise") {
+    return [
+      { name: "收齐入驻资料", assignee: "" },
+      { name: "提交平台审核", assignee: "" },
+      { name: "店铺上线交付", assignee: "" },
+    ];
+  }
   // 子服务分支必须限定在对应业务线内，避免不同业务线出现同名 key 时拿错模板
   if (businessTypeId === 2 && subServiceType === "international") return internationalTrademarkSteps;
   if (businessTypeId === 2 && subServiceType === "buy-r") return buyRTrademarkSteps;
