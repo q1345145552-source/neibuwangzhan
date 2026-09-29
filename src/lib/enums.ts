@@ -45,6 +45,8 @@ export const ENUMS = {
   "problems.problem_type": ["税务问题", "证件问题", "地址变更问题", "年审问题", "代持问题", "合同问题", "金额问题"],
   "problems.priority": ["紧急", "普通", "不急"],
   "problems.source": ["客户反馈", "内部发现"],
+  "todos.priority": ["紧急", "普通", "不急"],
+  "todos.status": ["未完成", "已完成"],
   "step_documents.status": ["pending", "uploaded"],
   "tasks.priority": ["low", "medium", "high"],
   "tasks.status": ["pending", "in_progress", "completed"],
