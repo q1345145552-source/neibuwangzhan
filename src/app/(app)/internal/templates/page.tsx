@@ -145,7 +145,8 @@ export default function TemplatesPage() {
         {templates.length === 0 ? (
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无模板</div>
         ) : (
-          <table className="w-full text-sm">
+          <>
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                 <th className="py-2.5 px-5 text-left text-xs font-medium">名称</th>
@@ -176,6 +177,29 @@ export default function TemplatesPage() {
               ))}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {templates.map(t => (
+              <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-[var(--foreground)]">{t.name}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--muted)]">{typeLabels[t.type] || t.type}</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">分类</span><span>{t.category || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建人</span><span>{t.created_by}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span>{t.created_at?.slice(0, 16)}</span></div>
+                </div>
+                {isAdmin && (
+                  <div className="mt-3 flex justify-end gap-1">
+                    <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => openEdit(t)}><Edit3 className="size-3" /></Button>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs text-red-500" onClick={() => handleDelete(t.id)}><Trash2 className="size-3" /></Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
     </div>

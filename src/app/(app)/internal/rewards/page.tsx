@@ -220,7 +220,7 @@ export default function RewardsPage() {
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无数据，点击右上角刷新积分</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium w-10">#</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
@@ -247,6 +247,25 @@ export default function RewardsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {rankings.map((r, idx) => (
+                <div key={r.name} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4",
+                  idx === 0 && "bg-amber-50/30 dark:bg-amber-950/10",
+                  idx === 1 && "bg-slate-50/30 dark:bg-slate-950/10",
+                  idx === 2 && "bg-orange-50/20 dark:bg-orange-950/10"
+                )}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2"><span>{rankMedal(idx)}</span><span className={cn("font-medium", idx < 3 && "font-semibold")}>{r.name}</span></span>
+                    <span className={cn("font-bold tabular-nums", r.total_points > 0 ? "text-green-600" : r.total_points < 0 ? "text-red-500" : "text-[var(--muted-foreground)]")}>{r.total_points > 0 ? "+" : ""}{r.total_points}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-3 text-sm">
+                    <span className="text-green-600 tabular-nums">+{r.bonus} 加分</span>
+                    <span className="text-red-500 tabular-nums">{r.penalty} 扣分</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -262,7 +281,7 @@ export default function RewardsPage() {
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无销售积分数据，录入客户并跟进后显示</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium w-10">#</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
@@ -282,6 +301,21 @@ export default function RewardsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {salesRanking.slice(0, 20).map((r, idx) => (
+                <div key={r.name} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-3",
+                  idx === 0 && "bg-amber-50/30 dark:bg-amber-950/10",
+                  idx === 1 && "bg-slate-50/30 dark:bg-slate-950/10",
+                  idx === 2 && "bg-orange-50/20 dark:bg-orange-950/10"
+                )}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2"><span>{rankMedal(idx)}</span><span className={cn("font-medium", idx < 3 && "font-semibold")}>{r.name}</span></span>
+                    <span className="font-bold text-green-600 tabular-nums">+{r.total_points}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -297,7 +331,7 @@ export default function RewardsPage() {
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">该季度暂无销售积分数据</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium w-10">#</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
@@ -325,6 +359,27 @@ export default function RewardsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {quarterlySales.map((r, idx) => (
+                <div key={r.name} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4",
+                  idx === 0 && "bg-amber-50/30 dark:bg-amber-950/10",
+                  idx === 1 && "bg-slate-50/30 dark:bg-slate-950/10",
+                  idx === 2 && "bg-orange-50/20 dark:bg-orange-950/10"
+                )}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2"><span>{rankMedal(idx)}</span><span className={cn("font-medium", idx < 3 && "font-semibold")}>{r.name}</span></span>
+                    <span className="font-bold text-green-600 tabular-nums">+{r.total_points}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-4 gap-2 text-center text-sm">
+                    <div><p className="tabular-nums">{r.followup_count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">跟进</p></div>
+                    <div><p className="tabular-nums">{r.claim_count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">认领</p></div>
+                    <div><p className="tabular-nums">{r.activate_count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">激活</p></div>
+                    <div><p className="tabular-nums">{r.deal_count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">成交</p></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -380,7 +435,7 @@ export default function RewardsPage() {
             <h2 className="text-sm font-medium flex items-center gap-2"><AlertCircle className="size-4 text-amber-500" />申诉待处理 · {appeals.length} 条</h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">原记录</th>
@@ -401,6 +456,22 @@ export default function RewardsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {appeals.map(a => (
+                <div key={a.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="font-medium text-[var(--foreground)]">{a.employee_name}</div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div><span className="text-[var(--muted-foreground)]">原记录：</span>{a.reason}</div>
+                    <div><span className="text-[var(--muted-foreground)]">申诉理由：</span>{a.appeal_reason}</div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveAppeal(a.id)}>通过</Button>
+                    <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleRejectAppeal(a.id)}>驳回</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -421,7 +492,7 @@ export default function RewardsPage() {
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无记录</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 {isAdmin && <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>}
                 <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
@@ -487,6 +558,47 @@ export default function RewardsPage() {
                 })}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {records.map(r => {
+                const tagClass = r.status === "已撤销" ? "line-through opacity-40" : r.status === "已救回" ? "bg-green-50/30 dark:bg-green-950/10" : "";
+                const badges: string[] = [];
+                if (r.is_manual === 1) badges.push("手动");
+                if (r.status === "已救回") badges.push("已救回");
+                if (r.status === "已撤销") badges.push("已撤销");
+                if (r.rule_key === "peer_vote") badges.push("互评");
+                if (r.rule_key === "client_feedback") badges.push("客户反馈");
+                if (r.is_appealed === 1 && r.appeal_status === "申诉中") badges.push("申诉中");
+                if (r.appeal_status === "已驳回") badges.push("申诉已驳回");
+                return (
+                  <div key={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", tagClass)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--foreground)]">{isAdmin ? r.employee_name : "积分记录"}</span>
+                      <span className={cn("font-semibold tabular-nums", r.points > 0 ? "text-green-600" : "text-red-500")}>{r.points > 0 ? "+" : ""}{r.points}</span>
+                    </div>
+                    <div className="mt-1.5 text-sm text-[var(--foreground)]">
+                      {r.reason}
+                      {badges.map(b => {
+                        const c = b === "已救回" || b === "互评" ? "text-green-600" : b === "已撤销" ? "text-red-400" : b === "客户反馈" ? "text-blue-500" : b === "申诉中" ? "text-amber-500" : "text-blue-500";
+                        return <span key={b} className={cn("ml-1.5 text-xs", c)}>[{b}]</span>;
+                      })}
+                    </div>
+                    <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">{r.created_at?.slice(0, 16)}</div>
+                    <div className="mt-3 flex gap-2">
+                      {!isAdmin && r.is_manual === 0 && r.points < 0 && r.is_appealed === 0 && r.status === "有效" && (
+                        <button onClick={() => { setAppealTarget(r); setAppealReason(""); }} className="text-amber-500 hover:text-amber-700 text-xs flex items-center gap-0.5"><MessageSquare className="size-3" />申诉</button>
+                      )}
+                      {isAdmin && r.status !== "已撤销" && (
+                        <button onClick={() => handleUndo(r.id)} className="text-red-400 hover:text-red-700 text-xs border border-red-200 rounded px-2 py-0.5">撤销</button>
+                      )}
+                      {isAdmin && r.status === "已撤销" && (
+                        <button onClick={() => handleRestore(r.id)} className="text-green-500 hover:text-green-700 text-xs border border-green-200 rounded px-2 py-0.5">恢复</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -498,7 +610,7 @@ export default function RewardsPage() {
             <h2 className="text-sm font-medium flex items-center gap-2"><ThumbsUp className="size-4" />客户反馈记录</h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">订单</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">负责人</th>
@@ -526,6 +638,27 @@ export default function RewardsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {clientFeedback.map(fb => (
+                <div key={fb.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={"/orders/" + fb.order_id} className="font-mono text-xs text-blue-600 hover:underline">{fb.order_id}</Link>
+                    <span className="text-xs text-[var(--muted-foreground)]">{fb.created_at?.slice(0, 16)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-sm">
+                    <span className="text-[var(--muted-foreground)]">负责人</span><span>{fb.responsible_person}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-4 gap-2 text-center text-sm">
+                    <div><Stars n={fb.overall} /><p className="text-[0.6rem] text-[var(--muted-foreground)]">综合</p></div>
+                    <div><Stars n={fb.attitude} /><p className="text-[0.6rem] text-[var(--muted-foreground)]">态度</p></div>
+                    <div><Stars n={fb.speed} /><p className="text-[0.6rem] text-[var(--muted-foreground)]">速度</p></div>
+                    <div><Stars n={fb.professionalism} /><p className="text-[0.6rem] text-[var(--muted-foreground)]">专业</p></div>
+                  </div>
+                  {fb.comment && <div className="mt-2 text-xs text-[var(--muted-foreground)]">{fb.comment}</div>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

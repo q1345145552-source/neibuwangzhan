@@ -247,7 +247,7 @@ export default function SettingsPage() {
           )}
 
           <div className="overflow-x-auto -mx-6 px-6">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead>
                 <tr className="border-b border-[var(--border)]">
                   <th className="py-2.5 pr-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">姓名</th>
@@ -338,6 +338,78 @@ export default function SettingsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 mt-3">
+              {employees.filter((emp) => showLeft || emp.status !== "离职").map((emp) => (
+                <div key={emp.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  {editingId === emp.id ? (
+                    <div className="space-y-2">
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm" />
+                      <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="h-8 text-sm" />
+                      <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
+                        <option value="employee">员工</option>
+                        <option value="admin">管理员</option>
+                        <option value="client">客户</option>
+                      </select>
+                      <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} type="password" placeholder="新密码（留空则不修改）" className="h-8 text-sm" />
+                      <div className="flex gap-2 pt-1">
+                        <Button variant="ghost" size="icon-xs" onClick={handleSaveEdit}><Save className="size-3" /></Button>
+                        <Button variant="ghost" size="icon-xs" onClick={() => setEditingId(null)}>✕</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">{emp.name.slice(0, 1)}</div>
+                          <span className="text-sm font-medium text-[var(--foreground)]">
+                            {emp.name}
+                            {emp.status === "离职" && (
+                              <span className="ml-2 inline-flex rounded-full bg-[color-mix(in_oklch,var(--muted-foreground),var(--background)_85%)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">已离职</span>
+                            )}
+                          </span>
+                        </div>
+                        <span className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                          emp.role === "admin" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] text-[var(--destructive)]" :
+                          emp.role === "client" ? "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[var(--info)]" :
+                          "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]"
+                        )}>
+                          {emp.role === "admin" ? "管理员" : emp.role === "client" ? "客户" : "员工"}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">{emp.email}</div>
+                      {emp.role === "client" && (
+                        <div className="mt-1 text-xs">
+                          {(emp.customer_names?.length ?? 0) > 0 ? (
+                            <span className="text-[var(--muted-foreground)]">可见 {emp.customer_names!.length} 家：{emp.customer_names!.slice(0, 2).join("、")}{emp.customer_names!.length > 2 ? " 等" : ""}</span>
+                          ) : (
+                            <span className="text-[var(--warning)]">未配置可见公司</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        {!isAdmin ? (
+                          <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                        ) : (
+                          <>
+                            {emp.role === "client" && (
+                              <Button variant="ghost" size="icon-xs" onClick={() => openScope(emp)} title="配置可见公司" aria-label="配置可见公司"><Building2 className="size-3" /></Button>
+                            )}
+                            <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(emp)} title="编辑"><Pencil className="size-3" /></Button>
+                            {emp.status === "离职" ? (
+                              <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--success)] hover:text-[var(--success)]" onClick={() => handleRestore(emp.id)}>恢复在职</Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--destructive)] hover:text-[var(--destructive)]" onClick={() => handleMarkLeft(emp.id, emp.name)}>标记离职</Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

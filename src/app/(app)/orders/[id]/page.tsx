@@ -453,7 +453,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <div className="flex flex-col gap-6">
         <div className="animate-pulse space-y-4">
           <div className="h-7 w-48 rounded bg-[var(--muted)]" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="h-96 rounded-xl bg-[var(--muted)]" />
             <div className="h-40 rounded-xl bg-[var(--muted)]" />
           </div>
@@ -948,7 +948,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <span className="text-[0.65rem] text-[var(--muted-foreground)] ml-auto">全部折合泰铢</span>
               </div>
               {finances.length > 0 && (
-                <div className="mb-4 grid grid-cols-3 gap-2">
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--success)]">总收入</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">฿{totalIncome.toLocaleString()}</p>
@@ -1116,7 +1116,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       <li key={cert.id} className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
                         {isEditing ? (
                           <div className="space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">证书编号</label><input value={fields.certificate_number || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, certificate_number: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" /></div>
                               <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">产品名称</label><input value={fields.product_name || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, product_name: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" /></div>
                               <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">签发日期</label><input type="date" value={fields.issue_date || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, issue_date: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" /></div>

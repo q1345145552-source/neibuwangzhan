@@ -145,7 +145,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
           </select>
         </div>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">订单号</th>
@@ -173,6 +173,24 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
               ))}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {filteredOrders.map((order) => (
+              <div key={order.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
+                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  {businessKey === "商标" && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">商标名称</span><span>{order.trademark_name || "—"}</span></div>}
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">客户</span><span>{order.customer_name || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{order.responsible_person || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">金额</span><span className="font-mono text-xs">{formatCurrency(order.total_amount, order.currency)}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{toThaiTime(order.created_at)}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
         {filteredOrders.length === 0 && <div className="py-16 text-center"><p className="text-sm text-[var(--muted-foreground)]">{search ? "没有匹配的订单" : `还没有${label}订单，去看看吧`}</p></div>}
       </div>

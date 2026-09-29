@@ -98,7 +98,7 @@ export default function WeeklyReportPage() {
       ) : (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                   <th className="py-3 px-5 text-left text-xs font-medium">员工</th>
@@ -136,6 +136,23 @@ export default function WeeklyReportPage() {
                 </tr>
               </tfoot>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {data.map(e => (
+                <div key={e.name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{e.name}</span>
+                    <span className="font-semibold tabular-nums">{e.orderSteps + e.evaluations + e.contracts + e.issuesResolved}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">完成订单步骤</span><span className="tabular-nums">{e.orderSteps}</span></div>
+                    {agencyEnabled && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">达人评估</span><span className="tabular-nums">{e.evaluations}</span></div>}
+                    {agencyEnabled && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">签订合同</span><span className="tabular-nums">{e.contracts}</span></div>}
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">解决工单</span><span className="tabular-nums">{e.issuesResolved}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

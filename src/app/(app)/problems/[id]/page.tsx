@@ -598,7 +598,7 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs text-[var(--muted-foreground)]">问题类型</label>
                   <select
@@ -621,7 +621,7 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs text-[var(--muted-foreground)]">负责人</label>
                   <select
