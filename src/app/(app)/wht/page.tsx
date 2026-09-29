@@ -638,7 +638,7 @@ export default function WhtPage() {
           )}
 
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead className="bg-[var(--muted)]">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
@@ -671,6 +671,26 @@ export default function WhtPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {customers.map(c => (
+                <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+                    <span className={statusBadge(c.status)}>{c.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">税号</span><span className="font-mono text-xs">{c.tax_id || "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">联系方式</span><span>{c.contact || "—"}</span></div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-1">
+                    <Button size="icon-xs" variant="ghost" onClick={() => setProfileCustomerId(c.id)} className="text-xs text-[var(--muted-foreground)]">画像</Button>
+                    <Button size="icon-xs" variant="ghost" onClick={() => startEdit(c)}><Edit3 className="size-3" /></Button>
+                    <Button size="icon-xs" variant="ghost" onClick={() => handleDeleteCustomer(c.id)} className="text-[var(--destructive)]"><Trash2 className="size-3" /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -930,7 +950,7 @@ export default function WhtPage() {
           ) : (
             <>
               <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm hidden md:table">
                   <thead className="bg-[var(--muted)]">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
@@ -981,6 +1001,30 @@ export default function WhtPage() {
                     })}
                   </tbody>
                 </table>
+                {/* 手机端卡片 */}
+                <div className="md:hidden flex flex-col gap-2 p-3">
+                  {historyRecords.map((r: WhtRecord) => {
+                    const wl = getWarningLevel(r.progress, r.year_month);
+                    return (
+                      <div key={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", warningRowStyle[wl.level])} onClick={() => router.push(`/wht/${r.id}`)}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-[var(--foreground)]">{r.company_name}</span>
+                          <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">{r.subtype}</span>
+                        </div>
+                        <div className="mt-2 space-y-1.5 text-sm">
+                          <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">月份</span><span>{r.year_month}</span></div>
+                          <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">进度</span>
+                            <span className="flex items-center gap-1.5">
+                              <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.progress === "归档" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700")}>{r.progress}</span>
+                              {wl.level !== "green" && <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-medium", warningBadgeStyle[wl.level])}>{wl.level === "red" ? <AlertTriangle className="size-3" /> : <Clock className="size-3" />}{wl.label}</span>}
+                            </span>
+                          </div>
+                          <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">金额</span><span className="font-mono text-xs">{(r as any).amount > 0 ? `฿${(r as any).amount.toLocaleString()}` : "—"}</span></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Pagination */}
@@ -1024,7 +1068,7 @@ export default function WhtPage() {
             </div>
           ) : (
             <div className="rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm hidden md:table">
                 <thead className="bg-[var(--muted)]">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
@@ -1057,6 +1101,25 @@ export default function WhtPage() {
                   ))}
                 </tbody>
               </table>
+              {/* 手机端卡片 */}
+              <div className="md:hidden flex flex-col gap-2 p-3">
+                {reconciliations.map((rec: any) => (
+                  <div key={rec.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--foreground)]">{rec.company_name}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{rec.year_month}</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">应付税金</span><span className="font-mono text-xs"><EditableCell id={rec.id} field="tax_payable" value={rec.tax_payable} onUpdate={handleReconUpdate} /></span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">已付税金</span><span className="font-mono text-xs"><EditableCell id={rec.id} field="tax_paid" value={rec.tax_paid} onUpdate={handleReconUpdate} /></span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">未付税金</span><span className={cn("font-mono text-xs", rec.tax_unpaid > 0 && "text-red-500 font-medium")}><EditableCell id={rec.id} field="tax_unpaid" value={rec.tax_unpaid} onUpdate={handleReconUpdate} /></span></div>
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <button onClick={() => setProfileCustomerId(rec.customer_id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] underline">查看画像</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1128,7 +1191,7 @@ export default function WhtPage() {
               </div>
 
               <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm hidden md:table">
                   <thead className="bg-[var(--muted)]">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
@@ -1156,6 +1219,27 @@ export default function WhtPage() {
                     ))}
                   </tbody>
                 </table>
+                {/* 手机端卡片 */}
+                <div className="md:hidden flex flex-col gap-2 p-3">
+                  {summaryData.customers.map((c: any) => (
+                    <div key={c.customerId} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-[var(--foreground)]">{c.companyName}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">共 {c.totalRecords} 笔</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium">{c.wht1Count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">ภ.ง.ด.1</p></div>
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium">{c.wht53Count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">ภ.ง.ด.53</p></div>
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium text-emerald-600">{c.archivedRecords}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">已归档</p></div>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">未完成</span><span className="text-amber-600">{c.overdueRecords}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">总金额</span><span className="font-mono text-xs">฿{c.totalAmount.toLocaleString()}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">未付</span><span className={cn("font-mono text-xs", c.totalUnpaid > 0 && "text-red-500")}>฿{c.totalUnpaid.toLocaleString()}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}

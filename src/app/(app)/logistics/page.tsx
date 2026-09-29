@@ -371,7 +371,7 @@ export default function LogisticsPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--secondary)]/50">
                 <th className="py-3 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">柜号</th>
@@ -419,6 +419,34 @@ export default function LogisticsPage() {
               ))}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {searchedOrders.map(o => (
+              <div key={o.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/logistics/${o.id}`} className="font-medium text-[var(--foreground)] hover:underline">{o.cabinet_number}</Link>
+                  <span className={cn(
+                    "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                    o.progress === "已完成" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                  )}>{o.progress}</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">仓库</span><span className="inline-flex items-center gap-1 text-xs"><MapPin className="size-3 text-[var(--muted-foreground)]" />{o.warehouse}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建人</span><span className="inline-flex items-center gap-1"><User className="size-3" />{o.creator || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(o.created_at)}</span></div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={() => { setDeleteTarget(o); setDeleteErr(""); }}
+                    disabled={deletingId === o.id}
+                    className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <Trash2 className="size-3.5" />删除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

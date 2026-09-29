@@ -204,7 +204,7 @@ export default function DashboardPage() {
           {/* 仓库分布 */}
           <div className="mt-4">
             <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">仓库分布</p>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {["义乌", "深圳", "广州", "东莞", "揭阳"].map((w) => {
                 const count = logisticsStats.whCounts?.[w] || 0;
                 const maxWh = Math.max(1, ...["义乌", "深圳", "广州", "东莞", "揭阳"].map((x) => logisticsStats.whCounts?.[x] || 0));

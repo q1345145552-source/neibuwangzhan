@@ -1002,7 +1002,7 @@ export default function InternalPage() {
             className="h-8 rounded border border-[var(--border)] px-2 text-xs" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
@@ -1034,6 +1034,25 @@ export default function InternalPage() {
               )}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {(Array.isArray(monthlySummaries) ? monthlySummaries : []).map(m => (
+              <div key={m.name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-[var(--foreground)]">{m.name}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">工时 {m.totalHours}h</span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center text-sm">
+                  <div><p className="tabular-nums text-green-600">{m.normalDays}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">正常</p></div>
+                  <div onClick={() => m.supplementDays > 0 && handleAnomalyClick("supplement", "补签明细", m.name)}><p className="tabular-nums text-amber-600">{m.supplementDays}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">补签</p></div>
+                  <div onClick={() => m.leaveCount > 0 && handleAnomalyClick("leave", "请假明细", m.name)}><p className="tabular-nums text-blue-600">{m.leaveCount}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">请假</p></div>
+                  <div onClick={() => m.lateCount > 0 && handleAnomalyClick("late", "迟到明细", m.name)}><p className="tabular-nums text-orange-600">{m.lateCount}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">迟到</p></div>
+                  <div onClick={() => m.absentCount > 0 && handleAnomalyClick("absent", "缺勤明细", m.name)}><p className={cn("tabular-nums", m.absentCount > 0 && "text-red-600 font-semibold")}>{m.absentCount}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">缺勤</p></div>
+                  <div><p className="tabular-nums text-[var(--muted-foreground)]">{m.workDays}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">工作日</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1340,7 +1359,7 @@ export default function InternalPage() {
             <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无待审批的补卡申请</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm hidden md:table">
                 <thead>
                   <tr className="border-b border-[var(--border)]">
                     <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
@@ -1372,6 +1391,25 @@ export default function InternalPage() {
                   ))}
                 </tbody>
               </table>
+              {/* 手机端卡片 */}
+              <div className="md:hidden flex flex-col gap-2 p-3">
+                {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status === "待审批").map(r => (
+                  <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--foreground)]">{r.employee_name}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{r.date} {r.time}</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">原因</span><span>{r.reason || "—"}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">照片</span>{r.photo ? <a href={r.photo} target="_blank" className="text-blue-500 underline text-xs">查看</a> : <span>—</span>}</div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
+                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批").length > 0 && (
@@ -1545,7 +1583,7 @@ export default function InternalPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
@@ -1604,6 +1642,28 @@ export default function InternalPage() {
               )}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {(wl?.employees || []).map((e: Workload) => (
+              <div key={e.name} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4",
+                e.level === "critical" && "bg-red-50/60 dark:bg-red-950/20",
+                e.level === "warn" && "bg-amber-50/60 dark:bg-amber-950/20"
+              )}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 font-medium text-[var(--foreground)]">{e.name}
+                    {e.level === "critical" && <AlertTriangle className="size-3 text-red-500" />}
+                    {e.level === "warn" && <AlertTriangle className="size-3 text-amber-500" />}
+                  </span>
+                  <span className={cn("font-semibold tabular-nums", e.level === "critical" && "text-red-600", e.level === "warn" && "text-amber-600")}>{e.total}</span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center text-sm">
+                  <div onClick={() => e.orderSteps > 0 && handleWlDetail(e.name, "order_steps", `${e.name} 的订单`)}><p className="tabular-nums text-blue-600">{e.orderSteps}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">订单</p></div>
+                  {agencyEnabled && <div onClick={() => e.influencerSteps > 0 && handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)}><p className="tabular-nums text-blue-600">{e.influencerSteps}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">达人</p></div>}
+                  {agencyEnabled && <div onClick={() => e.contractInfs > 0 && handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)}><p className="tabular-nums text-blue-600">{e.contractInfs}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">签约</p></div>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1849,7 +1909,8 @@ export default function InternalPage() {
           );
           // Shared render function for both active and resolved tables
           const renderTable = (list: IssueTicket[]) => (
-            <table className="w-full text-sm">
+            <>
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">编号</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">关联</th>
@@ -1920,6 +1981,40 @@ export default function InternalPage() {
                 </tr>
               ))}</tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {list.map(t => (
+                <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs">{t.ticket_number || `#${t.id}`}</span>
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                      t.status==="已解决"&&"bg-green-100 text-green-700",
+                      t.status==="处理中"&&"bg-blue-100 text-blue-700",
+                      "bg-gray-100 text-gray-700")}>{t.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">关联</span><span className="text-xs">{t.ref_id ? `${t.ref_type==="influencer"?"达人:":"订单:"}${t.ref_id}` : "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">问题</span><span className="text-right">{t.description}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">指定人</span><span className="text-xs">{t.assignee ? t.assignee.split(",").map(s => s.trim()).filter(Boolean).join("、") : "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建人</span><span>{t.created_by}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
+                    {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleStartIssue(t)}><Play className="size-3 mr-1" />开始处理</Button>
+                    )}
+                    {t.status!=="已解决" ? (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}><CheckCircle2 className="size-3 mr-1" />解决</Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleWithdrawIssue(t)}><AlertTriangle className="size-3 mr-1" />撤回</Button>
+                    )}
+                    <button onClick={()=>handleDeleteIssue(t.id)} className="ml-1.5 text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="删除工单"><Trash2 className="size-3.5" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           );
           return (
             <div>
@@ -2297,7 +2392,8 @@ export default function InternalPage() {
           });
           if(pending.length===0&&history.length===0)return(<div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>);
           const renderLeaveTable=(list: any[])=>(
-            <table className="w-full text-sm"><thead><tr className="border-b border-[var(--border)]">
+            <>
+            <table className="w-full text-sm hidden md:table"><thead><tr className="border-b border-[var(--border)]">
               {isAdmin&&<th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>}
               <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
@@ -2372,6 +2468,36 @@ export default function InternalPage() {
                 </td>
               </tr>
             ))}</tbody></table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {list.map(l=>(
+                <div key={l.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{l.employee_name}</span>
+                    <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium "+(l.status==="已通过"?"bg-green-100 text-green-700":l.status==="已驳回"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700")}>{l.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{l.leave_type}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">目的地</span><span>{l.destination||"—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">原因</span><span className="text-right">{l.reason||"—"}</span></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5 items-center">
+                    {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
+                      <a href={fileUrl((imgs[0] as string).startsWith("/api/files/") ? imgs[0] : "/api/files/" + imgs[0])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:underline text-xs">{imgs.length} 张附件</a>
+                    ):null;})()}
+                    <button onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}} disabled={supplementUploading} className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]">补传附件</button>
+                    {l.status==="待审批"&&isAdmin&&(
+                      <>
+                        <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
+                        <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={()=>handleApproveLeave(l.id,"已驳回")}>驳回</Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           );
           return(
             <div>

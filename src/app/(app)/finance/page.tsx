@@ -153,7 +153,7 @@ export default function FinancePage() {
       {/* Table */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)] text-left">
                 <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">类型</th>
@@ -193,6 +193,29 @@ export default function FinancePage() {
               )}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无费用记录</p>
+            ) : filtered.map((r: FinanceRecord) => (
+              <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+                    r.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
+                  )}>{typeLabels[r.type] || r.type}</span>
+                  <span className="font-mono tabular-nums text-sm">{(r as { currency?: string }).currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{statusLabels[r.status] || r.status}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">{r.created_at?.slice(0, 10) || "-"}</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">描述</span><span className="text-right">{r.description || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">订单号</span><span className="font-mono text-xs">{r.order_id || "—"}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
