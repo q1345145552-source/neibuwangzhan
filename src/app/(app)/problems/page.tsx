@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { bangkokToday } from "@/lib/time";
@@ -67,6 +68,7 @@ const EMPTY_FORM = {
 };
 
 export default function ProblemsPage() {
+  const router = useRouter();
   const [problems, setProblems] = useState<Problem[]>([]);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
   const [customers, setCustomers] = useState<{ id: number; company_name: string }[]>([]);
@@ -241,7 +243,7 @@ export default function ProblemsPage() {
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无问题</div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--secondary)]/50">
                 <th className="py-3 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">问题编号</th>
@@ -294,6 +296,31 @@ export default function ProblemsPage() {
               })}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {problems.map((p) => {
+              const dl = deadlineState(p.deadline, p.status);
+              return (
+                <div key={p.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", p.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20")} onClick={() => router.push(`/problems/${p.id}`)}>
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={`/problems/${p.id}`} className="font-mono font-medium text-[var(--primary)] hover:underline" onClick={e => e.stopPropagation()}>{p.problem_number}</Link>
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[p.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{p.status}</span>
+                  </div>
+                  <div className="mt-1 font-medium text-[var(--foreground)]">{p.company_name}</div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">问题类型</span><span>{p.problem_type}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{p.assignee || "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">紧急程度</span>
+                      {p.priority === "紧急" ? <span className="inline-flex rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">紧急</span> : p.priority === "不急" ? <span className="text-xs text-[var(--muted-foreground)]">不急</span> : <span className="text-xs text-[var(--muted-foreground)]">普通</span>}
+                    </div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">截止日期</span>
+                      {p.deadline ? <span className={cn("text-xs", dl === "overdue" && "font-medium text-red-600 dark:text-red-400", dl === "soon" && "font-medium text-amber-600 dark:text-amber-400")}>{dl === "overdue" ? "已超期 " : ""}{p.deadline}</span> : <span className="text-xs text-[var(--muted-foreground)]">—</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
