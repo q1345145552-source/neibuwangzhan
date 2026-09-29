@@ -22,7 +22,11 @@ export async function GET(req: NextRequest) {
   const rows = isAdmin
     ? db.prepare(select + orderBy).all()
     : db.prepare(select + ` WHERE t.assignee = ?` + orderBy).all(auth.name);
-  return NextResponse.json(rows);
+
+  // 每条待办附带图片列表（按上传顺序）
+  const imgsStmt = db.prepare("SELECT url FROM todo_images WHERE todo_id = ? ORDER BY id ASC");
+  const result = rows.map((r: any) => ({ ...r, images: imgsStmt.all(r.id).map((i: any) => i.url) }));
+  return NextResponse.json(result);
 }
 
 // POST /api/todos — 新建待办（状态默认未完成）
@@ -32,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const body = await readJson(req);
-  const { content, assignee, priority } = body;
+  const { content, assignee, priority, images } = body;
 
   // 工作内容必填
   if (!content?.trim()) {
@@ -48,7 +52,18 @@ export async function POST(req: NextRequest) {
     "INSERT INTO todos (content, assignee, priority, status, created_by) VALUES (?, ?, ?, '未完成', ?)"
   ).run(content.trim(), finalAssignee, finalPriority, auth.name);
 
-  const todo = db.prepare("SELECT * FROM todos WHERE id = ?").get(result.lastInsertRowid);
-  logOperation(auth.name, "新建待办", "todo", String(result.lastInsertRowid), content.trim());
+  const todoId = Number(result.lastInsertRowid);
+
+  // 图片（可选，多张）：url 列表随待办一起保存
+  const imgUrls = Array.isArray(images)
+    ? images.filter((u: unknown) => typeof u === "string" && u.trim()).map((u: string) => u.trim())
+    : [];
+  if (imgUrls.length > 0) {
+    const insImg = db.prepare("INSERT INTO todo_images (todo_id, url, uploaded_by) VALUES (?, ?, ?)");
+    for (const url of imgUrls) insImg.run(todoId, url, auth.name);
+  }
+
+  const todo = db.prepare("SELECT * FROM todos WHERE id = ?").get(todoId);
+  logOperation(auth.name, "新建待办", "todo", String(todoId), content.trim());
   return NextResponse.json(todo, { status: 201 });
 }
