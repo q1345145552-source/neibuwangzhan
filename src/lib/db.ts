@@ -1596,7 +1596,16 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS todo_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id INTEGER NOT NULL REFERENCES todos(id),
+      url TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_todo_follow_ups_todo_id ON todo_follow_ups(todo_id);
+    CREATE INDEX IF NOT EXISTS idx_todo_images_todo_id ON todo_images(todo_id);
   `);
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）

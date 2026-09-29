@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ImagePlus, Image } from "lucide-react";
 
 interface Todo {
   id: number;
@@ -19,6 +19,7 @@ interface Todo {
   latest_follow_content?: string | null;
   latest_follow_by?: string | null;
   latest_follow_at?: string | null;
+  images?: string[];
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -33,9 +34,11 @@ export default function TodosPage() {
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ content: "", assignee: "", priority: "普通" });
+  const [form, setForm] = useState({ content: "", assignee: "", priority: "普通", images: [] as string[] });
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [previewImages, setPreviewImages] = useState<string[] | null>(null);
   const [followTarget, setFollowTarget] = useState<Todo | null>(null);
   const [followContent, setFollowContent] = useState("");
   const [following, setFollowing] = useState(false);
@@ -74,9 +77,39 @@ export default function TodosPage() {
     : null;
 
   const openForm = () => {
-    setForm({ content: "", assignee: user?.name || "", priority: "普通" });
+    setForm({ content: "", assignee: user?.name || "", priority: "普通", images: [] });
     setErr("");
     setShowForm(true);
+  };
+
+  // 图片上传（多张，可选）：先传到 /api/upload 拿 url，随待办一起保存
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingImages(true);
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) urls.push(data.url);
+        }
+      }
+      if (urls.length > 0) {
+        setForm((p) => ({ ...p, images: [...p.images, ...urls] }));
+      }
+    } catch { setErr("图片上传失败"); }
+    finally {
+      setUploadingImages(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeImage = (url: string) => {
+    setForm((p) => ({ ...p, images: p.images.filter((u) => u !== url) }));
   };
 
   const handleSubmit = async () => {
@@ -169,6 +202,14 @@ export default function TodosPage() {
                     <span className="ml-1 text-[var(--muted-foreground)]/70">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
                   </div>
                 )}
+                {t.images && t.images.length > 0 && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <img src={fileUrl(t.images[0])} alt="" className="h-10 w-10 rounded border border-[var(--border)] object-cover" />
+                    <Button size="xs" variant="outline" onClick={() => setPreviewImages(t.images || [])} className="gap-1">
+                      <Image className="size-3" />查看（{t.images.length}）
+                    </Button>
+                  </div>
+                )}
               </td>
               <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
               <td className="py-3 px-4">
@@ -208,6 +249,14 @@ export default function TodosPage() {
               <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">
                 最新：{t.latest_follow_content}
                 <span className="ml-1 text-[var(--muted-foreground)]/70">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
+              </div>
+            )}
+            {t.images && t.images.length > 0 && (
+              <div className="mt-2 flex items-center gap-2">
+                <img src={fileUrl(t.images[0])} alt="" className="h-12 w-12 rounded border border-[var(--border)] object-cover" />
+                <Button size="xs" variant="outline" onClick={() => setPreviewImages(t.images || [])} className="gap-1">
+                  <Image className="size-3" />查看（{t.images.length}）
+                </Button>
               </div>
             )}
             <div className="mt-2 space-y-1.5 text-sm">
@@ -362,6 +411,25 @@ export default function TodosPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">图片（可选，可传多张）</label>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/30">
+                  <ImagePlus className="size-4" />
+                  {uploadingImages ? "上传中…" : "选择图片"}
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImages} />
+                </label>
+                {form.images.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {form.images.map((url) => (
+                      <div key={url} className="relative">
+                        <img src={fileUrl(url)} alt="" className="h-16 w-16 rounded-md border border-[var(--border)] object-cover" />
+                        <button type="button" onClick={() => removeImage(url)} className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-[var(--destructive)] text-white" title="移除"><X className="size-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {err && <p className="text-xs text-[var(--destructive)]">{err}</p>}
             </div>
 
@@ -393,6 +461,23 @@ export default function TodosPage() {
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setFollowTarget(null)} disabled={following}>取消</Button>
               <Button size="sm" onClick={handleFollow} disabled={following}>{following ? "提交中…" : "提交跟进"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 图片预览弹窗 */}
+      {previewImages && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPreviewImages(null)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">图片预览（{previewImages.length}）</h3>
+              <button onClick={() => setPreviewImages(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <div className="flex flex-col gap-3">
+              {previewImages.map((url, i) => (
+                <img key={i} src={fileUrl(url)} alt={`图片 ${i + 1}`} className="w-full rounded-md border border-[var(--border)]" />
+              ))}
             </div>
           </div>
         </div>
