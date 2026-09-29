@@ -1575,6 +1575,28 @@ function initTables(database: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_problem_follow_ups_problem_id ON problem_follow_ups(problem_id);
     CREATE INDEX IF NOT EXISTS idx_problem_attachments_problem_id ON problem_attachments(problem_id);
+
+    CREATE TABLE IF NOT EXISTS todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      assignee TEXT DEFAULT '',
+      priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
+      status TEXT NOT NULL DEFAULT '未完成' CHECK(status IN ('未完成','已完成')),
+      completed_at TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS todo_follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id INTEGER NOT NULL REFERENCES todos(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_todo_follow_ups_todo_id ON todo_follow_ups(todo_id);
   `);
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
@@ -1585,6 +1607,8 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE problems ADD COLUMN resolved_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE problems ADD COLUMN suspend_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE problems ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+  // todos 表迁移：补完成时间列
+  try { database.exec("ALTER TABLE todos ADD COLUMN completed_at TEXT DEFAULT ''"); } catch {}
   try {
     const p = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='problems'").get() as { sql: string } | undefined;
     if (p && !p.sql.includes("'不急'")) {

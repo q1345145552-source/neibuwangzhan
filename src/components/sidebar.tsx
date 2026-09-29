@@ -36,12 +36,14 @@ import {
   Package,
   Truck,
   AlertCircle,
+  ListTodo,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const navigation = [
   { name: "仪表盘", href: "/", icon: LayoutDashboard },
+  { name: "我的待办", href: "/todos", icon: ListTodo },
 ];
 
 const businessLines = [
@@ -143,6 +145,7 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [todoCount, setTodoCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   useEffect(() => {
@@ -159,6 +162,28 @@ export function Sidebar() {
     };
     fetchUnread();
     const interval = setInterval(fetchUnread, 30000); // poll every 30s
+    return () => clearInterval(interval);
+  }, [user?.name]);
+
+  // 我的待办角标：当前登录员工未完成的待办数量
+  useEffect(() => {
+    if (!user?.name) return;
+    const fetchTodos = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/todos", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setTodoCount(data.filter((t: any) => t.status !== "已完成").length);
+          }
+        })
+        .catch(() => {});
+    };
+    fetchTodos();
+    const interval = setInterval(fetchTodos, 30000); // poll every 30s
     return () => clearInterval(interval);
   }, [user?.name]);
 
@@ -192,7 +217,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={navigation} pathname={pathname} onClose={close} />
+        <NavSection items={navigation} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
