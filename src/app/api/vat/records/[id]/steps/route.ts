@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // PATCH /api/vat/records/[id]/steps
 export async function PATCH(
@@ -113,6 +113,7 @@ export async function PATCH(
   }
   })();
 
+  logOperation(auth.name, "更新VAT步骤状态", "vat_step", String(step_id), `${(step as { step_name: string }).step_name || ""} → ${status ?? "—"}`);
   const updated = db.prepare("SELECT * FROM vat_record_steps WHERE id = ?").get(step_id);
   return NextResponse.json(updated);
 }
