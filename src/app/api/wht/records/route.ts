@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { isCronRequest } from "@/lib/cron-auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // Step templates per subtype
 const WHT_STEPS: Record<string, { name: string; assignee: string; optional?: boolean }[]> = {
@@ -114,10 +114,12 @@ export async function POST(req: NextRequest) {
 
   const body = await readJson(req);
 
+  let actor = "系统";
   if (!isCron) {
     const auth = await verifyAuth(req);
     if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
     if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
+    actor = auth.name;
   }
   const { action } = body;
 
@@ -162,6 +164,7 @@ export async function POST(req: NextRequest) {
       }
       created++;
     }
+    logOperation(actor, "批量生成WHT申报记录", "wht_record", `${genSubtype}-${month}`, `共 ${created} 条`);
     return NextResponse.json({ created });
   }
 
@@ -196,6 +199,7 @@ export async function POST(req: NextRequest) {
       "INSERT INTO wht_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, 0, 0, 0)"
     ).run(customer_id, year_month);
   }
+  logOperation(actor, "新建WHT申报记录", "wht_record", String(result.lastInsertRowid), `${createSubtype} ${year_month}`);
   const row = db.prepare("SELECT * FROM wht_records WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }

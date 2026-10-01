@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/wht/reconciliation?month=YYYY-MM
 export async function GET(req: NextRequest) {
@@ -53,6 +53,7 @@ export async function PATCH(req: NextRequest) {
 
   values.push(id);
   db.prepare(`UPDATE wht_reconciliation SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+  logOperation(auth.name, "更新WHT对账", "wht_reconciliation", String(id), "更新对账金额/备注");
   const row = db.prepare("SELECT * FROM wht_reconciliation WHERE id = ?").get(id);
   return NextResponse.json(row);
 }
@@ -87,5 +88,6 @@ export async function POST(req: NextRequest) {
   });
   txn();
 
+  logOperation(auth.name, "补建WHT对账记录", "wht_reconciliation", "batch", `补建 ${missing.length} 条`);
   return NextResponse.json({ created: missing.length, message: `已为 ${missing.length} 条记录补建对账数据` });
 }
