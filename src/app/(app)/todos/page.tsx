@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ImagePlus, Image, History, Pencil, Trash2 } from "lucide-react";
+import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2 } from "lucide-react";
 
 interface Todo {
   id: number;
@@ -39,6 +39,8 @@ export default function TodosPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [previewImages, setPreviewImages] = useState<string[] | null>(null);
+  const [lightboxImages, setLightboxImages] = useState<string[] | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState(0);
   const [followTarget, setFollowTarget] = useState<Todo | null>(null);
   const [followContent, setFollowContent] = useState("");
   const [following, setFollowing] = useState(false);
@@ -145,6 +147,12 @@ export default function TodosPage() {
     setFollowTarget(todo);
     setFollowContent("");
     setErr("");
+  };
+
+  // 打开全屏灯箱：images 为要放大的图片列表，startIdx 为初始显示哪一张
+  const openLightbox = (images: string[], startIdx: number) => {
+    setLightboxImages(images);
+    setLightboxIdx(startIdx);
   };
 
   // 打开跟进历史弹窗：拉取该待办所有跟进记录（后端已按时间倒序）
@@ -273,7 +281,7 @@ export default function TodosPage() {
                 )}
                 {t.images && t.images.length > 0 && (
                   <div className="mt-1.5 flex items-center gap-2">
-                    <img src={fileUrl(t.images[0])} alt="" className="h-10 w-10 rounded border border-[var(--border)] object-cover" />
+                    <img src={fileUrl(t.images[0])} alt="" className="h-10 w-10 cursor-pointer rounded border border-[var(--border)] object-cover hover:opacity-80" onClick={() => openLightbox(t.images || [], 0)} />
                     <Button size="xs" variant="outline" onClick={() => setPreviewImages(t.images || [])} className="gap-1">
                       <Image className="size-3" />查看（{t.images.length}）
                     </Button>
@@ -333,7 +341,7 @@ export default function TodosPage() {
             )}
             {t.images && t.images.length > 0 && (
               <div className="mt-2 flex items-center gap-2">
-                <img src={fileUrl(t.images[0])} alt="" className="h-12 w-12 rounded border border-[var(--border)] object-cover" />
+                <img src={fileUrl(t.images[0])} alt="" className="h-12 w-12 cursor-pointer rounded border border-[var(--border)] object-cover hover:opacity-80" onClick={() => openLightbox(t.images || [], 0)} />
                 <Button size="xs" variant="outline" onClick={() => setPreviewImages(t.images || [])} className="gap-1">
                   <Image className="size-3" />查看（{t.images.length}）
                 </Button>
@@ -561,10 +569,52 @@ export default function TodosPage() {
             </div>
             <div className="flex flex-col gap-3">
               {previewImages.map((url, i) => (
-                <img key={i} src={fileUrl(url)} alt={`图片 ${i + 1}`} className="w-full rounded-md border border-[var(--border)]" />
+                <img key={i} src={fileUrl(url)} alt={`图片 ${i + 1}`} className="w-full cursor-pointer rounded-md border border-[var(--border)] hover:opacity-90" onClick={() => openLightbox(previewImages, i)} />
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 全屏灯箱：放大看大图 + 左右切换 */}
+      {lightboxImages && lightboxImages.length > 0 && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90" onClick={() => setLightboxImages(null)}>
+          <button
+            onClick={() => setLightboxImages(null)}
+            className="absolute right-4 top-4 z-10 flex size-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+            aria-label="关闭"
+          >
+            <X className="size-6" />
+          </button>
+          {lightboxImages.length > 1 && lightboxIdx > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => i - 1); }}
+              className="absolute left-3 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              aria-label="上一张"
+            >
+              <ChevronLeft className="size-6" />
+            </button>
+          )}
+          <img
+            src={fileUrl(lightboxImages[lightboxIdx])}
+            alt=""
+            className="max-h-[85vh] max-w-[92vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          {lightboxImages.length > 1 && lightboxIdx < lightboxImages.length - 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxIdx((i) => i + 1); }}
+              className="absolute right-3 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              aria-label="下一张"
+            >
+              <ChevronRight className="size-6" />
+            </button>
+          )}
+          {lightboxImages.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-sm text-white">
+              {lightboxIdx + 1} / {lightboxImages.length}
+            </div>
+          )}
         </div>
       )}
 
