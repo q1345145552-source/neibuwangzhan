@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
@@ -23,7 +24,7 @@ interface Project {
 
 const STATUS_CLASS: Record<string, string> = {
   "孵化中": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
-  "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
+  "已孵化为业务线": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
   "已搁置": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
@@ -166,6 +167,24 @@ export default function ProjectsPage() {
     finally { setSavingSummary(false); }
   };
 
+  // 升级为业务线：只有老板能点
+  const handlePromote = async (p: Project) => {
+    if (!confirm(`确认把「${p.name}」升级为业务线？升级后该项目标记为已孵化成型。`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/projects/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "已孵化为业务线" }),
+      });
+      if (res.ok) {
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "升级失败");
+      }
+    } catch { alert("升级失败"); }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -202,7 +221,7 @@ export default function ProjectsPage() {
               {projects.map((p) => (
                 <tr key={p.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]/30">
                   <td className="py-3 px-5">
-                    <div className="font-medium text-[var(--foreground)]">{p.name}</div>
+                    <Link href={`/projects/${p.id}`} className="font-medium text-[var(--foreground)] hover:underline">{p.name}</Link>
                     {p.latest_progress_content && (
                       <div className="mt-1 text-xs text-[var(--muted-foreground)]">
                         最新：{p.latest_progress_content}
@@ -230,12 +249,17 @@ export default function ProjectsPage() {
                   </td>
                   <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(p.created_at) || "—"}</td>
                   <td className="py-3 px-4">
-                    {(isAdmin || user?.name === p.assignee) && (
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => openProgress(p)} className="text-xs text-[var(--primary)] hover:underline">写进展</button>
-                        <button onClick={() => openSummary(p)} className="text-xs text-[var(--primary)] hover:underline">写总结</button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {(isAdmin || user?.name === p.assignee) && (
+                        <>
+                          <button onClick={() => openProgress(p)} className="text-xs text-[var(--primary)] hover:underline">写进展</button>
+                          <button onClick={() => openSummary(p)} className="text-xs text-[var(--primary)] hover:underline">写总结</button>
+                        </>
+                      )}
+                      {isAdmin && p.status === "孵化中" && (
+                        <button onClick={() => handlePromote(p)} className="text-xs text-purple-600 hover:underline">升级为业务线</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

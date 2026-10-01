@@ -47,7 +47,7 @@ export const ENUMS = {
   "problems.source": ["客户反馈", "内部发现"],
   "todos.priority": ["紧急", "普通", "不急"],
   "todos.status": ["未完成", "已完成"],
-  "projects.status": ["孵化中", "已完成", "已搁置"],
+  "projects.status": ["孵化中", "已孵化为业务线", "已搁置"],
   "step_documents.status": ["pending", "uploaded"],
   "tasks.priority": ["low", "medium", "high"],
   "tasks.status": ["pending", "in_progress", "completed"],
