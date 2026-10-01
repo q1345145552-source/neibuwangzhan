@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
-import { bangkokToday, bangkokDayRange } from "@/lib/time";
+import { bangkokToday, bangkokDayRange, toThaiDate } from "@/lib/time";
 
 // 曼谷时区 N 天前的日期（YYYY-MM-DD）
 function daysAgo(n: number): string {
@@ -77,6 +77,13 @@ export async function GET(req: NextRequest) {
      ORDER BY count DESC, e.name ASC`
   ).all(start, end);
 
+  // 每个员工最近一次操作时间（全量历史，用于活跃度预警）
+  const lastActiveMap = new Map<string, string>(
+    (db.prepare(
+      "SELECT actor, MAX(created_at) AS last_active FROM audit_logs WHERE actor != '' GROUP BY actor"
+    ).all() as { actor: string; last_active: string }[]).map((r) => [r.actor, r.last_active])
+  );
+
   const employees = rows.map((emp: any) => {
     const yesterday = (db.prepare(
       "SELECT COUNT(*) AS c FROM audit_logs WHERE actor = ? AND created_at >= ? AND created_at < ?"
@@ -89,7 +96,11 @@ export async function GET(req: NextRequest) {
       const cat = mapCategory(t.target_type);
       if (cat) types[cat] += t.c;
     }
-    return { name: emp.name, count: emp.count, yesterday, types };
+    // 最近一次操作对应的曼谷日期；超过三天无操作（最近一次在 3 天及以前，或从未操作）→ 预警
+    const lastActive = lastActiveMap.get(emp.name) || null;
+    const lastActiveDate = lastActive ? toThaiDate(lastActive) : null;
+    const inactive = !lastActiveDate || lastActiveDate <= daysAgo(3);
+    return { name: emp.name, count: emp.count, yesterday, types, lastActiveDate, inactive };
   });
 
   return NextResponse.json({ today, range, total, active, ranking, categories, timeline, employees });

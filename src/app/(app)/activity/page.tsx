@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
-import { Users, Zap, X } from "lucide-react";
+import { Users, Zap, X, Activity } from "lucide-react";
 
 interface ActivityStats {
   today: string;
   total: number;
   active: number;
-  employees: { name: string; count: number; yesterday: number; types: Record<string, number> }[];
+  employees: { name: string; count: number; yesterday: number; types: Record<string, number>; lastActiveDate: string | null; inactive: boolean }[];
 }
 
 interface TimelineItem {
@@ -51,6 +51,35 @@ const CATEGORY_LABELS: Record<string, string> = {
   project: "项目",
 };
 
+// 折线图（每日操作数），员工详情与全公司总览共用
+function TrendChart({ points }: { points: { date: string; count: number }[] }) {
+  if (points.length === 0) return null;
+  const maxCount = Math.max(1, ...points.map((p) => p.count));
+  const padX = 8, padY = 12;
+  const w = 600, h = 160;
+  const stepX = (w - padX * 2) / (points.length - 1 || 1);
+  const x = (i: number) => padX + i * stepX;
+  const y = (c: number) => h - padY - (c / maxCount) * (h - padY * 2);
+  const pts = points.map((p, i) => `${x(i)},${y(p.count)}`).join(" ");
+  return (
+    <>
+      <svg viewBox="0 0 600 160" className="w-full" preserveAspectRatio="none">
+        <polyline points={pts} fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle cx={x(i)} cy={y(p.count)} r="3" fill="var(--primary)" />
+            {p.count > 0 && <text x={x(i)} y={y(p.count) - 8} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{p.count}</text>}
+          </g>
+        ))}
+      </svg>
+      <div className="mt-1 flex justify-between text-[0.6rem] text-[var(--muted-foreground)]">
+        <span>{points[0]?.date?.slice(5)}</span>
+        <span>{points[points.length - 1]?.date?.slice(5)}</span>
+      </div>
+    </>
+  );
+}
+
 export default function ActivityPage() {
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +91,10 @@ export default function ActivityPage() {
   const [detailCategory, setDetailCategory] = useState("");
   const [trendPoints, setTrendPoints] = useState<{ date: string; count: number }[]>([]);
   const [trendDays, setTrendDays] = useState<7 | 30>(7);
+
+  const [companyTrend, setCompanyTrend] = useState<{ date: string; count: number }[]>([]);
+  const [companyTrendDays, setCompanyTrendDays] = useState<7 | 30>(7);
+  const [companyTrendLoading, setCompanyTrendLoading] = useState(true);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -75,6 +108,18 @@ export default function ActivityPage() {
   }, [range]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 全公司活跃总览（独立于上方范围筛选，默认 7 天）
+  const loadCompanyTrend = useCallback((days: 7 | 30) => {
+    setCompanyTrendLoading(true);
+    fetchWithAuth(`/api/activity/company-trend?days=${days}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setCompanyTrend(Array.isArray(d.points) ? d.points : []); })
+      .catch(() => {})
+      .finally(() => setCompanyTrendLoading(false));
+  }, []);
+
+  useEffect(() => { loadCompanyTrend(7); }, [loadCompanyTrend]);
 
   // 点卡片：拉该员工的操作记录（倒序）+ 趋势数据
   const openDetail = (name: string) => {
@@ -128,6 +173,38 @@ export default function ActivityPage() {
         ))}
       </div>
 
+      {/* 全公司活跃总览趋势（独立于上方范围筛选） */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="size-4 text-blue-500" />
+            <span className="text-sm font-medium text-[var(--foreground)]">全公司活跃趋势</span>
+            <span className="text-xs text-[var(--muted-foreground)]">每天总操作数</span>
+          </div>
+          <div className="flex gap-1">
+            {([7, 30] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => { setCompanyTrendDays(d); loadCompanyTrend(d); }}
+                className={cn(
+                  "rounded px-2 py-0.5 text-xs transition-colors",
+                  companyTrendDays === d ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                )}
+              >
+                {d}天
+              </button>
+            ))}
+          </div>
+        </div>
+        {companyTrendLoading ? (
+          <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+        ) : companyTrend.length === 0 ? (
+          <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无数据</p>
+        ) : (
+          <TrendChart points={companyTrend} />
+        )}
+      </div>
+
       {loading ? (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
       ) : !stats ? (
@@ -165,18 +242,34 @@ export default function ActivityPage() {
                     onClick={() => openDetail(e.name)}
                     className={cn(
                       "rounded-xl border p-4 text-left transition-colors hover:border-[var(--primary)]",
-                      e.count > 0 ? "border-[var(--border)] bg-[var(--card)]" : "border-[var(--border)] bg-[var(--muted)]/30 opacity-70"
+                      e.inactive
+                        ? "border-red-500/60 bg-red-500/10"
+                        : e.count > 0
+                          ? "border-[var(--border)] bg-[var(--card)]"
+                          : "border-[var(--border)] bg-[var(--muted)]/30 opacity-70"
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-medium text-[var(--foreground)]">{e.name}</p>
-                      {up && <span className="shrink-0 text-xs font-medium text-emerald-600">↑</span>}
-                      {down && <span className="shrink-0 text-xs font-medium text-red-500">↓</span>}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {e.inactive && (
+                          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[0.65rem] font-medium text-red-600 dark:text-red-400">
+                            最近不活跃
+                          </span>
+                        )}
+                        {up && <span className="text-xs font-medium text-emerald-600">↑</span>}
+                        {down && <span className="text-xs font-medium text-red-500">↓</span>}
+                      </div>
                     </div>
                     <div className="mt-1 flex items-baseline gap-2">
                       <p className={cn("font-display text-3xl font-light tabular-nums", e.count > 0 ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]")}>{e.count}</p>
                       <span className="text-xs text-[var(--muted-foreground)]">昨天 {e.yesterday}</span>
                     </div>
+                    {e.inactive && (
+                      <p className="mt-1 text-xs text-red-500 dark:text-red-400">
+                        {e.lastActiveDate ? `最近活跃 ${e.lastActiveDate}` : "从未有操作记录"}
+                      </p>
+                    )}
                     <div className="mt-2 space-y-1">
                       {TYPE_ORDER.filter((t) => (e.types[t] || 0) > 0).map((t) => (
                         <div key={t} className="flex items-center justify-between text-xs">
@@ -225,35 +318,10 @@ export default function ActivityPage() {
                 </div>
               </div>
               {trendPoints.length > 0 ? (
-                <svg viewBox="0 0 600 160" className="w-full" preserveAspectRatio="none">
-                  {(() => {
-                    const maxCount = Math.max(1, ...trendPoints.map((p) => p.count));
-                    const padX = 8, padY = 12;
-                    const w = 600, h = 160;
-                    const stepX = (w - padX * 2) / (trendPoints.length - 1 || 1);
-                    const x = (i: number) => padX + i * stepX;
-                    const y = (c: number) => h - padY - (c / maxCount) * (h - padY * 2);
-                    const pts = trendPoints.map((p, i) => `${x(i)},${y(p.count)}`).join(" ");
-                    return (
-                      <>
-                        <polyline points={pts} fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-                        {trendPoints.map((p, i) => (
-                          <g key={i}>
-                            <circle cx={x(i)} cy={y(p.count)} r="3" fill="var(--primary)" />
-                            {p.count > 0 && <text x={x(i)} y={y(p.count) - 8} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{p.count}</text>}
-                          </g>
-                        ))}
-                      </>
-                    );
-                  })()}
-                </svg>
+                <TrendChart points={trendPoints} />
               ) : (
                 <p className="py-4 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
               )}
-              <div className="mt-1 flex justify-between text-[0.6rem] text-[var(--muted-foreground)]">
-                <span>{trendPoints[0]?.date?.slice(5)}</span>
-                <span>{trendPoints[trendPoints.length - 1]?.date?.slice(5)}</span>
-              </div>
             </div>
 
             {/* 分类筛选 */}
