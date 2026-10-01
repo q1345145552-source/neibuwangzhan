@@ -1107,6 +1107,69 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_issue_tickets_status ON issue_tickets(status);
   `);
 
+  // ── 内部聊天 ──
+  // 会话表：1 对 1 私聊（跟谁聊）。约定 user_a < user_b，配合 UNIQUE 防止同一对产生重复会话。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      last_message_at TEXT DEFAULT '',
+      last_message_preview TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_a, user_b)
+    );
+  `);
+
+  // 群聊表：存群
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      owner TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 群成员表：存群里有哪些人
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS group_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL REFERENCES chat_groups(id),
+      member TEXT NOT NULL,
+      role TEXT DEFAULT 'member' CHECK(role IN ('owner','member')),
+      joined_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(group_id, member)
+    );
+  `);
+
+  // 消息表：存每条消息（发送人/接收人/内容/时间/已读未读）
+  // conversation_id = 私聊会话，group_id = 群聊，二者互斥（其一为空，另一个有值）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER,
+      group_id INTEGER,
+      sender TEXT NOT NULL,
+      receiver TEXT DEFAULT '',
+      content TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      read_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_a ON conversations(user_a);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_b ON conversations(user_b);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_group_id ON messages(group_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+    CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id);
+    CREATE INDEX IF NOT EXISTS idx_group_members_member ON group_members(member);
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
