@@ -16,6 +16,9 @@ interface Project {
   status: string;
   created_by: string;
   created_at: string;
+  latest_progress_content?: string | null;
+  latest_progress_by?: string | null;
+  latest_progress_at?: string | null;
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -43,6 +46,9 @@ export default function ProjectsPage() {
   const [form, setForm] = useState({ name: "", description: "", assignee: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [progressTarget, setProgressTarget] = useState<Project | null>(null);
+  const [progressContent, setProgressContent] = useState("");
+  const [savingProgress, setSavingProgress] = useState(false);
 
   const load = useCallback(() => {
     fetchWithAuth("/api/projects", { cache: "no-store" })
@@ -104,6 +110,32 @@ export default function ProjectsPage() {
     } catch { alert("切换失败"); }
   };
 
+  const openProgress = (p: Project) => {
+    setProgressTarget(p);
+    setProgressContent("");
+  };
+
+  const handleProgress = async () => {
+    if (!progressTarget) return;
+    if (!progressContent.trim()) { alert("请填写进展内容"); return; }
+    setSavingProgress(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${progressTarget.id}/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: progressContent.trim() }),
+      });
+      if (res.ok) {
+        setProgressTarget(null);
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "提交失败");
+      }
+    } catch { alert("提交失败"); }
+    finally { setSavingProgress(false); }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -133,12 +165,21 @@ export default function ProjectsPage() {
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">阶段</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">创建时间</th>
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
               </tr>
             </thead>
             <tbody>
               {projects.map((p) => (
                 <tr key={p.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]/30">
-                  <td className="py-3 px-5 font-medium text-[var(--foreground)]">{p.name}</td>
+                  <td className="py-3 px-5">
+                    <div className="font-medium text-[var(--foreground)]">{p.name}</div>
+                    {p.latest_progress_content && (
+                      <div className="mt-1 text-xs text-[var(--muted-foreground)]">
+                        最新：{p.latest_progress_content}
+                        <span className="ml-1 text-[var(--muted-foreground)]/70">· {p.latest_progress_by} · {toThaiTime(p.latest_progress_at)}</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-w-[240px] truncate">{p.description || "—"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)]">{p.assignee || "—"}</td>
                   <td className="py-3 px-4">
@@ -158,6 +199,11 @@ export default function ProjectsPage() {
                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", STATUS_CLASS[p.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{p.status}</span>
                   </td>
                   <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(p.created_at) || "—"}</td>
+                  <td className="py-3 px-4">
+                    {(isAdmin || user?.name === p.assignee) && (
+                      <button onClick={() => openProgress(p)} className="text-xs text-[var(--primary)] hover:underline">写进展</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -214,6 +260,30 @@ export default function ProjectsPage() {
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowForm(false)} disabled={saving}>取消</Button>
               <Button size="sm" onClick={handleSubmit} disabled={saving}>{saving ? "提交中…" : "提交"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 写进展弹窗 */}
+      {progressTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!savingProgress) setProgressTarget(null); }}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">写进展</h3>
+              <button onClick={() => setProgressTarget(null)} disabled={savingProgress} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">项目：{progressTarget.name}</p>
+            <textarea
+              value={progressContent}
+              onChange={(e) => setProgressContent(e.target.value)}
+              rows={4}
+              placeholder="今天干了啥、进展到哪、遇到啥问题…"
+              className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setProgressTarget(null)} disabled={savingProgress}>取消</Button>
+              <Button size="sm" onClick={handleProgress} disabled={savingProgress}>{savingProgress ? "提交中…" : "提交进展"}</Button>
             </div>
           </div>
         </div>
