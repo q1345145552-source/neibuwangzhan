@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
-import { getDb, seedInfluencerSteps } from "@/lib/db";
+import { getDb, seedInfluencerSteps, logOperation } from "@/lib/db";
 
 // GET /api/discovery-tasks - list all tasks
 export async function GET(req: NextRequest) {
@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO discovery_tasks (task_number, category, creator) VALUES (?, ?, ?)"
   ).run(task_number, category || "", creator || "");
+  logOperation(auth.name, "新建发现任务", "discovery_task", String(result.lastInsertRowid), task_number);
   const task = db.prepare("SELECT * FROM discovery_tasks WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(task, { status: 201 });
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // Scoring rules
 const GMV_TIER_SCORES: Record<string, number> = { ">30万": 29, "20-30万": 25, "10-20万": 19, "5-10万": 11 };
@@ -110,5 +110,6 @@ export async function POST(req: NextRequest) {
     db.prepare("UPDATE influencers SET " + influencerUpdates.join(", ") + ", updated_at = datetime('now') WHERE id = ?").run(...influencerVals);
   }
 
+  logOperation(auth.name, "达人评估", "influencer_evaluation", String(result.lastInsertRowid), `评级 ${final_rating}，总分 ${total_score}`);
   return NextResponse.json(row, { status: 201 });
 }

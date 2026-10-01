@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -36,6 +36,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO influencer_certificates (influencer_id, certificate_number, product_name, issue_date, expiry_date, status, notes, file_url) VALUES (?, ?, ?, ?, ?, 'valid', ?, ?)"
   ).run(id, certificate_number, product_name || "", issue_date || "", expiry_date || "", notes || "", file_url || "");
+  logOperation(auth.name, "上传达人证书", "influencer_certificate", String(result.lastInsertRowid), certificate_number);
   const cert = db.prepare("SELECT * FROM influencer_certificates WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(cert, { status: 201 });
 }

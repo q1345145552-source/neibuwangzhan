@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyAuth(_req);
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!name) return NextResponse.json({ error: "请填写文档名" }, { status: 400 });
   const result = db.prepare("INSERT INTO influencer_documents (influencer_id, name, file_type, file_url, uploaded_by) VALUES (?, ?, ?, ?, ?)")
     .run(id, name, file_type || "", file_url || "", uploaded_by || "");
+  logOperation(auth.name, "上传达人文档", "influencer_document", String(result.lastInsertRowid), name);
 
   // If contract already exists, update its contract_url with the latest uploaded file
   if (file_url) {
