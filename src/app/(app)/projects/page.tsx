@@ -24,6 +24,15 @@ const STATUS_CLASS: Record<string, string> = {
   "已搁置": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
+const PHASES = ["构思", "执行", "里程碑", "收益"];
+
+const PHASE_CLASS: Record<string, string> = {
+  "构思": "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  "执行": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  "里程碑": "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  "收益": "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+};
+
 export default function ProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -78,6 +87,23 @@ export default function ProjectsPage() {
     finally { setSaving(false); }
   };
 
+  // 切换阶段：拨到下一个阶段（构思→执行→里程碑→收益）
+  const handlePhaseChange = async (p: Project, nextPhase: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/projects/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phase: nextPhase }),
+      });
+      if (res.ok) {
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "切换失败");
+      }
+    } catch { alert("切换失败"); }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -115,7 +141,19 @@ export default function ProjectsPage() {
                   <td className="py-3 px-5 font-medium text-[var(--foreground)]">{p.name}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)] max-w-[240px] truncate">{p.description || "—"}</td>
                   <td className="py-3 px-4 text-[var(--muted-foreground)]">{p.assignee || "—"}</td>
-                  <td className="py-3 px-4 text-[var(--muted-foreground)]">{p.current_phase || "—"}</td>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", PHASE_CLASS[p.current_phase] || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>{p.current_phase || "构思"}</span>
+                      {(() => {
+                        const idx = PHASES.indexOf(p.current_phase);
+                        const next = idx >= 0 && idx < PHASES.length - 1 ? PHASES[idx + 1] : null;
+                        const canSwitch = isAdmin || user?.name === p.assignee;
+                        return next && canSwitch ? (
+                          <button onClick={() => handlePhaseChange(p, next)} className="text-xs text-[var(--primary)] hover:underline">→ {next}</button>
+                        ) : null;
+                      })()}
+                    </div>
+                  </td>
                   <td className="py-3 px-4">
                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", STATUS_CLASS[p.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{p.status}</span>
                   </td>
