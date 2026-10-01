@@ -10,7 +10,14 @@ export async function GET(req: NextRequest) {
   if (auth.role !== "admin") return NextResponse.json({ error: "仅老板或管理员可查看" }, { status: 403 });
 
   const db = getDb();
-  const rows = db.prepare("SELECT * FROM projects ORDER BY created_at DESC, id DESC").all();
+  // 每条项目附带最新一条进展（按时间倒序取第一条），列表页直接展示进展
+  const rows = db.prepare(
+    `SELECT p.*,
+      (SELECT content FROM project_progress g WHERE g.project_id = p.id ORDER BY g.created_at DESC, g.id DESC LIMIT 1) AS latest_progress_content,
+      (SELECT created_by FROM project_progress g WHERE g.project_id = p.id ORDER BY g.created_at DESC, g.id DESC LIMIT 1) AS latest_progress_by,
+      (SELECT created_at FROM project_progress g WHERE g.project_id = p.id ORDER BY g.created_at DESC, g.id DESC LIMIT 1) AS latest_progress_at
+     FROM projects p ORDER BY p.created_at DESC, p.id DESC`
+  ).all();
   return NextResponse.json(rows);
 }
 
