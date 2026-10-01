@@ -16,6 +16,33 @@ const statusClass: Record<string, string> = {
   refunded: "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
 };
 
+// 币种分开的钱数展示：¥x + ฿y（为 0 的币种省略，全 0 显示 ¥0）
+function fmtMoney(cny: number, thb: number): string {
+  const parts: string[] = [];
+  if (cny) parts.push(`¥${cny.toLocaleString()}`);
+  if (thb) parts.push(`฿${thb.toLocaleString()}`);
+  return parts.length ? parts.join(" + ") : "¥0";
+}
+
+// 利润按币种分别上色：正数绿色、负数红色、0 中性
+function profitNode(cny: number, thb: number) {
+  const color = (v: number) => (v > 0 ? "text-emerald-600" : v < 0 ? "text-red-500" : "text-[var(--muted-foreground)]");
+  const items: { v: number; sym: string }[] = [];
+  if (cny) items.push({ v: cny, sym: "¥" });
+  if (thb) items.push({ v: thb, sym: "฿" });
+  if (!items.length) return <span className="text-[var(--muted-foreground)] tabular-nums">¥0</span>;
+  return (
+    <span className="tabular-nums">
+      {items.map((it, i) => (
+        <span key={it.sym} className={color(it.v)}>
+          {i > 0 && <span className="text-[var(--muted-foreground)]"> + </span>}
+          {it.sym}{it.v.toLocaleString()}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 interface FinanceRecord {
   id: number;
   order_id: string;
@@ -28,6 +55,9 @@ interface FinanceRecord {
   slip_file: string;
   created_at: string;
   customer_name?: string;
+  business_type_id?: number;
+  business_name?: string;
+  currency?: string;
 }
 
 export default function FinancePage() {
@@ -87,6 +117,27 @@ export default function FinancePage() {
     [filtered]
   );
 
+  // 按业务线分组汇总：收入=已支付收入、支出=全部支出、利润=收入-支出，币种分开
+  const businessGroups = useMemo(() => {
+    const map = new Map<string, { name: string; incomeCNY: number; incomeTHB: number; expenseCNY: number; expenseTHB: number }>();
+    for (const r of allFinances) {
+      const name = r.business_name || "未分类";
+      let g = map.get(name);
+      if (!g) {
+        g = { name, incomeCNY: 0, incomeTHB: 0, expenseCNY: 0, expenseTHB: 0 };
+        map.set(name, g);
+      }
+      const isTHB = r.currency === "THB";
+      const amount = Number(r.amount) || 0;
+      if (r.type === "income" && r.status === "paid") {
+        if (isTHB) g.incomeTHB += amount; else g.incomeCNY += amount;
+      } else if (r.type === "expense") {
+        if (isTHB) g.expenseTHB += amount; else g.expenseCNY += amount;
+      }
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "zh"));
+  }, [allFinances]);
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -100,6 +151,36 @@ export default function FinancePage() {
       <div>
         <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">费用管理</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">所有订单的收入与支出明细</p>
+      </div>
+
+      {/* 按业务线分组 */}
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-[var(--foreground)]">按业务线分组</h2>
+        {businessGroups.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">暂无费用数据</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {businessGroups.map((g) => (
+              <div key={g.name} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+                <p className="truncate text-sm font-medium text-[var(--foreground)]">{g.name}</p>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-[var(--muted-foreground)]">总收入</span>
+                    <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(g.incomeCNY, g.incomeTHB)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-[var(--muted-foreground)]">总支出</span>
+                    <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(g.expenseCNY, g.expenseTHB)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
+                    <span className="text-xs text-[var(--muted-foreground)]">利润</span>
+                    {profitNode(g.incomeCNY - g.expenseCNY, g.incomeTHB - g.expenseTHB)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}

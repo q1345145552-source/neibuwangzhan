@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type");
   const status = searchParams.get("status");
 
-  let sql = "SELECT f.*, o.customer_name FROM finances f JOIN orders o ON f.order_id = o.id";
+  let sql = "SELECT f.*, o.customer_name, o.business_type_id, bt.name AS business_name FROM finances f JOIN orders o ON f.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
   const conditions: string[] = [];
   const params: string[] = [];
   if (type) { conditions.push("f.type = ?"); params.push(type); }
