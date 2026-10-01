@@ -1654,7 +1654,8 @@ function initTables(database: Database.Database) {
       completed_at TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TEXT DEFAULT (datetime('now')),
+      seen_at TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS todo_follow_ups (
@@ -1721,6 +1722,12 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE problems ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
   // todos 表迁移：补完成时间列
   try { database.exec("ALTER TABLE todos ADD COLUMN completed_at TEXT DEFAULT ''"); } catch {}
+  // todos 表迁移：补 seen_at 列（未读提醒）；老待办一次性回填为「已看过」，避免一上线全变未读
+  let addedTodoSeenAt = false;
+  try { database.exec("ALTER TABLE todos ADD COLUMN seen_at TEXT DEFAULT ''"); addedTodoSeenAt = true; } catch {}
+  if (addedTodoSeenAt) {
+    try { database.exec("UPDATE todos SET seen_at = datetime('now') WHERE seen_at = ''"); } catch {}
+  }
   // project_summaries 迁移：把总结内容拆成 结论/经验教训/方向调整
   try { database.exec("ALTER TABLE project_summaries ADD COLUMN conclusion TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE project_summaries ADD COLUMN lesson TEXT DEFAULT ''"); } catch {}

@@ -52,9 +52,16 @@ export async function PATCH(
     const finalAssignee = auth.role === "admin" ? (assignee?.trim() || todo.assignee) : todo.assignee;
     const finalPriority = priority === "紧急" ? "紧急" : "普通";
 
-    db.prepare(
-      "UPDATE todos SET content = ?, priority = ?, assignee = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(content.trim(), finalPriority, finalAssignee, id);
+    if (finalAssignee !== todo.assignee) {
+      // 改派给新人：新负责人未看过
+      db.prepare(
+        "UPDATE todos SET content = ?, priority = ?, assignee = ?, seen_at = '', updated_at = datetime('now') WHERE id = ?"
+      ).run(content.trim(), finalPriority, finalAssignee, id);
+    } else {
+      db.prepare(
+        "UPDATE todos SET content = ?, priority = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(content.trim(), finalPriority, id);
+    }
     logOperation(auth.name, "编辑待办", "todo", String(id), content.trim());
     const edited = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);
     return NextResponse.json(edited);

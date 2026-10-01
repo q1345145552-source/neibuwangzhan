@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
 
   const todoId = Number(result.lastInsertRowid);
 
+  // 自己给自己建的待办算「已看过」；派给别人的待办初始为未读（seen_at 留空）
+  if (finalAssignee === auth.name) {
+    db.prepare("UPDATE todos SET seen_at = datetime('now') WHERE id = ?").run(todoId);
+  }
+
   // 图片（可选，多张）：url 列表随待办一起保存
   const imgUrls = Array.isArray(images)
     ? images.filter((u: unknown) => typeof u === "string" && u.trim()).map((u: string) => u.trim())

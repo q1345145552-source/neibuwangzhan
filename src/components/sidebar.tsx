@@ -172,25 +172,21 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, [user?.name]);
 
-  // 我的待办角标：当前登录员工未完成的待办数量
+  // 我的待办角标：未看过的新增/新跟进待办数量
   useEffect(() => {
     if (!user?.name) return;
-    const fetchTodos = () => {
+    const fetchUnseen = () => {
       const token = getStoredAuthToken();
       if (!token) return;
-      fetch("/api/todos", {
+      fetch("/api/todos/unseen", {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then(r => r.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            setTodoCount(data.filter((t: any) => t.status !== "已完成").length);
-          }
-        })
+        .then(d => { if (typeof d.count === "number") setTodoCount(d.count); })
         .catch(() => {});
     };
-    fetchTodos();
-    const interval = setInterval(fetchTodos, 30000); // poll every 30s
+    fetchUnseen();
+    const interval = setInterval(fetchUnseen, 3000); // poll every 3s
     return () => clearInterval(interval);
   }, [user?.name]);
 

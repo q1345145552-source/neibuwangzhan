@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2 } from "lucide-react";
+import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell } from "lucide-react";
 
 interface Todo {
   id: number;
@@ -53,6 +53,9 @@ export default function TodosPage() {
   const [deleteTarget, setDeleteTarget] = useState<Todo | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [completedOpen, setCompletedOpen] = useState(false);
+  const [unseen, setUnseen] = useState<{ id: number; content: string; type: string; created_at: string }[]>([]);
+  const [inboxCount, setInboxCount] = useState(0);
+  const [showInbox, setShowInbox] = useState(false);
 
   const load = useCallback(() => {
     fetchWithAuth("/api/todos", { cache: "no-store" })
@@ -63,6 +66,26 @@ export default function TodosPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // 信息箱：未看过的新增/新跟进待办
+  const loadUnseen = useCallback(() => {
+    fetchWithAuth("/api/todos/unseen", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setUnseen(Array.isArray(d.items) ? d.items : []);
+          setInboxCount(typeof d.count === "number" ? d.count : 0);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { loadUnseen(); }, [loadUnseen]);
+
+  const markSeen = async (id: number) => {
+    try { await fetchWithAuth(`/api/todos/${id}/seen`, { method: "POST" }); } catch {}
+    loadUnseen();
+  };
 
   // 管理员新建时从员工档案下拉选负责人
   useEffect(() => {
@@ -135,6 +158,7 @@ export default function TodosPage() {
       if (res.ok) {
         setShowForm(false);
         load();
+        loadUnseen();
       } else {
         const e = await res.json().catch(() => ({}));
         setErr(e.error || "提交失败");
@@ -157,6 +181,9 @@ export default function TodosPage() {
 
   // 打开跟进历史弹窗：拉取该待办所有跟进记录（后端已按时间倒序）
   const openFollowHistory = async (todo: Todo) => {
+    // 打开跟进历史 = 看过这条待办（清掉「新跟进」未读）
+    fetchWithAuth(`/api/todos/${todo.id}/seen`, { method: "POST" }).catch(() => {});
+    loadUnseen();
     setHistoryTarget(todo);
     setHistoryRecords([]);
     setLoadingHistory(true);
@@ -208,6 +235,7 @@ export default function TodosPage() {
       if (res.ok) {
         setDeleteTarget(null);
         load();
+        loadUnseen();
       } else {
         const e = await res.json().catch(() => ({}));
         alert(e.error || "删除失败");
@@ -230,6 +258,7 @@ export default function TodosPage() {
       if (res.ok) {
         setFollowTarget(null);
         load();
+        loadUnseen();
       } else {
         const e = await res.json().catch(() => ({}));
         setErr(e.error || "添加跟进失败");
@@ -247,6 +276,7 @@ export default function TodosPage() {
       });
       if (res.ok) {
         load();
+        loadUnseen();
       } else {
         const e = await res.json().catch(() => ({}));
         alert(e.error || "操作失败");
@@ -376,9 +406,49 @@ export default function TodosPage() {
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">我的待办</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">我的待办列表</p>
         </div>
-        <Button size="sm" onClick={openForm} className="gap-1.5">
-          <Plus className="size-3.5" />新建待办
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Button size="sm" variant="outline" onClick={() => setShowInbox((o) => !o)} className="gap-1.5">
+              <Bell className="size-3.5" />信息箱
+              {inboxCount > 0 && (
+                <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold text-white">{inboxCount > 99 ? "99+" : inboxCount}</span>
+              )}
+            </Button>
+            {showInbox && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowInbox(false)} />
+                <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+                    <span className="text-sm font-medium text-[var(--foreground)]">信息箱</span>
+                    <button onClick={() => setShowInbox(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto p-2">
+                    {unseen.length === 0 ? (
+                      <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">没有未看过的待办更新</p>
+                    ) : (
+                      unseen.map((it) => (
+                        <button
+                          key={it.id}
+                          onClick={() => { markSeen(it.id); }}
+                          className="flex w-full flex-col gap-1 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--muted)]"
+                        >
+                          <span className={cn("inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium", it.type === "新增" ? "bg-blue-500/15 text-blue-600 dark:text-blue-400" : "bg-amber-500/15 text-amber-600 dark:text-amber-400")}>
+                            {it.type}
+                          </span>
+                          <span className="text-sm text-[var(--foreground)]">{it.content}</span>
+                          <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(it.created_at) || "—"}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <Button size="sm" onClick={openForm} className="gap-1.5">
+            <Plus className="size-3.5" />新建待办
+          </Button>
+        </div>
       </div>
 
       {loading ? (
