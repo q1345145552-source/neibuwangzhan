@@ -152,6 +152,7 @@ export function Sidebar() {
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [todoCount, setTodoCount] = useState(0);
+  const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   useEffect(() => {
@@ -193,6 +194,24 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, [user?.name]);
 
+  // 消息未读数：侧栏「消息」入口的红色角标，每 3 秒轮询，新消息/已读都无需刷新即可更新
+  useEffect(() => {
+    if (!user?.name) return;
+    const fetchUnread = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/chat/unread-count", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.count === "number") setMsgUnreadCount(d.count); })
+        .catch(() => {});
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 3000); // poll every 3s
+    return () => clearInterval(interval);
+  }, [user?.name]);
+
   // 机构业务总开关：关闭时隐藏机构入口
   useEffect(() => {
     const token = getStoredAuthToken();
@@ -223,7 +242,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount }} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
