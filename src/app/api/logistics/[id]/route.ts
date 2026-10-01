@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { existsSync, unlinkSync } from "fs";
 import path from "path";
 import os from "os";
@@ -100,5 +100,6 @@ export async function DELETE(
     }
   }
 
+  logOperation(auth.name, "删除柜号", "logistics", String(id), order.cabinet_number || "");
   return NextResponse.json({ success: true, deletedFiles: safeNames.size });
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/orders/:id/steps/:stepId/notes
 export async function GET(
@@ -34,6 +34,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO step_notes (step_id, order_id, content, created_by) VALUES (?, ?, ?, ?)"
   ).run(stepId, id, content, created_by || "");
+  logOperation(auth.name, "添加订单步骤备注", "step_note", String(result.lastInsertRowid), content);
   const note = db.prepare("SELECT * FROM step_notes WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(note, { status: 201 });
 }
