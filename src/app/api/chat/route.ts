@@ -49,7 +49,12 @@ export async function GET(req: NextRequest) {
     "UPDATE messages SET is_read = 1, read_at = datetime('now') WHERE conversation_id = ? AND receiver = ? AND is_read = 0"
   ).run(conversationId, auth.name);
 
-  return NextResponse.json({ conversationId, other, messages });
+  // 我发出去、对方已读的消息 id，供发送方显示「已读」
+  const readMessageIds = (db.prepare(
+    "SELECT id FROM messages WHERE conversation_id = ? AND sender = ? AND is_read = 1"
+  ).all(conversationId, auth.name) as { id: number }[]).map((r) => r.id);
+
+  return NextResponse.json({ conversationId, other, messages, readMessageIds });
 }
 
 // POST /api/chat — 发一条消息（body: { other, content?, image_url? }），文字/图片二选一或可带文字说明
