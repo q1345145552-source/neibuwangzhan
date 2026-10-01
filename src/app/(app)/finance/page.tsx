@@ -3,9 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, TrendingUp, TrendingDown, Download } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "lucide-react";
 import { fetchAllFinances } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, toThaiTime } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
@@ -65,6 +65,7 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [selectedBusiness, setSelectedBusiness] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -138,6 +139,20 @@ export default function FinancePage() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "zh"));
   }, [allFinances]);
 
+  // 当前点开的业务线（汇总沿用 businessGroups，保证和分组卡片数字一致）
+  const selectedGroup = useMemo(
+    () => businessGroups.find((g) => g.name === selectedBusiness) || null,
+    [businessGroups, selectedBusiness]
+  );
+
+  // 该业务线下所有订单的费用明细（按时间倒序）
+  const selectedDetails = useMemo(() => {
+    if (!selectedBusiness) return [];
+    return allFinances
+      .filter((r) => (r.business_name || "未分类") === selectedBusiness)
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  }, [allFinances, selectedBusiness]);
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -160,28 +175,113 @@ export default function FinancePage() {
           <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">暂无费用数据</p>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {businessGroups.map((g) => (
-              <div key={g.name} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-                <p className="truncate text-sm font-medium text-[var(--foreground)]">{g.name}</p>
-                <div className="mt-3 space-y-2 text-sm">
+            {businessGroups.map((g) => {
+              const open = selectedBusiness === g.name;
+              return (
+                <div
+                  key={g.name}
+                  onClick={() => setSelectedBusiness(open ? null : g.name)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedBusiness(open ? null : g.name); } }}
+                  className={cn(
+                    "cursor-pointer rounded-xl border bg-[var(--card)] p-4 transition-colors",
+                    open ? "border-[var(--primary)]" : "border-[var(--border)] hover:border-[var(--primary)]"
+                  )}
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-[var(--muted-foreground)]">总收入</span>
-                    <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(g.incomeCNY, g.incomeTHB)}</span>
+                    <p className="truncate text-sm font-medium text-[var(--foreground)]">{g.name}</p>
+                    <ChevronDown className={cn("size-4 shrink-0 text-[var(--muted-foreground)] transition-transform", open && "rotate-180")} />
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-[var(--muted-foreground)]">总支出</span>
-                    <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(g.expenseCNY, g.expenseTHB)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
-                    <span className="text-xs text-[var(--muted-foreground)]">利润</span>
-                    {profitNode(g.incomeCNY - g.expenseCNY, g.incomeTHB - g.expenseTHB)}
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-[var(--muted-foreground)]">总收入</span>
+                      <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(g.incomeCNY, g.incomeTHB)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-[var(--muted-foreground)]">总支出</span>
+                      <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(g.expenseCNY, g.expenseTHB)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
+                      <span className="text-xs text-[var(--muted-foreground)]">利润</span>
+                      {profitNode(g.incomeCNY - g.expenseCNY, g.incomeTHB - g.expenseTHB)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* 业务线明细 */}
+      {selectedGroup && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedBusiness(null)}
+                className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                aria-label="关闭明细"
+              >
+                <X className="size-4" />
+              </button>
+              <h3 className="text-sm font-medium text-[var(--foreground)]">{selectedGroup.name}</h3>
+              <span className="text-xs text-[var(--muted-foreground)]">{selectedDetails.length} 笔费用</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+              <span className="text-[var(--muted-foreground)]">总收入 <span className="ml-1 text-[var(--foreground)] tabular-nums">{fmtMoney(selectedGroup.incomeCNY, selectedGroup.incomeTHB)}</span></span>
+              <span className="text-[var(--muted-foreground)]">总支出 <span className="ml-1 text-[var(--foreground)] tabular-nums">{fmtMoney(selectedGroup.expenseCNY, selectedGroup.expenseTHB)}</span></span>
+              <span className="text-[var(--muted-foreground)]">利润 {profitNode(selectedGroup.incomeCNY - selectedGroup.expenseCNY, selectedGroup.incomeTHB - selectedGroup.expenseTHB)}</span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left">
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">订单号</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">客户名</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">类型</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">金额</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">币种</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">状态</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">描述</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedDetails.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无费用明细</td>
+                  </tr>
+                ) : (
+                  selectedDetails.map((r) => (
+                    <tr key={r.id} className="border-b border-[var(--border)] last:border-0">
+                      <td className="px-4 py-2.5 font-mono text-xs">{r.order_id || "-"}</td>
+                      <td className="px-4 py-2.5">{r.customer_name || "-"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
+                          r.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
+                        )}>
+                          {typeLabels[r.type] || r.type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono tabular-nums">{r.currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">{r.currency === "THB" ? "泰铢" : "人民币"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{statusLabels[r.status] || r.status}</span>
+                      </td>
+                      <td className="px-4 py-2.5 max-w-[200px] truncate">{r.description || "-"}</td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at) || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
