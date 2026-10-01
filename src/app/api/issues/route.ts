@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assigneeStr, created_by || "", imagesJson);
   const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
+  logOperation(created_by || auth.name, "提交工单", "issue", String(result.lastInsertRowid), description);
   // 每个被指派的员工都发一条通知
   for (const name of assigneeList) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -103,6 +104,9 @@ export async function PATCH(req: NextRequest) {
   sets.push("updated_at = datetime('now')");
   vals.push(id);
   db.prepare(`UPDATE issue_tickets SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+  if (status) {
+    logOperation(auth.name, status === "已解决" ? "解决工单" : "改工单状态", "issue", String(id), status);
+  }
   return NextResponse.json(db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(id));
 }
 
