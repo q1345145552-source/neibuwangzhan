@@ -1606,6 +1606,38 @@ function initTables(database: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_todo_follow_ups_todo_id ON todo_follow_ups(todo_id);
     CREATE INDEX IF NOT EXISTS idx_todo_images_todo_id ON todo_images(todo_id);
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      assignee TEXT DEFAULT '',
+      current_phase TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '进行中' CHECK(status IN ('进行中','已完成','已搁置')),
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS project_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS project_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      phase TEXT DEFAULT '',
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_progress_project_id ON project_progress(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_summaries_project_id ON project_summaries(project_id);
   `);
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）

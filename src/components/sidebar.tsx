@@ -38,6 +38,7 @@ import {
   AlertCircle,
   ListTodo,
   Activity,
+  FolderKanban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -45,6 +46,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const navigation = [
   { name: "仪表盘", href: "/", icon: LayoutDashboard },
   { name: "我的待办", href: "/todos", icon: ListTodo },
+  { name: "我的项目", href: "/projects", icon: FolderKanban },
   { name: "员工动态", href: "/activity", icon: Activity },
 ];
 
@@ -219,7 +221,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount }} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
