@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO templates (name, type, category, data_json, created_by) VALUES (?, ?, ?, ?, ?)"
   ).run(name, type, category || "", JSON.stringify(data_json || {}), auth.name);
+  logOperation(auth.name, "新增模板", "template", String(result.lastInsertRowid), name);
   return NextResponse.json(db.prepare("SELECT * FROM templates WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
 }
 
@@ -48,6 +49,7 @@ export async function PATCH(req: NextRequest) {
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   vals.push(id);
   db.prepare(`UPDATE templates SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+  logOperation(auth.name, "修改模板", "template", String(id));
   return NextResponse.json(db.prepare("SELECT * FROM templates WHERE id = ?").get(id));
 }
 
@@ -59,5 +61,6 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
   getDb().prepare("DELETE FROM templates WHERE id = ?").run(id);
+  logOperation(auth.name, "删除模板", "template", String(id));
   return NextResponse.json({ success: true });
 }

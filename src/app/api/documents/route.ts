@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url) VALUES (?, ?, ?, '已审核', 'client_to_us', ?, ?)"
   ).run(order_id || null, name, file_type || "", auth.name, file_url || "");
+  logOperation(auth.name, "新增文档", "document", String(result.lastInsertRowid), name);
   const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(doc, { status: 201 });
 }
@@ -51,5 +52,6 @@ export async function DELETE(req: NextRequest) {
 
   const db = getDb();
   db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+  logOperation(auth.name, "删除文档", "document", String(id));
   return NextResponse.json({ success: true });
 }

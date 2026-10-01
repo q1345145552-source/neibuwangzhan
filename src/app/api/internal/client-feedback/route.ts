@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // POST: 内部记录反馈（需登录）
 export async function POST(req: NextRequest) {
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     ).run(name, pts, reason, order_id);
   }
 
+  logOperation(auth.name, "记录客户反馈", "client_feedback", String(order_id), `综合 ${o} 星，${ptsLabel} 分`);
   return NextResponse.json({ success: true });
 }
 

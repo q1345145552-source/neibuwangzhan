@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getSystemSetting, setSystemSetting } from "@/lib/db";
+import { getSystemSetting, setSystemSetting, logOperation } from "@/lib/db";
 import { readJson } from "@/lib/req";
 
 // GET /api/settings — 读取系统设置（所有登录用户可读，用于侧栏/工作量的显隐判断）
@@ -25,5 +25,6 @@ export async function PATCH(req: NextRequest) {
   }
 
   setSystemSetting("agency_enabled", body.agency_enabled ? "1" : "0");
+  logOperation(auth.name, "修改系统设置", "setting", "agency_enabled", `机构业务开关 = ${body.agency_enabled ? "开启" : "关闭"}`);
   return NextResponse.json({ agency_enabled: body.agency_enabled });
 }
