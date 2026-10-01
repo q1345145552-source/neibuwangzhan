@@ -47,5 +47,15 @@ export async function GET(req: NextRequest) {
   tlSql += " ORDER BY created_at DESC, id DESC LIMIT 300";
   const timeline = db.prepare(tlSql).all(...tlParams);
 
-  return NextResponse.json({ today, range, total, active, ranking, categories, timeline });
+  // 所有在职员工（含没操作的），每人在范围内操作数（含 0）
+  const employees = db.prepare(
+    `SELECT e.name, COUNT(a.id) AS count
+     FROM employees e
+     LEFT JOIN audit_logs a ON a.actor = e.name AND a.created_at >= ? AND a.created_at < ?
+     WHERE e.status = '在职' AND e.role IN ('admin','employee')
+     GROUP BY e.name
+     ORDER BY count DESC, e.name ASC`
+  ).all(start, end);
+
+  return NextResponse.json({ today, range, total, active, ranking, categories, timeline, employees });
 }
