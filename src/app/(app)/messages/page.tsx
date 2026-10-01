@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { MessageSquare, X, Users, ImagePlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MessageSquare, X, Users, ImagePlus, FileText } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime } from "@/lib/utils";
@@ -27,6 +28,7 @@ interface Message {
   receiver: string;
   content: string;
   image_url: string;
+  order_id: string;
   is_read: number;
   read_at: string | null;
   created_at: string;
@@ -47,6 +49,7 @@ function imgSrc(url: string): string {
 export default function MessagesPage() {
   const { user } = useAuth();
   const me = user?.name || "";
+  const router = useRouter();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
@@ -57,6 +60,10 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [showOrders, setShowOrders] = useState(false);
+  const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -160,13 +167,13 @@ export default function MessagesPage() {
   }, [messages]);
 
   // 发一条消息（文字或图片），自己发出去的立刻上屏
-  const postMessage = async (content: string, imageUrl: string): Promise<boolean> => {
+  const postMessage = async (content: string, imageUrl: string, orderId: string): Promise<boolean> => {
     if (!selected) return false;
     const isDirect = selected.kind === "direct";
     const url = isDirect ? "/api/chat" : "/api/chat/group-messages";
     const body = isDirect
-      ? { other: selected.name, content, image_url: imageUrl }
-      : { group_id: selected.id, content, image_url: imageUrl };
+      ? { other: selected.name, content, image_url: imageUrl, order_id: orderId }
+      : { group_id: selected.id, content, image_url: imageUrl, order_id: orderId };
     try {
       const r = await fetchWithAuth(url, {
         method: "POST",
@@ -193,7 +200,7 @@ export default function MessagesPage() {
     if (!text || !selected || sending) return;
     setSending(true);
     setError(null);
-    const ok = await postMessage(text, "");
+    const ok = await postMessage(text, "", "");
     setSending(false);
     if (ok) setInput("");
   };
@@ -212,7 +219,7 @@ export default function MessagesPage() {
       const r = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
       const d = await r.json().catch(() => null);
       if (r.ok && d?.url) {
-        await postMessage("", d.url);
+        await postMessage("", d.url, "");
       } else {
         setError(d?.error || "图片上传失败");
       }
@@ -225,6 +232,30 @@ export default function MessagesPage() {
 
   const toggleMember = (name: string) => {
     setSelectedMembers((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  };
+
+  // 打开订单选择器
+  const openOrderPicker = () => {
+    setShowOrders(true);
+    setOrdersLoading(true);
+    setOrdersError(null);
+    fetchWithAuth("/api/orders", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (Array.isArray(d)) setOrders(d.map((o: any) => ({ id: o.id, customer_name: o.customer_name })));
+        else setOrders([]);
+      })
+      .catch(() => setOrdersError("加载订单失败"))
+      .finally(() => setOrdersLoading(false));
+  };
+
+  // 发一条订单卡片消息
+  const sendOrder = async (orderId: string) => {
+    setShowOrders(false);
+    setSending(true);
+    setError(null);
+    await postMessage("", "", orderId);
+    setSending(false);
   };
 
   const createGroup = async () => {
@@ -382,38 +413,57 @@ export default function MessagesPage() {
                   messages.map((m) => {
                     const mine = m.sender === me;
                     const isImage = !!m.image_url;
+                    const isOrder = !!m.order_id;
                     return (
                       <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div className="max-w-[75%]">
                           {isGroup && !mine && (
                             <p className="mb-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>
                           )}
-                          <div
-                            className={cn(
-                              "rounded-lg text-sm",
-                              mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
-                              isImage ? "p-1.5" : "px-3 py-2"
-                            )}
-                          >
-                            {isImage ? (
-                              <button
-                                onClick={() => setLightbox(m.image_url)}
-                                className="block max-w-full"
-                                title="查看大图"
-                              >
-                                <img
-                                  src={imgSrc(m.image_url)}
-                                  alt="图片消息"
-                                  className="max-h-60 max-w-full cursor-zoom-in rounded-md object-contain"
-                                />
-                              </button>
-                            ) : (
-                              <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                            )}
-                            <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
+                          {isOrder ? (
+                            <button
+                              onClick={() => router.push(`/orders/${m.order_id}`)}
+                              className="block w-full rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
+                            >
+                              <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]">
+                                <FileText className="size-3.5" /> 订单
+                              </span>
+                              <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{m.order_id}</span>
+                              <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{m.content || "—"}</span>
+                            </button>
+                          ) : (
+                            <div
+                              className={cn(
+                                "rounded-lg text-sm",
+                                mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
+                                isImage ? "p-1.5" : "px-3 py-2"
+                              )}
+                            >
+                              {isImage ? (
+                                <button
+                                  onClick={() => setLightbox(m.image_url)}
+                                  className="block max-w-full"
+                                  title="查看大图"
+                                >
+                                  <img
+                                    src={imgSrc(m.image_url)}
+                                    alt="图片消息"
+                                    className="max-h-60 max-w-full cursor-zoom-in rounded-md object-contain"
+                                  />
+                                </button>
+                              ) : (
+                                <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                              )}
+                              <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
+                                {toThaiTime(m.created_at) || "—"}
+                              </p>
+                            </div>
+                          )}
+                          {isOrder && (
+                            <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
                               {toThaiTime(m.created_at) || "—"}
                             </p>
-                          </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -443,6 +493,14 @@ export default function MessagesPage() {
                   className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
                 >
                   <ImagePlus className="size-5" />
+                </button>
+                <button
+                  onClick={openOrderPicker}
+                  disabled={sending}
+                  title="分享订单"
+                  className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                >
+                  <FileText className="size-5" />
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
                 <button
@@ -532,6 +590,40 @@ export default function MessagesPage() {
             className="max-h-[90vh] max-w-full rounded-lg object-contain"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* 选择订单 */}
+      {showOrders && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowOrders(false)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">分享订单</h3>
+              <button onClick={() => setShowOrders(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            {ordersLoading ? (
+              <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : orders.length === 0 ? (
+              <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无订单</p>
+            ) : (
+              <div className="space-y-1.5">
+                {orders.map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => sendOrder(o.id)}
+                    className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-[var(--foreground)]">{o.id}</span>
+                      <span className="block truncate text-xs text-[var(--muted-foreground)]">{o.customer_name || "—"}</span>
+                    </span>
+                    <span className="ml-3 shrink-0 text-xs font-medium text-[var(--primary)]">发送</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {ordersError && <p className="mt-2 text-xs text-red-500">{ordersError}</p>}
+          </div>
         </div>
       )}
     </div>

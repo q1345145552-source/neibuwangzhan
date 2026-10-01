@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (!isMember(db, groupId, auth.name)) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
 
   const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, is_read, read_at, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(groupId, after);
 
   return NextResponse.json({ group, messages });
@@ -46,21 +46,32 @@ export async function POST(req: NextRequest) {
   const groupId = Number(body?.group_id);
   const content = String(body?.content || "").trim();
   const imageUrl = String(body?.image_url || "").trim();
+  const orderId = String(body?.order_id || "").trim();
   if (!Number.isInteger(groupId) || groupId <= 0) return NextResponse.json({ error: "缺少群" }, { status: 400 });
-  if (!content && !imageUrl) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
+  if (!content && !imageUrl && !orderId) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
   if (imageUrl && !imageUrl.startsWith("/api/files/")) return NextResponse.json({ error: "图片地址无效" }, { status: 400 });
 
   const group = getGroup(db, groupId);
   if (!group) return NextResponse.json({ error: "群不存在" }, { status: 404 });
   if (!isMember(db, groupId, auth.name)) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
 
+  // 分享订单：存 order_id，并把客户名快照进 content（前端据此渲染订单卡片）
+  let finalContent = content;
+  let finalOrderId = "";
+  if (orderId) {
+    const order = db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(orderId) as { customer_name: string } | undefined;
+    if (!order) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
+    finalOrderId = orderId;
+    finalContent = order.customer_name;
+  }
+
   const now = new Date().toISOString().replace("T", " ").split(".")[0];
   const r = db.prepare(
-    "INSERT INTO messages (group_id, sender, receiver, content, image_url, is_read, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)"
-  ).run(groupId, auth.name, group.name, content, imageUrl, now);
+    "INSERT INTO messages (group_id, sender, receiver, content, image_url, order_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)"
+  ).run(groupId, auth.name, group.name, finalContent, imageUrl, finalOrderId, now);
 
   const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, is_read, read_at, created_at FROM messages WHERE id = ?"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE id = ?"
   ).get(Number(r.lastInsertRowid));
 
   return NextResponse.json({ message }, { status: 201 });
