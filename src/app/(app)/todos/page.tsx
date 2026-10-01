@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ImagePlus, Image } from "lucide-react";
+import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ImagePlus, Image, History, Pencil, Trash2 } from "lucide-react";
 
 interface Todo {
   id: number;
@@ -42,6 +42,14 @@ export default function TodosPage() {
   const [followTarget, setFollowTarget] = useState<Todo | null>(null);
   const [followContent, setFollowContent] = useState("");
   const [following, setFollowing] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<Todo | null>(null);
+  const [historyRecords, setHistoryRecords] = useState<{ id: number; content: string; created_by: string; created_at: string }[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [editTarget, setEditTarget] = useState<Todo | null>(null);
+  const [editForm, setEditForm] = useState({ content: "", priority: "普通", assignee: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Todo | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [completedOpen, setCompletedOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -139,6 +147,67 @@ export default function TodosPage() {
     setErr("");
   };
 
+  // 打开跟进历史弹窗：拉取该待办所有跟进记录（后端已按时间倒序）
+  const openFollowHistory = async (todo: Todo) => {
+    setHistoryTarget(todo);
+    setHistoryRecords([]);
+    setLoadingHistory(true);
+    try {
+      const res = await fetchWithAuth(`/api/todos/${todo.id}/follow-ups`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryRecords(Array.isArray(data) ? data : []);
+      } else {
+        setHistoryRecords([]);
+      }
+    } catch { setHistoryRecords([]); }
+    finally { setLoadingHistory(false); }
+  };
+
+  const openEdit = (todo: Todo) => {
+    setEditTarget(todo);
+    setEditForm({ content: todo.content, priority: todo.priority, assignee: todo.assignee || "" });
+    setErr("");
+  };
+
+  const handleEditSave = async () => {
+    if (!editTarget) return;
+    if (!editForm.content.trim()) { setErr("请填写工作内容"); return; }
+    setSavingEdit(true);
+    setErr("");
+    try {
+      const res = await fetchWithAuth(`/api/todos/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      if (res.ok) {
+        setEditTarget(null);
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setErr(e.error || "保存失败");
+      }
+    } catch { setErr("保存失败"); }
+    finally { setSavingEdit(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/todos/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setDeleteTarget(null);
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "删除失败");
+      }
+    } catch { alert("删除失败"); }
+    finally { setDeleting(false); }
+  };
+
   const handleFollow = async () => {
     if (!followTarget) return;
     if (!followContent.trim()) { setErr("请填写跟进内容"); return; }
@@ -225,11 +294,22 @@ export default function TodosPage() {
               <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.created_at) || "—"}</td>
               <td className="py-3 px-4">
                 <div className="flex items-center gap-1.5">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(t)} className="gap-1">
+                    <Pencil className="size-3.5" />编辑
+                  </Button>
+                  {t.latest_follow_content && (
+                    <Button size="sm" variant="ghost" onClick={() => openFollowHistory(t)} className="gap-1 text-[var(--muted-foreground)]">
+                      <History className="size-3.5" />历史
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => openFollow(t)} className="gap-1">
                     <MessageSquare className="size-3.5" />跟进
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => handleComplete(t)} className="gap-1">
                     <Check className="size-3.5" />完成
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(t)} className="gap-1 text-[var(--destructive)]">
+                    <Trash2 className="size-3.5" />删除
                   </Button>
                 </div>
               </td>
@@ -266,9 +346,14 @@ export default function TodosPage() {
               </div>
               <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => openEdit(t)} className="gap-1"><Pencil className="size-3.5" />编辑</Button>
+              {t.latest_follow_content && (
+                <Button size="sm" variant="ghost" onClick={() => openFollowHistory(t)} className="gap-1 text-[var(--muted-foreground)]"><History className="size-3.5" />历史</Button>
+              )}
               <Button size="sm" variant="outline" onClick={() => openFollow(t)} className="gap-1"><MessageSquare className="size-3.5" />跟进</Button>
               <Button size="sm" variant="outline" onClick={() => handleComplete(t)} className="gap-1"><Check className="size-3.5" />完成</Button>
+              <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(t)} className="gap-1 text-[var(--destructive)]"><Trash2 className="size-3.5" />删除</Button>
             </div>
           </div>
         ))}
@@ -478,6 +563,113 @@ export default function TodosPage() {
               {previewImages.map((url, i) => (
                 <img key={i} src={fileUrl(url)} alt={`图片 ${i + 1}`} className="w-full rounded-md border border-[var(--border)]" />
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 跟进历史弹窗 */}
+      {historyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHistoryTarget(null)}>
+          <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">跟进历史</h3>
+              <button onClick={() => setHistoryTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-3 text-sm text-[var(--muted-foreground)]">待办：{historyTarget.content}</p>
+            {loadingHistory ? (
+              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+            ) : historyRecords.length === 0 ? (
+              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无跟进记录</p>
+            ) : (
+              <div className="space-y-3">
+                {historyRecords.map((h) => (
+                  <div key={h.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-[var(--foreground)]">{h.created_by}</span>
+                      <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{toThaiTime(h.created_at) || "—"}</span>
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--foreground)]">{h.content}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 编辑待办弹窗 */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!savingEdit) setEditTarget(null); }}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">编辑待办</h3>
+              <button onClick={() => setEditTarget(null)} disabled={savingEdit} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">工作内容（必填）</label>
+                <textarea
+                  value={editForm.content}
+                  onChange={(e) => setEditForm((p) => ({ ...p, content: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">紧急程度</label>
+                <select
+                  value={editForm.priority}
+                  onChange={(e) => setEditForm((p) => ({ ...p, priority: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                >
+                  <option value="普通">普通</option>
+                  <option value="紧急">紧急</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">负责人</label>
+                {isAdmin ? (
+                  <select
+                    value={editForm.assignee}
+                    onChange={(e) => setEditForm((p) => ({ ...p, assignee: e.target.value }))}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                  >
+                    {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+                  </select>
+                ) : (
+                  <p className="text-sm text-[var(--foreground)]">{editForm.assignee || user?.name || "—"}</p>
+                )}
+              </div>
+
+              {err && <p className="text-xs text-[var(--destructive)]">{err}</p>}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditTarget(null)} disabled={savingEdit}>取消</Button>
+              <Button size="sm" onClick={handleEditSave} disabled={savingEdit}>{savingEdit ? "保存中…" : "保存"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!deleting) setDeleteTarget(null); }}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">删除待办</h3>
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+              确认删除待办「{deleteTarget.content}」？将连同它的所有跟进记录和图片一起删除，无法恢复！
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>取消</Button>
+              <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting}>{deleting ? "删除中…" : "确认删除"}</Button>
             </div>
           </div>
         </div>
