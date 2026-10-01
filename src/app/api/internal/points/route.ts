@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, isAgencyEnabled } from "@/lib/db";
+import { getDb, isAgencyEnabled, logOperation } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokMonthKey, bangkokMonthBounds, bangkokDayOfWeek, bangkokToday, bangkokLastDayOfMonth, bangkokTimeToUtc, utcNowStr } from "@/lib/time";
@@ -166,7 +166,8 @@ export async function POST(req: NextRequest) {
   const { employee_name, points, reason } = body;
   if (!employee_name || !points || !reason) return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
 
-  db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, is_manual, created_by) VALUES (?, ?, ?, 'manual', 1, ?)").run(employee_name, Number(points), reason, auth.name || "");
+  const result = db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, is_manual, created_by) VALUES (?, ?, ?, 'manual', 1, ?)").run(employee_name, Number(points), reason, auth.name || "");
+  logOperation(auth.name, "手动奖惩积分", "points", String(result.lastInsertRowid), `${employee_name} ${Number(points) > 0 ? "+" : ""}${points}: ${reason}`);
   return NextResponse.json({ success: true });
 }
 
@@ -182,6 +183,7 @@ export async function PATCH(req: NextRequest) {
     const record = db.prepare("SELECT * FROM points_records WHERE id = ? AND status != '已撤销'").get(body.id);
     if (!record) return NextResponse.json({ error: "记录不存在或已撤销" }, { status: 404 });
     db.prepare("UPDATE points_records SET status = '已撤销', undone_by = ?, undone_at = datetime('now') WHERE id = ?").run(auth.name || "", body.id);
+    logOperation(auth.name, "撤销积分", "points", String(body.id));
     return NextResponse.json({ success: true });
   }
   // 管理员恢复已撤销的记录
@@ -189,6 +191,7 @@ export async function PATCH(req: NextRequest) {
     const record = db.prepare("SELECT * FROM points_records WHERE id = ? AND status = '已撤销'").get(body.id);
     if (!record) return NextResponse.json({ error: "记录不存在或未被撤销" }, { status: 404 });
     db.prepare("UPDATE points_records SET status = '有效', undone_by = '', undone_at = '' WHERE id = ?").run(body.id);
+    logOperation(auth.name, "恢复积分", "points", String(body.id));
     return NextResponse.json({ success: true });
   }
   if (body.action === "appeal") {

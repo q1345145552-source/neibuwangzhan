@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { readJson } from "@/lib/req";
 
 const SHIPPING_STEPS = [
@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
     return orderId;
   })();
 
+  logOperation(auth.name, "建柜号", "logistics", String(result), cabinet_number);
   const order = db.prepare("SELECT * FROM shipping_orders WHERE id = ?").get(result);
   return NextResponse.json(order, { status: 201 });
 }
