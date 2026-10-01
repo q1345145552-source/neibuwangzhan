@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -73,6 +73,7 @@ export async function PATCH(
     );
   }
 
+  logOperation(auth.name, "更新WHT步骤状态", "wht_step", String(step_id), `${(step as any).step_name || ""} → ${status ?? "—"}`);
   const updated = db.prepare("SELECT * FROM wht_record_steps WHERE id = ?").get(step_id);
   return NextResponse.json(updated);
 }

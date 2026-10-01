@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // POST /api/wht/records/batch
 export async function POST(req: NextRequest) {
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     // Batch mark as reminded
     const placeholders = ids.map(() => "?").join(",");
     db.prepare(`UPDATE wht_records SET reminded = 1, updated_at = datetime('now') WHERE id IN (${placeholders})`).run(...ids);
+    logOperation(auth.name, "批量催交WHT资料", "wht_batch", String(ids.length), `催交 ${ids.length} 条`);
     return NextResponse.json({ success: true, action: "remind", count: ids.length });
   }
 
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
         "UPDATE wht_records SET notes = COALESCE(notes,'') || ? || '\n' || '— ' || ? || ' ' || datetime('now') || '\n\n' WHERE id = ?"
       ).run("已发送确认通知", auth.name || "系统", id);
     }
+    logOperation(auth.name, "批量发WHT确认通知", "wht_batch", String(ids.length), `发送 ${ids.length} 条`);
     return NextResponse.json({ success: true, action: "notice", count: ids.length });
   }
 
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest) {
         `UPDATE wht_customers SET status = '暂停', updated_at = datetime('now') WHERE id IN (${cPlaceholders})`
       ).run(...customerIds);
     }
+    logOperation(auth.name, "批量暂停WHT客户", "wht_batch", String(customerIds.length), `暂停 ${customerIds.length} 个客户`);
     return NextResponse.json({ success: true, action: "pause", count: customerIds.length });
   }
 
