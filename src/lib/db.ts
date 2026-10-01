@@ -1631,7 +1631,9 @@ function initTables(database: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id),
       phase TEXT DEFAULT '',
-      content TEXT NOT NULL,
+      conclusion TEXT DEFAULT '',
+      lesson TEXT DEFAULT '',
+      adjustment TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -1650,6 +1652,10 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE problems ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
   // todos 表迁移：补完成时间列
   try { database.exec("ALTER TABLE todos ADD COLUMN completed_at TEXT DEFAULT ''"); } catch {}
+  // project_summaries 迁移：把总结内容拆成 结论/经验教训/方向调整
+  try { database.exec("ALTER TABLE project_summaries ADD COLUMN conclusion TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE project_summaries ADD COLUMN lesson TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE project_summaries ADD COLUMN adjustment TEXT DEFAULT ''"); } catch {}
   try {
     const p = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='problems'").get() as { sql: string } | undefined;
     if (p && !p.sql.includes("'不急'")) {
