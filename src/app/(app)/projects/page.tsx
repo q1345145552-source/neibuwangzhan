@@ -49,6 +49,9 @@ export default function ProjectsPage() {
   const [progressTarget, setProgressTarget] = useState<Project | null>(null);
   const [progressContent, setProgressContent] = useState("");
   const [savingProgress, setSavingProgress] = useState(false);
+  const [summaryTarget, setSummaryTarget] = useState<Project | null>(null);
+  const [summaryForm, setSummaryForm] = useState({ phase: "", conclusion: "", lesson: "", adjustment: "" });
+  const [savingSummary, setSavingSummary] = useState(false);
 
   const load = useCallback(() => {
     fetchWithAuth("/api/projects", { cache: "no-store" })
@@ -136,6 +139,33 @@ export default function ProjectsPage() {
     finally { setSavingProgress(false); }
   };
 
+  const openSummary = (p: Project) => {
+    setSummaryTarget(p);
+    setSummaryForm({ phase: p.current_phase || "构思", conclusion: "", lesson: "", adjustment: "" });
+  };
+
+  const handleSummary = async () => {
+    if (!summaryTarget) return;
+    if (!summaryForm.phase) { alert("请选择阶段"); return; }
+    if (!summaryForm.conclusion.trim() && !summaryForm.lesson.trim() && !summaryForm.adjustment.trim()) { alert("请填写总结内容"); return; }
+    setSavingSummary(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${summaryTarget.id}/summaries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(summaryForm),
+      });
+      if (res.ok) {
+        setSummaryTarget(null);
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "提交失败");
+      }
+    } catch { alert("提交失败"); }
+    finally { setSavingSummary(false); }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -201,7 +231,10 @@ export default function ProjectsPage() {
                   <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(p.created_at) || "—"}</td>
                   <td className="py-3 px-4">
                     {(isAdmin || user?.name === p.assignee) && (
-                      <button onClick={() => openProgress(p)} className="text-xs text-[var(--primary)] hover:underline">写进展</button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openProgress(p)} className="text-xs text-[var(--primary)] hover:underline">写进展</button>
+                        <button onClick={() => openSummary(p)} className="text-xs text-[var(--primary)] hover:underline">写总结</button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -284,6 +317,49 @@ export default function ProjectsPage() {
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setProgressTarget(null)} disabled={savingProgress}>取消</Button>
               <Button size="sm" onClick={handleProgress} disabled={savingProgress}>{savingProgress ? "提交中…" : "提交进展"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 写总结弹窗 */}
+      {summaryTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!savingSummary) setSummaryTarget(null); }}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">写总结</h3>
+              <button onClick={() => setSummaryTarget(null)} disabled={savingSummary} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">项目：{summaryTarget.name}</p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">属于哪个阶段</label>
+                <select
+                  value={summaryForm.phase}
+                  onChange={(e) => setSummaryForm((p) => ({ ...p, phase: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                >
+                  {PHASES.map((ph) => <option key={ph} value={ph}>{ph}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">阶段结论</label>
+                <textarea value={summaryForm.conclusion} onChange={(e) => setSummaryForm((p) => ({ ...p, conclusion: e.target.value }))} rows={2} placeholder="这个阶段得出了什么结论" className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">经验教训</label>
+                <textarea value={summaryForm.lesson} onChange={(e) => setSummaryForm((p) => ({ ...p, lesson: e.target.value }))} rows={2} placeholder="踩了哪些坑、学到了什么" className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">方向调整</label>
+                <textarea value={summaryForm.adjustment} onChange={(e) => setSummaryForm((p) => ({ ...p, adjustment: e.target.value }))} rows={2} placeholder="接下来方向怎么调整" className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSummaryTarget(null)} disabled={savingSummary}>取消</Button>
+              <Button size="sm" onClick={handleSummary} disabled={savingSummary}>{savingSummary ? "提交中…" : "提交总结"}</Button>
             </div>
           </div>
         </div>
