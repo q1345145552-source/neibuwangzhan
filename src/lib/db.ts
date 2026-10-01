@@ -1612,8 +1612,8 @@ function initTables(database: Database.Database) {
       name TEXT NOT NULL,
       description TEXT DEFAULT '',
       assignee TEXT DEFAULT '',
-      current_phase TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT '进行中' CHECK(status IN ('进行中','已完成','已搁置')),
+      current_phase TEXT DEFAULT '构思',
+      status TEXT NOT NULL DEFAULT '孵化中' CHECK(status IN ('孵化中','已完成','已搁置')),
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
