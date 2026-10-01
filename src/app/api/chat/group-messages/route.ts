@@ -30,13 +30,13 @@ export async function GET(req: NextRequest) {
   if (!isMember(db, groupId, auth.name)) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
 
   const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, is_read, read_at, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, is_read, read_at, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(groupId, after);
 
   return NextResponse.json({ group, messages });
 }
 
-// POST /api/chat/group-messages — 群内发消息（body: { group_id, content }），仅群成员
+// POST /api/chat/group-messages — 群内发消息（body: { group_id, content?, image_url? }），仅群成员
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -45,8 +45,10 @@ export async function POST(req: NextRequest) {
   const body = await readJson(req);
   const groupId = Number(body?.group_id);
   const content = String(body?.content || "").trim();
+  const imageUrl = String(body?.image_url || "").trim();
   if (!Number.isInteger(groupId) || groupId <= 0) return NextResponse.json({ error: "缺少群" }, { status: 400 });
-  if (!content) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
+  if (!content && !imageUrl) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
+  if (imageUrl && !imageUrl.startsWith("/api/files/")) return NextResponse.json({ error: "图片地址无效" }, { status: 400 });
 
   const group = getGroup(db, groupId);
   if (!group) return NextResponse.json({ error: "群不存在" }, { status: 404 });
@@ -54,11 +56,11 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0];
   const r = db.prepare(
-    "INSERT INTO messages (group_id, sender, receiver, content, is_read, created_at) VALUES (?, ?, ?, ?, 0, ?)"
-  ).run(groupId, auth.name, group.name, content, now);
+    "INSERT INTO messages (group_id, sender, receiver, content, image_url, is_read, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)"
+  ).run(groupId, auth.name, group.name, content, imageUrl, now);
 
   const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, is_read, read_at, created_at FROM messages WHERE id = ?"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, is_read, read_at, created_at FROM messages WHERE id = ?"
   ).get(Number(r.lastInsertRowid));
 
   return NextResponse.json({ message }, { status: 201 });

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, X, Users } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { MessageSquare, X, Users, ImagePlus } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 
@@ -25,6 +26,7 @@ interface Message {
   sender: string;
   receiver: string;
   content: string;
+  image_url: string;
   is_read: number;
   read_at: string | null;
   created_at: string;
@@ -34,6 +36,13 @@ interface Message {
 type ChatTarget =
   | { kind: "direct"; name: string }
   | { kind: "group"; id: number; name: string };
+
+// /api/files 的图片需要带 token（<img> 标签无法带 Authorization 头）
+function imgSrc(url: string): string {
+  const token = getStoredAuthToken();
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}token=${encodeURIComponent(token || "")}`;
+}
 
 export default function MessagesPage() {
   const { user } = useAuth();
@@ -47,6 +56,7 @@ export default function MessagesPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -57,6 +67,7 @@ export default function MessagesPage() {
 
   const cursorRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 联系人列表：在职员工（不含自己）
   useEffect(() => {
@@ -123,7 +134,7 @@ export default function MessagesPage() {
       .catch(() => {});
   }, [mergeIncoming]);
 
-  // 实时轮询：每 1 秒拉取游标之后的新消息
+  // 实时轮询：每 1 秒拉取游标之后的新消息（文字/图片都实时）
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -148,35 +159,65 @@ export default function MessagesPage() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // 发送文字消息：自己发出去的立刻上屏
-  const send = async () => {
-    const text = input.trim();
-    if (!text || !selected || sending) return;
-    setSending(true);
-    setError(null);
+  // 发一条消息（文字或图片），自己发出去的立刻上屏
+  const postMessage = async (content: string, imageUrl: string): Promise<boolean> => {
+    if (!selected) return false;
+    const isDirect = selected.kind === "direct";
+    const url = isDirect ? "/api/chat" : "/api/chat/group-messages";
+    const body = isDirect
+      ? { other: selected.name, content, image_url: imageUrl }
+      : { group_id: selected.id, content, image_url: imageUrl };
     try {
-      const r = selected.kind === "direct"
-        ? await fetchWithAuth("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ other: selected.name, content: text }),
-          })
-        : await fetchWithAuth("/api/chat/group-messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ group_id: selected.id, content: text }),
-          });
+      const r = await fetchWithAuth(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const d = await r.json().catch(() => null);
       if (r.ok && d?.message) {
         const msg = d.message as Message;
         setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg].sort((a, b) => a.id - b.id)));
         cursorRef.current = Math.max(cursorRef.current, msg.id);
-        setInput("");
-      } else {
-        setError(d?.error || "发送失败");
+        return true;
       }
+      setError(d?.error || "发送失败");
+      return false;
     } catch {
       setError("发送失败");
+      return false;
+    }
+  };
+
+  const sendText = async () => {
+    const text = input.trim();
+    if (!text || !selected || sending) return;
+    setSending(true);
+    setError(null);
+    const ok = await postMessage(text, "");
+    setSending(false);
+    if (ok) setInput("");
+  };
+
+  // 选图片 → 上传 → 作为图片消息发出
+  const handleImagePick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !selected || sending) return;
+    if (!file.type.startsWith("image/")) { setError("只能发送图片"); return; }
+    setSending(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d?.url) {
+        await postMessage("", d.url);
+      } else {
+        setError(d?.error || "图片上传失败");
+      }
+    } catch {
+      setError("图片上传失败");
     } finally {
       setSending(false);
     }
@@ -340,6 +381,7 @@ export default function MessagesPage() {
                 ) : (
                   messages.map((m) => {
                     const mine = m.sender === me;
+                    const isImage = !!m.image_url;
                     return (
                       <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div className="max-w-[75%]">
@@ -348,13 +390,26 @@ export default function MessagesPage() {
                           )}
                           <div
                             className={cn(
-                              "rounded-lg px-3 py-2 text-sm",
-                              mine
-                                ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                                : "bg-[var(--muted)] text-[var(--foreground)]"
+                              "rounded-lg text-sm",
+                              mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
+                              isImage ? "p-1.5" : "px-3 py-2"
                             )}
                           >
-                            <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                            {isImage ? (
+                              <button
+                                onClick={() => setLightbox(m.image_url)}
+                                className="block max-w-full"
+                                title="查看大图"
+                              >
+                                <img
+                                  src={imgSrc(m.image_url)}
+                                  alt="图片消息"
+                                  className="max-h-60 max-w-full cursor-zoom-in rounded-md object-contain"
+                                />
+                              </button>
+                            ) : (
+                              <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                            )}
                             <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
                               {toThaiTime(m.created_at) || "—"}
                             </p>
@@ -375,14 +430,23 @@ export default function MessagesPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      send();
+                      sendText();
                     }
                   }}
                   placeholder={`发消息给 ${selected.name}`}
                   className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
                 />
                 <button
-                  onClick={send}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                  title="发送图片"
+                  className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                >
+                  <ImagePlus className="size-5" />
+                </button>
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
+                <button
+                  onClick={sendText}
                   disabled={sending || !input.trim()}
                   className="shrink-0 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
                 >
@@ -449,6 +513,25 @@ export default function MessagesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 大图预览 */}
+      {lightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:text-white"
+            aria-label="关闭大图"
+          >
+            <X className="size-6" />
+          </button>
+          <img
+            src={imgSrc(lightbox)}
+            alt="大图"
+            className="max-h-[90vh] max-w-full rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
