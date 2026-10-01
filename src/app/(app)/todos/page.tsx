@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
@@ -27,11 +27,19 @@ const STATUS_CLASS: Record<string, string> = {
   "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
 };
 
+// 曼谷时区今天 / N 天前（用于已完成待办的时间筛选）
+function bangkokToday(): string {
+  return new Date(Date.now() + 7 * 3600 * 1000).toISOString().split("T")[0];
+}
+function bangkokDaysAgo(n: number): string {
+  return new Date(Date.now() + 7 * 3600 * 1000 - n * 86400000).toISOString().split("T")[0];
+}
+
 export default function TodosPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
+  const [employees, setEmployees] = useState<{ id: number; name: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ content: "", assignee: "", priority: "普通", images: [] as string[] });
@@ -56,6 +64,8 @@ export default function TodosPage() {
   const [unseen, setUnseen] = useState<{ id: number; content: string; type: string; created_at: string }[]>([]);
   const [inboxCount, setInboxCount] = useState(0);
   const [showInbox, setShowInbox] = useState(false);
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
+  const [completedRange, setCompletedRange] = useState("all");
 
   const load = useCallback(() => {
     fetchWithAuth("/api/todos", { cache: "no-store" })
@@ -98,16 +108,37 @@ export default function TodosPage() {
     .filter((t) => t.status === "已完成")
     .sort((a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""));
 
-  // 管理员按员工分组（紧急排前已在后端排好，这里保持顺序）
-  const groups = isAdmin
-    ? Object.entries(
-        unfinished.reduce<Record<string, Todo[]>>((acc, t) => {
-          const key = t.assignee || "未分配";
-          (acc[key] ||= []).push(t);
-          return acc;
-        }, {})
-      ).map(([assignee, list]) => ({ assignee, list }))
-    : null;
+  // 卡片：员工看自己一张卡；管理员每个员工一张卡（含未分配），显示未完成数
+  const cards = useMemo(() => {
+    if (!isAdmin) {
+      return [{ name: user?.name || "我", count: unfinished.length }];
+    }
+    const staffNames = new Set(employees.filter((e) => e.role !== "client").map((e) => e.name));
+    const assignees = new Set(unfinished.map((t) => t.assignee || "未分配"));
+    const allNames = new Set<string>([...staffNames, ...assignees]);
+    return [...allNames]
+      .sort((a, b) => a.localeCompare(b, "zh"))
+      .map((name) => ({
+        name,
+        count: unfinished.filter((t) => (t.assignee || "未分配") === name).length,
+      }));
+  }, [isAdmin, employees, unfinished]);
+
+  // 点卡片后：该员工的未完成待办列表
+  const selectedList = selectedAssignee
+    ? unfinished.filter((t) => (t.assignee || "未分配") === selectedAssignee)
+    : [];
+
+  // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
+  const completedFiltered = useMemo(() => {
+    if (completedRange === "all") return completed;
+    const today = bangkokToday();
+    const start = completedRange === "today" ? today : completedRange === "7d" ? bangkokDaysAgo(6) : bangkokDaysAgo(29);
+    return completed.filter((t) => {
+      const d = (toThaiTime(t.completed_at) || "").slice(0, 10);
+      return d >= start && d <= today;
+    });
+  }, [completed, completedRange]);
 
   const openForm = () => {
     setForm({ content: "", assignee: user?.name || "", priority: "普通", images: [] });
@@ -453,40 +484,73 @@ export default function TodosPage() {
 
       {loading ? (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
-      ) : unfinished.length === 0 ? (
-        <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无待办</div>
-      ) : isAdmin && groups ? (
-        // 管理员：按员工分组显示
-        <div className="flex flex-col gap-4">
-          {groups.map((g) => (
-            <div key={g.assignee} className="rounded-xl border border-[var(--border)]">
-              <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
-                <span className="text-sm font-medium text-[var(--foreground)]">{g.assignee}</span>
-                <span className="text-xs text-[var(--muted-foreground)]">{g.list.length} 项未完成</span>
-              </div>
-              {renderTodoTable(g.list)}
+      ) : selectedAssignee ? (
+        // 点卡片进入：该员工的未完成待办列表（与之前一致）
+        <div className="rounded-xl border border-[var(--border)]">
+          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setSelectedAssignee(null)} className="gap-1 px-2">
+                <ChevronLeft className="size-4" />返回
+              </Button>
+              <span className="text-sm font-medium text-[var(--foreground)]">{selectedAssignee}</span>
+              <span className="text-xs text-[var(--muted-foreground)]">{selectedList.length} 项未完成</span>
             </div>
-          ))}
+          </div>
+          {selectedList.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无待办</div>
+          ) : (
+            renderTodoTable(selectedList)
+          )}
         </div>
       ) : (
-        // 员工：只看自己的
-        <div className="rounded-xl border border-[var(--border)]">{renderTodoTable(unfinished)}</div>
+        // 卡片视图：员工一张自己的卡，管理员每个员工一张卡
+        <div>
+          {cards.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无员工</div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {cards.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => setSelectedAssignee(c.name)}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-left transition-colors hover:border-[var(--primary)]"
+                >
+                  <p className="truncate text-sm font-medium text-[var(--foreground)]">{c.name}</p>
+                  <p className="mt-2 font-display text-4xl font-light tabular-nums text-[var(--foreground)]">{c.count}</p>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">未完成待办</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* 已完成分类：默认收起，点开看 */}
+      {/* 已完成分类：默认收起，点开看；时间筛选只作用于已完成 */}
       <div className="rounded-xl border border-[var(--border)]">
-        <button
-          onClick={() => setCompletedOpen((o) => !o)}
-          className="flex w-full items-center justify-between px-5 py-4 text-left"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
-            {completedOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-            已完成（{completed.length}）
-          </span>
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setCompletedOpen((o) => !o)}
+            className="flex flex-1 items-center gap-2 px-5 py-4 text-left"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+              {completedOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+              已完成（{completedFiltered.length}）
+            </span>
+          </button>
+          <select
+            value={completedRange}
+            onChange={(e) => setCompletedRange(e.target.value)}
+            className="mr-4 h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+          >
+            <option value="all">全部时间</option>
+            <option value="today">今天</option>
+            <option value="7d">最近7天</option>
+            <option value="30d">最近30天</option>
+          </select>
+        </div>
         {completedOpen && (
           <div className="overflow-x-auto border-t border-[var(--border)]">
-            {completed.length === 0 ? (
+            {completedFiltered.length === 0 ? (
               <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无已完成待办</div>
             ) : (
               <>
@@ -499,7 +563,7 @@ export default function TodosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {completed.map((t) => (
+                  {completedFiltered.map((t) => (
                     <tr key={t.id} className="border-b border-[var(--border)]">
                       <td className="py-3 px-5 text-[var(--muted-foreground)] line-through">{t.content}</td>
                       <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
@@ -510,7 +574,7 @@ export default function TodosPage() {
               </table>
               {/* 手机端卡片 */}
               <div className="md:hidden flex flex-col gap-2 p-3">
-                {completed.map((t) => (
+                {completedFiltered.map((t) => (
                   <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[var(--muted-foreground)] line-through">{t.content}</span>
