@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -36,6 +36,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO influencer_step_notes (step_id, influencer_id, content, created_by) VALUES (?, ?, ?, ?)"
   ).run(stepId, id, content, created_by || "");
+  logOperation(auth.name, "添加达人步骤备注", "influencer_note", String(result.lastInsertRowid), content);
   const note = db.prepare("SELECT * FROM influencer_step_notes WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(note, { status: 201 });
 }

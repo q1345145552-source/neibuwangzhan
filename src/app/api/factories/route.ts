@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb, FACTORY_UPDATABLE_FIELDS } from "@/lib/db";
+import { getDb, FACTORY_UPDATABLE_FIELDS, logOperation } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO factories (name, category, moq, contact, contact_phone, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).run(name, category || "", moq || "", contact || "", contact_phone || "", address || "", notes || "");
+  logOperation(auth.name, "新增工厂", "factory", String(result.lastInsertRowid), name);
   const row = db.prepare("SELECT * FROM factories WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }
@@ -46,6 +47,7 @@ export async function PATCH(req: NextRequest) {
   sets.push("updated_at = datetime('now')");
   vals.push(id);
   db.prepare(`UPDATE factories SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+  logOperation(auth.name, "修改工厂", "factory", String(id));
   return NextResponse.json(db.prepare("SELECT * FROM factories WHERE id = ?").get(id));
 }
 
@@ -62,5 +64,6 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
   db.prepare("DELETE FROM influencer_factories WHERE factory_id = ?").run(id);
   db.prepare("DELETE FROM factories WHERE id = ?").run(id);
+  logOperation(auth.name, "删除工厂", "factory", String(id));
   return NextResponse.json({ success: true });
 }

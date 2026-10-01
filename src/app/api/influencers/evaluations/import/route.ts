@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // 简易 CSV 行解析：支持双引号包裹的字段（字段内可含逗号、"" 转义）
 function parseCsvLine(line: string): string[] {
@@ -113,6 +113,8 @@ export async function POST(req: NextRequest) {
       }
     });
     runImport();
+
+    logOperation(auth.name, "导入达人评估", "influencer_evaluation", "import", `导入 ${imported} 条，跳过 ${skipped.length} 条`);
 
     return NextResponse.json({
       success: true,

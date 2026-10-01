@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -36,6 +36,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO influencer_finances (influencer_id, type, amount, status, description, payment_method, slip_number, slip_file, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(id, type, amount, status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
+  logOperation(auth.name, "记达人费用", "influencer_finance", String(result.lastInsertRowid), description || type);
   const fin = db.prepare("SELECT * FROM influencer_finances WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(fin, { status: 201 });
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { INFLUENCER_STEP_STATUSES, isValidStepStatus } from "@/lib/enums";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -58,7 +58,7 @@ export async function PATCH(
   // 任何登录用户带上别人的 step_id 就能改别人达人的步骤、触发阶段流转
   const step = db.prepare(
     "SELECT * FROM influencer_steps WHERE id = ? AND influencer_id = ?"
-  ).get(step_id, influencerId) as { id: number; phase: string } | undefined;
+  ).get(step_id, influencerId) as { id: number; phase: string; step_name: string } | undefined;
   if (!step) return NextResponse.json({ error: "步骤不存在或不属于该达人" }, { status: 404 });
 
   const sets: string[] = []; const vals: unknown[] = [];
@@ -103,6 +103,7 @@ export async function PATCH(
     }
   })();
 
+  logOperation(auth.name, "更新达人步骤状态", "influencer_step", String(step_id), `${step.step_name || ""} → ${status ?? "—"}`);
   const updated = db.prepare("SELECT * FROM influencer_steps WHERE id = ?").get(step_id);
   const inf = db.prepare("SELECT id, status, phase FROM influencers WHERE id = ?").get(influencerId);
   // 带上达人最新状态，前端不用再多发一次请求就能刷新头部

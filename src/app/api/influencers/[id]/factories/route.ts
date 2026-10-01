@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -39,6 +39,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO influencer_factories (influencer_id, factory_id, relationship, notes) VALUES (?, ?, ?, ?)"
   ).run(id, factory_id, relationship || "合作", notes || "");
+  logOperation(auth.name, "关联工厂", "influencer_factory", String(result.lastInsertRowid), `工厂 #${factory_id}`);
   const row = db.prepare(
     "SELECT inf.*, f.name AS factory_name, f.category AS factory_category FROM influencer_factories inf JOIN factories f ON inf.factory_id = f.id WHERE inf.id = ?"
   ).get(result.lastInsertRowid);
