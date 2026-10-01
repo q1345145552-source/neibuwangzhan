@@ -1613,7 +1613,7 @@ function initTables(database: Database.Database) {
       description TEXT DEFAULT '',
       assignee TEXT DEFAULT '',
       current_phase TEXT DEFAULT '构思',
-      status TEXT NOT NULL DEFAULT '孵化中' CHECK(status IN ('孵化中','已完成','已搁置')),
+      status TEXT NOT NULL DEFAULT '孵化中' CHECK(status IN ('孵化中','已孵化为业务线','已搁置')),
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
