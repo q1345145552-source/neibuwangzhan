@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { isCronRequest } from "@/lib/cron-auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 const PROGRESS_STEPS = ["收资料", "Excel 计算", "发客户确认", "e-Filing 提交", "付款纳税", "归档完成"];
 const DEFAULT_ASSIGNEES: Record<number, string> = { 1: "Eve", 2: "Eve", 3: "Eve", 4: "Pop", 5: "Pop", 6: "Pop" };
@@ -17,12 +17,12 @@ const STEP_DOCS: Record<number, string[]> = {
   6: ["归档文件"],
 };
 
-function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, month: string): "created" | "exists" {
+function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, month: string): number | null {
   const existing = db.prepare("SELECT id FROM vat_records WHERE customer_id = ? AND year_month = ?").get(customerId, month);
-  if (existing) return "exists";
+  if (existing) return null;
 
   const result = db.prepare("INSERT INTO vat_records (customer_id, year_month, progress, assignee) VALUES (?, ?, '收资料', 'Eve')").run(customerId, month);
-  const recordId = result.lastInsertRowid;
+  const recordId = Number(result.lastInsertRowid);
   for (let i = 0; i < PROGRESS_STEPS.length; i++) {
     const order = i + 1;
     const stepResult = db.prepare("INSERT INTO vat_record_steps (record_id, step_name, step_order, assignee) VALUES (?, ?, ?, ?)")
@@ -40,7 +40,7 @@ function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, m
   if (!existingRecon) {
     db.prepare("INSERT INTO vat_reconciliation (customer_id, year_month, tax_payable, tax_paid, tax_unpaid) VALUES (?, ?, 0, 0, 0)").run(customerId, month);
   }
-  return "created";
+  return recordId;
 }
 
 // POST /api/vat/records/generate
@@ -49,10 +49,12 @@ function generateForCustomer(db: ReturnType<typeof getDb>, customerId: number, m
 export async function POST(req: NextRequest) {
   // 定时任务内部调用：跳过登录验证（密钥来自环境变量 CRON_SECRET，未配置则此分支不可用）
   const isCron = isCronRequest(req);
+  let actor = "系统";
   if (!isCron) {
     const auth = await verifyAuth(req);
     if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
     if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
+    actor = auth.name;
   }
 
   const body = await readJson(req);
@@ -71,8 +73,9 @@ export async function POST(req: NextRequest) {
     if (!customer) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
     if (customer.status !== "启用") return NextResponse.json({ error: "只能为启用状态的客户生成记录" }, { status: 400 });
 
-    const result = generateForCustomer(db, customerId, month);
-    if (result === "exists") return NextResponse.json({ error: "本月已有申报记录" }, { status: 409 });
+    const recordId = generateForCustomer(db, customerId, month);
+    if (recordId === null) return NextResponse.json({ error: "本月已有申报记录" }, { status: 409 });
+    logOperation(actor, "新建VAT申报记录", "vat_record", String(recordId), `${customer.company_name} ${month}`);
     return NextResponse.json({ created: 1, message: `已为 ${customer.company_name} 生成 ${month} 申报记录` });
   }
 
@@ -83,10 +86,11 @@ export async function POST(req: NextRequest) {
   let created = 0;
   const txn = db.transaction(() => {
     for (const c of customers) {
-      if (generateForCustomer(db, c.id, month) === "created") created++;
+      if (generateForCustomer(db, c.id, month) !== null) created++;
     }
   });
   txn();
 
+  logOperation(actor, "批量新建VAT申报记录", "vat_record", month, `${month} 共 ${created} 条`);
   return NextResponse.json({ created, message: `已为 ${created} 个客户生成 ${month} 申报记录` });
 }
