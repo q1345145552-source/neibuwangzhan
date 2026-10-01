@@ -9,7 +9,7 @@ interface ActivityStats {
   today: string;
   total: number;
   active: number;
-  employees: { name: string; count: number }[];
+  employees: { name: string; count: number; yesterday: number; types: Record<string, number> }[];
 }
 
 const RANGES = [
@@ -17,6 +17,8 @@ const RANGES = [
   { key: "7d", label: "最近七天" },
   { key: "30d", label: "最近三十天" },
 ];
+
+const TYPE_ORDER = ["订单更新", "待办跟进", "问题处理", "打卡", "请假"];
 
 export default function ActivityPage() {
   const [stats, setStats] = useState<ActivityStats | null>(null);
@@ -86,20 +88,43 @@ export default function ActivityPage() {
           {/* 员工卡片矩阵 */}
           <div>
             <h2 className="mb-3 text-sm font-medium text-[var(--foreground)]">员工操作量</h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {stats.employees.map((e) => (
-                <div
-                  key={e.name}
-                  className={cn(
-                    "rounded-xl border p-4",
-                    e.count > 0 ? "border-[var(--border)] bg-[var(--card)]" : "border-[var(--border)] bg-[var(--muted)]/30 opacity-60"
-                  )}
-                >
-                  <p className="truncate text-sm font-medium text-[var(--foreground)]">{e.name}</p>
-                  <p className={cn("mt-1 font-display text-3xl font-light tabular-nums", e.count > 0 ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]")}>{e.count}</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">次操作</p>
-                </div>
-              ))}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {stats.employees.map((e) => {
+                const up = e.count > e.yesterday;
+                const down = e.count < e.yesterday;
+                return (
+                  <div
+                    key={e.name}
+                    className={cn(
+                      "rounded-xl border p-4",
+                      e.count > 0 ? "border-[var(--border)] bg-[var(--card)]" : "border-[var(--border)] bg-[var(--muted)]/30 opacity-70"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium text-[var(--foreground)]">{e.name}</p>
+                      {up && <span className="shrink-0 text-xs font-medium text-emerald-600">↑</span>}
+                      {down && <span className="shrink-0 text-xs font-medium text-red-500">↓</span>}
+                    </div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <p className={cn("font-display text-3xl font-light tabular-nums", e.count > 0 ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]")}>{e.count}</p>
+                      <span className="text-xs text-[var(--muted-foreground)]">昨天 {e.yesterday}</span>
+                    </div>
+
+                    {/* 工作类型拆解 */}
+                    <div className="mt-2 space-y-1">
+                      {TYPE_ORDER.filter((t) => (e.types[t] || 0) > 0).map((t) => (
+                        <div key={t} className="flex items-center justify-between text-xs">
+                          <span className="text-[var(--muted-foreground)]">{t}</span>
+                          <span className="tabular-nums text-[var(--foreground)]">{e.types[t]}</span>
+                        </div>
+                      ))}
+                      {TYPE_ORDER.every((t) => !(e.types[t] || 0)) && (
+                        <p className="text-xs text-[var(--muted-foreground)]">暂无操作</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>
