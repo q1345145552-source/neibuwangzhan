@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokToday, utcNowStr } from "@/lib/time";
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     db.prepare(
       "INSERT INTO attendance (employee_name, date, check_in, check_in_ip, ip_address, user_agent, check_in_photo) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ).run(employee_name, today, now, ip, ip, ua, body.check_in_photo || '');
+    logOperation(employee_name, "打卡签到", "attendance", today);
   } else if (action === "check_out") {
     const record = db.prepare(
       "SELECT * FROM attendance WHERE employee_name = ? AND date = ? AND check_out = ''"
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
     db.prepare(
       "UPDATE attendance SET check_out = ?, work_hours = ?, check_out_ip = ?, check_out_photo = ? WHERE id = ?"
     ).run(now, hours, ip, body.check_out_photo || '', record.id);
+    logOperation(employee_name, "打卡签退", "attendance", today);
   }
 
   const rows = db.prepare(
