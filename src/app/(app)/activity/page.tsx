@@ -23,6 +23,7 @@ interface TimelineItem {
 
 const RANGES = [
   { key: "today", label: "今天" },
+  { key: "yesterday", label: "昨天" },
   { key: "7d", label: "最近七天" },
   { key: "30d", label: "最近三十天" },
 ];
@@ -59,6 +60,8 @@ export default function ActivityPage() {
   const [detailTimeline, setDetailTimeline] = useState<TimelineItem[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailCategory, setDetailCategory] = useState("");
+  const [trendPoints, setTrendPoints] = useState<{ date: string; count: number }[]>([]);
+  const [trendDays, setTrendDays] = useState<7 | 30>(7);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -73,12 +76,14 @@ export default function ActivityPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // 点卡片：拉该员工的操作记录（倒序，后端已按时间倒序）
+  // 点卡片：拉该员工的操作记录（倒序）+ 趋势数据
   const openDetail = (name: string) => {
     setDetailName(name);
     setDetailCategory("");
     setDetailTimeline([]);
     setDetailLoading(true);
+    setTrendDays(7);
+    setTrendPoints([]);
     const q = new URLSearchParams();
     q.set("range", range);
     q.set("employee", name);
@@ -87,6 +92,14 @@ export default function ActivityPage() {
       .then((d) => { if (d) setDetailTimeline(Array.isArray(d.timeline) ? d.timeline : []); })
       .catch(() => {})
       .finally(() => setDetailLoading(false));
+    loadTrend(name, 7);
+  };
+
+  const loadTrend = (name: string, days: 7 | 30) => {
+    fetchWithAuth(`/api/activity/trend?employee=${encodeURIComponent(name)}&days=${days}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setTrendPoints(Array.isArray(d.points) ? d.points : []); })
+      .catch(() => {});
   };
 
   const detailCategories = Array.from(new Set(detailTimeline.map((t) => t.target_type).filter(Boolean)));
@@ -190,6 +203,57 @@ export default function ActivityPage() {
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-semibold text-[var(--foreground)]">{detailName} 的操作记录</h3>
               <button onClick={() => setDetailName(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            {/* 操作趋势图 */}
+            <div className="mb-4 rounded-md border border-[var(--border)] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--muted-foreground)]">操作趋势</span>
+                <div className="flex gap-1">
+                  {([7, 30] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => { setTrendDays(d); loadTrend(detailName, d); }}
+                      className={cn(
+                        "rounded px-2 py-0.5 text-xs transition-colors",
+                        trendDays === d ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      )}
+                    >
+                      {d}天
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {trendPoints.length > 0 ? (
+                <svg viewBox="0 0 600 160" className="w-full" preserveAspectRatio="none">
+                  {(() => {
+                    const maxCount = Math.max(1, ...trendPoints.map((p) => p.count));
+                    const padX = 8, padY = 12;
+                    const w = 600, h = 160;
+                    const stepX = (w - padX * 2) / (trendPoints.length - 1 || 1);
+                    const x = (i: number) => padX + i * stepX;
+                    const y = (c: number) => h - padY - (c / maxCount) * (h - padY * 2);
+                    const pts = trendPoints.map((p, i) => `${x(i)},${y(p.count)}`).join(" ");
+                    return (
+                      <>
+                        <polyline points={pts} fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                        {trendPoints.map((p, i) => (
+                          <g key={i}>
+                            <circle cx={x(i)} cy={y(p.count)} r="3" fill="var(--primary)" />
+                            {p.count > 0 && <text x={x(i)} y={y(p.count) - 8} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{p.count}</text>}
+                          </g>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </svg>
+              ) : (
+                <p className="py-4 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+              )}
+              <div className="mt-1 flex justify-between text-[0.6rem] text-[var(--muted-foreground)]">
+                <span>{trendPoints[0]?.date?.slice(5)}</span>
+                <span>{trendPoints[trendPoints.length - 1]?.date?.slice(5)}</span>
+              </div>
             </div>
 
             {/* 分类筛选 */}
