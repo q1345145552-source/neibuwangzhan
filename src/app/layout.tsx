@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Inter, Cormorant_Garamond, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
-});
-
-const cormorant = Cormorant_Garamond({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
 });
 
 const jetbrains = JetBrains_Mono({
@@ -35,8 +29,6 @@ export const metadata: Metadata = {
 
 const systemCJK =
   '"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Noto Sans SC", sans-serif';
-const systemCJKSerif =
-  '"Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif';
 
 export default function RootLayout({
   children,
@@ -46,7 +38,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${inter.variable} ${cormorant.variable} ${jetbrains.variable} h-full antialiased`}
+      className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
@@ -58,12 +50,17 @@ export default function RootLayout({
         <style>{`
           :root {
             --font-sans: ${inter.style.fontFamily}, ${systemCJK};
-            --font-display: ${cormorant.style.fontFamily}, ${systemCJKSerif};
+            --font-display: ${inter.style.fontFamily}, ${systemCJK};
             --font-mono: ${jetbrains.style.fontFamily}, monospace;
           }
           .font-display {
             font-family: var(--font-display);
-            font-weight: 300;
+            font-weight: 400;
+          }
+          .font-display.font-light,
+          .font-display.font-extralight,
+          .font-display.font-thin {
+            font-weight: 400;
           }
         `}</style>
         <script dangerouslySetInnerHTML={{
