@@ -56,6 +56,11 @@ export async function POST(
     "INSERT INTO todo_follow_ups (todo_id, content, created_by) VALUES (?, ?, ?)"
   ).run(id, content.trim(), auth.name);
 
+  // 负责人本人跟进 = 他自己看过；别人（管理员/老板）跟进则负责人那边会显示「新跟进」未读
+  if (auth.name === todo.assignee) {
+    db.prepare("UPDATE todos SET seen_at = datetime('now') WHERE id = ?").run(id);
+  }
+
   const followUp = db.prepare("SELECT * FROM todo_follow_ups WHERE id = ?").get(result.lastInsertRowid);
   logOperation(auth.name, "添加待办跟进", "todo", String(id), content.trim());
   return NextResponse.json(followUp, { status: 201 });
