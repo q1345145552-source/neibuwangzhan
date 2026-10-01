@@ -8,6 +8,16 @@ function daysAgo(n: number): string {
   return new Date(Date.now() + 7 * 3600 * 1000 - n * 86400000).toISOString().split("T")[0];
 }
 
+// target_type → 工作类型中文分类
+function mapCategory(tt: string): string | null {
+  if (tt === "order" || tt === "step") return "订单更新";
+  if (tt === "todo") return "待办跟进";
+  if (tt === "problem" || tt === "issue") return "问题处理";
+  if (tt === "attendance") return "打卡";
+  if (tt === "leave") return "请假";
+  return null;
+}
+
 // GET /api/activity/stats?range=today|7d|30d&employee=&category= — 员工动态统计 + 时间线（仅管理员）
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -47,8 +57,12 @@ export async function GET(req: NextRequest) {
   tlSql += " ORDER BY created_at DESC, id DESC LIMIT 300";
   const timeline = db.prepare(tlSql).all(...tlParams);
 
-  // 所有在职员工（含没操作的），每人在范围内操作数（含 0）
-  const employees = db.prepare(
+  // 昨天范围（对比用）
+  const yesterdayDate = daysAgo(1);
+  const { start: yStart, end: yEnd } = bangkokDayRange(yesterdayDate);
+
+  // 所有在职员工（含没操作的），每人：今天操作数、昨天操作数、各工作类型数量
+  const rows = db.prepare(
     `SELECT e.name, COUNT(a.id) AS count
      FROM employees e
      LEFT JOIN audit_logs a ON a.actor = e.name AND a.created_at >= ? AND a.created_at < ?
@@ -56,6 +70,21 @@ export async function GET(req: NextRequest) {
      GROUP BY e.name
      ORDER BY count DESC, e.name ASC`
   ).all(start, end);
+
+  const employees = rows.map((emp: any) => {
+    const yesterday = (db.prepare(
+      "SELECT COUNT(*) AS c FROM audit_logs WHERE actor = ? AND created_at >= ? AND created_at < ?"
+    ).get(emp.name, yStart, yEnd) as { c: number }).c;
+    const typeRows = db.prepare(
+      "SELECT target_type, COUNT(*) AS c FROM audit_logs WHERE actor = ? AND created_at >= ? AND created_at < ? GROUP BY target_type"
+    ).all(emp.name, start, end);
+    const types: Record<string, number> = { "订单更新": 0, "待办跟进": 0, "问题处理": 0, "打卡": 0, "请假": 0 };
+    for (const t of typeRows as { target_type: string; c: number }[]) {
+      const cat = mapCategory(t.target_type);
+      if (cat) types[cat] += t.c;
+    }
+    return { name: emp.name, count: emp.count, yesterday, types };
+  });
 
   return NextResponse.json({ today, range, total, active, ranking, categories, timeline, employees });
 }
