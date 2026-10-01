@@ -30,12 +30,18 @@ export async function GET(req: NextRequest) {
   const employee = searchParams.get("employee") || "";
   const category = searchParams.get("category") || "";
 
-  // 时间范围：今天 / 最近7天 / 最近30天，按曼谷时区零点
+  // 时间范围：今天 / 昨天 / 最近7天 / 最近30天，按曼谷时区零点
   const today = bangkokToday();
-  const { end } = bangkokDayRange(today);
-  const days = range === "7d" ? 7 : range === "30d" ? 30 : 1;
-  const startDate = daysAgo(days - 1);
-  const { start } = bangkokDayRange(startDate);
+  let start: string, end: string;
+  if (range === "yesterday") {
+    const y = bangkokDayRange(daysAgo(1));
+    start = y.start;
+    end = y.end;
+  } else {
+    end = bangkokDayRange(today).end;
+    const days = range === "7d" ? 7 : range === "30d" ? 30 : 1;
+    start = bangkokDayRange(daysAgo(days - 1)).start;
+  }
 
   // 统计卡片（范围内全量，不受员工/分类筛选影响）
   const total = (db.prepare("SELECT COUNT(*) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ?").get(start, end) as { c: number }).c;
