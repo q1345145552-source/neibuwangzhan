@@ -115,6 +115,17 @@ export default function MessagesPage() {
     cursorRef.current = Math.max(cursorRef.current, maxId);
   }, []);
 
+  // 把我发出去、对方已读的消息标记为已读（发送方显示「已读」）
+  const applyReadIds = useCallback((ids: number[]) => {
+    if (!ids.length) return;
+    const set = new Set(ids);
+    setMessages((prev) => {
+      let changed = false;
+      const next = prev.map((m) => (set.has(m.id) && m.is_read !== 1 ? ((changed = true), { ...m, is_read: 1 }) : m));
+      return changed ? next : prev;
+    });
+  }, []);
+
   // 打开一对一会话
   const openDirect = useCallback((name: string) => {
     setSelected({ kind: "direct", name });
@@ -124,9 +135,12 @@ export default function MessagesPage() {
     cursorRef.current = 0;
     fetchWithAuth(`/api/chat?other=${encodeURIComponent(name)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && Array.isArray(d.messages)) mergeIncoming(d.messages); })
+      .then((d) => {
+        if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
+        if (d && Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
+      })
       .catch(() => {});
-  }, [mergeIncoming]);
+  }, [mergeIncoming, applyReadIds]);
 
   // 打开群会话
   const openGroup = useCallback((id: number, name: string) => {
@@ -153,13 +167,16 @@ export default function MessagesPage() {
         const r = await fetchWithAuth(url, { cache: "no-store" });
         if (!r.ok) return;
         const d = await r.json();
-        if (active && Array.isArray(d.messages)) mergeIncoming(d.messages);
+        if (active) {
+          if (Array.isArray(d.messages)) mergeIncoming(d.messages);
+          if (Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
+        }
       } catch { /* 轮询失败静默，下一轮重试 */ }
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => { active = false; clearInterval(id); };
-  }, [selected, mergeIncoming]);
+  }, [selected, mergeIncoming, applyReadIds]);
 
   // 新消息自动滚到底部
   useEffect(() => {
@@ -288,6 +305,7 @@ export default function MessagesPage() {
   };
 
   const isGroup = selected?.kind === "group";
+  const isDirect = selected?.kind === "direct";
 
   return (
     <div className="flex flex-col gap-6">
@@ -414,6 +432,7 @@ export default function MessagesPage() {
                     const mine = m.sender === me;
                     const isImage = !!m.image_url;
                     const isOrder = !!m.order_id;
+                    const showRead = isDirect && mine;
                     return (
                       <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div className="max-w-[75%]">
@@ -456,12 +475,14 @@ export default function MessagesPage() {
                               )}
                               <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
                                 {toThaiTime(m.created_at) || "—"}
+                                {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
                               </p>
                             </div>
                           )}
                           {isOrder && (
                             <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
                               {toThaiTime(m.created_at) || "—"}
+                              {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
                             </p>
                           )}
                         </div>
