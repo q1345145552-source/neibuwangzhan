@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { bangkokMonthKey } from "@/lib/time";
 
 // POST /api/vat/notify — 十号自动对账通知
@@ -107,6 +107,8 @@ export async function POST(req: NextRequest) {
     ).run("mention", `📊 VAT月度对账提醒 — ${month}`, notifBody, r.name, "vat_notify");
     sent++;
   }
+
+  logOperation(auth.name, "发送VAT对账通知", "vat_notify", month, `已向 ${sent} 人发送，问题 ${issues.length} 项`);
 
   return NextResponse.json({
     message: `已向 ${sent} 人发送通知（管理员 + Eve + Pop）`,
