@@ -3,7 +3,7 @@ import { getDb, sendNotification, logOperation } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
-const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason";
+const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason, summary";
 
 // POST /api/payslips/flow — 工资单流程流转
 // action: send（管理员发给员工）| confirm（员工确认）| reject（员工打回，带意见）| pay（管理员发放）

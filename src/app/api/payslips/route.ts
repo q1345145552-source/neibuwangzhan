@@ -5,7 +5,7 @@ import { readJson } from "@/lib/req";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
-const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason";
+const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason, summary";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -47,9 +47,18 @@ function hasImages(imagesJson: string): boolean {
   }
 }
 
+function parseImages(imagesJson: string): string[] {
+  try {
+    const arr = JSON.parse(imagesJson || "[]");
+    return Array.isArray(arr) ? arr.filter((x: unknown) => x && String(x).trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
 type Db = ReturnType<typeof getDb>;
 
-// 计算某员工某月的扣除：社保 / 迟到 / 事假 / 病假
+// 计算某员工某月的扣除：社保 / 迟到 / 事假 / 病假；同时返回考勤汇总明细（出勤天数/迟到明细/请假明细）
 function computeDeductions(db: Db, name: string, month: string, totalSalary: number) {
   const base = (db.prepare("SELECT base_salary FROM employees WHERE name = ?").get(name) as { base_salary: number | null } | undefined)?.base_salary ?? 0;
 
@@ -58,23 +67,40 @@ function computeDeductions(db: Db, name: string, month: string, totalSalary: num
 
   // 迟到：该月考勤里曼谷 08:00 后打卡的迟到分钟数 × 5 铢
   let lateMinutes = 0;
+  const lateDetails: { date: string; minutes: number }[] = [];
   const attRows = db.prepare(
-    "SELECT check_in FROM attendance WHERE employee_name = ? AND date LIKE ? AND check_in != '' AND type != '请假'"
-  ).all(name, `${month}%`) as { check_in: string }[];
-  for (const a of attRows) lateMinutes += lateMinutesFromUtc(a.check_in);
+    "SELECT date, check_in FROM attendance WHERE employee_name = ? AND date LIKE ? AND check_in != '' AND type != '请假' ORDER BY date"
+  ).all(name, `${month}%`) as { date: string; check_in: string }[];
+  for (const a of attRows) {
+    const minutes = lateMinutesFromUtc(a.check_in);
+    if (minutes > 0) {
+      lateMinutes += minutes;
+      lateDetails.push({ date: a.date, minutes: Math.round(minutes * 10) / 10 });
+    }
+  }
   const late = round2(lateMinutes * 5);
+  const attendanceDays = attRows.length;
 
   // 事假 / 病假（已通过、开始日期在该月）
   let personalLeave = 0;
   let sickLeave = 0;
+  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = [];
   const leaveRows = db.prepare(
-    "SELECT leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND leave_type IN ('事假','病假') AND start_date LIKE ?"
+    "SELECT leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND leave_type IN ('事假','病假') AND start_date LIKE ? ORDER BY start_date"
   ).all(name, `${month}%`) as { leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string }[];
   for (const l of leaveRows) {
     const days = daysBetween(l.start_date, l.end_date);
+    const hours = days === 1 ? hoursBetween(l.start_time, l.end_time) : days * 8;
+    const images = parseImages(l.images);
+    leaveDetails.push({
+      type: l.leave_type,
+      days,
+      hours: Math.round(hours * 10) / 10,
+      has_certificate: l.leave_type === "病假" && images.length > 0,
+      images,
+    });
     if (l.leave_type === "事假") {
       if (days === 1) {
-        const hours = hoursBetween(l.start_time, l.end_time);
         // 5 小时内按小时扣（60 铢/时），超过 5 小时按整天扣
         personalLeave += hours <= 5 ? hours * 60 : totalSalary / 25;
       } else {
@@ -88,7 +114,7 @@ function computeDeductions(db: Db, name: string, month: string, totalSalary: num
   personalLeave = round2(personalLeave);
   sickLeave = round2(sickLeave);
 
-  return { social, late, personalLeave, sickLeave };
+  return { social, late, personalLeave, sickLeave, attendanceDays, lateDetails, leaveDetails };
 }
 
 // GET /api/payslips?month=YYYY-MM — 管理员看某月全部工资单；员工看自己的工资单
@@ -137,18 +163,19 @@ export async function POST(req: NextRequest) {
       const skill = e.skill_allowance ?? 0;
       const totalSalary = base + diligence + skill; // 用于事假/病假按天扣
       const ded = computeDeductions(db, e.name, month, totalSalary);
+      const summary = JSON.stringify({ attendance_days: ded.attendanceDays, late_details: ded.lateDetails, leave_details: ded.leaveDetails });
 
       const existing = db.prepare("SELECT id FROM payslips WHERE employee_id = ? AND month = ?").get(e.id, month);
       if (existing) {
-        // 已存在：刷新自动字段（收入自动项 + 扣除自动项），保留手动填写的奖金/佣金/加班费/预扣税
+        // 已存在：刷新自动字段（收入自动项 + 扣除自动项 + 考勤汇总），保留手动填写的奖金/佣金/加班费/预扣税
         db.prepare(
-          `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ? WHERE employee_id = ? AND month = ?`
-        ).run(e.name, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, e.id, month);
+          `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ?, summary = ? WHERE employee_id = ? AND month = ?`
+        ).run(e.name, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, summary, e.id, month);
       } else {
         db.prepare(
-          `INSERT INTO payslips (employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax)
-           VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, 0)`
-        ).run(e.id, e.name, month, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave);
+          `INSERT INTO payslips (employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, summary)
+           VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, 0, ?)`
+        ).run(e.id, e.name, month, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, summary);
         created++;
       }
     }
