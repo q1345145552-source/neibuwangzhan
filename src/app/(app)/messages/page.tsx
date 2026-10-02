@@ -259,6 +259,13 @@ export default function MessagesPage() {
   const [summaryHistoryLoading, setSummaryHistoryLoading] = useState(false);
   const [summaryHistoryError, setSummaryHistoryError] = useState<string | null>(null);
   const [viewingSummary, setViewingSummary] = useState<SummaryHistoryItem | null>(null);
+  // 按员工总结（老板）
+  const [empSummaryOpen, setEmpSummaryOpen] = useState(false);
+  const [empSummaryName, setEmpSummaryName] = useState("");
+  const [empSummaryRange, setEmpSummaryRange] = useState<SummaryRangeOption>("7d");
+  const [empSummaryLoading, setEmpSummaryLoading] = useState(false);
+  const [empSummaryResult, setEmpSummaryResult] = useState<{ topics: string; conclusions: string; todos: string; commitments: string; cached: boolean } | null>(null);
+  const [empSummaryError, setEmpSummaryError] = useState<string | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -756,6 +763,44 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开按员工总结弹窗（默认最近七天）
+  const openEmpSummary = () => {
+    setEmpSummaryOpen(true);
+    setEmpSummaryName("");
+    setEmpSummaryRange("7d");
+    setEmpSummaryResult(null);
+    setEmpSummaryError(null);
+  };
+
+  // 一键生成某个员工的整体沟通总结
+  const generateEmpSummary = async () => {
+    if (!empSummaryName) { setEmpSummaryError("请先选择员工"); return; }
+    const range = summaryTimeRange(empSummaryRange);
+    setEmpSummaryLoading(true);
+    setEmpSummaryError(null);
+    setEmpSummaryResult(null);
+    try {
+      const r = await fetchWithAuth("/api/chat/summary/employee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee: empSummaryName, from: range.from, to: range.to }),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d && typeof d.topics === "string") {
+        setEmpSummaryResult({
+          topics: d.topics, conclusions: d.conclusions, todos: d.todos, commitments: d.commitments,
+          cached: d.cached === true,
+        });
+      } else {
+        setEmpSummaryError(d?.error || "生成失败");
+      }
+    } catch {
+      setEmpSummaryError("生成失败");
+    } finally {
+      setEmpSummaryLoading(false);
+    }
+  };
+
   // 点开群消息的已读人数：列出谁读了、谁没读
   const openReadDetail = (m: Message) => {
     if (selected?.kind !== "group") return;
@@ -869,9 +914,20 @@ export default function MessagesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">内部聊天</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息</h1>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">内部聊天</p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={openEmpSummary}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+          >
+            <Sparkles className="size-4" />
+            按员工总结
+          </button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
@@ -1425,6 +1481,69 @@ export default function MessagesPage() {
                     <span className="truncate text-xs text-[var(--muted-foreground)]">{s.topics}</span>
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 按员工总结 */}
+      {empSummaryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEmpSummaryOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">按员工总结</h3>
+              <button onClick={() => setEmpSummaryOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">
+              选一个员工，一键看他最近跟所有人聊了什么、答应了什么、手上有什么待办。
+            </p>
+
+            <select
+              value={empSummaryName}
+              onChange={(e) => setEmpSummaryName(e.target.value)}
+              className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+            >
+              <option value="">选择员工</option>
+              {contacts.map((c) => (
+                <option key={c.name} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {SUMMARY_RANGES.map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => setEmpSummaryRange(r.key)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs transition-colors",
+                    empSummaryRange === r.key
+                      ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                  )}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={generateEmpSummary}
+              disabled={empSummaryLoading || !empSummaryName}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <Sparkles className="size-3.5" />
+              {empSummaryLoading ? "生成中…" : "生成总结"}
+            </button>
+
+            {empSummaryError && <p className="mt-3 text-xs text-red-500">{empSummaryError}</p>}
+
+            {empSummaryResult && (
+              <div className="mt-4">
+                {empSummaryResult.cached && (
+                  <p className="mb-2 text-[0.65rem] text-[var(--muted-foreground)]">本次结果来自缓存</p>
+                )}
+                <SummaryBlocks data={empSummaryResult} />
               </div>
             )}
           </div>
