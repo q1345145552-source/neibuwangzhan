@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, sendNotification } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
@@ -13,12 +13,6 @@ function getGroup(db: Db, groupId: number) {
 function isMember(db: Db, groupId: number, name: string): boolean {
   return !!db.prepare("SELECT id FROM group_members WHERE group_id = ? AND member = ?").get(groupId, name);
 }
-
-// 分享卡片类型 → 会话列表预览文案
-const CARD_LABELS: Record<string, string> = {
-  order: "[订单]", todo: "[待办]", project: "[项目]", customer: "[客户]",
-  vat: "[VAT申报]", wht: "[预扣税]", problem: "[问题]",
-};
 
 // 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
 function resolveCard(db: Db, type: string, id: string): { title: string; subtitle: string } | null {
@@ -174,18 +168,8 @@ export async function POST(req: NextRequest) {
     const name = mm[1].trim();
     if (name && name !== auth.name && memberSet.has(name)) mentioned.add(name);
   }
-  const preview = cardType ? (CARD_LABELS[cardType] || "[卡片]") : orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50);
   for (const name of mentioned) {
     db.prepare("INSERT OR IGNORE INTO message_mentions (message_id, member) VALUES (?, ?)").run(messageId, name);
-    // 通知中心：群聊里 @ 了某人，生成一条通知（点通知跳转打开该群）
-    sendNotification(
-      "mention",
-      `${auth.name} 在群「${group.name}」@了你`,
-      preview,
-      name,
-      String(groupId),
-      "chat_group"
-    );
   }
 
   const message = db.prepare(
