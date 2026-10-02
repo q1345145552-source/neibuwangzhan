@@ -1934,6 +1934,8 @@ export default function MessagesPage() {
   const groupBackground = activeGroup?.background || "";
   const groupAnnouncement = activeGroup?.announcement || "";
   const isGroupOwner = isGroup && activeGroup?.owner === me;
+  // 群主输入 @ 时可选「@所有人」
+  const showMentionAll = !!isGroupOwner && (mentionQuery === "" || "所有人".includes(mentionQuery));
   const effectiveBackground = isGroup && groupBackground ? groupBackground : chatBackground;
   const chatBgStyle: React.CSSProperties = effectiveBackground.startsWith("/api/files/")
     ? { backgroundImage: `url(${imgSrc(effectiveBackground)})`, backgroundSize: "cover", backgroundPosition: "center" }
@@ -2338,6 +2340,7 @@ export default function MessagesPage() {
                     const recalled = !!m.recalled;
                     const canRecall = mine && !recalled && within2Min(m.created_at);
                     const isMentioned = isGroup && !!m.mentioned_members?.includes(me);
+                    const isMentionAll = isGroup && m.content.includes("@所有人");
                     const senderAvatar = avatarOf(m.sender);
                     return (
                       <div
@@ -2417,7 +2420,7 @@ export default function MessagesPage() {
                           )}
                           <p className="mt-1 flex items-center gap-1.5 px-1 text-[0.6rem] text-[var(--muted-foreground)]">
                             {toThaiTime(m.created_at) || "—"}
-                            {isMentioned && !mine && <span className="font-medium text-amber-600">@你</span>}
+                            {isMentioned && !mine && <span className="font-medium text-amber-600">{isMentionAll ? "@全体" : "@你"}</span>}
                             {canRecall && <button onClick={() => recallMessage(m)} className="opacity-70 hover:opacity-100">撤回</button>}
                             {showRead && !recalled && <span>{m.is_read ? "已读" : "未读"}</span>}
                             {isGroup && !recalled && (
@@ -2533,7 +2536,16 @@ export default function MessagesPage() {
               <div className="relative border-t border-[var(--border)]/60 bg-transparent p-3 dark:border-white/10">
                 {mentionOpen && selected?.kind === "group" && (
                   <div className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-48 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
-                    {mentionMembers.length === 0 ? (
+                    {showMentionAll && (
+                      <button
+                        onClick={() => pickMention("所有人")}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                      >
+                        <span className="flex size-6 items-center justify-center rounded-full bg-amber-500/15 text-xs font-medium text-amber-600">@</span>
+                        所有人
+                      </button>
+                    )}
+                    {mentionMembers.length === 0 && !showMentionAll ? (
                       <p className="px-3 py-3 text-center text-xs text-[var(--muted-foreground)]">没有匹配的成员</p>
                     ) : (
                       mentionMembers.map((n) => (
