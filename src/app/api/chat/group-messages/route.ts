@@ -165,15 +165,21 @@ export async function POST(req: NextRequest) {
   // 发送人自动视为已读自己这条消息
   db.prepare("INSERT OR IGNORE INTO message_reads (message_id, member) VALUES (?, ?)").run(messageId, auth.name);
 
-  // 解析 @提及：找出内容里 @ 了哪些群成员，写入提醒
+  // 解析 @提及：找出内容里 @ 了哪些群成员，写入提醒；群主 @所有人 则全群（除自己）都被提醒
   const members = db.prepare("SELECT member FROM group_members WHERE group_id = ?").all(groupId) as { member: string }[];
   const memberSet = new Set(members.map((m) => m.member));
   const mentioned = new Set<string>();
+  const mentionAll = group.owner === auth.name && finalContent.includes("@所有人");
   const mentionRegex = /@([^\s@，。！？、;；:：]+)/g;
   let mm;
   while ((mm = mentionRegex.exec(finalContent)) !== null) {
     const name = mm[1].trim();
     if (name && name !== auth.name && memberSet.has(name)) mentioned.add(name);
+  }
+  if (mentionAll) {
+    for (const m of members) {
+      if (m.member !== auth.name) mentioned.add(m.member);
+    }
   }
   for (const name of mentioned) {
     db.prepare("INSERT OR IGNORE INTO message_mentions (message_id, member) VALUES (?, ?)").run(messageId, name);
