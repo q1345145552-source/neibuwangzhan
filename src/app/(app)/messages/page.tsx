@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -196,6 +196,17 @@ interface SummaryHistoryItem {
   created_at: string;
 }
 
+// 聊天监控里的一条会话（谁跟谁、多少条、最后聊了什么）
+interface MonitorConversation {
+  id: number;
+  user_a: string;
+  user_b: string;
+  message_count: number;
+  last_sender: string;
+  last_at: string;
+  last_preview: string;
+}
+
 // 把总结里的待办/承诺文本按行拆成一条条（去掉圆点/编号前缀）
 function splitSummaryItems(text: string): string[] {
   if (!text || text.trim() === "无") return [];
@@ -338,6 +349,12 @@ export default function MessagesPage() {
   const [empSummaryLoading, setEmpSummaryLoading] = useState(false);
   const [empSummaryResult, setEmpSummaryResult] = useState<{ topics: string; conclusions: string; todos: string; commitments: string; cached: boolean } | null>(null);
   const [empSummaryError, setEmpSummaryError] = useState<string | null>(null);
+  // 聊天监控（管理员）
+  const [monitorOpen, setMonitorOpen] = useState(false);
+  const [monitorList, setMonitorList] = useState<MonitorConversation[]>([]);
+  const [monitorLoading, setMonitorLoading] = useState(false);
+  const [monitorError, setMonitorError] = useState<string | null>(null);
+  const [monitorDetail, setMonitorDetail] = useState<{ conversation: { user_a: string; user_b: string }; messages: Message[] } | null>(null);
   // 总结里的待办/承诺一键转系统待办
   const [todoAssignee, setTodoAssignee] = useState("");
   const [convertedTodos, setConvertedTodos] = useState<Set<string>>(new Set());
@@ -903,6 +920,54 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开聊天监控看板
+  const openMonitor = () => {
+    setMonitorOpen(true);
+    setMonitorDetail(null);
+    setMonitorError(null);
+    loadMonitorList();
+  };
+
+  // 加载员工之间的一对一会话列表
+  const loadMonitorList = async () => {
+    setMonitorLoading(true);
+    setMonitorError(null);
+    try {
+      const r = await fetchWithAuth("/api/chat/monitor", { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(d)) {
+        setMonitorList(d as MonitorConversation[]);
+      } else {
+        setMonitorList([]);
+        setMonitorError(d?.error || "加载失败");
+      }
+    } catch {
+      setMonitorList([]);
+      setMonitorError("加载失败");
+    } finally {
+      setMonitorLoading(false);
+    }
+  };
+
+  // 点开某个会话，看这两个员工之间的完整聊天记录
+  const openMonitorConversation = async (id: number) => {
+    setMonitorLoading(true);
+    setMonitorError(null);
+    try {
+      const r = await fetchWithAuth(`/api/chat/monitor?conversation_id=${id}`, { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d?.conversation && Array.isArray(d?.messages)) {
+        setMonitorDetail({ conversation: d.conversation, messages: d.messages as Message[] });
+      } else {
+        setMonitorError(d?.error || "加载失败");
+      }
+    } catch {
+      setMonitorError("加载失败");
+    } finally {
+      setMonitorLoading(false);
+    }
+  };
+
   // 点开群消息的已读人数：列出谁读了、谁没读
   const openReadDetail = (m: Message) => {
     if (selected?.kind !== "group") return;
@@ -1025,13 +1090,22 @@ export default function MessagesPage() {
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">内部聊天</p>
         </div>
         {isAdmin && (
-          <button
-            onClick={openEmpSummary}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
-          >
-            <Sparkles className="size-4" />
-            按员工总结
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={openMonitor}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+            >
+              <Eye className="size-4" />
+              监控
+            </button>
+            <button
+              onClick={openEmpSummary}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+            >
+              <Sparkles className="size-4" />
+              按员工总结
+            </button>
+          </div>
         )}
       </div>
 
@@ -1637,6 +1711,97 @@ export default function MessagesPage() {
                 <SummaryBlocks data={empSummaryResult} onConvert={convertToTodo} converted={convertedTodos} />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 聊天监控（管理员） */}
+      {monitorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMonitorOpen(false)}>
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+              <h3 className="font-semibold text-[var(--foreground)]">聊天监控</h3>
+              <button onClick={() => setMonitorOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {monitorDetail ? (
+                <>
+                  <button onClick={() => setMonitorDetail(null)} className="mb-3 text-xs text-[var(--primary)] hover:underline">← 返回会话列表</button>
+                  <p className="mb-3 text-sm font-medium text-[var(--foreground)]">
+                    {monitorDetail.conversation.user_a} ↔ {monitorDetail.conversation.user_b}
+                  </p>
+                  {monitorDetail.messages.length === 0 ? (
+                    <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无消息</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {monitorDetail.messages.map((m) => {
+                        const isA = m.sender === monitorDetail.conversation.user_a;
+                        const card = parseCard(m);
+                        return (
+                          <div key={m.id} className={cn("flex", isA ? "justify-start" : "justify-end")}>
+                            <div className="max-w-[70%]">
+                              <p className={cn("mb-0.5 text-[0.65rem] text-[var(--muted-foreground)]", isA ? "text-left" : "text-right")}>{m.sender}</p>
+                              {m.recalled ? (
+                                <div className="rounded-2xl bg-[var(--muted)] px-3 py-2 text-sm italic text-[var(--muted-foreground)]">已撤回</div>
+                              ) : m.image_url ? (
+                                <img src={imgSrc(m.image_url)} alt="图片" className="max-h-60 max-w-full rounded-xl object-contain" />
+                              ) : card ? (
+                                <button
+                                  onClick={() => router.push(CARD_META[card.kind].href(card.id))}
+                                  className="block max-w-[240px] rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
+                                >
+                                  <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]"><FileText className="size-3.5" /> {CARD_META[card.kind].label}</span>
+                                  <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{card.title}</span>
+                                  {card.subtitle && <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{card.subtitle}</span>}
+                                </button>
+                              ) : (
+                                <div className={cn(
+                                  "rounded-2xl px-3 py-2 text-sm",
+                                  isA
+                                    ? "rounded-bl-md border border-[var(--border)]/70 bg-[var(--background)] text-[var(--foreground)]"
+                                    : "rounded-br-md bg-[var(--primary)] text-[var(--primary-foreground)]"
+                                )}>
+                                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                                </div>
+                              )}
+                              <p className={cn("mt-0.5 text-[0.6rem] text-[var(--muted-foreground)]", isA ? "text-left" : "text-right")}>{toThaiTime(m.created_at) || "—"}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : monitorLoading ? (
+                <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+              ) : monitorError ? (
+                <p className="py-8 text-center text-xs text-red-500">{monitorError}</p>
+              ) : monitorList.length === 0 ? (
+                <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无员工之间的会话</p>
+              ) : (
+                <div className="divide-y divide-[var(--border)]">
+                  {monitorList.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => openMonitorConversation(c.id)}
+                      className="flex w-full items-center gap-3 px-2 py-2.5 text-left transition-colors hover:bg-[var(--muted)]/50"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium text-[var(--foreground)]">{c.user_a} ↔ {c.user_b}</span>
+                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(c.last_at)}</span>
+                        </span>
+                        <span className="mt-0.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-xs text-[var(--muted-foreground)]">{c.last_sender}: {c.last_preview || "—"}</span>
+                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{c.message_count} 条</span>
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
