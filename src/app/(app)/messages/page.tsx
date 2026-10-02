@@ -7,6 +7,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
 import { bangkokToday, bangkokDayRange, utcSecondBefore, utcNowStr } from "@/lib/time";
+import { containsSensitiveWord } from "@/lib/sensitive-words";
 import { useAuth } from "@/components/auth-provider";
 import { subscribeOpenChat, takePendingChatTarget, type ChatOpenTarget } from "@/lib/chat-nav";
 
@@ -214,6 +215,7 @@ interface MonitorConversation {
   last_sender: string;
   last_at: string;
   last_preview: string;
+  has_sensitive: boolean;
 }
 
 // 总结板块里的一条会话总结
@@ -2276,6 +2278,7 @@ export default function MessagesPage() {
                       {monitorDetail.messages.map((m) => {
                         const isA = m.sender === monitorDetail.conversation.user_a;
                         const card = parseCard(m);
+                        const sensitive = containsSensitiveWord(m.content);
                         return (
                           <div key={m.id} className={cn("flex", isA ? "justify-start" : "justify-end")}>
                             <div className="max-w-[70%]">
@@ -2296,14 +2299,19 @@ export default function MessagesPage() {
                               ) : (
                                 <div className={cn(
                                   "rounded-2xl px-3 py-2 text-sm",
-                                  isA
-                                    ? "rounded-bl-md border border-[var(--border)]/70 bg-[var(--background)] text-[var(--foreground)]"
-                                    : "rounded-br-md bg-[var(--primary)] text-[var(--primary-foreground)]"
+                                  sensitive
+                                    ? "border border-amber-500/60 bg-[color-mix(in_oklch,var(--warning),var(--background)_88%)] text-[var(--foreground)]"
+                                    : isA
+                                      ? "rounded-bl-md border border-[var(--border)]/70 bg-[var(--background)] text-[var(--foreground)]"
+                                      : "rounded-br-md bg-[var(--primary)] text-[var(--primary-foreground)]"
                                 )}>
                                   <p className="whitespace-pre-wrap break-words">{m.content}</p>
                                 </div>
                               )}
-                              <p className={cn("mt-0.5 text-[0.6rem] text-[var(--muted-foreground)]", isA ? "text-left" : "text-right")}>{toThaiTime(m.created_at) || "—"}</p>
+                              <p className={cn("mt-0.5 flex items-center gap-1.5 text-[0.6rem] text-[var(--muted-foreground)]", isA ? "justify-start" : "justify-end")}>
+                                {sensitive && <span className="font-medium text-amber-600">敏感</span>}
+                                <span>{toThaiTime(m.created_at) || "—"}</span>
+                              </p>
                             </div>
                           </div>
                         );
@@ -2337,6 +2345,9 @@ export default function MessagesPage() {
                             <span className="truncate text-sm font-medium text-[var(--foreground)]">{c.user_a} ↔ {c.user_b}</span>
                             {high && (
                               <span className="shrink-0 rounded-full bg-[var(--destructive)] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-white">高频</span>
+                            )}
+                            {c.has_sensitive && (
+                              <span className="shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-white">敏感</span>
                             )}
                           </span>
                           <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(c.last_at)}</span>
