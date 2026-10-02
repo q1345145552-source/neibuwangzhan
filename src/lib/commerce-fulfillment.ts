@@ -16,8 +16,9 @@ const DEFINITIONS = {
   // 员工确认归属后改派。businessId=-1 是哨兵：该业务线由迁移按名称追加插入，编号随库漂移，
   // 运行时按名称解析，不做固定编号比对（其余业务线仍严格比对，防种子顺序漂移）。
   unclassified: { key:"unclassified-v1", businessName:"待分类", businessId:-1, subService:"storefront-unclassified", addressType:"",
-    namesHash:"8546045644a7ea1432058f134852a5d81541699f76dc4e11f95119f02f55eea4",
-    publicNames:["方案确认","确认服务归属"] },
+    // 2026-10-03 加「办理并交付」：没有对应业务线的服务点完归属不再被自动标成已完成
+    namesHash:"ac549d9634934dfb6973eab88185f75c0ca1eb89fcfcff78472364c5a515241c",
+    publicNames:["方案确认","确认服务归属","办理并交付"] },
   // ── 2026-09-20 放行的五个家族（内部均有专属模板，hash 锁定；公开名中性化，不带人名/内部金额）──
   "social-security": { key:"social-security-v1", businessName:"社保开户", businessId:11, subService:"social-security", addressType:"",
     namesHash:"c13db3839e722b5a846a50403014e758fed0abcb4bb7a2b303b58cd7e8ebdf20",
@@ -81,6 +82,63 @@ const DEFINITIONS = {
     namesHash:"93d7c9206da9cf0accb74175f1d020157c45c58125d243567763d068b5bebc2e",
     publicNames:["方案确认","提供产品图与规格书","确认是否需要 TISI","准备全套文件","系统注册登记","准备授权委托书","补充文件","审批通过与清关准备","获取进口单据","货物送达 TISI","送样检测","等待检测结果","取得 TISI 证书（周期约 3-4 个月）"] },
 } as const;
+
+/**
+ * 客户站同步单回传进度用的客户可见步骤名（2026-10-03）。
+ * 内部步骤名带员工名、合作方和内部费用说明（如「Bam联系K.Fai确认套餐和付款（约32,100泰铢…）」），不能原样给客户看；
+ * 这里复用上面已审核、hash 锁定的公开名：整套步骤与某个模板一致就逐条套用；员工增删改过的步骤，
+ * 只有所有模板对该原名给出同一公开名时才套用，其余一律显示中性名。模板变了而公开名没复核的，整套不收录。
+ * 待分类单改派后是「方案确认、确认归属」+ 新业务线模板去掉其「方案确认」的整段，也按两段模板各自的公开名套用。
+ */
+export const NEUTRAL_PUBLIC_STEP_NAME = "办理事项";
+type PublicNameSpec = {
+  businessId: number; addressType: string; subService?: string; namesHash?: string; publicNames?: readonly string[];
+  variants?: Record<string, { subService: string; namesHash: string; publicNames: readonly string[] }>;
+  serviceSubServices?: Record<string, string>;
+};
+type PublicNameIndex = {
+  byTemplate: Map<string, readonly string[]>; byName: Map<string, string | null>;
+  byTail: Map<string, readonly string[]>; claimed?: { names: readonly string[]; publicNames: readonly string[] };
+};
+let publicNameIndex: PublicNameIndex | undefined;
+function buildPublicNameIndex(): PublicNameIndex {
+  const byTemplate = new Map<string, readonly string[]>();
+  const byName = new Map<string, string | null>();
+  const byTail = new Map<string, readonly string[]>();
+  let claimed: PublicNameIndex["claimed"];
+  const add = (businessId: number, subService: string, addressType: string, namesHash: string, publicNames: readonly string[]) => {
+    const names = getOrderStepsWithDocs(businessId, subService, addressType).map(step => step.name);
+    if (names.length !== publicNames.length || createHash("sha256").update(JSON.stringify(names)).digest("hex") !== namesHash) return;
+    byTemplate.set(JSON.stringify(names), publicNames);
+    if (subService === "storefront-unclassified") claimed = { names: names.slice(0, 2), publicNames: publicNames.slice(0, 2) };
+    else byTail.set(JSON.stringify(names.slice(1)), publicNames.slice(1));
+    names.forEach((name, i) => {
+      const previous = byName.get(name);
+      if (previous === undefined) byName.set(name, publicNames[i]);
+      else if (previous !== publicNames[i]) byName.set(name, null);
+    });
+  };
+  for (const spec of Object.values(DEFINITIONS) as readonly PublicNameSpec[]) {
+    if (spec.variants) {
+      for (const variant of Object.values(spec.variants)) add(spec.businessId, variant.subService, spec.addressType, variant.namesHash, variant.publicNames);
+    } else if (spec.namesHash && spec.publicNames) {
+      const subs = spec.serviceSubServices ? Object.values(spec.serviceSubServices) : [spec.subService ?? ""];
+      for (const sub of subs) add(spec.businessId, sub, spec.addressType, spec.namesHash, spec.publicNames);
+    }
+  }
+  return { byTemplate, byName, byTail, claimed };
+}
+export function publicStepNames(names: readonly string[]): string[] {
+  const index = publicNameIndex ??= buildPublicNameIndex();
+  const whole = index.byTemplate.get(JSON.stringify(names));
+  if (whole) return [...whole];
+  const { claimed } = index;
+  if (claimed && names.length > 2 && names[0] === claimed.names[0] && names[1] === claimed.names[1]) {
+    const tail = index.byTail.get(JSON.stringify(names.slice(2)));
+    if (tail) return [...claimed.publicNames, ...tail];
+  }
+  return names.map(name => index.byName.get(name) ?? NEUTRAL_PUBLIC_STEP_NAME);
+}
 
 /** Select only a reviewed original workflow; nothing in a product name controls dispatch. */
 export function commerceWorkflow(db: Database.Database, terms: CommerceTerms) {

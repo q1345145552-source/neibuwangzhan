@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { queueDocumentReview, requestProgressFlush } from "@/lib/progress-sync";
 
 export async function GET(
   req: NextRequest,
@@ -85,8 +86,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
-  const { document_id, status, direction } = await readJson(req);
+  const { document_id, status, direction, review_note } = await readJson(req);
   if (!document_id || (status === undefined && direction === undefined)) return NextResponse.json({ error: "请提供文档及审核动作" }, { status: 400 });
+  if (review_note !== undefined && (typeof review_note !== "string" || review_note.length > 500)) return NextResponse.json({ error: "退回原因最多 500 字" }, { status: 400 });
   if (status !== undefined && !['待审核', '已审核', '已退回'].includes(status)) return NextResponse.json({ error: "审核状态无效" }, { status: 400 });
   if (direction !== undefined && !['client_to_us', 'us_to_client'].includes(direction)) return NextResponse.json({ error: "资料方向无效" }, { status: 400 });
   const db = getDb();
@@ -94,10 +96,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
   const nextStatus = status ?? existing.status;
   const nextDirection = direction ?? existing.direction;
-  db.transaction(() => {
+  const queued = db.transaction(() => {
     db.prepare('UPDATE documents SET status = ?, direction = ?, publication_verified = ? WHERE id = ? AND order_id = ?')
       .run(nextStatus, nextDirection, nextStatus === '已审核' && nextDirection === 'us_to_client' && (direction === 'us_to_client' || existing.publication_verified === 1) ? 1 : 0, document_id, id);
-    logOperation(auth.name, "审核资料", "document", String(document_id), `订单:${id} 状态:${nextStatus} 方向:${nextDirection}`);
+    // 资料打通（2026-10-03）：客户站送来的资料审核后，同一份的其他副本跟着变，结果（含退回原因）回传客户站
+    const link = db.prepare("SELECT submission_id FROM sync_documents WHERE document_id = ? LIMIT 1").get(document_id) as { submission_id: string } | undefined;
+    let review = false;
+    if (link && status !== undefined && nextStatus !== existing.status) {
+      db.prepare("UPDATE documents SET status = ? WHERE id IN (SELECT document_id FROM sync_documents WHERE submission_id = ?) AND id <> ?").run(nextStatus, link.submission_id, document_id);
+      review = queueDocumentReview(db, link.submission_id, nextStatus, String(review_note || ""));
+    }
+    logOperation(auth.name, "审核资料", "document", String(document_id), `订单:${id} 状态:${nextStatus} 方向:${nextDirection}${review_note ? ` 原因:${String(review_note).slice(0, 100)}` : ""}`);
+    return review;
   })();
+  if (queued) requestProgressFlush();
   return NextResponse.json(db.prepare('SELECT * FROM documents WHERE id = ? AND order_id = ?').get(document_id, id));
 }

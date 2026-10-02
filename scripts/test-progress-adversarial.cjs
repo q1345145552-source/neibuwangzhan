@@ -70,7 +70,13 @@ function harness(db) {
       if (id === 'next/server') return { NextResponse: { json: (body, options = {}) => ({ status: options.status || 200, body }) } };
       if (id === '@/lib/auth') return { verifyAuth: async () => auth, isStaff: load('authCapability').isStaff };
       if (id === '@/lib/req') return { readJson: req => req.json() };
-      if (id === '@/lib/db' || id === './db') return { getDb: () => getDbImpl(), logOperation: (...args) => metrics.audits.push(args) };
+      // 商城只读查询（仅 GET 用）与客户可见步骤名：夹具步骤名不属于任何模板，真实实现同样回中性名；
+      // 真实映射由 scripts/test-sync-public-steps.mts 端到端覆盖。
+      if (id === '@/lib/commerce-terms') return { readOrderPurchase: () => null };
+      if (id === './commerce-fulfillment') return { publicStepNames: names => names.map(() => '办理事项') };
+      if (id === './commerce-schema') return { isCommerceBuyer: () => false }; // 夹具未开商城试点，真实实现同为 false
+      if (id === '@/lib/constants') return { subServices: {} }; // 仅待分类改派用，夹具订单不是待分类单
+      if (id === '@/lib/db' || id === './db') return { getDb: () => getDbImpl(), getOrderStepsWithDocs: () => [], logOperation: (...args) => metrics.audits.push(args) };
       if (id === '@/lib/progress-sync' || id === './lib/progress-sync') return load('progress');
       if (id === '@/lib/client-scope') return load('scope');
       if (id === '@/lib/client-view') return load('view');
@@ -126,6 +132,8 @@ function actualDbModule(dbPath) {
   return load(path.join(root, 'src/lib/db.ts'));
 }
 
+// 进度事件只在客户可见内容变化时才入队；需要第二条事件的用例先改一次步骤状态。
+const visibleChange = db => db.prepare("UPDATE order_steps SET status = CASE status WHEN '已完成' THEN '进行中' ELSE '已完成' END WHERE order_id = 'fixture-order'").run();
 (async () => {
   await test('false/malformed/mismatched ACK stays pending; exact or newer matching ACK succeeds', async (db, h) => {
     const p = h.load('progress'); p.queueProgressEventsForOrder('fixture-order', db); enable(h);
@@ -155,7 +163,7 @@ function actualDbModule(dbPath) {
     }
     h.setFetch(validFetch); due(db); assert.equal((await p.flushProgress()).sent, 1);
     assert.equal(queueRow(db).status, 'sent'); assert.equal(queueRow(db).last_error, null);
-    p.queueProgressEventsForOrder('fixture-order', db);
+    visibleChange(db); p.queueProgressEventsForOrder('fixture-order', db);
     h.setFetch(async (_, options) => response(ackFor(JSON.parse(options.body), {seq: 9, stale: true})));
     assert.equal((await p.flushProgress()).sent, 1, 'newer matching persisted sequence confirms a stale event');
     console.log('VERIFIED ACK negative_cases=11 exact_ack=sent newer_matching_ack=sent');
@@ -211,7 +219,7 @@ function actualDbModule(dbPath) {
     db.exec("CREATE TRIGGER reject_sent BEFORE UPDATE OF status ON sync_progress_outbox BEGIN SELECT RAISE(ABORT,'MARK_SENT_FAILURE'); END");
     assert.equal((await p.flushProgress()).failed, 1); assert.equal(queueRow(db).status, 'pending');
     db.exec('DROP TRIGGER reject_sent'); due(db); assert.equal((await p.flushProgress()).sent, 1);
-    p.queueProgressEventsForOrder('fixture-order', db);
+    visibleChange(db); p.queueProgressEventsForOrder('fixture-order', db);
     db.exec("CREATE TRIGGER reject_retry BEFORE UPDATE OF attempts ON sync_progress_outbox BEGIN SELECT RAISE(ABORT,'RETRY_METADATA_FAILURE'); END");
     h.setFetch(async () => response({}, 503));
     await assert.rejects(p.flushProgress(), /RETRY_METADATA_FAILURE/);

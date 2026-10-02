@@ -25,6 +25,9 @@ const MIME_MAP: Record<string, string> = {
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".xls": "application/vnd.ms-excel",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // 客户站同步来的文字资料存成 .txt；客户站也允许传 .csv（2026-10-03 资料打通）
+  ".txt": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
 };
 
 export async function GET(

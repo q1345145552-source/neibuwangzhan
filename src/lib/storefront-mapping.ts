@@ -5,15 +5,18 @@
  * 附加费/参考资料行不建办理单，只在 sync_inbox 留痕。
  *
  * 业务线用名称（运行时查 business_types 解析 ID），不用自增 ID——不同环境的库 ID 可能漂移。
+ *
+ * 2026-10-03：补齐 9-22 老板逐项裁决的 20 个 SKU（此前只落在商城 commerce-catalog/commerce-fulfillment，
+ * 客户站同步这条线仍把它们送进待分类）。去向与 commerce-fulfillment.ts 的 DEFINITIONS 一一对应，改一边要同步另一边。
  */
 
 export type MappingResult =
-  | { kind: "mapped"; businessTypeName: string; subServiceType: string }
+  | { kind: "mapped"; businessTypeName: string; subServiceType: string; addressType: string }
   | { kind: "unclassified"; note?: string }
   | { kind: "attachment" }
   | { kind: "reference" };
 
-const MAPPED: Record<string, { businessType: string; sub?: string }> = {
+const MAPPED: Record<string, { businessType: string; sub?: string; addressType?: string }> = {
   // 公司注册 4 SKU + 开公户 + VAT 注册（公司咨询服务）
   "COM-001": { businessType: "公司注册", sub: "company-reg" },
   "COM-002": { businessType: "公司注册", sub: "company-reg" },
@@ -55,6 +58,33 @@ const MAPPED: Record<string, { businessType: string; sub?: string }> = {
   "OTH-012": { businessType: "FDA认证", sub: "medical" },
   // 工作签证（hidden 商品，理论上不会有订单，映射保留）
   "VISA-001": { businessType: "工作签证" },
+  // ── 2026-09-22 裁决（与商城 commerce-fulfillment 同一去向）──
+  // 公司变更 9 个：共用「公司变更」笼统流程
+  "COM-005": { businessType: "公司注册", sub: "change" },
+  "COM-006": { businessType: "公司注册", sub: "change" },
+  "COM-007": { businessType: "公司注册", sub: "change" },
+  "COM-008": { businessType: "公司注册", sub: "change" },
+  "COM-009": { businessType: "公司注册", sub: "change" },
+  "COM-010": { businessType: "公司注册", sub: "change" },
+  "COM-011": { businessType: "公司注册", sub: "change" },
+  "COM-012": { businessType: "公司注册", sub: "change" },
+  "COM-013": { businessType: "公司注册", sub: "change" },
+  // 地址挂靠 2 个：公司注册线「地址服务」岗，先套公司全套流程
+  "COM-018": { businessType: "公司注册", sub: "address" },
+  "COM-019": { businessType: "公司注册", sub: "address" },
+  // 场地认证 4 个：归地址认证线，按口述流程含租赁两步（xiangtai 分支），员工可按客户自有场地调整
+  "OTH-003": { businessType: "地址认证", addressType: "xiangtai" },
+  "OTH-004": { businessType: "地址认证", addressType: "xiangtai" },
+  "OTH-005": { businessType: "地址认证", addressType: "xiangtai" },
+  "OTH-006": { businessType: "地址认证", addressType: "xiangtai" },
+  // 企业店 3 个：与 Mall 店分开的独立岗位，三平台共用一套流程
+  "PLA-004": { businessType: "Mall开店", sub: "enterprise" },
+  "PLA-005": { businessType: "Mall开店", sub: "enterprise" },
+  "PLA-006": { businessType: "Mall开店", sub: "enterprise" },
+  // 商标转让：购买R标岗
+  "TRA-008": { businessType: "商标", sub: "buy-r" },
+  // 保健食品：归 FDA 食品岗（FDA-SUP-PROD 为重复商品，裁决下架，不映射）
+  "OTH-013": { businessType: "FDA认证", sub: "food" },
 };
 
 // 有内部对应体系但不能由本路由直接建单的 SKU：落待分类并带提示，由员工人工转入。
@@ -72,7 +102,7 @@ export function mapSku(skuCode: string | null | undefined): MappingResult {
   if (REFERENCE_SKUS.has(skuCode)) return { kind: "reference" };
   if (ATTACHMENT_SKUS.has(skuCode)) return { kind: "attachment" };
   const hit = MAPPED[skuCode];
-  if (hit) return { kind: "mapped", businessTypeName: hit.businessType, subServiceType: hit.sub || "" };
+  if (hit) return { kind: "mapped", businessTypeName: hit.businessType, subServiceType: hit.sub || "", addressType: hit.addressType || "client" };
   const hint = MANUAL_HINTS[skuCode];
   return { kind: "unclassified", note: hint };
 }

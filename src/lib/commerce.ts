@@ -177,7 +177,7 @@ export function checkout(db: Database.Database, actor: TokenPayload, input: unkn
       }
     }
     db.prepare("INSERT INTO commerce_invoices(id,sale_id,total_cents) VALUES (?,?,?)").run("INV-" + randomUUID(),saleId,current.total_cents);
-    // 待分类提醒（规则 6）：本单含未归类办理项时广播给全员，谁看到谁领取（填负责人=认领，改业务线=归类）
+    // 待分类提醒（规则 6）：本单含未归类办理项时提醒全体在职员工（每人一条），谁看到谁领取（填负责人=认领，改业务线=归类）
     const unclassifiedSkus = current.lines.filter((line, i) => workflows[i].key === "unclassified-v1").map(line => line.sku);
     if (unclassifiedSkus.length)
       notifyUnclassifiedOrder(db, saleId, `商城单 ${saleId}（客户 ${actor.name}）含待确认归属的服务：${unclassifiedSkus.join("、")}。请在订单列表「待分类」业务线中认领并归类。`);

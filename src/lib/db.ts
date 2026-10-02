@@ -237,11 +237,15 @@ const businessSteps: Record<number, StepTemplate[]> = {
 };
 
 export function getBusinessSteps(businessTypeId: number, subServiceType?: string): StepTemplate[] {
-  // 客户站同步来的未匹配订单（映射无归属时打此标记）：只给一个归类步骤，
-  // 管理员确认业务线后改派。放最前面，避免被下面按业务线 ID 的分支抢先；
+  // 客户站同步来的未匹配订单（映射无归属时打此标记）：归类步骤 + 办理并交付。
+  // 员工确认业务线后改派（订单编辑改业务线时换成该线整套流程，见 orders/[id] PATCH）。放最前面，避免被下面按业务线 ID 的分支抢先；
   // 也不依赖业务线 ID，避免自增 ID 在不同环境的库里漂移。
+  // 2026-10-03 老板定：加「办理并交付」——内部没有对应业务线的服务，点完归属不能就被自动标成已完成并告诉客户。
   if (subServiceType === "storefront-unclassified") {
-    return [{ name: "确认归属并派单（客户站同步单，未匹配业务线）", assignee: "" }];
+    return [
+      { name: "确认归属并派单（客户站同步单，未匹配业务线）", assignee: "" },
+      { name: "办理并交付", assignee: "" },
+    ];
   }
   // 公司变更（2026-09-22 裁决：变更类 9 个商品共用一套笼统流程）。
   // assignee 留空：不预设经办人，认领的员工自己填。
