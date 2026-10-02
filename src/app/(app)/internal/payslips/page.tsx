@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Wallet } from "lucide-react";
+import { ArrowLeft, Wallet, ChevronLeft, ChevronRight, Download } from "lucide-react";
 
 interface Payslip {
   id: number;
@@ -152,6 +152,35 @@ export default function PayslipsPage() {
     }
   };
 
+  const shiftMonth = (offset: number) => {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + offset, 1));
+    setMonth(d.toISOString().slice(0, 7));
+  };
+
+  const exportExcel = async () => {
+    if (!month) return;
+    setErr("");
+    try {
+      const r = await fetchWithAuth(`/api/payslips/export?month=${month}`, {});
+      if (r.ok) {
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `payslips_${month}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        setErr("导出失败");
+      }
+    } catch {
+      setErr("导出失败");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -165,15 +194,27 @@ export default function PayslipsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-        />
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="outline" className="h-9 px-2" onClick={() => shiftMonth(-1)}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+          />
+          <Button size="sm" variant="outline" className="h-9 px-2" onClick={() => shiftMonth(1)}>
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
         <Button size="sm" className="h-9" onClick={generate} disabled={generating || !month}>
           <Wallet className="size-3.5" />
           {generating ? "生成中…" : "生成工资单"}
+        </Button>
+        <Button size="sm" variant="outline" className="h-9" onClick={exportExcel} disabled={!month || payslips.length === 0}>
+          <Download className="size-3.5" />
+          导出 Excel
         </Button>
         {err && <span className="text-xs text-red-500">{err}</span>}
       </div>
