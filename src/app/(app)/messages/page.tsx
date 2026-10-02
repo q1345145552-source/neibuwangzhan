@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, Archive, PanelLeftClose } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, Archive, PanelLeftClose, Pencil } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -27,6 +27,7 @@ interface Group {
   owner: string;
   background: string;
   announcement: string;
+  avatar: string;
   members: string[];
   last_at: string | null;
   last_preview: string | null;
@@ -479,6 +480,13 @@ export default function MessagesPage() {
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementText, setAnnouncementText] = useState("");
   const [announcementSaving, setAnnouncementSaving] = useState(false);
+  // 群头像 / 群改名（群主）
+  const [groupAvatarOpen, setGroupAvatarOpen] = useState(false);
+  const [groupAvatarSaving, setGroupAvatarSaving] = useState(false);
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameText, setRenameText] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
   // 消息翻译
@@ -709,7 +717,7 @@ export default function MessagesPage() {
       kind: "group",
       id: String(g.id),
       name: g.name,
-      avatar: "",
+      avatar: g.avatar || "",
       lastAt: g.last_at,
       lastSender: g.last_sender,
       lastPreview: g.last_preview,
@@ -1518,6 +1526,90 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开群头像设置（仅群主）
+  const openGroupAvatar = () => setGroupAvatarOpen(true);
+
+  // 群主设置群头像（图片 URL / 空串恢复默认图标），全群统一
+  const applyGroupAvatar = async (value: string) => {
+    if (!selected || selected.kind !== "group") return;
+    setGroupAvatarSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, avatar: value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === selected.id ? { ...g, avatar: value } : g)));
+      } else {
+        setError(d?.error || "设置失败");
+      }
+    } catch {
+      setError("设置失败");
+    } finally {
+      setGroupAvatarSaving(false);
+    }
+  };
+
+  // 群主上传自定义群头像图片
+  const handleGroupAvatarPick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("只能上传图片"); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("图片不能超过 10MB"); return; }
+    setGroupAvatarSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (up.ok && upData.url) {
+        await applyGroupAvatar(upData.url);
+      } else {
+        setError(upData.error || "图片上传失败");
+      }
+    } catch {
+      setError("图片上传失败");
+    } finally {
+      setGroupAvatarSaving(false);
+    }
+  };
+
+  // 打开群改名（带出当前群名）
+  const openRename = () => {
+    setRenameText(selected?.name || "");
+    setRenameOpen(true);
+  };
+
+  // 群主修改群名称
+  const saveRename = async () => {
+    if (!selected || selected.kind !== "group") return;
+    const name = renameText.trim();
+    if (!name) { setError("群名称不能为空"); return; }
+    setRenameSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, name }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === selected.id ? { ...g, name } : g)));
+        setSelected((prev) => (prev?.kind === "group" ? { ...prev, name } : prev));
+        setRenameOpen(false);
+      } else {
+        setError(d?.error || "改名失败");
+      }
+    } catch {
+      setError("改名失败");
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -1674,9 +1766,13 @@ export default function MessagesPage() {
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           {item.kind === "group" ? (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 transition-transform duration-200 ease-out group-hover:scale-105">
-              <Users className="size-5" />
-            </span>
+            item.avatar ? (
+              <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-lg object-cover transition-transform duration-200 ease-out group-hover:scale-105" />
+            ) : (
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 transition-transform duration-200 ease-out group-hover:scale-105">
+                <Users className="size-5" />
+              </span>
+            )
           ) : item.avatar ? (
             <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover transition-transform duration-200 ease-out group-hover:scale-105" />
           ) : (
@@ -1868,9 +1964,27 @@ export default function MessagesPage() {
                   <ChevronLeft className="size-5" />
                 </button>
                 {isGroup ? (
-                  <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
-                    <Users className="size-5" />
-                  </span>
+                  isGroupOwner ? (
+                    <button
+                      onClick={openGroupAvatar}
+                      title="设置群头像"
+                      className="shrink-0 overflow-hidden rounded-lg transition-opacity hover:opacity-80"
+                    >
+                      {activeGroup?.avatar ? (
+                        <img src={imgSrc(activeGroup.avatar)} alt={selected.name} className="size-10 rounded-lg object-cover" />
+                      ) : (
+                        <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-[var(--primary)]">
+                          <Users className="size-5" />
+                        </span>
+                      )}
+                    </button>
+                  ) : activeGroup?.avatar ? (
+                    <img src={imgSrc(activeGroup.avatar)} alt={selected.name} className="size-10 shrink-0 rounded-lg object-cover" />
+                  ) : (
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+                      <Users className="size-5" />
+                    </span>
+                  )
                 ) : selectedAvatar ? (
                   <img src={imgSrc(selectedAvatar)} alt={selected.name} className="size-10 shrink-0 rounded-full object-cover" />
                 ) : (
@@ -1909,6 +2023,16 @@ export default function MessagesPage() {
                     >
                       <Palette className="size-4" />
                       群背景
+                    </button>
+                  )}
+                  {isGroupOwner && (
+                    <button
+                      onClick={openRename}
+                      title="修改群名称"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    >
+                      <Pencil className="size-4" />
+                      改名
                     </button>
                   )}
                   {isAdmin && (
@@ -2904,6 +3028,75 @@ export default function MessagesPage() {
                 className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
               >
                 {announcementSaving ? "发布中…" : "发布"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 群头像设置（群主） */}
+      {groupAvatarOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setGroupAvatarOpen(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">群头像</h3>
+              <button onClick={() => setGroupAvatarOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">上传一张图片当群头像，或使用默认群图标。全群可见。</p>
+            <div className="mb-4 flex justify-center">
+              {activeGroup?.avatar ? (
+                <img src={imgSrc(activeGroup.avatar)} alt="群头像" className="size-20 rounded-2xl object-cover" />
+              ) : (
+                <span className="flex size-20 items-center justify-center rounded-2xl bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-[var(--primary)]">
+                  <Users className="size-10" />
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => groupAvatarInputRef.current?.click()}
+                disabled={groupAvatarSaving}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+              >
+                <ImagePlus className="size-4" />
+                上传图片
+              </button>
+              <button
+                onClick={() => applyGroupAvatar("")}
+                disabled={groupAvatarSaving}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+              >
+                <Users className="size-4" />
+                默认图标
+              </button>
+            </div>
+            <input ref={groupAvatarInputRef} type="file" accept="image/*" onChange={handleGroupAvatarPick} className="hidden" />
+          </div>
+        </div>
+      )}
+
+      {/* 群改名（群主） */}
+      {renameOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRenameOpen(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">修改群名称</h3>
+              <button onClick={() => setRenameOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <input
+              value={renameText}
+              onChange={(e) => setRenameText(e.target.value)}
+              placeholder="输入新的群名称"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button onClick={() => setRenameOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
+              <button
+                onClick={saveRename}
+                disabled={renameSaving}
+                className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+              >
+                {renameSaving ? "保存中…" : "保存"}
               </button>
             </div>
           </div>
