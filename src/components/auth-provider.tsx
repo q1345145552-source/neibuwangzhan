@@ -9,6 +9,7 @@ export interface AuthUser {
   email: string;
   role: "admin" | "employee" | "client";
   avatar?: string;
+  chat_background?: string;
 }
 
 interface AuthContextValue {

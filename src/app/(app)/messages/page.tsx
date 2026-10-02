@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -311,8 +311,17 @@ function AssigneeSelect({ value, onChange, contacts }: { value: string; onChange
   );
 }
 
+// 聊天背景预设（浅色渐变/纯色，保证气泡文字可读）
+const CHAT_BACKGROUND_PRESETS: { key: string; label: string; style: string }[] = [
+  { key: "green", label: "清新绿", style: "linear-gradient(160deg, #e2f7e6 0%, #bfe7c9 100%)" },
+  { key: "blue", label: "天空蓝", style: "linear-gradient(160deg, #e3f1ff 0%, #bcd9ff 100%)" },
+  { key: "orange", label: "暖橙", style: "linear-gradient(160deg, #fff0e2 0%, #ffd8bd 100%)" },
+  { key: "purple", label: "粉紫", style: "linear-gradient(160deg, #f4e6ff 0%, #dcc9ff 100%)" },
+  { key: "gray", label: "浅灰", style: "linear-gradient(160deg, #f2f3f5 0%, #e3e6ea 100%)" },
+];
+
 export default function MessagesPage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const me = user?.name || "";
   const isAdmin = user?.role === "admin";
   const router = useRouter();
@@ -378,6 +387,10 @@ export default function MessagesPage() {
   const [todoAssignee, setTodoAssignee] = useState("");
   const [convertedTodos, setConvertedTodos] = useState<Set<string>>(new Set());
   const [convertingTodoKey, setConvertingTodoKey] = useState<string | null>(null);
+  // 聊天背景设置
+  const [bgOpen, setBgOpen] = useState(false);
+  const [bgSaving, setBgSaving] = useState(false);
+  const bgInputRef = useRef<HTMLInputElement>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -1043,6 +1056,56 @@ export default function MessagesPage() {
     setReadDetail({ readMembers, unreadMembers });
   };
 
+  // 打开聊天背景选择
+  const openBackground = () => setBgOpen(true);
+
+  // 保存背景（预设 key / 图片 URL / 空串恢复默认），立即生效并只对自己可见
+  const applyBackground = async (value: string) => {
+    setBgSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/employees/background", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ background: value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        if (user) setUser({ ...user, chat_background: value });
+      } else {
+        setError(d?.error || "设置失败");
+      }
+    } catch {
+      setError("设置失败");
+    } finally {
+      setBgSaving(false);
+    }
+  };
+
+  // 上传自定义图片当聊天背景
+  const handleCustomBgPick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("只能上传图片"); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("图片不能超过 10MB"); return; }
+    setBgSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (up.ok && upData.url) {
+        await applyBackground(upData.url);
+      } else {
+        setError(upData.error || "图片上传失败");
+      }
+    } catch {
+      setError("图片上传失败");
+    } finally {
+      setBgSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -1149,6 +1212,11 @@ export default function MessagesPage() {
   const avatarOf = (name: string) => (name === me ? myAvatar : contacts.find((c) => c.name === name)?.avatar || "");
   // 当前会话的 key：切换会话时用它触发聊天区重挂载，从而播放过渡动画
   const selectedKey = selected ? (selected.kind === "direct" ? `d-${selected.name}` : `g-${selected.id}`) : "none";
+  // 当前用户自己设置的聊天背景 → 应用到聊天区（各看各的，互不影响）
+  const chatBackground = user?.chat_background || "";
+  const chatBgStyle: React.CSSProperties = chatBackground.startsWith("/api/files/")
+    ? { backgroundImage: `url(${imgSrc(chatBackground)})`, backgroundSize: "cover", backgroundPosition: "center" }
+    : (() => { const p = CHAT_BACKGROUND_PRESETS.find((x) => x.key === chatBackground); return p ? { background: p.style } : {}; })();
 
   return (
     <div className="flex h-[calc(100dvh-6rem)] flex-col gap-2 lg:h-[calc(100dvh-4rem)]">
@@ -1345,6 +1413,14 @@ export default function MessagesPage() {
                     </button>
                   )}
                   <button
+                    onClick={openBackground}
+                    title="聊天背景"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                  >
+                    <Palette className="size-4" />
+                    背景
+                  </button>
+                  <button
                     onClick={exportChat}
                     disabled={exporting}
                     title="导出聊天记录"
@@ -1356,7 +1432,7 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              <div ref={scrollRef} key={selectedKey} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
+              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
@@ -1944,6 +2020,60 @@ export default function MessagesPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 聊天背景设置 */}
+      {bgOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setBgOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">聊天背景</h3>
+              <button onClick={() => setBgOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">设置后立即生效，只对自己可见，换设备也保留。</p>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {CHAT_BACKGROUND_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => applyBackground(p.key)}
+                  disabled={bgSaving}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-colors disabled:opacity-60",
+                    chatBackground === p.key ? "border-[var(--primary)]" : "border-[var(--border)] hover:border-[var(--primary)]"
+                  )}
+                >
+                  <span className="h-12 w-full rounded-md border border-[var(--border)]" style={{ background: p.style }} />
+                  <span className="text-xs text-[var(--foreground)]">{p.label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => bgInputRef.current?.click()}
+                disabled={bgSaving}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-colors disabled:opacity-60",
+                  chatBackground.startsWith("/api/files/") ? "border-[var(--primary)]" : "border-dashed border-[var(--border)] hover:border-[var(--primary)]"
+                )}
+              >
+                <span className="flex h-12 w-full items-center justify-center rounded-md border border-dashed border-[var(--border)] text-[var(--muted-foreground)]">
+                  <ImagePlus className="size-5" />
+                </span>
+                <span className="text-xs text-[var(--foreground)]">自定义图片</span>
+              </button>
+            </div>
+
+            <input ref={bgInputRef} type="file" accept="image/*" onChange={handleCustomBgPick} className="hidden" />
+
+            <button
+              onClick={() => applyBackground("")}
+              disabled={bgSaving}
+              className="mt-4 inline-flex items-center rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              恢复默认背景
+            </button>
           </div>
         </div>
       )}
