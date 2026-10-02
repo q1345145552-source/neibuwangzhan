@@ -3,8 +3,9 @@ import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 
 // GET /api/chat/monitor — 聊天监控（仅管理员）
-// 不带参数：列出所有员工之间的 1:1 会话（谁跟谁、多少条、最后聊了什么）
 // ?conversation_id=X：查看该会话的完整聊天记录（管理员无需参与）
+// ?from=&to=：时间范围（消息 created_at 落在范围内）
+// ?employee=姓名：只看该员工参与的会话（不传显示全部）
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -26,31 +27,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ conversation: conv, messages });
   }
 
-  // 会话列表：只列有消息的 1:1 会话，按最后一条消息时间倒序
+  const from = searchParams.get("from") || "";
+  const to = searchParams.get("to") || "";
+  const employee = (searchParams.get("employee") || "").trim();
+
+  const timeJoin = from && to ? "AND m.created_at >= ? AND m.created_at <= ?" : "";
+  const empWhere = employee ? "WHERE (c.user_a = ? OR c.user_b = ?)" : "";
+
+  const params: unknown[] = [];
+  if (from && to) params.push(from, to);
+  if (employee) params.push(employee, employee);
+
+  // 看板：每个 1:1 会话在该时间段内的消息数 + 最后一条消息 id
   const rows = db.prepare(`
     SELECT c.id, c.user_a, c.user_b,
-      (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count,
-      (SELECT m.sender FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
-      (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_content,
-      (SELECT m.image_url FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_image_url,
-      (SELECT m.order_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_order_id,
-      (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_at
+      COUNT(m.id) AS message_count,
+      MAX(m.id) AS last_id
     FROM conversations c
-    WHERE (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) > 0
-    ORDER BY last_at DESC
-  `).all() as {
-    id: number; user_a: string; user_b: string; message_count: number;
-    last_sender: string | null; last_content: string | null; last_image_url: string | null;
-    last_order_id: string | null; last_at: string | null;
+    JOIN messages m ON m.conversation_id = c.id AND m.recalled = 0 ${timeJoin}
+    ${empWhere}
+    GROUP BY c.id
+    HAVING COUNT(m.id) > 0
+    ORDER BY MAX(m.created_at) DESC
+  `).all(...params) as {
+    id: number; user_a: string; user_b: string; message_count: number; last_id: number;
   }[];
 
-  return NextResponse.json(rows.map((r) => ({
-    id: r.id,
-    user_a: r.user_a,
-    user_b: r.user_b,
-    message_count: r.message_count,
-    last_sender: r.last_sender || "",
-    last_at: r.last_at,
-    last_preview: r.last_image_url ? "[图片]" : r.last_order_id ? "[卡片]" : (r.last_content || "").slice(0, 50),
-  })));
+  const lastStmt = db.prepare(
+    "SELECT sender, content, image_url, order_id, created_at FROM messages WHERE id = ?"
+  );
+
+  return NextResponse.json(rows.map((r) => {
+    const last = lastStmt.get(r.last_id) as { sender: string; content: string; image_url: string; order_id: string; created_at: string };
+    return {
+      id: r.id,
+      user_a: r.user_a,
+      user_b: r.user_b,
+      message_count: r.message_count,
+      last_sender: last.sender || "",
+      last_at: last.created_at,
+      last_preview: last.image_url ? "[图片]" : last.order_id ? "[卡片]" : (last.content || "").slice(0, 50),
+    };
+  }));
 }
