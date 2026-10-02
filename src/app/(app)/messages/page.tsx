@@ -1013,6 +1013,9 @@ export default function MessagesPage() {
   const isDirect = selected?.kind === "direct";
   // 当前一对一聊天对象的头像（群聊没有头像，用群图标兜底）
   const selectedAvatar = isDirect ? contacts.find((c) => c.name === selected.name)?.avatar || "" : "";
+  const myAvatar = user?.avatar || "";
+  // 某个发送者的头像（自己用本人头像，别人从联系人里查，查不到回退空）
+  const avatarOf = (name: string) => (name === me ? myAvatar : contacts.find((c) => c.name === name)?.avatar || "");
 
   return (
     <div className="flex flex-col gap-6">
@@ -1081,7 +1084,7 @@ export default function MessagesPage() {
             )}
           </div>
 
-          <div className="max-h-[40vh] overflow-y-auto p-2 lg:max-h-[70vh]">
+          <div className="max-h-[40vh] divide-y divide-[var(--border)] overflow-y-auto lg:max-h-[70vh]">
             {contactsLoading ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
             ) : conversationList.length === 0 ? (
@@ -1096,38 +1099,32 @@ export default function MessagesPage() {
                     key={item.kind + item.id}
                     onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                      active ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]"
+                      "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                      active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
                     )}
                   >
                     {item.kind === "group" ? (
-                      <span className={cn(
-                        "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-medium",
-                        active ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
-                      )}>
-                        <Users className="size-4" />
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+                        <Users className="size-5" />
                       </span>
                     ) : item.avatar ? (
-                      <img src={imgSrc(item.avatar)} alt={item.name} className="size-9 shrink-0 rounded-full object-cover" />
+                      <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover" />
                     ) : (
-                      <span className={cn(
-                        "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-medium",
-                        active ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
-                      )}>
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
                         {item.name.charAt(0)}
                       </span>
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium">{item.name}</span>
-                        <span className={cn("shrink-0 text-[0.65rem]", active ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>{fmtListTime(item.lastAt)}</span>
+                        <span className="truncate text-sm text-[var(--foreground)]">{item.name}</span>
+                        <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(item.lastAt)}</span>
                       </span>
-                      <span className="flex items-center justify-between gap-2">
-                        <span className={cn("truncate text-xs", active ? "text-[var(--primary-foreground)]/80" : "text-[var(--muted-foreground)]")}>
+                      <span className="mt-0.5 flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-[var(--muted-foreground)]">
                           {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
                         </span>
                         {item.unread > 0 && (
-                          <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold text-white">
+                          <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">
                             {item.unread > 99 ? "99+" : item.unread}
                           </span>
                         )}
@@ -1146,13 +1143,13 @@ export default function MessagesPage() {
             <>
               <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
                 {isGroup ? (
-                  <span className="flex size-9 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-sm font-medium text-[var(--primary)]">
-                    <Users className="size-4" />
+                  <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+                    <Users className="size-5" />
                   </span>
                 ) : selectedAvatar ? (
-                  <img src={imgSrc(selectedAvatar)} alt={selected.name} className="size-9 shrink-0 rounded-full object-cover" />
+                  <img src={imgSrc(selectedAvatar)} alt={selected.name} className="size-10 shrink-0 rounded-full object-cover" />
                 ) : (
-                  <span className="flex size-9 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-sm font-medium text-[var(--primary)]">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
                     {selected.name.charAt(0)}
                   </span>
                 )}
@@ -1187,10 +1184,10 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
+              <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
-                    <MessageSquare className="size-8 text-[var(--muted-foreground)]/40" />
+                    <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
                     <p className="mt-2 text-xs text-[var(--muted-foreground)]">还没有消息，发一句打个招呼吧</p>
                   </div>
                 ) : (
@@ -1202,85 +1199,74 @@ export default function MessagesPage() {
                     const recalled = !!m.recalled;
                     const canRecall = mine && !recalled && within2Min(m.created_at);
                     const isMentioned = isGroup && !!m.mentioned_members?.includes(me);
+                    const senderAvatar = avatarOf(m.sender);
                     return (
-                      <div key={m.id} id={`msg-${m.id}`} className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                        <div className="max-w-[75%]">
+                      <div key={m.id} id={`msg-${m.id}`} className={cn("flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}>
+                        {senderAvatar ? (
+                          <img src={imgSrc(senderAvatar)} alt={m.sender} className="size-9 shrink-0 rounded-full object-cover" />
+                        ) : (
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+                            {m.sender.charAt(0)}
+                          </span>
+                        )}
+                        <div className={cn("flex max-w-[70%] flex-col", mine ? "items-end" : "items-start")}>
                           {isGroup && !mine && (
-                            <p className="mb-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>
+                            <p className="mb-1 px-1 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>
                           )}
                           {recalled ? (
-                            <div className={cn("rounded-lg px-3 py-2 text-sm", mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]")}>
-                              <p className="italic opacity-60">已撤回</p>
-                              <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
-                                {toThaiTime(m.created_at) || "—"}
-                              </p>
+                            <div className="rounded-2xl bg-[var(--muted)] px-3 py-2 text-sm text-[var(--muted-foreground)]">
+                              <p className="italic">已撤回</p>
                             </div>
+                          ) : card ? (
+                            <button
+                              onClick={() => router.push(CARD_META[card.kind].href(card.id))}
+                              className={cn(
+                                "block max-w-[250px] rounded-2xl p-3 text-left transition-colors",
+                                mine
+                                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                                  : "border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                              )}
+                            >
+                              <span className={cn("inline-flex items-center gap-1 text-[0.65rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
+                                <FileText className="size-3.5" /> {CARD_META[card.kind].label}
+                              </span>
+                              <span className="mt-1 block truncate text-sm font-medium">{card.title}</span>
+                              {card.subtitle && (
+                                <span className={cn("mt-0.5 block truncate text-xs", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>{card.subtitle}</span>
+                              )}
+                            </button>
                           ) : (
-                            <>
-                              {card ? (
-                                <button
-                                  onClick={() => router.push(CARD_META[card.kind].href(card.id))}
-                                  className="block w-full rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
-                                >
-                                  <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]">
-                                    <FileText className="size-3.5" /> {CARD_META[card.kind].label}
-                                  </span>
-                                  <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{card.title}</span>
-                                  {card.subtitle && (
-                                    <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{card.subtitle}</span>
-                                  )}
+                            <div
+                              className={cn(
+                                "max-w-full rounded-2xl text-sm",
+                                mine
+                                  ? "rounded-br-md bg-[var(--primary)] text-[var(--primary-foreground)]"
+                                  : isMentioned
+                                    ? "rounded-bl-md bg-amber-500/15 text-[var(--foreground)]"
+                                    : "rounded-bl-md border border-[var(--border)]/70 bg-[var(--background)] text-[var(--foreground)]",
+                                isImage ? "p-1" : "px-3 py-2"
+                              )}
+                            >
+                              {isImage ? (
+                                <button onClick={() => setLightbox(m.image_url)} className="block max-w-full" title="查看大图">
+                                  <img src={imgSrc(m.image_url)} alt="图片消息" className="max-h-60 max-w-full cursor-zoom-in rounded-xl object-contain" />
                                 </button>
                               ) : (
-                                <div
-                                  className={cn(
-                                    "rounded-lg text-sm",
-                                    mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : isMentioned ? "bg-amber-500/15 text-[var(--foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
-                                    isImage ? "p-1.5" : "px-3 py-2"
-                                  )}
-                                >
-                                  {isImage ? (
-                                    <button
-                                      onClick={() => setLightbox(m.image_url)}
-                                      className="block max-w-full"
-                                      title="查看大图"
-                                    >
-                                      <img
-                                        src={imgSrc(m.image_url)}
-                                        alt="图片消息"
-                                        className="max-h-60 max-w-full cursor-zoom-in rounded-md object-contain"
-                                      />
-                                    </button>
-                                  ) : (
-                                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                                  )}
-                                  <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
-                                    {toThaiTime(m.created_at) || "—"}
-                                    {isMentioned && !mine && <span className="ml-1 font-medium text-amber-600">@你</span>}
-                                    {canRecall && <button onClick={() => recallMessage(m)} className="ml-1.5 opacity-70 hover:opacity-100">撤回</button>}
-                                    {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
-                                    {isGroup && (
-                                      <button onClick={() => openReadDetail(m)} className={cn("ml-1.5", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")} title="查看谁读了谁没读">
-                                        已读 {m.read_members?.length ?? 0}/{groupMemberCount}
-                                      </button>
-                                    )}
-                                  </p>
-                                </div>
+                                <p className="whitespace-pre-wrap break-words">{m.content}</p>
                               )}
-                              {card && (
-                                <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
-                                  {toThaiTime(m.created_at) || "—"}
-                                  {isMentioned && !mine && <span className="ml-1 font-medium text-amber-600">@你</span>}
-                                  {canRecall && <button onClick={() => recallMessage(m)} className="ml-1.5 opacity-70 hover:opacity-100">撤回</button>}
-                                  {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
-                                  {isGroup && (
-                                    <button onClick={() => openReadDetail(m)} className="ml-1.5 text-[var(--muted-foreground)]" title="查看谁读了谁没读">
-                                      已读 {m.read_members?.length ?? 0}/{groupMemberCount}
-                                    </button>
-                                  )}
-                                </p>
-                              )}
-                            </>
+                            </div>
                           )}
+                          <p className="mt-1 flex items-center gap-1.5 px-1 text-[0.6rem] text-[var(--muted-foreground)]">
+                            {toThaiTime(m.created_at) || "—"}
+                            {isMentioned && !mine && <span className="font-medium text-amber-600">@你</span>}
+                            {canRecall && <button onClick={() => recallMessage(m)} className="opacity-70 hover:opacity-100">撤回</button>}
+                            {showRead && !recalled && <span>{m.is_read ? "已读" : "未读"}</span>}
+                            {isGroup && !recalled && (
+                              <button onClick={() => openReadDetail(m)} className="opacity-70 hover:opacity-100" title="查看谁读了谁没读">
+                                已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                              </button>
+                            )}
+                          </p>
                         </div>
                       </div>
                     );
@@ -1290,7 +1276,7 @@ export default function MessagesPage() {
 
               {error && <p className="px-4 pt-2 text-xs text-red-500">{error}</p>}
 
-              <div className="relative border-t border-[var(--border)] p-3">
+              <div className="relative border-t border-[var(--border)] bg-[var(--card)] p-3">
                 {mentionOpen && selected?.kind === "group" && (
                   <div className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-48 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
                     {mentionMembers.length === 0 ? (
@@ -1309,7 +1295,7 @@ export default function MessagesPage() {
                     )}
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <input
                     value={input}
                     onChange={handleInputChange}
@@ -1321,13 +1307,13 @@ export default function MessagesPage() {
                       }
                     }}
                     placeholder={`发消息给 ${selected.name}`}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] transition-colors focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
                   />
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending}
                     title="发送图片"
-                    className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                    className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     <ImagePlus className="size-5" />
                   </button>
@@ -1335,7 +1321,7 @@ export default function MessagesPage() {
                     onClick={openSharePicker}
                     disabled={sending}
                     title="分享"
-                    className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                    className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     <FileText className="size-5" />
                   </button>
@@ -1343,7 +1329,7 @@ export default function MessagesPage() {
                   <button
                     onClick={sendText}
                     disabled={sending || !input.trim()}
-                    className="shrink-0 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
+                    className="shrink-0 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
                   >
                     {sending ? "发送中…" : "发送"}
                   </button>
