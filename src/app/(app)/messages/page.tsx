@@ -1663,18 +1663,18 @@ export default function MessagesPage() {
         key={item.kind + item.id}
         className={cn(
           "group relative flex w-full items-center gap-1 rounded-lg px-3 py-2 text-left transition-all duration-200 ease-out",
-          active ? "bg-pink-50/70" : "hover:bg-slate-50/80"
+          active ? "bg-blue-50/70" : "hover:bg-slate-50/80"
         )}
       >
         {active && (
-          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-pink-500" />
+          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-blue-500" />
         )}
         <button
           onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           {item.kind === "group" ? (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-pink-100 text-pink-600 transition-transform duration-200 ease-out group-hover:scale-105">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 transition-transform duration-200 ease-out group-hover:scale-105">
               <Users className="size-5" />
             </span>
           ) : item.avatar ? (
@@ -1687,17 +1687,17 @@ export default function MessagesPage() {
           <span className="min-w-0 flex-1">
             <span className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1">
-                {pinned && <Pin className="size-3 shrink-0 fill-current text-pink-500" />}
+                {pinned && <Pin className="size-3 shrink-0 fill-current text-blue-500" />}
                 <span className={cn("truncate text-sm", active ? "font-semibold text-slate-900" : "font-medium text-slate-700")}>{item.name}</span>
               </span>
-              <span className={cn("shrink-0 text-[0.65rem]", active ? "text-pink-500" : "text-slate-400")}>{fmtListTime(item.lastAt)}</span>
+              <span className={cn("shrink-0 text-[0.65rem]", active ? "text-blue-500" : "text-slate-400")}>{fmtListTime(item.lastAt)}</span>
             </span>
             <span className="mt-0.5 flex items-center justify-between gap-2">
               <span className="truncate text-xs text-slate-400">
                 {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
               </span>
               {item.unread > 0 && (
-                <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-medium leading-4 text-white">
+                <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-medium leading-4 text-white">
                   {item.unread > 99 ? "99+" : item.unread}
                 </span>
               )}
@@ -1709,7 +1709,7 @@ export default function MessagesPage() {
           title={pinned ? "取消置顶" : "置顶"}
           className={cn(
             "shrink-0 rounded-md p-1 transition-all duration-200 ease-out",
-            pinned ? "text-pink-500" : "text-slate-300 hover:bg-slate-50 hover:text-slate-600"
+            pinned ? "text-blue-500" : "text-slate-300 hover:bg-slate-50 hover:text-slate-600"
           )}
         >
           <Pin className={cn("size-3.5", pinned && "fill-current")} />
@@ -1771,7 +1771,7 @@ export default function MessagesPage() {
           <div className="px-4 pb-2 pt-4">
             <button
               onClick={() => { setShowCreate(true); setCreateError(null); }}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 px-4 py-2.5 text-sm font-medium text-white shadow-sm shadow-pink-200 transition-all duration-200 ease-out hover:scale-[1.02] hover:brightness-105"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-400 px-4 py-2.5 text-sm font-medium text-white shadow-sm shadow-blue-200 transition-all duration-200 ease-out hover:scale-[1.02] hover:brightness-105"
             >
               <Plus className="size-4" />
               新建群聊
@@ -1786,7 +1786,7 @@ export default function MessagesPage() {
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
                 placeholder="搜索聊天记录"
-                className="h-9 w-full rounded-lg bg-slate-50 pl-9 pr-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-pink-400"
+                className="h-9 w-full rounded-lg bg-slate-50 pl-9 pr-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-blue-400"
               />
             </div>
             {searchOpen && (
@@ -1825,13 +1825,13 @@ export default function MessagesPage() {
                 {groupConversations.length === 0 ? (
                   <p className="px-4 py-3 text-xs text-slate-300">暂无群聊</p>
                 ) : (
-                  <div className="space-y-0.5">{groupConversations.map(conversationRow)}</div>
+                  <div className="divide-y divide-slate-200">{groupConversations.map(conversationRow)}</div>
                 )}
                 <div className="px-3 pb-1.5 pt-4 text-[11px] font-medium uppercase tracking-wider text-slate-400">直连成员</div>
                 {directConversations.length === 0 ? (
                   <p className="px-4 py-3 text-xs text-slate-300">暂无聊天</p>
                 ) : (
-                  <div className="space-y-0.5">{directConversations.map(conversationRow)}</div>
+                  <div className="divide-y divide-slate-200">{directConversations.map(conversationRow)}</div>
                 )}
               </>
             )}
