@@ -71,7 +71,13 @@ function harness(db) {
       if (id === 'next/server') return { NextResponse: { json: (body, options = {}) => ({ status: options.status || 200, body }) } };
       if (id === '@/lib/auth') return { verifyAuth: async () => auth, isStaff: load('authCapability').isStaff };
       if (id === '@/lib/req') return { readJson: req => req.json() };
-      if (id === '@/lib/db' || id === './db') return { getDb: () => getDbImpl(), logOperation: (...args) => metrics.audits.push(args) };
+      // 商城只读查询（仅 GET 用）与客户可见步骤名：夹具步骤名不属于任何模板，真实实现同样回中性名；
+      // 真实映射由 scripts/test-sync-public-steps.mts 端到端覆盖。
+      if (id === '@/lib/commerce-terms') return { readOrderPurchase: () => null };
+      if (id === './commerce-fulfillment') return { publicStepNames: names => names.map(() => '办理事项') };
+      if (id === './commerce-schema') return { isCommerceBuyer: () => false }; // 夹具未开商城试点，真实实现同为 false
+      if (id === '@/lib/constants') return { subServices: {} }; // 仅待分类改派用，夹具订单不是待分类单
+      if (id === '@/lib/db' || id === './db') return { getDb: () => getDbImpl(), getOrderStepsWithDocs: () => [], logOperation: (...args) => metrics.audits.push(args) };
       if (id === '@/lib/progress-sync' || id === './lib/progress-sync') return load('progress');
       if (id === '@/lib/client-scope') return load('scope');
       if (id === '@/lib/client-view') return load('view');
@@ -147,7 +153,24 @@ async function test(name, run) {
     assert.equal(row.approval_status, '已批准'); assert.equal(row.submission_count, 2);
     assert.equal(state(db).order, '已完成');
     const seqs = db.prepare('SELECT payload FROM sync_progress_outbox ORDER BY rowid').all().map(row => JSON.parse(row.payload).seq);
-    assert.deepEqual(seqs, [1, 2, 3, 4, 5, 6]);
+    // 最后那次只改备注/审批/提交次数，客户可见内容没变，不再发事件（否则客户收到空的「进度更新」通知）
+    assert.deepEqual(seqs, [1, 2, 3, 4, 5]);
+  });
+  await test('internal-only edits queue nothing; customer-visible change still queues', async (db, h) => {
+    assert.equal((await mutate(h, 'step', { step_id: 1, status: '进行中' })).status, 200);
+    assert.equal(count(db), 1);
+    for (const body of [{ step_id: 1, notes: 'PRIVATE-NOTE-2' }, { step_id: 1, assignee: 'Other' }, { step_id: 1, approval_status: '已批准', submission_count: 3 }]) {
+      assert.equal((await mutate(h, 'step', body)).status, 200);
+    }
+    assert.equal((await mutate(h, 'order', { description: 'PRIVATE-DESCRIPTION' })).status, 200);
+    assert.equal(count(db), 1, 'internal-only edits must not notify the customer');
+    assert.equal(state(db).seq, 1);
+    assert.equal((await mutate(h, 'step', { step_id: 1, status: '已完成' })).status, 200);
+    assert.equal(count(db), 2);
+    assert.equal(JSON.parse(db.prepare('SELECT payload FROM sync_progress_outbox ORDER BY rowid DESC LIMIT 1').get().payload).seq, 2);
+    db.prepare("UPDATE sync_progress_outbox SET payload='not-json' WHERE rowid=(SELECT MAX(rowid) FROM sync_progress_outbox)").run();
+    assert.equal((await mutate(h, 'step', { step_id: 1, notes: 'after corrupt payload' })).status, 200, 'unreadable previous event must not block staff');
+    assert.equal(count(db), 3);
   });
   await test('unlinked internal order creates no event or network request', async (db, h) => {
     db.exec('DELETE FROM sync_inbox');

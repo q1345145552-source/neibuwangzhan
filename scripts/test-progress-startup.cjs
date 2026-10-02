@@ -32,6 +32,11 @@ export function getDb() {
   return db ??= new Database(process.env.DB_PATH!);
 }
 `);
+// 客户可见步骤名只在入队时调用，启动补传不经过它；真实映射由 test-sync-public-steps.mts 覆盖。
+fs.writeFileSync(path.join(temp, 'src/lib/commerce-fulfillment.ts'), `export function publicStepNames(names: readonly string[]): string[] {
+  return names.map(() => '办理事项');
+}
+`);
 fs.writeFileSync(path.join(temp, 'preload.cjs'), `const fs = require('node:fs');
 globalThis.fetch = async (url, options) => {
   if (String(url) !== 'https://fixture.invalid/api/sync/progress') throw Error('Unexpected outbound URL intercepted');

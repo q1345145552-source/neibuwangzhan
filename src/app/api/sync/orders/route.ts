@@ -7,7 +7,7 @@ import { mapSku } from '@/lib/storefront-mapping';
 import { allocateCents, moneyToCents, splitCents } from '@/lib/sync-money';
 import { queueProgressEventsForOrder, requestProgressFlush } from '@/lib/progress-sync';
 import { assertSyncPayload, SyncContractError, SYNC_CONTRACT_VERSION, textField } from '@/lib/sync-contract';
-import { notifyUnclassifiedOrder } from '@/lib/order-alerts';
+import { notifyNewSyncedOrder, notifyUnclassifiedOrder } from '@/lib/order-alerts';
 
 interface SyncLine {
   line_no: number;
@@ -163,6 +163,7 @@ export async function POST(req: NextRequest) {
     }
     db.prepare(`INSERT INTO sync_orders(source_order_no,source_customer_id,source,currency,billing_revision,total_cents,discount_cents,net_cents,identity_json,financial_json,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
       .run(sourceOrderNo,customerId,order.source,order.currency,revision,order.totalCents,order.discountCents,order.netCents,order.identityJson,order.financialJson,order.payload);
+    const mappedLines: string[] = [];
     for (let i = 0; i < order.lines.length; i++) {
       const line = order.lines[i];
       const mapping = mapSku(line.sku_code);
@@ -177,12 +178,14 @@ export async function POST(req: NextRequest) {
       }
       const businessTypeName = mapping.kind === 'mapped' ? mapping.businessTypeName : '待分类';
       const subServiceType = mapping.kind === 'mapped' ? mapping.subServiceType : 'storefront-unclassified';
+      const addressType = mapping.kind === 'mapped' ? mapping.addressType : 'client';
       const note = mapping.kind === 'unclassified' ? mapping.note || '' : '';
-      // 待分类提醒（规则 6）：广播全员，谁看到谁领取（订单列表按「待分类」业务线筛选即待领取队列）
+      // 待分类提醒（规则 6）：全体在职员工每人一条，谁看到谁领取（订单列表按「待分类」业务线筛选即待领取队列）
       if (mapping.kind === 'unclassified')
         notifyUnclassifiedOrder(db, sourceOrderNo, `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}。请在订单列表「待分类」业务线中认领并归类。`);
       const bt = db.prepare('SELECT id FROM business_types WHERE name=?').get(businessTypeName) as {id:number} | undefined;
       if (!bt) throw new Error(`业务线不存在: ${businessTypeName}`);
+      if (mapping.kind === 'mapped') mappedLines.push(`${String(line.raw.sku_name || line.sku_code)} ×${line.quantity}份 → ${businessTypeName}`);
       const allocations = splitCents(allocatedLines[i],line.quantity);
       for (let c = 1; c <= line.quantity; c++) {
         const id = `ORD-${randomUUID()}`;
@@ -190,11 +193,11 @@ export async function POST(req: NextRequest) {
         const description = [`客户站同步单 ${sourceOrderNo} #${line.line_no}-${c}/${line.quantity}份`, `SKU ${line.sku_code ?? '无'}`,
           `来源账号 ${customerId}`, order.customerEmail ? `邮箱 ${order.customerEmail}` : '', note ? `备注:${note}` : ''].filter(Boolean).join(' · ');
         db.prepare(`INSERT INTO orders(id,customer_name,business_type_id,sub_service_type,address_type,monthly_rent,status,responsible_person,description,total_amount,currency,trademark_name,created_at,updated_at,source_system,source_customer_id)
-          VALUES (?,?,?,?,'client',0,'待处理','',?,?,?,'',?,?,'storefront',?)`)
-          .run(id,order.customerName || order.customerEmail || customerId,bt.id,subServiceType,description,allocations[c-1]/100,order.currency,now,now,customerId);
+          VALUES (?,?,?,?,?,0,'待处理','',?,?,?,'',?,?,'storefront',?)`)
+          .run(id,order.customerName || order.customerEmail || customerId,bt.id,subServiceType,addressType,description,allocations[c-1]/100,order.currency,now,now,customerId);
         const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes) VALUES (?,?,?,'待处理',?,?)");
         const insertDoc = db.prepare("INSERT INTO step_documents(step_id,order_id,document_name,status) VALUES (?,?,?,'pending')");
-        getOrderStepsWithDocs(bt.id,subServiceType,undefined).forEach((step,index) => {
+        getOrderStepsWithDocs(bt.id,subServiceType,addressType).forEach((step,index) => {
           const result = insertStep.run(id,step.name,index+1,step.assignee,step.notes || '');
           for (const name of step.docs) insertDoc.run(result.lastInsertRowid,id,name);
         });
@@ -204,6 +207,9 @@ export async function POST(req: NextRequest) {
         results.push({line_no:line.line_no,copy:c,status:'created',order_id:id});
       }
     }
+    // 新单提醒（2026-10-03 老板定：对上业务线的新单也提醒全体员工；待分类行已有上面的待领取提醒）
+    if (mappedLines.length)
+      notifyNewSyncedOrder(db, sourceOrderNo, `客户站新订单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）：${mappedLines.join('；')}。已按流程建好办理单，可在订单列表查看。`);
     assertLedgerTotal();
   });
   try { ingest(); }

@@ -64,6 +64,33 @@ export function initializeSyncSchema(database: Database.Database): void {
       WHEN NEW.source_customer_id IS NOT OLD.source_customer_id OR NEW.source IS NOT OLD.source
         OR NEW.source_order_no IS NOT OLD.source_order_no OR NEW.currency IS NOT OLD.currency OR NEW.identity_json IS NOT OLD.identity_json
       BEGIN SELECT RAISE(ABORT, 'sync order identity is immutable'); END;
+
+      -- 资料打通（2026-10-03，规则 12）：客户站送来的资料 ↔ 内部 documents 行。
+      -- 一份资料挂到该客户单拆出的每一份办理单上（文件只存一份）；review_seq 是回传审核结果的版本。
+      CREATE TABLE IF NOT EXISTS sync_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_order_no TEXT NOT NULL,
+        submission_id TEXT NOT NULL,
+        internal_order_id TEXT NOT NULL,
+        document_id INTEGER NOT NULL,
+        review_seq INTEGER NOT NULL DEFAULT 0,
+        withdrawn INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(submission_id, internal_order_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_documents_document ON sync_documents(document_id);
+      -- 审核结果回传客户站的发送队列（与业务写入同事务入队，提交后再发）
+      CREATE TABLE IF NOT EXISTS sync_document_outbox (
+        id TEXT PRIMARY KEY,
+        submission_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        sent_at TEXT
+      );
     `);
     const orderColumns = new Set((database.prepare('PRAGMA table_info(orders)').all() as {name:string}[]).map(c => c.name));
     if(!orderColumns.has('source_system')) database.exec("ALTER TABLE orders ADD COLUMN source_system TEXT NOT NULL DEFAULT ''");

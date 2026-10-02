@@ -1,4 +1,4 @@
-import { publicOrder, publicStep, publicDocument, publicCertificate, isPublicDocument } from "@/lib/client-view";
+import { publicOrder, publicSteps, publicDocument, publicCertificate, isPublicDocument } from "@/lib/client-view";
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
@@ -57,7 +57,7 @@ export async function GET(
 
   return corsResponse({
     ...publicOrder(order),
-    steps: steps.map(publicStep),
+    steps: publicSteps(steps),
     documents: documents.filter(row => isPublicDocument(row, payload.id)).map(publicDocument),
     certificates: certificates.map(publicCertificate),
   }, 200, origin);

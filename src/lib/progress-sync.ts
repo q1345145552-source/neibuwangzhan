@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
+import { publicStepNames } from "./commerce-fulfillment";
 
 /**
  * 内部 → 客户站：业务写入与 seq/outbox 必须在同一数据库事务中提交；
@@ -29,12 +30,28 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
     const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId) as { status: string } | undefined;
     if (!order) return 0;
     // 白名单：禁止 SELECT * 或带入备注、负责人、费用、内部描述。
-    const steps = db.prepare(
+    // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 publicStepNames）。
+    const internalSteps = db.prepare(
       "SELECT step_order, step_name, status FROM order_steps WHERE order_id = ? ORDER BY step_order"
-    ).all(orderId);
+    ).all(orderId) as { step_order: number; step_name: string; status: string }[];
+    const publicNames = publicStepNames(internalSteps.map(step => step.step_name));
+    const steps = internalSteps.map((step, i) => ({ step_order: step.step_order, step_name: publicNames[i], status: step.status }));
     const insert = db.prepare("INSERT INTO sync_progress_outbox (id, inbox_id, payload) VALUES (?, ?, ?)");
     const bump = db.prepare("UPDATE sync_inbox SET progress_seq = progress_seq + 1 WHERE id = ?");
+    const latest = db.prepare("SELECT payload FROM sync_progress_outbox WHERE inbox_id = ? ORDER BY rowid DESC LIMIT 1");
+    const publicState = JSON.stringify({ status: order.status, steps });
+    let queued = 0;
     for (const row of rows) {
+      // 客户看得到的内容（状态、步骤名、步骤状态）没变就不发：客户站每收到一次都会给客户发「办理进度更新」通知，
+      // 员工只改备注/负责人/提交次数时不能让客户收到空通知。上一条解析不了就照发，不拦员工保存。
+      const last = latest.get(row.id) as { payload: string } | undefined;
+      if (last) {
+        try {
+          const previous = JSON.parse(last.payload) as { status?: unknown; steps?: unknown };
+          if (JSON.stringify({ status: previous.status, steps: previous.steps }) === publicState) continue;
+        } catch { /* 照发 */ }
+      }
+      queued++;
       bump.run(row.id);
       insert.run(`PGR-${randomUUID()}`, row.id, JSON.stringify({
         source_order_no: row.source_order_no,
@@ -45,7 +62,7 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
         steps,
       }));
     }
-    return rows.length;
+    return queued;
   })();
 }
 
@@ -53,6 +70,7 @@ interface FlushResult { sent: number; failed: number; skipped: boolean }
 interface PendingProgress { id: string; payload: string; attempts: number }
 interface WorkerState {
   flushing: boolean;
+  docFlushing?: boolean;
   timer?: ReturnType<typeof setInterval>;
 }
 
@@ -108,10 +126,71 @@ export async function flushProgress(): Promise<FlushResult> {
   }
 }
 
+/**
+ * 资料审核结果入队（资料打通，2026-10-03）：必须与审核写入同一事务。
+ * 同一份客户站资料的版本号 +1，所有副本记同一版本；客户站只接受更大的版本，迟到的旧结果不覆盖新结果。
+ */
+export function queueDocumentReview(db: Database.Database, submissionId: string, status: string, note: string): boolean {
+  const result = ({ "已审核": "approved", "已退回": "rejected", "待审核": "pending" } as Record<string, string>)[status];
+  if (!result) return false;
+  const seq = ((db.prepare("SELECT MAX(review_seq) AS n FROM sync_documents WHERE submission_id = ?").get(submissionId) as { n: number | null }).n ?? 0) + 1;
+  db.prepare("UPDATE sync_documents SET review_seq = ? WHERE submission_id = ?").run(seq, submissionId);
+  db.prepare("INSERT INTO sync_document_outbox (id, submission_id, payload) VALUES (?, ?, ?)").run(`DRV-${randomUUID()}`, submissionId,
+    JSON.stringify({ submission_id: submissionId, seq, status: result, note: result === "rejected" ? note.slice(0, 500) : "" }));
+  return true;
+}
+
+export async function flushDocumentReviews(): Promise<FlushResult> {
+  const state = workerState();
+  if (state.docFlushing) return { sent: 0, failed: 0, skipped: true };
+  const url = process.env.CUSTOMER_SYNC_URL;
+  const secret = process.env.SYNC_SECRET;
+  if (!url || !secret) return { sent: 0, failed: 0, skipped: true };
+  state.docFlushing = true;
+  try {
+    const db = getDb();
+    const rows = db.prepare(
+      "SELECT id, payload, attempts FROM sync_document_outbox WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now')) ORDER BY created_at, rowid LIMIT 100"
+    ).all() as PendingProgress[];
+    let sent = 0, failed = 0;
+    for (const row of rows) {
+      try {
+        const resp = await fetch(`${url.replace(/\/$/, "")}/api/sync/documents/review`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+          body: row.payload,
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const ack = await resp.json() as Record<string, unknown>;
+        const event = JSON.parse(row.payload);
+        if (ack.ok !== true || ack.submission_id !== event.submission_id || !Number.isSafeInteger(ack.seq) || Number(ack.seq) < event.seq) {
+          throw new Error("客户站未确认这份资料的审核结果");
+        }
+        db.prepare("UPDATE sync_document_outbox SET status = 'sent', sent_at = datetime('now'), last_error = NULL WHERE id = ?").run(row.id);
+        sent++;
+      } catch (error) {
+        failed++;
+        const attempts = Number(row.attempts || 0) + 1;
+        const delay = Math.min(2 ** Math.min(attempts, 16) * 5, 600);
+        db.prepare("UPDATE sync_document_outbox SET attempts=?,next_attempt_at=datetime('now','+' || ? || ' seconds'),last_error=? WHERE id=?")
+          .run(attempts, delay, String(error).slice(0, 500), row.id);
+        console.error("[documents] 审核结果回传失败，退避后重试:", error);
+      }
+    }
+    return { sent, failed, skipped: false };
+  } finally {
+    state.docFlushing = false;
+  }
+}
+
 /** 仅在业务提交后调用；包含读库失败等异步异常，避免 unhandled rejection。 */
 export function requestProgressFlush(): void {
   void flushProgress().catch((error) => {
     console.error("[progress] 队列扫描失败，等待下一轮重试:", error);
+  });
+  void flushDocumentReviews().catch((error) => {
+    console.error("[documents] 审核结果队列扫描失败，等待下一轮重试:", error);
   });
 }
 

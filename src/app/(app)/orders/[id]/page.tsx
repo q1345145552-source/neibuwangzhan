@@ -12,7 +12,10 @@ import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, u
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
-import { getStepDocs } from "@/lib/constants";
+import { getStepDocs, subServices } from "@/lib/constants";
+
+// 客户站同步的待分类单（2026-10-03 起可改派：换到正式业务线时服务端换成该线整套流程）
+const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { bangkokDateStr } from "@/lib/time";
@@ -369,6 +372,24 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch (error) { setDocErrorMsg(error instanceof Error ? error.message : "审核失败"); }
   };
 
+  // 退回客户交的资料（2026-10-03）：客户站送来的资料，原因会随审核结果发给客户，所以必须填
+  const handleReturnDocument = async (doc: Document) => {
+    const fromStorefront = doc.uploaded_by?.startsWith("客户站：");
+    const reason = window.prompt(fromStorefront ? "退回原因（会发给客户，请写清要怎么改）：" : "退回原因（可不填）：");
+    if (reason === null) return;
+    if (fromStorefront && !reason.trim()) { setDocErrorMsg("请填写退回原因，客户会看到"); return; }
+    setDocErrorMsg("");
+    try {
+      const response = await fetchWithAuth(`/api/orders/${id}/documents`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_id: doc.id, status: "已退回", review_note: reason.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "退回失败");
+      reload();
+    } catch (error) { setDocErrorMsg(error instanceof Error ? error.message : "退回失败"); }
+  };
+
   // 文档删除
   const handleDeleteDoc = async () => {
     if (!deleteDocTarget) return;
@@ -422,6 +443,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const handleSaveOrder = async () => {
     if (!order) return;
+    const reassignTo = order.sub_service_type === UNCLASSIFIED_SUB
+      ? businessTypes.find(b => b.id === Number(editFields.business_type_id) && b.name !== "待分类") : undefined;
+    if (reassignTo && (subServices[reassignTo.id] || []).length > 0 && !editFields.sub_service_type) {
+      setError(`改派到「${reassignTo.name}」要先选具体服务`);
+      return;
+    }
+    if (reassignTo && !window.confirm(`确定把这张单改派到「${reassignTo.name}」？\n会换成该业务线的整套办理流程，已做的「方案确认」和写过的备注都保留。改派只能做一次。`)) return;
     setSavingOrder(true);
     setError("");
     try {
@@ -579,10 +607,47 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 )}
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">业务线</label>
-                  <select value={editFields.business_type_id || ""} onChange={(e) => setEditFields(prev => ({ ...prev, business_type_id: Number(e.target.value) }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                  <select value={editFields.business_type_id || ""} onChange={(e) => {
+                    const businessTypeId = Number(e.target.value);
+                    setEditFields(prev => {
+                      if (order.sub_service_type !== UNCLASSIFIED_SUB) return { ...prev, business_type_id: businessTypeId };
+                      // 待分类单换业务线：具体服务要重新选；换回待分类则保持原样
+                      const backToUnclassified = businessTypes.find(b => b.id === businessTypeId)?.name === "待分类";
+                      return { ...prev, business_type_id: businessTypeId, sub_service_type: backToUnclassified ? UNCLASSIFIED_SUB : "", address_type: "client" };
+                    });
+                  }} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
                     {businessTypes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
+                {(() => {
+                  const target = order.sub_service_type === UNCLASSIFIED_SUB
+                    ? businessTypes.find(b => b.id === Number(editFields.business_type_id) && b.name !== "待分类") : undefined;
+                  if (!target) return null;
+                  const options = subServices[target.id] || [];
+                  return (
+                    <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2 rounded-md border border-[var(--border)] bg-[var(--secondary)] p-3">
+                      {options.length > 0 && (
+                        <div>
+                          <label className="text-xs text-[var(--muted-foreground)]">具体服务</label>
+                          <select value={editFields.sub_service_type || ""} onChange={(e) => setEditFields(prev => ({ ...prev, sub_service_type: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                            <option value="">请选择</option>
+                            {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {target.name === "地址认证" && (
+                        <div>
+                          <label className="text-xs text-[var(--muted-foreground)]">地址类型</label>
+                          <select value={editFields.address_type || "client"} onChange={(e) => setEditFields(prev => ({ ...prev, address_type: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                            <option value="client">客户地址</option>
+                            <option value="xiangtai">湘泰地址（加签租赁合同、收首月租金两步）</option>
+                          </select>
+                        </div>
+                      )}
+                      <p className="sm:col-span-2 text-xs text-[var(--muted-foreground)]">改派后换成「{target.name}」的整套办理流程，已做的「方案确认」和写过的备注都保留。改派只能做一次。</p>
+                    </div>
+                  );
+                })()}
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">负责人</label>
                   <input type="text" value={editFields.responsible_person || ""} onChange={(e) => setEditFields(prev => ({ ...prev, responsible_person: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
@@ -1118,7 +1183,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {clientDocs.length === 0 ? <p className="py-2 text-center text-xs text-[var(--muted-foreground)]">暂无</p> : (
                   <ul className="flex flex-col gap-2">
                     {clientDocs.map((doc) => (
-                      <li key={doc.id} className="flex items-center gap-2 rounded-md p-2 transition-colors hover:bg-[var(--secondary)]">
+                      <li key={doc.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md p-2 transition-colors hover:bg-[var(--secondary)]">
                         <FileText className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
                         <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-[var(--foreground)]">{doc.name}{doc.file_url && (
                           /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(doc.file_url) ? (
@@ -1127,13 +1192,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <> <a href={fileUrl(doc.file_url)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary)] hover:underline">查看文件</a></>
                           )
                         )}</p>
-                          <span className={cn("text-xs", doc.status === "已审核" ? "text-[var(--success)]" : "text-[var(--warning)]")}>{doc.status}</span></div>
+                          <span className={cn("text-xs", doc.status === "已审核" ? "text-[var(--success)]" : doc.status === "已退回" ? "text-[var(--destructive)]" : "text-[var(--warning)]")}>{doc.status}</span>
+                          {doc.uploaded_by?.startsWith("客户站：") && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">来自客户站</span>}</div>
                         {!isClient && (
-                          <>
+                          // 操作按钮单独一行：这一栏很窄，和名称挤一行会把名称压成一列字（2026-10-03 加「退回」后）
+                          <div className="flex w-full flex-wrap items-center justify-end gap-1 pl-5">
                           {doc.status !== "已审核" && <button onClick={() => handleReviewDocument(doc.id, false)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--success)] hover:bg-[var(--muted)]">审核通过</button>}
+                          {doc.direction !== "us_to_client" && doc.status !== "已退回" && <button onClick={() => handleReturnDocument(doc)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--destructive)] hover:bg-[var(--muted)]">退回</button>}
                           {!(doc.publication_verified === 1 && doc.direction === "us_to_client" && doc.status === "已审核") && <button onClick={() => handleReviewDocument(doc.id, true)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)]">核对后对客公开</button>}
                           <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>
-                          </>
+                          </div>
                         )}
                       </li>
                     ))}
