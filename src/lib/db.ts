@@ -1227,6 +1227,17 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 会话置顶：每个用户各自置顶自己的会话（scope_key 形如 direct:姓名 / group:群id）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS pinned_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_name TEXT NOT NULL,
+      scope_key TEXT NOT NULL,
+      pinned_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_name, scope_key)
+    );
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
