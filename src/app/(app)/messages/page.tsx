@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, BellOff, Archive, PanelLeftClose, Pencil, LogOut, Trash2 } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, BellOff, Archive, PanelLeftClose, Pencil, LogOut, Trash2, MoreVertical } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -503,6 +503,8 @@ export default function MessagesPage() {
   // 解散群（群主）
   const [disbandOpen, setDisbandOpen] = useState(false);
   const [disbandSaving, setDisbandSaving] = useState(false);
+  // 顶部「更多」菜单
+  const [moreOpen, setMoreOpen] = useState(false);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
   // 消息翻译
@@ -2030,50 +2032,66 @@ export default function MessagesPage() {
           .msg-bubble-anim, .msg-list-anim { animation: none; }
         }
       `}</style>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+      <div className="flex items-center justify-between">
         <h1 className="text-base font-semibold text-[var(--foreground)]">消息</h1>
-        {isAdmin && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              onClick={openSummaryBoard}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
-            >
-              <ListChecks className="size-4" />
-              总结板块
-            </button>
-            <button
-              onClick={openMonitor}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
-            >
-              <Eye className="size-4" />
-              监控
-            </button>
-            <button
-              onClick={openEmpSummary}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
-            >
-              <Sparkles className="size-4" />
-              按员工总结
-            </button>
-          </div>
-        )}
+        <div className="relative">
+          <button
+            onClick={() => setMoreOpen((v) => !v)}
+            title="更多"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+          >
+            <MoreVertical className="size-4" />
+            更多
+          </button>
+          {moreOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />
+              <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
+                {isAdmin && (
+                  <button
+                    onClick={() => { openSummaryBoard(); setMoreOpen(false); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                  >
+                    <ListChecks className="size-4" />
+                    总结板块
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => { openMonitor(); setMoreOpen(false); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                  >
+                    <Eye className="size-4" />
+                    监控
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => { openEmpSummary(); setMoreOpen(false); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                  >
+                    <Sparkles className="size-4" />
+                    按员工总结
+                  </button>
+                )}
+                <button
+                  onClick={() => { setShowCreate(true); setCreateError(null); setMoreOpen(false); }}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                >
+                  <Plus className="size-4" />
+                  新建群聊
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-rows-1 gap-2 lg:grid-cols-[280px_1fr]">
         {/* 左侧：群聊 + 员工列表 */}
         <div className={cn("flex flex-col overflow-hidden bg-white border-r border-slate-200/60", selected ? "hidden lg:flex" : "flex")}>
-          <div className="px-4 pb-2 pt-4">
-            <button
-              onClick={() => { setShowCreate(true); setCreateError(null); }}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-400 px-4 py-2.5 text-sm font-medium text-white shadow-sm shadow-blue-200 transition-all duration-200 ease-out hover:scale-[1.02] hover:brightness-105"
-            >
-              <Plus className="size-4" />
-              新建群聊
-            </button>
-          </div>
-
           {/* 搜索聊天记录 */}
-          <div className="relative px-3 pb-3">
+          <div className="relative px-3 pb-3 pt-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <input
