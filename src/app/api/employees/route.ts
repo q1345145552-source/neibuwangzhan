@@ -4,6 +4,8 @@ import { verifyAuth } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { refreshPayslipAutoFields } from "@/lib/payslips";
+import { bangkokMonthKey } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -99,10 +101,12 @@ export async function PATCH(req: NextRequest) {
   }
 
   // 工资字段：底薪/技能津贴为数字（>=0），勤奋奖可空（不是人人都有）
+  let salaryChanged = false;
   if (base_salary !== undefined && base_salary !== "") {
     const v = Number(base_salary);
     if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "底薪格式不正确" }, { status: 400 });
     sets.push("base_salary = ?"); params.push(v);
+    salaryChanged = true;
   }
   if (diligence_bonus !== undefined) {
     if (diligence_bonus === "" || diligence_bonus === null) {
@@ -112,17 +116,21 @@ export async function PATCH(req: NextRequest) {
       if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "勤奋奖格式不正确" }, { status: 400 });
       sets.push("diligence_bonus = ?"); params.push(v);
     }
+    salaryChanged = true;
   }
   if (skill_allowance !== undefined && skill_allowance !== "") {
     const v = Number(skill_allowance);
     if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "技能津贴格式不正确" }, { status: 400 });
     sets.push("skill_allowance = ?"); params.push(v);
+    salaryChanged = true;
   }
 
   // customer_names：客户账号能在外部端口看到哪些公司的订单（整表替换）
   const updatingScope = Array.isArray(customer_names);
   if (sets.length === 0 && !updatingScope) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
 
+  const refreshMonth = bangkokMonthKey();
+  let refreshedDraft = false;
   db.transaction(() => {
     if (sets.length > 0) {
       db.prepare(`UPDATE employees SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
@@ -141,7 +149,16 @@ export async function PATCH(req: NextRequest) {
         if (cn) ins.run(id, cn);
       }
     }
+    // 工资档案变了 → 自动重算当月「草稿/打回」状态的工资单自动项（底薪/勤奋奖/技能津贴 + 社保/迟到/请假）。
+    // 待确认/已确认/已发放的工资单一律不动。
+    if (salaryChanged) {
+      refreshedDraft = refreshPayslipAutoFields(db, Number(id), refreshMonth);
+    }
   })();
+
+  if (refreshedDraft) {
+    logOperation(auth.name, "自动刷新草稿工资单", "payslip", `${id}/${refreshMonth}`, "工资档案变更，自动重算自动项");
+  }
 
   if (updatingScope) {
     logOperation(auth.name, "配置客户可见范围", "employee", String(id),
