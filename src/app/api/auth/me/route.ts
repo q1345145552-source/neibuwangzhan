@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (!payload) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
-  const user = db.prepare("SELECT id, name, email, role, avatar FROM employees WHERE id = ?").get(payload.id) as { id: number; name: string; email: string; role: string; avatar: string } | undefined;
+  const user = db.prepare("SELECT id, name, email, role, avatar, chat_background FROM employees WHERE id = ?").get(payload.id) as { id: number; name: string; email: string; role: string; avatar: string; chat_background: string } | undefined;
   if (!user) return NextResponse.json({ error: "用户不存在" }, { status: 401 });
 
   return NextResponse.json(user);
