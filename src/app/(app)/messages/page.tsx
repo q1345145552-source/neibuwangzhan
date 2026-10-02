@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, Archive, PanelLeftClose, Pencil, LogOut } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, BellOff, Archive, PanelLeftClose, Pencil, LogOut } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -28,6 +28,7 @@ interface Group {
   background: string;
   announcement: string;
   avatar: string;
+  muted: boolean;
   members: string[];
   last_at: string | null;
   last_preview: string | null;
@@ -60,6 +61,7 @@ interface ConversationItem {
   id: string;
   name: string;
   avatar: string;
+  muted: boolean;
   lastAt: string | null;
   lastSender: string | null;
   lastPreview: string | null;
@@ -729,6 +731,7 @@ export default function MessagesPage() {
       id: String(g.id),
       name: g.name,
       avatar: g.avatar || "",
+      muted: !!g.muted,
       lastAt: g.last_at,
       lastSender: g.last_sender,
       lastPreview: g.last_preview,
@@ -739,6 +742,7 @@ export default function MessagesPage() {
       id: c.name,
       name: c.name,
       avatar: c.avatar || "",
+      muted: false,
       lastAt: c.last_at,
       lastSender: c.last_sender,
       lastPreview: c.last_preview,
@@ -1743,6 +1747,31 @@ export default function MessagesPage() {
     }
   };
 
+  // 成员切换自己在当前群的免打扰
+  const toggleMute = async () => {
+    if (!selected || selected.kind !== "group") return;
+    const gid = selected.id;
+    const cur = !!groups.find((g) => g.id === gid)?.muted;
+    const next = !cur;
+    // 乐观更新
+    setGroups((prev) => prev.map((g) => (g.id === gid ? { ...g, muted: next } : g)));
+    try {
+      const r = await fetchWithAuth("/api/chat/groups/mute", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: gid, muted: next }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === gid ? { ...g, muted: cur } : g)));
+        setError(d?.error || "设置失败");
+      }
+    } catch {
+      setGroups((prev) => prev.map((g) => (g.id === gid ? { ...g, muted: cur } : g)));
+      setError("设置失败");
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -1917,6 +1946,7 @@ export default function MessagesPage() {
             <span className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1">
                 {pinned && <Pin className="size-3 shrink-0 fill-current text-blue-500" />}
+                {item.muted && <BellOff className="size-3 shrink-0 text-slate-400" />}
                 <span className={cn("truncate text-sm", active ? "font-semibold text-slate-900" : "font-medium text-slate-700")}>{item.name}</span>
               </span>
               <span className={cn("shrink-0 text-[0.65rem]", active ? "text-blue-500" : "text-slate-400")}>{fmtListTime(item.lastAt)}</span>
@@ -2176,6 +2206,21 @@ export default function MessagesPage() {
                     >
                       <Users className="size-4" />
                       成员
+                    </button>
+                  )}
+                  {isGroup && (
+                    <button
+                      onClick={toggleMute}
+                      title={activeGroup?.muted ? "取消免打扰" : "开启免打扰"}
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors",
+                        activeGroup?.muted
+                          ? "border-[var(--primary)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] text-[var(--primary)]"
+                          : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      )}
+                    >
+                      {activeGroup?.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+                      免打扰
                     </button>
                   )}
                   {isGroup && !isGroupOwner && (

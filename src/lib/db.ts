@@ -1144,6 +1144,7 @@ function initTables(database: Database.Database) {
       group_id INTEGER NOT NULL REFERENCES chat_groups(id),
       member TEXT NOT NULL,
       role TEXT DEFAULT 'member' CHECK(role IN ('owner','member')),
+      muted INTEGER DEFAULT 0,
       joined_at TEXT DEFAULT (datetime('now')),
       UNIQUE(group_id, member)
     );
@@ -1181,6 +1182,9 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE chat_groups ADD COLUMN background TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE chat_groups ADD COLUMN announcement TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE chat_groups ADD COLUMN avatar TEXT DEFAULT ''"); } catch {}
+
+  // group_members 迁移：补 muted 列（成员对单个群的免打扰，各设各的）
+  try { database.exec("ALTER TABLE group_members ADD COLUMN muted INTEGER DEFAULT 0"); } catch {}
 
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_user_a ON conversations(user_a);

@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const groups = db.prepare(`
-    SELECT g.id, g.name, g.owner, g.background, g.announcement, g.avatar,
+    SELECT g.id, g.name, g.owner, g.background, g.announcement, g.avatar, me.muted,
       (SELECT m.sender FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
       (SELECT m.content FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.image_url FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_image_url,
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
     background: string;
     announcement: string;
     avatar: string;
+    muted: number;
     last_sender: string | null;
     last_content: string | null;
     last_image_url: string | null;
@@ -48,6 +49,7 @@ export async function GET(req: NextRequest) {
       background: g.background || "",
       announcement: g.announcement || "",
       avatar: g.avatar || "",
+      muted: !!g.muted,
       members: (membersStmt.all(g.id) as { member: string }[]).map((m) => m.member),
       last_at: g.last_at || null,
       last_sender: g.last_sender || null,

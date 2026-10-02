@@ -13,9 +13,13 @@ export async function GET(req: NextRequest) {
     "SELECT COUNT(*) AS c FROM messages WHERE receiver = ? AND is_read = 0 AND group_id IS NULL"
   ).get(auth.name) as { c: number };
 
-  // 群聊里有人 @ 我、我还没看的提醒数
+  // 群聊里有人 @ 我、我还没看的提醒数（免打扰的群不计入）
   const { m } = db.prepare(
-    "SELECT COUNT(*) AS m FROM message_mentions WHERE member = ? AND is_read = 0"
+    `SELECT COUNT(*) AS m
+     FROM message_mentions mm
+     JOIN messages msg ON msg.id = mm.message_id
+     LEFT JOIN group_members gm ON gm.group_id = msg.group_id AND gm.member = mm.member
+     WHERE mm.member = ? AND mm.is_read = 0 AND COALESCE(gm.muted, 0) = 0`
   ).get(auth.name) as { m: number };
 
   return NextResponse.json({ count: c + m });
