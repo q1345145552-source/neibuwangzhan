@@ -29,6 +29,40 @@ function formatMessage(m: {
   return `${sender}${ts}: ${m.content || ""}`;
 }
 
+// GET /api/chat/summary?conversation_id=X | group_id=X — 该会话的历史总结列表（按生成时间倒序）
+export async function GET(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const conversationId = Number(searchParams.get("conversation_id")) || 0;
+  const groupId = Number(searchParams.get("group_id")) || 0;
+  if ((conversationId && groupId) || (!conversationId && !groupId)) {
+    return NextResponse.json({ error: "请提供 conversation_id 或 group_id（二选一）" }, { status: 400 });
+  }
+
+  const db = getDb();
+  let scopeKey: string;
+  if (conversationId) {
+    const conv = db.prepare("SELECT user_a, user_b FROM conversations WHERE id = ?").get(conversationId) as
+      { user_a: string; user_b: string } | undefined;
+    if (!conv) return NextResponse.json({ error: "会话不存在" }, { status: 404 });
+    if (conv.user_a !== auth.name && conv.user_b !== auth.name) {
+      return NextResponse.json({ error: "无权访问该会话" }, { status: 403 });
+    }
+    scopeKey = `conversation:${conversationId}`;
+  } else {
+    const member = db.prepare("SELECT id FROM group_members WHERE group_id = ? AND member = ?").get(groupId, auth.name);
+    if (!member) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
+    scopeKey = `group:${groupId}`;
+  }
+
+  const rows = db.prepare(
+    "SELECT id, from_at, to_at, topics, conclusions, todos, commitments, created_at FROM chat_summaries WHERE scope_key = ? ORDER BY created_at DESC, id DESC"
+  ).all(scopeKey);
+  return NextResponse.json(rows);
+}
+
 // POST /api/chat/summary — 总结一段聊天记录（body: { conversation_id | group_id, from, to }）
 // 返回四块：topics / conclusions / todos / commitments；同会话同时间段命中缓存直接返回。
 export async function POST(req: NextRequest) {
