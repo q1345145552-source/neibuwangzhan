@@ -2149,7 +2149,7 @@ export default function MessagesPage() {
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
                 placeholder="搜索聊天记录"
-                className="h-9 w-full rounded-lg bg-slate-50 pl-9 pr-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-blue-400"
+                className="h-9 w-full rounded-lg bg-slate-50 pl-9 pr-3 text-base text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-blue-400"
               />
             </div>
             {searchOpen && (
@@ -2668,7 +2668,7 @@ export default function MessagesPage() {
                       }
                     }}
                     placeholder={`发消息给 ${selected.name}`}
-                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] transition-colors focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] transition-colors focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
                   />
                   <button
                     onClick={() => setEmojiPanelOpen((v) => !v)}
@@ -2735,7 +2735,7 @@ export default function MessagesPage() {
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="例如：运营协作群"
-              className="mb-3 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+              className="mb-3 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
             />
 
             <label className="mb-1 block text-xs text-[var(--muted-foreground)]">选择成员（创建后你自动成为群主）</label>
@@ -3349,7 +3349,7 @@ export default function MessagesPage() {
               onChange={(e) => setAnnouncementText(e.target.value)}
               placeholder="写一条群公告…"
               rows={4}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
             />
             <div className="mt-3 flex items-center justify-end gap-2">
               <button onClick={() => setAnnouncementOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
@@ -3418,7 +3418,7 @@ export default function MessagesPage() {
               value={renameText}
               onChange={(e) => setRenameText(e.target.value)}
               placeholder="输入新的群名称"
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
             />
             <div className="mt-3 flex items-center justify-end gap-2">
               <button onClick={() => setRenameOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
