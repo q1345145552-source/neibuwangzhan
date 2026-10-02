@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     "SELECT sender, content, image_url, order_id, created_at FROM messages WHERE id = ?"
   );
 
-  return NextResponse.json(rows.map((r) => {
+  const conversations = rows.map((r) => {
     const last = lastStmt.get(r.last_id) as { sender: string; content: string; image_url: string; order_id: string; created_at: string };
     return {
       id: r.id,
@@ -77,5 +77,34 @@ export async function GET(req: NextRequest) {
       last_preview: last.image_url ? "[图片]" : last.order_id ? "[卡片]" : (last.content || "").slice(0, 50),
       has_sensitive: r.has_sensitive === 1,
     };
-  }));
+  });
+
+  // 员工活跃度：每个员工聊了几个人、总共多少条（跟着时间范围走，可选员工筛选）
+  const actTimeJoin = from && to ? "AND created_at >= ? AND created_at <= ?" : "";
+  const actParams: unknown[] = [];
+  if (from && to) actParams.push(from, to);
+  const actRows = db.prepare(`
+    SELECT sender, receiver FROM messages
+    WHERE conversation_id IS NOT NULL AND recalled = 0 ${actTimeJoin}
+  `).all(...actParams) as { sender: string; receiver: string }[];
+
+  const statsMap = new Map<string, { partners: Set<string>; count: number }>();
+  for (const m of actRows) {
+    let s = statsMap.get(m.sender);
+    if (!s) { s = { partners: new Set(), count: 0 }; statsMap.set(m.sender, s); }
+    s.count++;
+    s.partners.add(m.receiver);
+
+    let r = statsMap.get(m.receiver);
+    if (!r) { r = { partners: new Set(), count: 0 }; statsMap.set(m.receiver, r); }
+    r.count++;
+    r.partners.add(m.sender);
+  }
+
+  const activity = [...statsMap.entries()]
+    .filter(([name]) => !employee || name === employee)
+    .map(([name, s]) => ({ employee: name, partner_count: s.partners.size, message_count: s.count }))
+    .sort((a, b) => b.message_count - a.message_count || b.partner_count - a.partner_count);
+
+  return NextResponse.json({ conversations, activity });
 }
