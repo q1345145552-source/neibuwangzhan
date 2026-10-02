@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime } from "@/lib/utils";
@@ -110,6 +110,7 @@ export default function MessagesPage() {
   const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -265,6 +266,76 @@ export default function MessagesPage() {
       }
     }
   }, [groups, openDirect, openGroup]);
+
+  // 导出当前会话（一对一/群聊）的全部聊天记录为 .txt 文件
+  const exportChat = async () => {
+    if (!selected || exporting) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const isDirect = selected.kind === "direct";
+      const all: Message[] = [];
+      let after = 0;
+      // 接口每页最多返回 500 条，按消息 id 翻页拉全
+      for (let page = 0; page < 500; page++) {
+        const url = isDirect
+          ? `/api/chat?other=${encodeURIComponent(selected.name)}&after=${after}`
+          : `/api/chat/group-messages?group_id=${selected.id}&after=${after}`;
+        const r = await fetchWithAuth(url, { cache: "no-store" });
+        if (!r.ok) break;
+        const d = await r.json();
+        const batch: Message[] = Array.isArray(d?.messages) ? d.messages : [];
+        if (batch.length === 0) break;
+        all.push(...batch);
+        after = Math.max(...batch.map((m) => m.id));
+        if (batch.length < 500) break; // 拉完最后一页
+      }
+      // 去重 + 按 id 升序，保证导出顺序稳定
+      const map = new Map<number, Message>();
+      for (const m of all) map.set(m.id, m);
+      const msgs = [...map.values()].sort((a, b) => a.id - b.id);
+      if (msgs.length === 0) { setError("没有可导出的消息"); return; }
+
+      const title = isDirect ? `一对一聊天记录：${selected.name}` : `群聊记录：${selected.name}`;
+      const nowStr = toThaiTime(new Date().toISOString()) || new Date().toLocaleString();
+      const lines: string[] = [
+        title,
+        `导出时间：${nowStr}`,
+        `消息总数：${msgs.length} 条`,
+        "=".repeat(48),
+      ];
+      msgs.forEach((m, i) => {
+        const time = toThaiTime(m.created_at) || m.created_at || "";
+        const who = m.sender === me ? `${m.sender}（我）` : m.sender;
+        lines.push(`[${i + 1}] ${who}  ${time}`);
+        if (m.recalled) {
+          lines.push("    [已撤回]");
+        } else if (m.order_id) {
+          lines.push(`    [订单] 订单号：${m.order_id}  客户：${m.content || "—"}`);
+        } else if (m.image_url) {
+          lines.push(`    [图片] ${m.image_url}`);
+          if (m.content) lines.push(`    ${m.content}`);
+        } else {
+          lines.push(`    ${m.content || ""}`);
+        }
+      });
+
+      // 带 BOM，Windows 记事本 / Excel 打开中文不乱码
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `聊天记录_${selected.name}_${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // 实时轮询：每 1 秒拉取游标之后的新消息（文字/图片都实时）
   useEffect(() => {
@@ -653,6 +724,15 @@ export default function MessagesPage() {
                     </p>
                   )}
                 </div>
+                <button
+                  onClick={exportChat}
+                  disabled={exporting}
+                  title="导出聊天记录"
+                  className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                >
+                  <Download className="size-4" />
+                  {exporting ? "导出中…" : "导出记录"}
+                </button>
               </div>
 
               <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
