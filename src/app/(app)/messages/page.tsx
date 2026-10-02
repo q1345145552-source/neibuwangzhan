@@ -196,21 +196,93 @@ interface SummaryHistoryItem {
   created_at: string;
 }
 
-// 渲染四块总结内容（生成结果 / 历史详情共用）
-function SummaryBlocks({ data }: { data: { topics: string; conclusions: string; todos: string; commitments: string } }) {
+// 把总结里的待办/承诺文本按行拆成一条条（去掉圆点/编号前缀）
+function splitSummaryItems(text: string): string[] {
+  if (!text || text.trim() === "无") return [];
+  return text
+    .split(/\n+/)
+    .map((s) => s.replace(/^\s*[-•*·]+\s*/, "").replace(/^\s*\d+[.、)]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+// 渲染四块总结内容（生成结果 / 历史详情共用）。
+// 传入 onConvert 时，「待办事项」「承诺约定」每一条后面带「转待办」按钮。
+function SummaryBlocks({
+  data,
+  onConvert,
+  converted,
+}: {
+  data: { topics: string; conclusions: string; todos: string; commitments: string };
+  onConvert?: (kind: "todos" | "commitments", text: string) => void;
+  converted?: Set<string>;
+}) {
+  const blocks: { key: string; label: string; content: string }[] = [
+    { key: "topics", label: "聊了什么话题", content: data.topics },
+    { key: "conclusions", label: "有什么结论", content: data.conclusions },
+    { key: "todos", label: "待办事项", content: data.todos },
+    { key: "commitments", label: "承诺约定", content: data.commitments },
+  ];
   return (
     <div className="space-y-2.5">
-      {[
-        ["聊了什么话题", data.topics],
-        ["有什么结论", data.conclusions],
-        ["待办事项", data.todos],
-        ["承诺约定", data.commitments],
-      ].map(([label, content]) => (
-        <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
-          <p className="text-xs font-semibold text-[var(--foreground)]">{label}</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]/90">{content || "无"}</p>
-        </div>
-      ))}
+      {blocks.map((b) => {
+        const convertible = onConvert && (b.key === "todos" || b.key === "commitments");
+        const items = convertible ? splitSummaryItems(b.content) : [];
+        return (
+          <div key={b.key} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+            <p className="text-xs font-semibold text-[var(--foreground)]">{b.label}</p>
+            {convertible ? (
+              items.length === 0 ? (
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">无</p>
+              ) : (
+                <ul className="mt-1.5 space-y-1.5">
+                  {items.map((item, i) => {
+                    const key = `${b.key}:${item}`;
+                    const done = converted?.has(key);
+                    return (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--foreground)]/90">{item}</span>
+                        <button
+                          onClick={() => onConvert(b.key as "todos" | "commitments", item)}
+                          disabled={done}
+                          className={cn(
+                            "shrink-0 rounded-md border px-2 py-0.5 text-[0.65rem] transition-colors",
+                            done
+                              ? "border-transparent text-[var(--muted-foreground)]"
+                              : "border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                          )}
+                        >
+                          {done ? "已转" : "转待办"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )
+            ) : (
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]/90">{b.content || "无"}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 转待办时的负责人选择（留空 = 默认自己）
+function AssigneeSelect({ value, onChange, contacts }: { value: string; onChange: (v: string) => void; contacts: Contact[] }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span className="shrink-0 text-xs text-[var(--muted-foreground)]">负责人</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+      >
+        <option value="">默认（自己）</option>
+        {contacts.map((c) => (
+          <option key={c.name} value={c.name}>{c.name}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -266,6 +338,10 @@ export default function MessagesPage() {
   const [empSummaryLoading, setEmpSummaryLoading] = useState(false);
   const [empSummaryResult, setEmpSummaryResult] = useState<{ topics: string; conclusions: string; todos: string; commitments: string; cached: boolean } | null>(null);
   const [empSummaryError, setEmpSummaryError] = useState<string | null>(null);
+  // 总结里的待办/承诺一键转系统待办
+  const [todoAssignee, setTodoAssignee] = useState("");
+  const [convertedTodos, setConvertedTodos] = useState<Set<string>>(new Set());
+  const [convertingTodoKey, setConvertingTodoKey] = useState<string | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -696,6 +772,7 @@ export default function MessagesPage() {
     setSummaryHistory([]);
     setSummaryHistoryError(null);
     setViewingSummary(null);
+    setConvertedTodos(new Set());
   };
 
   // 调总结接口，把结果四块显示出来
@@ -770,6 +847,7 @@ export default function MessagesPage() {
     setEmpSummaryRange("7d");
     setEmpSummaryResult(null);
     setEmpSummaryError(null);
+    setConvertedTodos(new Set());
   };
 
   // 一键生成某个员工的整体沟通总结
@@ -798,6 +876,30 @@ export default function MessagesPage() {
       setEmpSummaryError("生成失败");
     } finally {
       setEmpSummaryLoading(false);
+    }
+  };
+
+  // 把总结里的一条待办/承诺转成系统待办（负责人可留空，老板可指定）
+  const convertToTodo = async (kind: "todos" | "commitments", text: string) => {
+    const key = `${kind}:${text}`;
+    if (convertedTodos.has(key) || convertingTodoKey === key) return;
+    setConvertingTodoKey(key);
+    try {
+      const r = await fetchWithAuth("/api/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text, assignee: todoAssignee || undefined }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setConvertedTodos((prev) => new Set(prev).add(key));
+      } else {
+        setError(d?.error || "转待办失败");
+      }
+    } catch {
+      setError("转待办失败");
+    } finally {
+      setConvertingTodoKey(null);
     }
   };
 
@@ -1448,7 +1550,8 @@ export default function MessagesPage() {
                     {summaryResult.cached && (
                       <p className="mb-2 text-[0.65rem] text-[var(--muted-foreground)]">本次结果来自缓存</p>
                     )}
-                    <SummaryBlocks data={summaryResult} />
+                    <AssigneeSelect value={todoAssignee} onChange={setTodoAssignee} contacts={contacts} />
+                    <SummaryBlocks data={summaryResult} onConvert={convertToTodo} converted={convertedTodos} />
                   </div>
                 )}
               </>
@@ -1458,7 +1561,8 @@ export default function MessagesPage() {
                 <p className="mb-2 text-xs text-[var(--muted-foreground)]">
                   生成于 {toThaiTime(viewingSummary.created_at)} · 范围 {toThaiDate(viewingSummary.from_at)} ~ {toThaiDate(viewingSummary.to_at)}
                 </p>
-                <SummaryBlocks data={viewingSummary} />
+                <AssigneeSelect value={todoAssignee} onChange={setTodoAssignee} contacts={contacts} />
+                <SummaryBlocks data={viewingSummary} onConvert={convertToTodo} converted={convertedTodos} />
               </>
             ) : summaryHistoryLoading ? (
               <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
@@ -1543,7 +1647,8 @@ export default function MessagesPage() {
                 {empSummaryResult.cached && (
                   <p className="mb-2 text-[0.65rem] text-[var(--muted-foreground)]">本次结果来自缓存</p>
                 )}
-                <SummaryBlocks data={empSummaryResult} />
+                <AssigneeSelect value={todoAssignee} onChange={setTodoAssignee} contacts={contacts} />
+                <SummaryBlocks data={empSummaryResult} onConvert={convertToTodo} converted={convertedTodos} />
               </div>
             )}
           </div>
