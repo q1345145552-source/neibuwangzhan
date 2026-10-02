@@ -24,6 +24,34 @@ function findActiveStaff(db: Db, name: string): boolean {
   return !!row;
 }
 
+// 分享卡片类型 → 会话列表预览文案
+const CARD_LABELS: Record<string, string> = {
+  order: "[订单]", todo: "[待办]", project: "[项目]", customer: "[客户]",
+};
+
+// 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
+function resolveCard(db: Db, type: string, id: string): { title: string; subtitle: string } | null {
+  if (type === "order") {
+    const r = db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(id) as { customer_name: string } | undefined;
+    return r ? { title: id, subtitle: r.customer_name || "" } : null;
+  }
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  if (type === "todo") {
+    const r = db.prepare("SELECT content FROM todos WHERE id = ?").get(n) as { content: string } | undefined;
+    return r ? { title: r.content, subtitle: "" } : null;
+  }
+  if (type === "project") {
+    const r = db.prepare("SELECT name, current_phase FROM projects WHERE id = ?").get(n) as { name: string; current_phase: string } | undefined;
+    return r ? { title: r.name, subtitle: r.current_phase ? `当前阶段：${r.current_phase}` : "" } : null;
+  }
+  if (type === "customer") {
+    const r = db.prepare("SELECT company_name FROM customers WHERE id = ?").get(n) as { company_name: string } | undefined;
+    return r ? { title: r.company_name, subtitle: "" } : null;
+  }
+  return null;
+}
+
 // GET /api/chat?other=姓名[&after=消息id] — 拉取与某员工的一对一会话消息（after 之后的新消息）
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -68,16 +96,27 @@ export async function POST(req: NextRequest) {
   const content = String(body?.content || "").trim();
   const imageUrl = String(body?.image_url || "").trim();
   const orderId = String(body?.order_id || "").trim();
+  const cardType = String(body?.card_type || "").trim();
+  const cardId = String(body?.card_id || "").trim();
   if (!other) return NextResponse.json({ error: "缺少聊天对象" }, { status: 400 });
-  if (!content && !imageUrl && !orderId) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
+  if (!content && !imageUrl && !orderId && !cardType) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
   if (imageUrl && !imageUrl.startsWith("/api/files/")) return NextResponse.json({ error: "图片地址无效" }, { status: 400 });
   if (other === auth.name) return NextResponse.json({ error: "不能和自己聊天" }, { status: 400 });
   if (!findActiveStaff(db, other)) return NextResponse.json({ error: "聊天对象不存在" }, { status: 404 });
 
-  // 分享订单：存 order_id，并把客户名快照进 content（前端据此渲染订单卡片）
+  // 分享卡片：order_id 存「类型:id」，content 存卡片标题/副标题快照（前端据此渲染卡片并跳详情）
   let finalContent = content;
   let finalOrderId = "";
-  if (orderId) {
+  let cardLabel = "";
+  if (cardType) {
+    if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
+    const card = resolveCard(db, cardType, cardId);
+    if (!card) return NextResponse.json({ error: "分享的条目不存在" }, { status: 404 });
+    finalOrderId = `${cardType}:${cardId}`;
+    finalContent = JSON.stringify(card);
+    cardLabel = CARD_LABELS[cardType] || "[卡片]";
+  } else if (orderId) {
+    // 兼容旧订单分享：存 order_id，并把客户名快照进 content
     const order = db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(orderId) as { customer_name: string } | undefined;
     if (!order) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
     finalOrderId = orderId;
@@ -91,7 +130,7 @@ export async function POST(req: NextRequest) {
   ).run(conversationId, auth.name, other, finalContent, imageUrl, finalOrderId, now);
 
   // 更新会话最后一条消息（后续会话列表排序/预览用）
-  const preview = orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50);
+  const preview = cardLabel || (orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50));
   db.prepare(
     "UPDATE conversations SET last_message_at = ?, last_message_preview = ? WHERE id = ?"
   ).run(now, preview, conversationId);

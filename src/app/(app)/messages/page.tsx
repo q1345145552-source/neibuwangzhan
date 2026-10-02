@@ -85,6 +85,62 @@ function within2Min(createdAt: string): boolean {
   return !isNaN(t) && Date.now() - t < 2 * 60 * 1000;
 }
 
+// ── 分享卡片（订单/待办/项目/客户）──
+type CardKind = "order" | "todo" | "project" | "customer";
+
+interface CardInfo {
+  kind: CardKind;
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
+// 卡片类型 → 展示标签 + 点击跳转的目标详情页
+const CARD_META: Record<CardKind, { label: string; href: (id: string) => string }> = {
+  order:    { label: "订单", href: (id) => `/orders/${id}` },
+  todo:     { label: "待办", href: () => "/todos" },
+  project:  { label: "项目", href: (id) => `/projects/${id}` },
+  customer: { label: "客户", href: (id) => `/customers/${id}` },
+};
+
+// 解析消息里的分享卡片：新格式 order_id = "类型:id"、content = JSON{title,subtitle}；
+// 兼容旧的订单卡片（order_id 直接是订单号、content 是客户名）
+function parseCard(m: Message): CardInfo | null {
+  if (!m.order_id) return null;
+  const idx = m.order_id.indexOf(":");
+  if (idx > 0) {
+    const kind = m.order_id.slice(0, idx) as CardKind;
+    const id = m.order_id.slice(idx + 1);
+    if (!CARD_META[kind]) return null;
+    let title = id;
+    let subtitle = "";
+    try {
+      const data = JSON.parse(m.content || "{}");
+      if (data && typeof data.title === "string") title = data.title;
+      if (data && typeof data.subtitle === "string") subtitle = data.subtitle;
+    } catch { /* 旧数据容错 */ }
+    return { kind, id, title, subtitle };
+  }
+  return { kind: "order", id: m.order_id, title: m.order_id, subtitle: m.content || "" };
+}
+
+// 分享弹窗里的分类
+const SHARE_CATEGORIES: { key: CardKind; label: string }[] = [
+  { key: "order", label: "订单" },
+  { key: "todo", label: "待办" },
+  { key: "project", label: "项目" },
+  { key: "customer", label: "客户" },
+];
+
+// 各分类接口返回的条目 → 统一的 { id, title, subtitle }
+function mapShareItem(cat: string, x: any): { id: string; title: string; subtitle: string } {
+  if (cat === "order") return { id: String(x.id), title: String(x.id), subtitle: x.customer_name || "" };
+  if (cat === "todo") return { id: String(x.id), title: x.content || "", subtitle: "" };
+  if (cat === "project") return { id: String(x.id), title: x.name || "", subtitle: x.current_phase ? `当前阶段：${x.current_phase}` : "" };
+  if (cat === "customer") return { id: String(x.id), title: x.company_name || "", subtitle: "" };
+  return { id: "", title: "", subtitle: "" };
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const me = user?.name || "";
@@ -108,10 +164,12 @@ export default function MessagesPage() {
   const [pendingScrollTo, setPendingScrollTo] = useState<number | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
-  const [showOrders, setShowOrders] = useState(false);
-  const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState<string | null>(null);
+  // 分享卡片：先选分类，再选具体条目
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCategory, setShareCategory] = useState<"" | CardKind>("");
+  const [shareItems, setShareItems] = useState<{ id: string; title: string; subtitle: string }[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // 建群弹窗
@@ -327,7 +385,12 @@ export default function MessagesPage() {
         if (m.recalled) {
           lines.push("    [已撤回]");
         } else if (m.order_id) {
-          lines.push(`    [订单] 订单号：${m.order_id}  客户：${m.content || "—"}`);
+          const card = parseCard(m);
+          if (card) {
+            lines.push(`    [${CARD_META[card.kind].label}] ${card.title}${card.subtitle ? ` — ${card.subtitle}` : ""}`);
+          } else {
+            lines.push(`    [订单] 订单号：${m.order_id}  客户：${m.content || "—"}`);
+          }
         } else if (m.image_url) {
           lines.push(`    [图片] ${m.image_url}`);
           if (m.content) lines.push(`    ${m.content}`);
@@ -418,14 +481,12 @@ export default function MessagesPage() {
     }
   }, [messages, pendingScrollTo]);
 
-  // 发一条消息（文字或图片），自己发出去的立刻上屏
-  const postMessage = async (content: string, imageUrl: string, orderId: string): Promise<boolean> => {
+  // 发一条消息（文字/图片/分享卡片），自己发出去的立刻上屏
+  const sendMessage = async (payload: Record<string, unknown>): Promise<boolean> => {
     if (!selected) return false;
     const isDirect = selected.kind === "direct";
     const url = isDirect ? "/api/chat" : "/api/chat/group-messages";
-    const body = isDirect
-      ? { other: selected.name, content, image_url: imageUrl, order_id: orderId }
-      : { group_id: selected.id, content, image_url: imageUrl, order_id: orderId };
+    const body = isDirect ? { other: selected.name, ...payload } : { group_id: selected.id, ...payload };
     try {
       const r = await fetchWithAuth(url, {
         method: "POST",
@@ -447,12 +508,15 @@ export default function MessagesPage() {
     }
   };
 
+  const postMessage = (content: string, imageUrl: string) => sendMessage({ content, image_url: imageUrl });
+  const postCard = (cardType: string, cardId: string) => sendMessage({ card_type: cardType, card_id: cardId });
+
   const sendText = async () => {
     const text = input.trim();
     if (!text || !selected || sending) return;
     setSending(true);
     setError(null);
-    const ok = await postMessage(text, "", "");
+    const ok = await postMessage(text, "");
     setSending(false);
     if (ok) setInput("");
   };
@@ -471,7 +535,7 @@ export default function MessagesPage() {
       const r = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
       const d = await r.json().catch(() => null);
       if (r.ok && d?.url) {
-        await postMessage("", d.url, "");
+        await postMessage("", d.url);
       } else {
         setError(d?.error || "图片上传失败");
       }
@@ -486,27 +550,39 @@ export default function MessagesPage() {
     setSelectedMembers((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   };
 
-  // 打开订单选择器
-  const openOrderPicker = () => {
-    setShowOrders(true);
-    setOrdersLoading(true);
-    setOrdersError(null);
-    fetchWithAuth("/api/orders", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (Array.isArray(d)) setOrders(d.map((o: any) => ({ id: o.id, customer_name: o.customer_name })));
-        else setOrders([]);
-      })
-      .catch(() => setOrdersError("加载订单失败"))
-      .finally(() => setOrdersLoading(false));
+  // 打开分享选择器（先选分类）
+  const openSharePicker = () => {
+    setShareOpen(true);
+    setShareCategory("");
+    setShareItems([]);
+    setShareError(null);
   };
 
-  // 发一条订单卡片消息
-  const sendOrder = async (orderId: string) => {
-    setShowOrders(false);
+  // 选好分类后加载该分类下的条目
+  const pickShareCategory = (cat: CardKind) => {
+    setShareCategory(cat);
+    setShareLoading(true);
+    setShareError(null);
+    const urlMap: Record<CardKind, string> = {
+      order: "/api/orders", todo: "/api/todos", project: "/api/projects", customer: "/api/customers",
+    };
+    fetchWithAuth(urlMap[cat], { cache: "no-store" })
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok) { setShareItems([]); setShareError(d?.error || "加载失败"); return; }
+        if (!Array.isArray(d)) { setShareItems([]); setShareError("数据格式异常"); return; }
+        setShareItems(d.map((x: any) => mapShareItem(cat, x)));
+      })
+      .catch(() => setShareError("加载失败"))
+      .finally(() => setShareLoading(false));
+  };
+
+  // 发一条分享卡片消息
+  const sendCard = async (cardType: string, cardId: string) => {
+    setShareOpen(false);
     setSending(true);
     setError(null);
-    await postMessage("", "", orderId);
+    await postCard(cardType, cardId);
     setSending(false);
   };
 
@@ -781,7 +857,7 @@ export default function MessagesPage() {
                   messages.map((m) => {
                     const mine = m.sender === me;
                     const isImage = !!m.image_url;
-                    const isOrder = !!m.order_id;
+                    const card = parseCard(m);
                     const showRead = isDirect && mine;
                     const recalled = !!m.recalled;
                     const canRecall = mine && !recalled && within2Min(m.created_at);
@@ -801,16 +877,18 @@ export default function MessagesPage() {
                             </div>
                           ) : (
                             <>
-                              {isOrder ? (
+                              {card ? (
                                 <button
-                                  onClick={() => router.push(`/orders/${m.order_id}`)}
+                                  onClick={() => router.push(CARD_META[card.kind].href(card.id))}
                                   className="block w-full rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
                                 >
                                   <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]">
-                                    <FileText className="size-3.5" /> 订单
+                                    <FileText className="size-3.5" /> {CARD_META[card.kind].label}
                                   </span>
-                                  <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{m.order_id}</span>
-                                  <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{m.content || "—"}</span>
+                                  <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{card.title}</span>
+                                  {card.subtitle && (
+                                    <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{card.subtitle}</span>
+                                  )}
                                 </button>
                               ) : (
                                 <div
@@ -848,7 +926,7 @@ export default function MessagesPage() {
                                   </p>
                                 </div>
                               )}
-                              {isOrder && (
+                              {card && (
                                 <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
                                   {toThaiTime(m.created_at) || "—"}
                                   {isMentioned && !mine && <span className="ml-1 font-medium text-amber-600">@你</span>}
@@ -914,9 +992,9 @@ export default function MessagesPage() {
                     <ImagePlus className="size-5" />
                   </button>
                   <button
-                    onClick={openOrderPicker}
+                    onClick={openSharePicker}
                     disabled={sending}
-                    title="分享订单"
+                    title="分享"
                     className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     <FileText className="size-5" />
@@ -1013,36 +1091,54 @@ export default function MessagesPage() {
         </div>
       )}
 
-      {/* 选择订单 */}
-      {showOrders && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowOrders(false)}>
+      {/* 分享：先选分类，再选条目 */}
+      {shareOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShareOpen(false)}>
           <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-[var(--foreground)]">分享订单</h3>
-              <button onClick={() => setShowOrders(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              <h3 className="font-semibold text-[var(--foreground)]">{shareCategory ? `选择${CARD_META[shareCategory as CardKind].label}` : "选择分享分类"}</h3>
+              <button
+                onClick={() => { if (shareCategory) { setShareCategory(""); setShareItems([]); setShareError(null); } else { setShareOpen(false); } }}
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                <X className="size-5" />
+              </button>
             </div>
-            {ordersLoading ? (
+
+            {!shareCategory ? (
+              <div className="grid grid-cols-2 gap-2">
+                {SHARE_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.key}
+                    onClick={() => pickShareCategory(cat.key)}
+                    className="rounded-lg border border-[var(--border)] px-4 py-3 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--primary)]"
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            ) : shareLoading ? (
               <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
-            ) : orders.length === 0 ? (
-              <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无订单</p>
+            ) : shareItems.length === 0 ? (
+              <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">{shareError || "暂无数据"}</p>
             ) : (
               <div className="space-y-1.5">
-                {orders.map((o) => (
+                {shareItems.map((item) => (
                   <button
-                    key={o.id}
-                    onClick={() => sendOrder(o.id)}
+                    key={item.id}
+                    onClick={() => sendCard(shareCategory, item.id)}
                     className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-[var(--foreground)]">{o.id}</span>
-                      <span className="block truncate text-xs text-[var(--muted-foreground)]">{o.customer_name || "—"}</span>
+                      <span className="block truncate text-sm font-medium text-[var(--foreground)]">{item.title}</span>
+                      {item.subtitle && <span className="block truncate text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
                     </span>
                     <span className="ml-3 shrink-0 text-xs font-medium text-[var(--primary)]">发送</span>
                   </button>
                 ))}
               </div>
             )}
-            {ordersError && <p className="mt-2 text-xs text-red-500">{ordersError}</p>}
+            {shareError && shareItems.length > 0 && <p className="mt-2 text-xs text-red-500">{shareError}</p>}
           </div>
         </div>
       )}

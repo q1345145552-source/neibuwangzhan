@@ -14,6 +14,34 @@ function isMember(db: Db, groupId: number, name: string): boolean {
   return !!db.prepare("SELECT id FROM group_members WHERE group_id = ? AND member = ?").get(groupId, name);
 }
 
+// 分享卡片类型 → 会话列表预览文案
+const CARD_LABELS: Record<string, string> = {
+  order: "[订单]", todo: "[待办]", project: "[项目]", customer: "[客户]",
+};
+
+// 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
+function resolveCard(db: Db, type: string, id: string): { title: string; subtitle: string } | null {
+  if (type === "order") {
+    const r = db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(id) as { customer_name: string } | undefined;
+    return r ? { title: id, subtitle: r.customer_name || "" } : null;
+  }
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  if (type === "todo") {
+    const r = db.prepare("SELECT content FROM todos WHERE id = ?").get(n) as { content: string } | undefined;
+    return r ? { title: r.content, subtitle: "" } : null;
+  }
+  if (type === "project") {
+    const r = db.prepare("SELECT name, current_phase FROM projects WHERE id = ?").get(n) as { name: string; current_phase: string } | undefined;
+    return r ? { title: r.name, subtitle: r.current_phase ? `当前阶段：${r.current_phase}` : "" } : null;
+  }
+  if (type === "customer") {
+    const r = db.prepare("SELECT company_name FROM customers WHERE id = ?").get(n) as { company_name: string } | undefined;
+    return r ? { title: r.company_name, subtitle: "" } : null;
+  }
+  return null;
+}
+
 // GET /api/chat/group-messages?group_id=X[&after=Y] — 拉取群消息（after 之后的新消息），仅群成员
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -87,18 +115,27 @@ export async function POST(req: NextRequest) {
   const content = String(body?.content || "").trim();
   const imageUrl = String(body?.image_url || "").trim();
   const orderId = String(body?.order_id || "").trim();
+  const cardType = String(body?.card_type || "").trim();
+  const cardId = String(body?.card_id || "").trim();
   if (!Number.isInteger(groupId) || groupId <= 0) return NextResponse.json({ error: "缺少群" }, { status: 400 });
-  if (!content && !imageUrl && !orderId) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
+  if (!content && !imageUrl && !orderId && !cardType) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
   if (imageUrl && !imageUrl.startsWith("/api/files/")) return NextResponse.json({ error: "图片地址无效" }, { status: 400 });
 
   const group = getGroup(db, groupId);
   if (!group) return NextResponse.json({ error: "群不存在" }, { status: 404 });
   if (!isMember(db, groupId, auth.name)) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
 
-  // 分享订单：存 order_id，并把客户名快照进 content（前端据此渲染订单卡片）
+  // 分享卡片：order_id 存「类型:id」，content 存卡片标题/副标题快照（前端据此渲染卡片并跳详情）
   let finalContent = content;
   let finalOrderId = "";
-  if (orderId) {
+  if (cardType) {
+    if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
+    const card = resolveCard(db, cardType, cardId);
+    if (!card) return NextResponse.json({ error: "分享的条目不存在" }, { status: 404 });
+    finalOrderId = `${cardType}:${cardId}`;
+    finalContent = JSON.stringify(card);
+  } else if (orderId) {
+    // 兼容旧订单分享：存 order_id，并把客户名快照进 content
     const order = db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(orderId) as { customer_name: string } | undefined;
     if (!order) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
     finalOrderId = orderId;
@@ -124,7 +161,7 @@ export async function POST(req: NextRequest) {
     const name = mm[1].trim();
     if (name && name !== auth.name && memberSet.has(name)) mentioned.add(name);
   }
-  const preview = orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50);
+  const preview = cardType ? (CARD_LABELS[cardType] || "[卡片]") : orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50);
   for (const name of mentioned) {
     db.prepare("INSERT OR IGNORE INTO message_mentions (message_id, member) VALUES (?, ?)").run(messageId, name);
     // 通知中心：群聊里 @ 了某人，生成一条通知（点通知跳转打开该群）
