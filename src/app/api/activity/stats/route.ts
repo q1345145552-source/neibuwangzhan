@@ -18,6 +18,9 @@ function mapCategory(tt: string): string | null {
   return null;
 }
 
+// 员工动态只统计普通员工（role=employee 且在職）；老板/管理员等管理层账号不计入
+const STAFF_FILTER = "actor IN (SELECT name FROM employees WHERE role = 'employee' AND status = '在职')";
+
 // GET /api/activity/stats?range=today|7d|30d&employee=&category= — 员工动态统计 + 时间线（仅管理员）
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -43,20 +46,20 @@ export async function GET(req: NextRequest) {
     start = bangkokDayRange(daysAgo(days - 1)).start;
   }
 
-  // 统计卡片（范围内全量，不受员工/分类筛选影响）
-  const total = (db.prepare("SELECT COUNT(*) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ?").get(start, end) as { c: number }).c;
-  const active = (db.prepare("SELECT COUNT(DISTINCT actor) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ? AND actor != ''").get(start, end) as { c: number }).c;
+  // 统计卡片（范围内普通员工全量，不受员工/分类筛选影响）
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ? AND ${STAFF_FILTER}`).get(start, end) as { c: number }).c;
+  const active = (db.prepare(`SELECT COUNT(DISTINCT actor) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ? AND ${STAFF_FILTER}`).get(start, end) as { c: number }).c;
   const ranking = db.prepare(
-    "SELECT actor, COUNT(*) AS count FROM audit_logs WHERE created_at >= ? AND created_at < ? AND actor != '' GROUP BY actor ORDER BY count DESC, actor ASC"
+    `SELECT actor, COUNT(*) AS count FROM audit_logs WHERE created_at >= ? AND created_at < ? AND ${STAFF_FILTER} GROUP BY actor ORDER BY count DESC, actor ASC`
   ).all(start, end);
 
   // 范围内出现的分类（供筛选下拉）
   const categories = db.prepare(
-    "SELECT target_type FROM audit_logs WHERE created_at >= ? AND created_at < ? AND target_type != '' GROUP BY target_type ORDER BY target_type ASC"
+    `SELECT target_type FROM audit_logs WHERE created_at >= ? AND created_at < ? AND target_type != '' AND ${STAFF_FILTER} GROUP BY target_type ORDER BY target_type ASC`
   ).all(start, end).map((r: any) => r.target_type);
 
-  // 时间线：范围内 + 员工/分类筛选，按时间倒序（最新在上）
-  let tlSql = "SELECT id, actor, action, target_type, target_id, created_at FROM audit_logs WHERE created_at >= ? AND created_at < ?";
+  // 时间线：范围内普通员工 + 员工/分类筛选，按时间倒序（最新在上）
+  let tlSql = `SELECT id, actor, action, target_type, target_id, created_at FROM audit_logs WHERE created_at >= ? AND created_at < ? AND ${STAFF_FILTER}`;
   const tlParams: unknown[] = [start, end];
   if (employee) { tlSql += " AND actor = ?"; tlParams.push(employee); }
   if (category) { tlSql += " AND target_type = ?"; tlParams.push(category); }
@@ -72,7 +75,7 @@ export async function GET(req: NextRequest) {
     `SELECT e.name, COUNT(a.id) AS count
      FROM employees e
      LEFT JOIN audit_logs a ON a.actor = e.name AND a.created_at >= ? AND a.created_at < ?
-     WHERE e.status = '在职' AND e.role IN ('admin','employee')
+     WHERE e.status = '在职' AND e.role = 'employee'
      GROUP BY e.name
      ORDER BY count DESC, e.name ASC`
   ).all(start, end);

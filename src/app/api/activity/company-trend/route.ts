@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const d = daysAgo(i);
     const { start, end } = bangkokDayRange(d);
     const count = (db.prepare(
-      "SELECT COUNT(*) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ?"
+      "SELECT COUNT(*) AS c FROM audit_logs WHERE created_at >= ? AND created_at < ? AND actor IN (SELECT name FROM employees WHERE role = 'employee' AND status = '在职')"
     ).get(start, end) as { c: number }).c;
     points.push({ date: d, count });
   }
