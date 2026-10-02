@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime } from "@/lib/utils";
@@ -49,6 +49,16 @@ type ChatTarget =
   | { kind: "direct"; name: string }
   | { kind: "group"; id: number; name: string };
 
+interface SearchResult {
+  id: number;
+  kind: "direct" | "group";
+  title: string;
+  target_id: string;
+  sender: string;
+  content: string;
+  created_at: string;
+}
+
 // /api/files 的图片需要带 token（<img> 标签无法带 Authorization 头）
 function imgSrc(url: string): string {
   const token = getStoredAuthToken();
@@ -88,6 +98,11 @@ export default function MessagesPage() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [groupMemberCount, setGroupMemberCount] = useState(0);
   const [readDetail, setReadDetail] = useState<{ readMembers: string[]; unreadMembers: string[] } | null>(null);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pendingScrollTo, setPendingScrollTo] = useState<number | null>(null);
   const [showOrders, setShowOrders] = useState(false);
   const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -254,6 +269,41 @@ export default function MessagesPage() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
+  // 搜索聊天记录（防抖 300ms）
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (!q) {
+      setSearchResults([]);
+      setSearchOpen(false);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const id = setTimeout(() => {
+      fetchWithAuth(`/api/chat/search?q=${encodeURIComponent(q)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (Array.isArray(d?.results)) {
+            setSearchResults(d.results);
+            setSearchOpen(true);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(id);
+  }, [searchQ]);
+
+  // 从搜索结果跳转后，滚动到目标消息
+  useEffect(() => {
+    if (pendingScrollTo == null) return;
+    const el = document.getElementById(`msg-${pendingScrollTo}`);
+    if (el) {
+      el.scrollIntoView({ block: "center" });
+      setPendingScrollTo(null);
+    }
+  }, [messages, pendingScrollTo]);
+
   // 发一条消息（文字或图片），自己发出去的立刻上屏
   const postMessage = async (content: string, imageUrl: string, orderId: string): Promise<boolean> => {
     if (!selected) return false;
@@ -374,6 +424,19 @@ export default function MessagesPage() {
     }
   };
 
+  // 点搜索结果：打开对应会话并跳到那条消息
+  const jumpToResult = (r: SearchResult) => {
+    setPendingScrollTo(r.id);
+    setSearchQ("");
+    setSearchOpen(false);
+    setSearchResults([]);
+    if (r.kind === "direct") {
+      openDirect(r.target_id);
+    } else {
+      openGroup(Number(r.target_id), r.title);
+    }
+  };
+
   const createGroup = async () => {
     const name = groupName.trim();
     if (!name) { setCreateError("请填写群名称"); return; }
@@ -425,6 +488,43 @@ export default function MessagesPage() {
               新建群聊
             </button>
           </div>
+
+          {/* 搜索聊天记录 */}
+          <div className="relative border-b border-[var(--border)] px-3 py-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <input
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                placeholder="搜索聊天记录"
+                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+              />
+            </div>
+            {searchOpen && (
+              <div className="absolute left-3 right-3 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
+                {searching ? (
+                  <p className="px-3 py-4 text-center text-xs text-[var(--muted-foreground)]">搜索中…</p>
+                ) : searchResults.length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-[var(--muted-foreground)]">没有找到相关消息</p>
+                ) : (
+                  searchResults.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => jumpToResult(r)}
+                      className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--muted)]"
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium text-[var(--foreground)]">{r.sender} · {r.title}</span>
+                        <span className="shrink-0 text-[0.6rem] text-[var(--muted-foreground)]">{toThaiTime(r.created_at) || "—"}</span>
+                      </span>
+                      <span className="truncate text-xs text-[var(--muted-foreground)]">{r.content}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="max-h-[40vh] overflow-y-auto p-2 lg:max-h-[70vh]">
             {contactsLoading ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
@@ -507,7 +607,7 @@ export default function MessagesPage() {
                     const recalled = !!m.recalled;
                     const canRecall = mine && !recalled && within2Min(m.created_at);
                     return (
-                      <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
+                      <div key={m.id} id={`msg-${m.id}`} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div className="max-w-[75%]">
                           {isGroup && !mine && (
                             <p className="mb-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>
