@@ -46,6 +46,8 @@ interface Message {
   is_read: number;
   read_at: string | null;
   recalled: number;
+  reply_to: number | null;
+  reply_preview: string;
   created_at: string;
   read_members?: string[];
   mentioned_members?: string[];
@@ -129,6 +131,15 @@ function parseCard(m: Message): CardInfo | null {
     return { kind, id, title, subtitle };
   }
   return { kind: "order", id: m.order_id, title: m.order_id, subtitle: m.content || "" };
+}
+
+// 引用回复时，被引用消息的原文缩略（不含发送人）
+function quotePreview(m: Message): string {
+  if (m.recalled) return "已撤回";
+  if (m.image_url) return "[图片]";
+  const card = parseCard(m);
+  if (card) return `[${CARD_META[card.kind].label}] ${card.title}`;
+  return (m.content || "").slice(0, 50);
 }
 
 // 分享弹窗里的分类
@@ -374,6 +385,7 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: number; sender: string; preview: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -607,9 +619,6 @@ export default function MessagesPage() {
     setMenuState(null);
   };
 
-  // 引用回复：先留入口，后续再做具体功能
-  const menuPlaceholder = () => setMenuState(null);
-
   // 打开表情反应选择器（点「表情反应」后）
   const openEmojiPicker = (id: number, x: number, y: number) => {
     setMenuState(null);
@@ -639,6 +648,12 @@ export default function MessagesPage() {
     } finally {
       setEmojiPickerState(null);
     }
+  };
+
+  // 点击引用的原文 → 滚动到那条原消息
+  const jumpToMessage = (id: number) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   // 拉取当前会话所有消息的表情反应
@@ -735,6 +750,7 @@ export default function MessagesPage() {
     setMessages([]);
     setInput("");
     setError(null);
+    setReplyTo(null);
     cursorRef.current = 0;
     fetchWithAuth(`/api/chat?other=${encodeURIComponent(name)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -752,6 +768,7 @@ export default function MessagesPage() {
     setMessages([]);
     setInput("");
     setError(null);
+    setReplyTo(null);
     cursorRef.current = 0;
     fetchWithAuth(`/api/chat/group-messages?group_id=${id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -952,7 +969,11 @@ export default function MessagesPage() {
     if (!selected) return false;
     const isDirect = selected.kind === "direct";
     const url = isDirect ? "/api/chat" : "/api/chat/group-messages";
-    const body = isDirect ? { other: selected.name, ...payload } : { group_id: selected.id, ...payload };
+    // 引用回复：带上被引用消息的 id 和原文快照
+    const fullPayload = replyTo
+      ? { ...payload, reply_to: replyTo.id, reply_preview: `${replyTo.sender}: ${replyTo.preview}` }
+      : payload;
+    const body = isDirect ? { other: selected.name, ...fullPayload } : { group_id: selected.id, ...fullPayload };
     try {
       const r = await fetchWithAuth(url, {
         method: "POST",
@@ -964,6 +985,7 @@ export default function MessagesPage() {
         const msg = d.message as Message;
         setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg].sort((a, b) => a.id - b.id)));
         cursorRef.current = Math.max(cursorRef.current, msg.id);
+        setReplyTo(null);
         return true;
       }
       setError(d?.error || "发送失败");
@@ -1865,6 +1887,18 @@ export default function MessagesPage() {
                           {isGroup && !mine && (
                             <p className="mb-1 px-1 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>
                           )}
+                          {m.reply_to != null && m.reply_preview && (
+                            <button
+                              onClick={() => jumpToMessage(m.reply_to!)}
+                              title="点击跳转到原消息"
+                              className={cn(
+                                "mb-1 block max-w-[240px] truncate rounded-md border-l-2 border-[var(--primary)] bg-[var(--background)]/70 px-2 py-1 text-left text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60",
+                                mine && "self-end text-right"
+                              )}
+                            >
+                              {m.reply_preview}
+                            </button>
+                          )}
                           {recalled ? (
                             <div className="rounded-2xl bg-[var(--muted)] px-3 py-2 text-sm text-[var(--muted-foreground)]">
                               <p className="italic">已撤回</p>
@@ -2021,6 +2055,16 @@ export default function MessagesPage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+                {replyTo && (
+                  <div className="mb-2 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_oklch,var(--primary),var(--background)_94%)] px-3 py-1.5">
+                    <span className="min-w-0 flex-1 truncate text-xs text-[var(--muted-foreground)]">
+                      回复 <span className="font-medium text-[var(--foreground)]">{replyTo.sender}</span>：{replyTo.preview}
+                    </span>
+                    <button onClick={() => setReplyTo(null)} aria-label="取消引用" className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                      <X className="size-4" />
+                    </button>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
@@ -2736,7 +2780,7 @@ export default function MessagesPage() {
           { label: "复制", onClick: () => copyMessage(m) },
           { label: "翻译", onClick: () => { toggleTranslate(m.id); setMenuState(null); } },
           ...(canRecall ? [{ label: "撤回", onClick: () => { recallMessage(m); setMenuState(null); } }] : []),
-          { label: "引用回复", onClick: menuPlaceholder },
+          { label: "引用回复", onClick: () => { setReplyTo({ id: m.id, sender: m.sender, preview: quotePreview(m) }); setMenuState(null); } },
           { label: "表情反应", onClick: () => openEmojiPicker(m.id, menuState.x, menuState.y) },
         ];
         return (

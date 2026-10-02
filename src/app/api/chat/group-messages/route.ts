@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   if (!isMember(db, groupId, auth.name)) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
 
   const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(groupId, after);
 
   // 打开群会话 = 我把该群所有消息标记为已读（发送人发消息时已自动记一条，OR IGNORE 去重）
@@ -124,6 +124,8 @@ export async function POST(req: NextRequest) {
   const orderId = String(body?.order_id || "").trim();
   const cardType = String(body?.card_type || "").trim();
   const cardId = String(body?.card_id || "").trim();
+  const replyTo = Number(body?.reply_to) || null;
+  const replyPreview = String(body?.reply_preview || "").trim();
   if (!Number.isInteger(groupId) || groupId <= 0) return NextResponse.json({ error: "缺少群" }, { status: 400 });
   if (!content && !imageUrl && !orderId && !cardType) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
   if (imageUrl && !imageUrl.startsWith("/api/files/")) return NextResponse.json({ error: "图片地址无效" }, { status: 400 });
@@ -151,8 +153,8 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString().replace("T", " ").split(".")[0];
   const r = db.prepare(
-    "INSERT INTO messages (group_id, sender, receiver, content, image_url, order_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)"
-  ).run(groupId, auth.name, group.name, finalContent, imageUrl, finalOrderId, now);
+    "INSERT INTO messages (group_id, sender, receiver, content, image_url, order_id, is_read, reply_to, reply_preview, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)"
+  ).run(groupId, auth.name, group.name, finalContent, imageUrl, finalOrderId, replyTo, replyPreview, now);
   const messageId = Number(r.lastInsertRowid);
 
   // 发送人自动视为已读自己这条消息
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
   }
 
   const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE id = ?"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at FROM messages WHERE id = ?"
   ).get(messageId);
 
   return NextResponse.json({ message: { ...(message as object), read_members: [auth.name], mentioned_members: [...mentioned] } }, { status: 201 });
