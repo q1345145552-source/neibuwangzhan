@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   if (!email || !password) return NextResponse.json({ error: "请输入邮箱和密码" }, { status: 400 });
 
   const db = getDb();
-  const user = db.prepare("SELECT id, name, email, role, password, must_change_password, auth_version, status FROM employees WHERE email = ?").get(email) as { id: number; name: string; email: string; role: string; password: string; must_change_password: number; auth_version: number; status: string } | undefined;
+  const user = db.prepare("SELECT id, name, email, role, avatar, password, must_change_password, auth_version, status FROM employees WHERE email = ?").get(email) as { id: number; name: string; email: string; role: string; avatar: string; password: string; must_change_password: number; auth_version: number; status: string } | undefined;
   if (!user) return NextResponse.json({ error: "邮箱或密码错误" }, { status: 401 });
   if (user.status === "离职") return NextResponse.json({ error: "账号已停用" }, { status: 403 });
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   // 仍然发受限 token（改密码接口本身需要鉴权）；服务端会拒绝它访问其他接口。
   return NextResponse.json({
     token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar },
     must_change_password: user.must_change_password === 1,
   });
 }

@@ -11,6 +11,7 @@ import { useAuth } from "@/components/auth-provider";
 interface Contact {
   name: string;
   role: string;
+  avatar: string;
   last_at: string | null;
   last_preview: string | null;
   last_sender: string | null;
@@ -156,6 +157,7 @@ export default function MessagesPage() {
         kind: "direct" as const,
         id: c.name,
         name: c.name,
+        avatar: c.avatar || "",
         lastAt: c.last_at,
         lastSender: c.last_sender,
         lastPreview: c.last_preview,
@@ -165,6 +167,7 @@ export default function MessagesPage() {
         kind: "group" as const,
         id: String(g.id),
         name: g.name,
+        avatar: "",
         lastAt: g.last_at,
         lastSender: g.last_sender,
         lastPreview: g.last_preview,
@@ -602,6 +605,8 @@ export default function MessagesPage() {
 
   const isGroup = selected?.kind === "group";
   const isDirect = selected?.kind === "direct";
+  // 当前一对一聊天对象的头像（群聊没有头像，用群图标兜底）
+  const selectedAvatar = isDirect ? contacts.find((c) => c.name === selected.name)?.avatar || "" : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -678,13 +683,23 @@ export default function MessagesPage() {
                       active ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]"
                     )}
                   >
-                    <span className={cn(
-                      "flex size-9 shrink-0 items-center justify-center text-sm font-medium",
-                      item.kind === "group" ? "rounded-lg" : "rounded-full",
-                      active ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
-                    )}>
-                      {item.kind === "group" ? <Users className="size-4" /> : item.name.charAt(0)}
-                    </span>
+                    {item.kind === "group" ? (
+                      <span className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-medium",
+                        active ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
+                      )}>
+                        <Users className="size-4" />
+                      </span>
+                    ) : item.avatar ? (
+                      <img src={imgSrc(item.avatar)} alt={item.name} className="size-9 shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <span className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-medium",
+                        active ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
+                      )}>
+                        {item.name.charAt(0)}
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm font-medium">{item.name}</span>
@@ -713,9 +728,17 @@ export default function MessagesPage() {
           {selected ? (
             <>
               <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-                <span className="flex size-9 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-sm font-medium text-[var(--primary)]">
-                  {isGroup ? <Users className="size-4" /> : selected.name.charAt(0)}
-                </span>
+                {isGroup ? (
+                  <span className="flex size-9 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-sm font-medium text-[var(--primary)]">
+                    <Users className="size-4" />
+                  </span>
+                ) : selectedAvatar ? (
+                  <img src={imgSrc(selectedAvatar)} alt={selected.name} className="size-9 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <span className="flex size-9 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-sm font-medium text-[var(--primary)]">
+                    {selected.name.charAt(0)}
+                  </span>
+                )}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{selected.name}</p>
                   {isGroup && (
