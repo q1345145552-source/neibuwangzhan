@@ -1912,7 +1912,7 @@ export default function MessagesPage() {
                       <div
                         key={m.id}
                         id={`msg-${m.id}`}
-                        className={cn("msg-bubble-anim flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}
+                        className={cn("group msg-bubble-anim flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}
                         onContextMenu={(e) => { e.preventDefault(); showMessageMenu(m.id, e.clientX, e.clientY); }}
                         onTouchStart={(e) => startLongPress(e, m.id)}
                         onTouchEnd={cancelLongPress}
@@ -2056,6 +2056,40 @@ export default function MessagesPage() {
                               })}
                             </div>
                           )}
+                        </div>
+                        <div className="hidden shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 md:flex">
+                          <button
+                            onClick={() => copyMessage(m)}
+                            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[0.6rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                          >
+                            复制
+                          </button>
+                          <button
+                            onClick={() => toggleTranslate(m.id)}
+                            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[0.6rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                          >
+                            翻译
+                          </button>
+                          {canRecall && (
+                            <button
+                              onClick={() => recallMessage(m)}
+                              className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[0.6rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                            >
+                              撤回
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => openEmojiPicker(m.id, e.clientX, e.clientY)}
+                            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[0.6rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                          >
+                            表情
+                          </button>
+                          <button
+                            onClick={() => setReplyTo({ id: m.id, sender: m.sender, preview: quotePreview(m) })}
+                            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[0.6rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                          >
+                            引用
+                          </button>
                         </div>
                       </div>
                     );
