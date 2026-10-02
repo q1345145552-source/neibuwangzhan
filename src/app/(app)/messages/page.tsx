@@ -338,6 +338,19 @@ const CHAT_BACKGROUND_PRESETS: { key: string; label: string; style: string }[] =
   { key: "gray", label: "浅灰", style: "linear-gradient(160deg, #f2f3f5 0%, #e3e6ea 100%)" },
 ];
 
+// 表情反应可选的表情
+const REACTION_EMOJIS = [
+  { emoji: "👍", label: "赞" },
+  { emoji: "❤️", label: "爱心" },
+  { emoji: "😂", label: "大笑" },
+];
+
+// 一条消息的反应分组
+interface ReactionGroup {
+  emoji: string;
+  users: string[];
+}
+
 export default function MessagesPage() {
   const { user, setUser } = useAuth();
   const me = user?.name || "";
@@ -436,6 +449,9 @@ export default function MessagesPage() {
   // 长按消息菜单
   const [menuState, setMenuState] = useState<{ id: number; x: number; y: number } | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 表情反应
+  const [reactions, setReactions] = useState<Map<number, ReactionGroup[]>>(new Map());
+  const [emojiPickerState, setEmojiPickerState] = useState<{ id: number; x: number; y: number } | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -581,8 +597,59 @@ export default function MessagesPage() {
     setMenuState(null);
   };
 
-  // 引用回复 / 表情反应：先留入口，后续再做具体功能
+  // 引用回复：先留入口，后续再做具体功能
   const menuPlaceholder = () => setMenuState(null);
+
+  // 打开表情反应选择器（点「表情反应」后）
+  const openEmojiPicker = (id: number, x: number, y: number) => {
+    setMenuState(null);
+    setEmojiPickerState({ id, x, y });
+  };
+
+  // 切换表情反应：同一表情点一下加、再点取消
+  const toggleReaction = async (messageId: number, emoji: string) => {
+    try {
+      const r = await fetchWithAuth("/api/chat/reactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: messageId, emoji }),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(d?.reactions)) {
+        setReactions((prev) => {
+          const next = new Map(prev);
+          next.set(messageId, d.reactions as ReactionGroup[]);
+          return next;
+        });
+      } else {
+        setError(d?.error || "操作失败");
+      }
+    } catch {
+      setError("操作失败");
+    } finally {
+      setEmojiPickerState(null);
+    }
+  };
+
+  // 拉取当前会话所有消息的表情反应
+  const refreshReactions = async () => {
+    if (!selected) return;
+    const q = selected.kind === "direct"
+      ? (conversationId != null ? `conversation_id=${conversationId}` : "")
+      : `group_id=${selected.id}`;
+    if (!q) return;
+    try {
+      const r = await fetchWithAuth(`/api/chat/reactions?${q}`, { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d?.reactions && typeof d.reactions === "object") {
+        const map = new Map<number, ReactionGroup[]>();
+        for (const [k, v] of Object.entries(d.reactions)) {
+          map.set(Number(k), v as ReactionGroup[]);
+        }
+        setReactions(map);
+      }
+    } catch { /* 忽略 */ }
+  };
 
   // 会话列表：一对一 + 群聊 合并，置顶的固定最上面，其余按最后一条消息时间倒序
   const conversationList = useMemo(() => {
@@ -820,6 +887,15 @@ export default function MessagesPage() {
     const id = setInterval(tick, 1000);
     return () => { active = false; clearInterval(id); };
   }, [selected, mergeIncoming, applyReadIds]);
+
+  // 表情反应：切会话/新会话时拉一次，之后每 5 秒刷新（看到别人加的表情）
+  useEffect(() => {
+    if (!selected) { setReactions(new Map()); return; }
+    refreshReactions();
+    const id = setInterval(refreshReactions, 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, conversationId]);
 
   // 新消息自动滚到底部
   useEffect(() => {
@@ -1863,6 +1939,29 @@ export default function MessagesPage() {
                               )}
                             </div>
                           )}
+                          {(reactions.get(m.id)?.length ?? 0) > 0 && (
+                            <div className={cn("mt-1 flex flex-wrap gap-1", mine ? "justify-end" : "justify-start")}>
+                              {reactions.get(m.id)!.map((r) => {
+                                const iReacted = r.users.includes(me);
+                                return (
+                                  <button
+                                    key={r.emoji}
+                                    onClick={() => toggleReaction(m.id, r.emoji)}
+                                    title={r.users.join("、")}
+                                    className={cn(
+                                      "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors",
+                                      iReacted
+                                        ? "border-[var(--primary)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] text-[var(--foreground)]"
+                                        : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)] hover:border-[var(--primary)]"
+                                    )}
+                                  >
+                                    <span className="text-sm leading-none">{r.emoji}</span>
+                                    <span className="tabular-nums">{r.users.length}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -2595,7 +2694,7 @@ export default function MessagesPage() {
           { label: "翻译", onClick: () => { toggleTranslate(m.id); setMenuState(null); } },
           ...(canRecall ? [{ label: "撤回", onClick: () => { recallMessage(m); setMenuState(null); } }] : []),
           { label: "引用回复", onClick: menuPlaceholder },
-          { label: "表情反应", onClick: menuPlaceholder },
+          { label: "表情反应", onClick: () => openEmojiPicker(m.id, menuState.x, menuState.y) },
         ];
         return (
           <>
@@ -2617,6 +2716,28 @@ export default function MessagesPage() {
           </>
         );
       })()}
+
+      {/* 表情反应选择器 */}
+      {emojiPickerState && (
+        <>
+          <div className="fixed inset-0 z-[99]" onClick={() => setEmojiPickerState(null)} />
+          <div
+            className="fixed z-[100] flex gap-1 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-1.5 shadow-xl"
+            style={{ left: emojiPickerState.x, top: emojiPickerState.y }}
+          >
+            {REACTION_EMOJIS.map((r) => (
+              <button
+                key={r.emoji}
+                onClick={() => toggleReaction(emojiPickerState.id, r.emoji)}
+                title={r.label}
+                className="flex size-10 items-center justify-center rounded-xl text-xl transition-colors hover:bg-[var(--muted)]"
+              >
+                {r.emoji}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* 群消息已读详情 */}
       {readDetail && (
