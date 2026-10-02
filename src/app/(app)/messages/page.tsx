@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, BellOff, Archive, PanelLeftClose, Pencil, LogOut } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, BellOff, Archive, PanelLeftClose, Pencil, LogOut, Trash2 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -500,6 +500,9 @@ export default function MessagesPage() {
   // 转让群主（群主）
   const [transferTarget, setTransferTarget] = useState<string | null>(null);
   const [transferSaving, setTransferSaving] = useState(false);
+  // 解散群（群主）
+  const [disbandOpen, setDisbandOpen] = useState(false);
+  const [disbandSaving, setDisbandSaving] = useState(false);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
   // 消息翻译
@@ -1772,6 +1775,36 @@ export default function MessagesPage() {
     }
   };
 
+  // 群主解散群
+  const disbandGroup = async () => {
+    if (!selected || selected.kind !== "group") return;
+    setDisbandSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups/disband", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const gid = selected.id;
+        setGroups((prev) => prev.filter((g) => g.id !== gid));
+        setDisbandOpen(false);
+        setSelected(null);
+        setMessages([]);
+        cursorRef.current = 0;
+      } else {
+        setError(d?.error || "解散失败");
+        setDisbandOpen(false);
+      }
+    } catch {
+      setError("解散失败");
+      setDisbandOpen(false);
+    } finally {
+      setDisbandSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -2196,6 +2229,16 @@ export default function MessagesPage() {
                     >
                       <Pencil className="size-4" />
                       改名
+                    </button>
+                  )}
+                  {isGroupOwner && (
+                    <button
+                      onClick={() => setDisbandOpen(true)}
+                      title="解散群聊"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="size-4" />
+                      解散
                     </button>
                   )}
                   {isGroup && (
@@ -3442,6 +3485,31 @@ export default function MessagesPage() {
                 className="rounded-md bg-red-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
                 {leaveSaving ? "退出中…" : "确认退出"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 解散群确认（群主） */}
+      {disbandOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!disbandSaving) setDisbandOpen(false); }}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">解散群聊</h3>
+              <button onClick={() => setDisbandOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-4 text-sm text-[var(--foreground)]">
+              确定解散群聊「{selected?.kind === "group" ? selected.name : ""}」吗？解散后所有成员都将看不到这个群，群里的聊天记录会被删除，此操作不可恢复。
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setDisbandOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
+              <button
+                onClick={disbandGroup}
+                disabled={disbandSaving}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {disbandSaving ? "解散中…" : "确认解散"}
               </button>
             </div>
           </div>
