@@ -171,11 +171,12 @@ export function ChatNotifier() {
           prevUnreadRef.current.set(c.name, cur);
         }
 
-        // 群新消息：群最后一条消息变化，且不是自己发的
+        // 群新消息：群最后一条消息变化，且不是自己发的；免打扰的群不弹提醒/不响铃
         for (const g of groups) {
           const key = `${g.last_at}|${g.last_sender}`;
           const prevKey = prevGroupKeyRef.current.get(g.id);
-          if (prevKey !== undefined && prevKey !== key && g.last_sender && g.last_sender !== me) {
+          const isNew = prevKey !== undefined && prevKey !== key && g.last_sender && g.last_sender !== me;
+          if (isNew && !g.muted) {
             const title = `群「${g.name}」：${g.last_sender} 发来消息`;
             const body = g.last_preview || "";
             const target: ChatOpenTarget = { kind: "group", id: Number(g.id), name: g.name };
