@@ -495,6 +495,9 @@ export default function MessagesPage() {
   // 退群（普通成员）
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
+  // 转让群主（群主）
+  const [transferTarget, setTransferTarget] = useState<string | null>(null);
+  const [transferSaving, setTransferSaving] = useState(false);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
   // 消息翻译
@@ -1709,6 +1712,37 @@ export default function MessagesPage() {
     }
   };
 
+  // 群主转让群主给某个成员（点「转让」后弹出确认）
+  const confirmTransfer = (name: string) => setTransferTarget(name);
+
+  // 执行转让
+  const doTransfer = async () => {
+    if (!selected || selected.kind !== "group" || !transferTarget) return;
+    setTransferSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, new_owner: transferTarget }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const gid = selected.id;
+        setGroups((prev) => prev.map((g) => (g.id === gid ? { ...g, owner: d.owner || g.owner, members: d.members || g.members } : g)));
+        setTransferTarget(null);
+        setMembersOpen(false);
+      } else {
+        setError(d?.error || "转让失败");
+        setTransferTarget(null);
+      }
+    } catch {
+      setError("转让失败");
+      setTransferTarget(null);
+    } finally {
+      setTransferSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -2134,10 +2168,10 @@ export default function MessagesPage() {
                       改名
                     </button>
                   )}
-                  {isGroupOwner && (
+                  {isGroup && (
                     <button
                       onClick={openMembers}
-                      title="邀请/移除成员"
+                      title="群成员列表"
                       className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                     >
                       <Users className="size-4" />
@@ -3230,7 +3264,7 @@ export default function MessagesPage() {
         </div>
       )}
 
-      {/* 群成员管理（群主） */}
+      {/* 群成员列表（所有人可看，群主可管理） */}
       {membersOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMembersOpen(false)}>
           <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -3239,59 +3273,105 @@ export default function MessagesPage() {
               <button onClick={() => setMembersOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
 
-            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">当前成员（{(activeGroup?.members ?? []).length}）</label>
-            <div className="mb-3 max-h-[28vh] overflow-y-auto rounded-md border border-[var(--border)] p-1">
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">成员名单（{(activeGroup?.members ?? []).length}）</label>
+            <div className="mb-3 max-h-[30vh] overflow-y-auto rounded-md border border-[var(--border)] p-1">
               {(activeGroup?.members ?? []).map((name) => {
                 const isOwner = name === activeGroup?.owner;
+                const av = avatarOf(name);
                 return (
                   <div key={name} className="flex items-center gap-2 rounded px-2 py-1.5">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-xs text-[var(--primary)]">{name.charAt(0)}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{name}</span>
-                    <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{isOwner ? "群主" : "成员"}</span>
-                    {!isOwner && (
-                      <button
-                        onClick={() => removeMember(name)}
-                        disabled={membersSaving}
-                        className="shrink-0 rounded px-2 py-0.5 text-xs text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50"
-                      >
-                        移除
-                      </button>
+                    {av ? (
+                      <img src={imgSrc(av)} alt={name} className="size-8 shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-xs text-[var(--primary)]">{name.charAt(0)}</span>
                     )}
+                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{name}</span>
+                    {isOwner ? (
+                      <span className="shrink-0 rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-2 py-0.5 text-[0.65rem] font-medium text-[var(--primary)]">群主</span>
+                    ) : isGroupOwner ? (
+                      <>
+                        <button
+                          onClick={() => confirmTransfer(name)}
+                          disabled={membersSaving || transferSaving}
+                          className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--primary)] transition-colors hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] disabled:opacity-50"
+                        >
+                          转让
+                        </button>
+                        <button
+                          onClick={() => removeMember(name)}
+                          disabled={membersSaving || transferSaving}
+                          className="shrink-0 rounded px-2 py-0.5 text-xs text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50"
+                        >
+                          移除
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
 
-            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">邀请成员（从员工里选）</label>
-            <div className="max-h-[28vh] overflow-y-auto rounded-md border border-[var(--border)] p-2">
-              {contacts.filter((c) => !(activeGroup?.members ?? []).includes(c.name)).length === 0 ? (
-                <p className="px-2 py-4 text-center text-xs text-[var(--muted-foreground)]">没有可邀请的员工</p>
-              ) : (
-                contacts.filter((c) => !(activeGroup?.members ?? []).includes(c.name)).map((c) => (
-                  <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-[var(--muted)]">
-                    <input
-                      type="checkbox"
-                      checked={inviteCandidates.includes(c.name)}
-                      onChange={() => toggleInvite(c.name)}
-                      className="size-4 accent-[var(--primary)]"
-                    />
-                    <span className="text-sm text-[var(--foreground)]">{c.name}</span>
-                    <span className="text-xs text-[var(--muted-foreground)]">{c.role === "admin" ? "管理员" : "员工"}</span>
-                  </label>
-                ))
-              )}
-            </div>
+            {isGroupOwner && (
+              <>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">邀请成员（从员工里选）</label>
+                <div className="max-h-[28vh] overflow-y-auto rounded-md border border-[var(--border)] p-2">
+                  {contacts.filter((c) => !(activeGroup?.members ?? []).includes(c.name)).length === 0 ? (
+                    <p className="px-2 py-4 text-center text-xs text-[var(--muted-foreground)]">没有可邀请的员工</p>
+                  ) : (
+                    contacts.filter((c) => !(activeGroup?.members ?? []).includes(c.name)).map((c) => (
+                      <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-[var(--muted)]">
+                        <input
+                          type="checkbox"
+                          checked={inviteCandidates.includes(c.name)}
+                          onChange={() => toggleInvite(c.name)}
+                          className="size-4 accent-[var(--primary)]"
+                        />
+                        <span className="text-sm text-[var(--foreground)]">{c.name}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">{c.role === "admin" ? "管理员" : "员工"}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
 
             {membersError && <p className="mt-2 text-xs text-red-500">{membersError}</p>}
 
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setMembersOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">关闭</button>
+              {isGroupOwner && (
+                <button
+                  onClick={inviteMembers}
+                  disabled={membersSaving || inviteCandidates.length === 0}
+                  className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+                >
+                  {membersSaving ? "处理中…" : inviteCandidates.length > 0 ? `邀请（${inviteCandidates.length}）` : "邀请"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 转让群主确认 */}
+      {transferTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!transferSaving) setTransferTarget(null); }}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">转让群主</h3>
+              <button onClick={() => setTransferTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-4 text-sm text-[var(--foreground)]">
+              确定将群主转让给「{transferTarget}」吗？转让后你将变成普通成员。
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setTransferTarget(null)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
               <button
-                onClick={inviteMembers}
-                disabled={membersSaving || inviteCandidates.length === 0}
+                onClick={doTransfer}
+                disabled={transferSaving}
                 className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
               >
-                {membersSaving ? "处理中…" : inviteCandidates.length > 0 ? `邀请（${inviteCandidates.length}）` : "邀请"}
+                {transferSaving ? "转让中…" : "确认转让"}
               </button>
             </div>
           </div>
