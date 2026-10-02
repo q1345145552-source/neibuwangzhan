@@ -1662,7 +1662,7 @@ export default function MessagesPage() {
       <div
         key={item.kind + item.id}
         className={cn(
-          "group flex w-full items-center gap-1 px-3 py-2 text-left transition",
+          "group flex w-full items-center gap-1 px-3 py-2 text-left transition-all duration-200 ease-out hover:-translate-y-0.5",
           active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
         )}
       >
@@ -1671,13 +1671,13 @@ export default function MessagesPage() {
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           {item.kind === "group" ? (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)] transition-transform duration-200 ease-out group-hover:scale-105">
               <Users className="size-5" />
             </span>
           ) : item.avatar ? (
-            <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover" />
+            <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover transition-transform duration-200 ease-out group-hover:scale-105" />
           ) : (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)] transition-transform duration-200 ease-out group-hover:scale-105">
               {item.name.charAt(0)}
             </span>
           )}
@@ -1705,7 +1705,7 @@ export default function MessagesPage() {
           onClick={() => togglePin(item.kind, item.id)}
           title={pinned ? "取消置顶" : "置顶"}
           className={cn(
-            "shrink-0 rounded-md p-1 transition-colors",
+            "shrink-0 rounded-md p-1 transition-all duration-200 ease-out hover:bg-[var(--muted)]/70",
             pinned ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]/40 hover:text-[var(--foreground)]"
           )}
         >
