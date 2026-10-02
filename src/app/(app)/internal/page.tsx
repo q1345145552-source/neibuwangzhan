@@ -11,7 +11,7 @@ import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
 import { StepTimerStatic } from "@/components/step-timer";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2, Play } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2, Play, Wallet } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -790,6 +790,53 @@ export default function InternalPage() {
   const [attendanceMonth, setAttendanceMonth] = useState(bangkokMonthKey());
   const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","chat-today","chat-week","other-today","other-week"]));
 
+  // ── 工资设置（管理员）──
+  const [salaryRows, setSalaryRows] = useState<any[]>([]);
+  const [salaryLoading, setSalaryLoading] = useState(false);
+  const [salarySavingId, setSalarySavingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setSalaryLoading(true);
+    fetchWithAuth("/api/employees", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d)) setSalaryRows(d.filter((e: any) => e.role !== "client")); })
+      .catch(() => {})
+      .finally(() => setSalaryLoading(false));
+  }, [isAdmin]);
+
+  const updateSalaryRow = (id: number, field: string, value: string) => {
+    setSalaryRows((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const saveSalary = async (id: number) => {
+    const row = salaryRows.find((e) => e.id === id);
+    if (!row) return;
+    setSalarySavingId(id);
+    try {
+      const r = await fetchWithAuth("/api/employees", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          base_salary: row.base_salary === "" || row.base_salary === null || row.base_salary === undefined ? 0 : Number(row.base_salary),
+          diligence_bonus: row.diligence_bonus === "" || row.diligence_bonus === null || row.diligence_bonus === undefined ? null : Number(row.diligence_bonus),
+          skill_allowance: row.skill_allowance === "" || row.skill_allowance === null || row.skill_allowance === undefined ? 0 : Number(row.skill_allowance),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setSalaryRows((prev) => prev.map((e) => (e.id === id ? { ...e, base_salary: d.base_salary ?? 0, diligence_bonus: d.diligence_bonus ?? null, skill_allowance: d.skill_allowance ?? 0 } : e)));
+      } else {
+        alert(d?.error || "保存失败");
+      }
+    } catch {
+      alert("保存失败");
+    } finally {
+      setSalarySavingId(null);
+    }
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -802,6 +849,76 @@ export default function InternalPage() {
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
         </div>
       </div>
+
+      {/* ── 工资设置（管理员） ── */}
+      {isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+            <h2 className="text-sm font-medium flex items-center gap-2"><Wallet className="size-4" />工资设置</h2>
+          </div>
+          <div className="p-5">
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">给每个员工设置底薪、勤奋奖、技能津贴，保存后写入员工档案。</p>
+            {salaryLoading ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : salaryRows.length === 0 ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无员工</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)]">
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">底薪</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">勤奋奖（可空）</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">技能津贴</th>
+                      <th className="py-2 px-3 text-right text-xs font-medium text-[var(--muted-foreground)]">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salaryRows.map((e) => (
+                      <tr key={e.id} className="border-b border-[var(--border)] last:border-0">
+                        <td className="py-2 px-3 whitespace-nowrap text-[var(--foreground)]">{e.name}</td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={e.base_salary ?? ""}
+                            onChange={(ev) => updateSalaryRow(e.id, "base_salary", ev.target.value)}
+                            placeholder="0"
+                            className="h-8 w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={e.diligence_bonus ?? ""}
+                            onChange={(ev) => updateSalaryRow(e.id, "diligence_bonus", ev.target.value)}
+                            placeholder="可空"
+                            className="h-8 w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={e.skill_allowance ?? ""}
+                            onChange={(ev) => updateSalaryRow(e.id, "skill_allowance", ev.target.value)}
+                            placeholder="0"
+                            className="h-8 w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                          />
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <Button size="sm" onClick={() => saveSalary(e.id)} disabled={salarySavingId === e.id} className="h-7 text-xs">
+                            {salarySavingId === e.id ? "保存中…" : "保存"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── 今日考勤打卡 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">

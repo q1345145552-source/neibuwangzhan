@@ -13,10 +13,10 @@ export async function GET(req: NextRequest) {
   // 默认只返回在职员工（供选人下拉框用，避免给离职员工派活）；?include_left=1 时返回全部（含离职）。
   const includeLeft = new URL(req.url).searchParams.get("include_left") === "1";
   const sql = includeLeft
-    ? "SELECT id, name, email, role, status, avatar FROM employees"
-    : "SELECT id, name, email, role, status, avatar FROM employees WHERE status != '离职'";
+    ? "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance FROM employees"
+    : "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance FROM employees WHERE status != '离职'";
   const rows = db.prepare(sql).all() as
-    { id: number; name: string; email: string; role: string; status: string; avatar: string }[];
+    { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null }[];
 
   // 客户账号带上它能看到哪些公司的订单（外部客户端口的可见范围）
   const scoped = rows.map((r) => {
@@ -59,7 +59,7 @@ export async function PATCH(req: NextRequest) {
   const db = getDb();
 
   const body = await readJson(req);
-  const { id, name, email, role, password, status, customer_names } = body;
+  const { id, name, email, role, password, status, customer_names, base_salary, diligence_bonus, skill_allowance } = body;
   if (!id) return NextResponse.json({ error: "请提供员工ID" }, { status: 400 });
 
   const enumErr = validateEnums({ "employees.role": role, "employees.status": status });
@@ -98,6 +98,27 @@ export async function PATCH(req: NextRequest) {
     sets.push("must_change_password = 0");
   }
 
+  // 工资字段：底薪/技能津贴为数字（>=0），勤奋奖可空（不是人人都有）
+  if (base_salary !== undefined && base_salary !== "") {
+    const v = Number(base_salary);
+    if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "底薪格式不正确" }, { status: 400 });
+    sets.push("base_salary = ?"); params.push(v);
+  }
+  if (diligence_bonus !== undefined) {
+    if (diligence_bonus === "" || diligence_bonus === null) {
+      sets.push("diligence_bonus = NULL");
+    } else {
+      const v = Number(diligence_bonus);
+      if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "勤奋奖格式不正确" }, { status: 400 });
+      sets.push("diligence_bonus = ?"); params.push(v);
+    }
+  }
+  if (skill_allowance !== undefined && skill_allowance !== "") {
+    const v = Number(skill_allowance);
+    if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "技能津贴格式不正确" }, { status: 400 });
+    sets.push("skill_allowance = ?"); params.push(v);
+  }
+
   // customer_names：客户账号能在外部端口看到哪些公司的订单（整表替换）
   const updatingScope = Array.isArray(customer_names);
   if (sets.length === 0 && !updatingScope) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
@@ -127,8 +148,8 @@ export async function PATCH(req: NextRequest) {
       `可见公司: ${(customer_names as unknown[]).join("、") || "（清空）"}`);
   }
 
-  const emp = db.prepare("SELECT id, name, email, role, status FROM employees WHERE id = ?").get(id) as
-    { id: number; role: string; status: string } | undefined;
+  const emp = db.prepare("SELECT id, name, email, role, status, base_salary, diligence_bonus, skill_allowance FROM employees WHERE id = ?").get(id) as
+    { id: number; role: string; status: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null } | undefined;
   const scope = db.prepare(
     "SELECT customer_name FROM client_account_customers WHERE employee_id = ? ORDER BY customer_name"
   ).all(id) as { customer_name: string }[];
