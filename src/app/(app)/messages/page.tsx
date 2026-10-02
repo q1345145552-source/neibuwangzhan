@@ -1092,12 +1092,11 @@ export default function MessagesPage() {
     setInput((prev) => prev + emoji);
   };
 
-  // 选图片 → 上传 → 作为图片消息发出
-  const handleImagePick = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !selected || sending) return;
+  // 上传并发送图片消息（点按钮选图 / 粘贴截图共用）
+  const sendImageFile = async (file: File) => {
+    if (!selected || sending) return;
     if (!file.type.startsWith("image/")) { setError("只能发送图片"); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("图片不能超过 10MB"); return; }
     setSending(true);
     setError(null);
     try {
@@ -1115,6 +1114,30 @@ export default function MessagesPage() {
     } finally {
       setSending(false);
     }
+  };
+
+  // 选图片 → 上传 → 作为图片消息发出
+  const handleImagePick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await sendImageFile(file);
+  };
+
+  // 粘贴：剪贴板里有图片则作为图片消息发出；纯文字走默认粘贴
+  const handlePaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    let imageFile: File | null = null;
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) { imageFile = f; break; }
+      }
+    }
+    if (!imageFile) return; // 没有图片 → 默认文字粘贴
+    e.preventDefault(); // 有图片 → 阻止文字粘贴，改成发图片
+    await sendImageFile(imageFile);
   };
 
   const toggleMember = (name: string) => {
@@ -2608,6 +2631,7 @@ export default function MessagesPage() {
                   <input
                     value={input}
                     onChange={handleInputChange}
+                    onPaste={handlePaste}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
