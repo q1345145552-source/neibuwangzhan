@@ -121,6 +121,7 @@ export default function MessagesPage() {
   const cursorRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const openedRef = useRef(false);
 
   // 联系人列表：在职员工（不含自己），带最后消息和未读
   const loadContacts = useCallback(() => {
@@ -241,6 +242,29 @@ export default function MessagesPage() {
       })
       .catch(() => {});
   }, [mergeIncoming, applyGroupReads]);
+
+  // 从通知中心跳转过来：?open=direct:姓名 或 ?open=group:群id，打开对应会话
+  useEffect(() => {
+    if (openedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const open = params.get("open");
+    if (!open) return;
+    const idx = open.indexOf(":");
+    if (idx < 0) return;
+    const kind = open.slice(0, idx);
+    const id = open.slice(idx + 1);
+    if (kind === "direct" && id) {
+      openedRef.current = true;
+      openDirect(id);
+    } else if (kind === "group" && id) {
+      // 群跳转需要群名，等群列表加载后按 id 找到再打开
+      const g = groups.find((g) => String(g.id) === id);
+      if (g) {
+        openedRef.current = true;
+        openGroup(g.id, g.name);
+      }
+    }
+  }, [groups, openDirect, openGroup]);
 
   // 实时轮询：每 1 秒拉取游标之后的新消息（文字/图片都实时）
   useEffect(() => {
