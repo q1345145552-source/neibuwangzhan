@@ -53,6 +53,18 @@ interface Message {
   mentioned_members?: string[];
 }
 
+// 会话列表条目（一对一/群聊统一结构，用于分组展示）
+interface ConversationItem {
+  kind: "direct" | "group";
+  id: string;
+  name: string;
+  avatar: string;
+  lastAt: string | null;
+  lastSender: string | null;
+  lastPreview: string | null;
+  unread: number;
+}
+
 // 当前打开的聊天对象：要么是一对一（员工名），要么是群
 type ChatTarget =
   | { kind: "direct"; name: string }
@@ -682,31 +694,9 @@ export default function MessagesPage() {
     } catch { /* 忽略 */ }
   };
 
-  // 会话列表：一对一 + 群聊 合并，置顶的固定最上面，其余按最后一条消息时间倒序
-  const conversationList = useMemo(() => {
-    const items = [
-      ...contacts.map((c) => ({
-        kind: "direct" as const,
-        id: c.name,
-        name: c.name,
-        avatar: c.avatar || "",
-        lastAt: c.last_at,
-        lastSender: c.last_sender,
-        lastPreview: c.last_preview,
-        unread: c.unread || 0,
-      })),
-      ...groups.map((g) => ({
-        kind: "group" as const,
-        id: String(g.id),
-        name: g.name,
-        avatar: "",
-        lastAt: g.last_at,
-        lastSender: g.last_sender,
-        lastPreview: g.last_preview,
-        unread: 0,
-      })),
-    ];
-    return items.sort((a, b) => {
+  // 会话列表：分成「群聊」和「一对一」两个区域，各自置顶固定最上、其余按最后一条消息时间倒序
+  const { groupConversations, directConversations } = useMemo(() => {
+    const sortItems = (items: ConversationItem[]) => items.sort((a, b) => {
       const aPinned = pinnedScopes.has(`${a.kind}:${a.id}`) ? 1 : 0;
       const bPinned = pinnedScopes.has(`${b.kind}:${b.id}`) ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned; // 置顶的排前面
@@ -715,6 +705,27 @@ export default function MessagesPage() {
       if (ta !== tb) return ta > tb ? -1 : 1;
       return a.name.localeCompare(b.name, "zh");
     });
+    const groupItems: ConversationItem[] = groups.map((g) => ({
+      kind: "group",
+      id: String(g.id),
+      name: g.name,
+      avatar: "",
+      lastAt: g.last_at,
+      lastSender: g.last_sender,
+      lastPreview: g.last_preview,
+      unread: 0,
+    }));
+    const directItems: ConversationItem[] = contacts.map((c) => ({
+      kind: "direct",
+      id: c.name,
+      name: c.name,
+      avatar: c.avatar || "",
+      lastAt: c.last_at,
+      lastSender: c.last_sender,
+      lastPreview: c.last_preview,
+      unread: c.unread || 0,
+    }));
+    return { groupConversations: sortItems(groupItems), directConversations: sortItems(directItems) };
   }, [contacts, groups, pinnedScopes]);
 
   // 合并消息（按 id 去重 + 升序），并推进游标
@@ -1641,6 +1652,69 @@ export default function MessagesPage() {
     ? { backgroundImage: `url(${imgSrc(effectiveBackground)})`, backgroundSize: "cover", backgroundPosition: "center" }
     : (() => { const p = CHAT_BACKGROUND_PRESETS.find((x) => x.key === effectiveBackground); return p ? { background: p.style } : {}; })();
 
+  // 单条会话列表项（群聊/一对一共用，分组后各自渲染）
+  const conversationRow = (item: ConversationItem) => {
+    const active = item.kind === "direct"
+      ? selected?.kind === "direct" && selected.name === item.id
+      : selected?.kind === "group" && selected.id === Number(item.id);
+    const pinned = pinnedScopes.has(`${item.kind}:${item.id}`);
+    return (
+      <div
+        key={item.kind + item.id}
+        className={cn(
+          "group flex w-full items-center gap-1 px-3 py-2 text-left transition",
+          active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
+        )}
+      >
+        <button
+          onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          {item.kind === "group" ? (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+              <Users className="size-5" />
+            </span>
+          ) : item.avatar ? (
+            <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover" />
+          ) : (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+              {item.name.charAt(0)}
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1">
+                {pinned && <Pin className="size-3 shrink-0 fill-current text-[var(--primary)]" />}
+                <span className="truncate text-sm text-[var(--foreground)]">{item.name}</span>
+              </span>
+              <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(item.lastAt)}</span>
+            </span>
+            <span className="mt-0.5 flex items-center justify-between gap-2">
+              <span className="truncate text-xs text-[var(--muted-foreground)]">
+                {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
+              </span>
+              {item.unread > 0 && (
+                <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">
+                  {item.unread > 99 ? "99+" : item.unread}
+                </span>
+              )}
+            </span>
+          </span>
+        </button>
+        <button
+          onClick={() => togglePin(item.kind, item.id)}
+          title={pinned ? "取消置顶" : "置顶"}
+          className={cn(
+            "shrink-0 rounded-md p-1 transition-colors",
+            pinned ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]/40 hover:text-[var(--foreground)]"
+          )}
+        >
+          <Pin className={cn("size-3.5", pinned && "fill-current")} />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-[calc(100dvh-6rem)] flex-col gap-2 lg:h-[calc(100dvh-4rem)]">
       <style>{`
@@ -1737,73 +1811,26 @@ export default function MessagesPage() {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 divide-y divide-[var(--border)] overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {contactsLoading ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
-            ) : conversationList.length === 0 ? (
+            ) : groupConversations.length === 0 && directConversations.length === 0 ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">暂无会话</p>
             ) : (
-              conversationList.map((item) => {
-                const active = item.kind === "direct"
-                  ? selected?.kind === "direct" && selected.name === item.id
-                  : selected?.kind === "group" && selected.id === Number(item.id);
-                const pinned = pinnedScopes.has(`${item.kind}:${item.id}`);
-                return (
-                  <div
-                    key={item.kind + item.id}
-                    className={cn(
-                      "group flex w-full items-center gap-1 px-3 py-2 text-left transition",
-                      active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
-                    )}
-                  >
-                    <button
-                      onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                    >
-                      {item.kind === "group" ? (
-                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
-                          <Users className="size-5" />
-                        </span>
-                      ) : item.avatar ? (
-                        <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover" />
-                      ) : (
-                        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
-                          {item.name.charAt(0)}
-                        </span>
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="flex min-w-0 items-center gap-1">
-                            {pinned && <Pin className="size-3 shrink-0 fill-current text-[var(--primary)]" />}
-                            <span className="truncate text-sm text-[var(--foreground)]">{item.name}</span>
-                          </span>
-                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(item.lastAt)}</span>
-                        </span>
-                        <span className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className="truncate text-xs text-[var(--muted-foreground)]">
-                            {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
-                          </span>
-                          {item.unread > 0 && (
-                            <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">
-                              {item.unread > 99 ? "99+" : item.unread}
-                            </span>
-                          )}
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => togglePin(item.kind, item.id)}
-                      title={pinned ? "取消置顶" : "置顶"}
-                      className={cn(
-                        "shrink-0 rounded-md p-1 transition-colors",
-                        pinned ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]/40 hover:text-[var(--foreground)]"
-                      )}
-                    >
-                      <Pin className={cn("size-3.5", pinned && "fill-current")} />
-                    </button>
-                  </div>
-                );
-              })
+              <>
+                <div className="px-3 pb-1 pt-3 text-xs font-medium text-[var(--muted-foreground)]">群聊</div>
+                {groupConversations.length === 0 ? (
+                  <p className="px-3 py-3 text-xs text-[var(--muted-foreground)]/70">暂无群聊</p>
+                ) : (
+                  <div className="divide-y divide-[var(--border)]">{groupConversations.map(conversationRow)}</div>
+                )}
+                <div className="px-3 pb-1 pt-3 text-xs font-medium text-[var(--muted-foreground)]">一对一聊天</div>
+                {directConversations.length === 0 ? (
+                  <p className="px-3 py-3 text-xs text-[var(--muted-foreground)]/70">暂无聊天</p>
+                ) : (
+                  <div className="divide-y divide-[var(--border)]">{directConversations.map(conversationRow)}</div>
+                )}
+              </>
             )}
           </div>
         </div>
