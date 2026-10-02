@@ -1158,13 +1158,15 @@ function initTables(database: Database.Database) {
       order_id TEXT DEFAULT '',
       is_read INTEGER DEFAULT 0,
       read_at TEXT,
+      recalled INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
 
-  // messages 迁移：补 image_url / order_id 列（图片消息 / 分享订单）
+  // messages 迁移：补 image_url / order_id / recalled 列（图片消息 / 分享订单 / 撤回）
   try { database.exec("ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE messages ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN recalled INTEGER DEFAULT 0"); } catch {}
 
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_user_a ON conversations(user_a);

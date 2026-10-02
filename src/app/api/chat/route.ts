@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   const conversationId = getOrCreateConversation(db, auth.name, other);
 
   const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(conversationId, after);
 
   // 打开会话即视为已读：把对方发给我的未读消息标记为已读
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   ).run(now, preview, conversationId);
 
   const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE id = ?"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE id = ?"
   ).get(Number(r.lastInsertRowid));
 
   return NextResponse.json({ message }, { status: 201 });
