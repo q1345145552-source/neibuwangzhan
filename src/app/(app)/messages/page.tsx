@@ -163,6 +163,13 @@ const SUMMARY_RANGES: { key: SummaryRangeOption; label: string }[] = [
   { key: "30d", label: "最近三十天" },
 ];
 
+// 聊天监控的时间档位（今天 / 最近七天 / 最近三十天）
+const MONITOR_RANGES: { key: SummaryRangeOption; label: string }[] = [
+  { key: "today", label: "今天" },
+  { key: "7d", label: "最近七天" },
+  { key: "30d", label: "最近三十天" },
+];
+
 // 把 "YYYY-MM-DD" 日历日期平移 N 天（纯日历运算，不涉及时区）
 function shiftDateStr(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -379,6 +386,8 @@ export default function MessagesPage() {
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorError, setMonitorError] = useState<string | null>(null);
   const [monitorDetail, setMonitorDetail] = useState<{ conversation: { user_a: string; user_b: string }; messages: Message[] } | null>(null);
+  const [monitorRange, setMonitorRange] = useState<SummaryRangeOption>("7d");
+  const [monitorEmployee, setMonitorEmployee] = useState("");
   // 总结板块（管理员）
   const [summaryBoardOpen, setSummaryBoardOpen] = useState(false);
   const [summaryBoardList, setSummaryBoardList] = useState<SummaryBoardItem[]>([]);
@@ -1049,15 +1058,22 @@ export default function MessagesPage() {
     setMonitorOpen(true);
     setMonitorDetail(null);
     setMonitorError(null);
-    loadMonitorList();
+    setMonitorRange("7d");
+    setMonitorEmployee("");
+    loadMonitorList("7d", "");
   };
 
-  // 加载员工之间的一对一会话列表
-  const loadMonitorList = async () => {
+  // 加载监控看板：按时间范围 + 员工筛选
+  const loadMonitorList = async (range: SummaryRangeOption = monitorRange, employee: string = monitorEmployee) => {
     setMonitorLoading(true);
     setMonitorError(null);
     try {
-      const r = await fetchWithAuth("/api/chat/monitor", { cache: "no-store" });
+      const { from, to } = summaryTimeRange(range);
+      const qs = new URLSearchParams();
+      qs.set("from", from);
+      qs.set("to", to);
+      if (employee) qs.set("employee", employee);
+      const r = await fetchWithAuth(`/api/chat/monitor?${qs.toString()}`, { cache: "no-store" });
       const d = await r.json().catch(() => null);
       if (r.ok && Array.isArray(d)) {
         setMonitorList(d as MonitorConversation[]);
@@ -2200,11 +2216,43 @@ export default function MessagesPage() {
       {/* 聊天监控（管理员） */}
       {monitorOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMonitorOpen(false)}>
-          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
               <h3 className="font-semibold text-[var(--foreground)]">聊天监控</h3>
               <button onClick={() => setMonitorOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
+
+            {!monitorDetail && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-5 py-2.5">
+                <span className="text-xs text-[var(--muted-foreground)]">时间</span>
+                {MONITOR_RANGES.map((r) => (
+                  <button
+                    key={r.key}
+                    onClick={() => { setMonitorRange(r.key); loadMonitorList(r.key, monitorEmployee); }}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs transition-colors",
+                      monitorRange === r.key
+                        ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                    )}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+                <span className="ml-2 text-xs text-[var(--muted-foreground)]">员工</span>
+                <select
+                  value={monitorEmployee}
+                  onChange={(e) => { const v = e.target.value; setMonitorEmployee(v); loadMonitorList(monitorRange, v); }}
+                  className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                >
+                  <option value="">全部员工</option>
+                  {me && <option value={me}>{me}</option>}
+                  {contacts.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto p-4">
               {monitorDetail ? (
@@ -2262,23 +2310,19 @@ export default function MessagesPage() {
               ) : monitorList.length === 0 ? (
                 <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无员工之间的会话</p>
               ) : (
-                <div className="divide-y divide-[var(--border)]">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {monitorList.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => openMonitorConversation(c.id)}
-                      className="flex w-full items-center gap-3 px-2 py-2.5 text-left transition-colors hover:bg-[var(--muted)]/50"
+                      className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
                     >
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium text-[var(--foreground)]">{c.user_a} ↔ {c.user_b}</span>
-                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(c.last_at)}</span>
-                        </span>
-                        <span className="mt-0.5 flex items-center justify-between gap-2">
-                          <span className="truncate text-xs text-[var(--muted-foreground)]">{c.last_sender}: {c.last_preview || "—"}</span>
-                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{c.message_count} 条</span>
-                        </span>
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-[var(--foreground)]">{c.user_a} ↔ {c.user_b}</span>
+                        <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(c.last_at)}</span>
                       </span>
+                      <span className="mt-1.5 block truncate text-xs text-[var(--muted-foreground)]">{c.last_sender}: {c.last_preview || "—"}</span>
+                      <span className="mt-1 block text-[0.65rem] text-[var(--muted-foreground)]">{c.message_count} 条消息</span>
                     </button>
                   ))}
                 </div>
