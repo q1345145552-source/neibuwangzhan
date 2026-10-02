@@ -1238,6 +1238,18 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 消息翻译缓存：同一条消息 + 目标语言只翻译一次
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_translations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      target TEXT NOT NULL,
+      translated TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(message_id, target)
+    );
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号

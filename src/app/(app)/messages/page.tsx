@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -402,6 +402,10 @@ export default function MessagesPage() {
   const [announcementSaving, setAnnouncementSaving] = useState(false);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
+  // 消息翻译
+  const [translateOpen, setTranslateOpen] = useState<Set<number>>(new Set());
+  const [translations, setTranslations] = useState<Map<string, string>>(new Map());
+  const [translating, setTranslating] = useState<string | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -478,6 +482,39 @@ export default function MessagesPage() {
         if (isPinned) next.add(scopeKey); else next.delete(scopeKey);
         return next;
       });
+    }
+  };
+
+  // 展开/收起某条消息的翻译面板
+  const toggleTranslate = (messageId: number) => {
+    setTranslateOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId); else next.add(messageId);
+      return next;
+    });
+  };
+
+  // 翻译一条消息（目标语言：中文 / 泰语），结果缓存、重复点直接读缓存
+  const doTranslate = async (messageId: number, target: "中文" | "泰语") => {
+    const key = `${messageId}:${target}`;
+    if (translations.has(key) || translating === key) return;
+    setTranslating(key);
+    try {
+      const r = await fetchWithAuth("/api/chat/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: messageId, target }),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && typeof d?.translated === "string") {
+        setTranslations((prev) => { const next = new Map(prev); next.set(key, d.translated); return next; });
+      } else {
+        setError(d?.error || "翻译失败");
+      }
+    } catch {
+      setError("翻译失败");
+    } finally {
+      setTranslating(null);
     }
   };
 
@@ -1703,7 +1740,45 @@ export default function MessagesPage() {
                                 已读 {m.read_members?.length ?? 0}/{groupMemberCount}
                               </button>
                             )}
+                            {!recalled && !card && !isImage && (
+                              <button onClick={() => toggleTranslate(m.id)} className="opacity-70 hover:opacity-100">
+                                <Languages className="mr-0.5 inline size-3" />翻译
+                              </button>
+                            )}
                           </p>
+                          {!recalled && !card && !isImage && translateOpen.has(m.id) && (
+                            <div className={cn("mt-1 rounded-lg border border-[var(--border)]/70 bg-[var(--background)]/70 px-2 py-1.5", mine ? "self-end text-right" : "self-start text-left")}>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => doTranslate(m.id, "中文")}
+                                  disabled={translating?.startsWith(`${m.id}:`)}
+                                  className="text-[0.65rem] font-medium text-[var(--primary)] hover:underline disabled:opacity-50"
+                                >
+                                  翻译成中文
+                                </button>
+                                <button
+                                  onClick={() => doTranslate(m.id, "泰语")}
+                                  disabled={translating?.startsWith(`${m.id}:`)}
+                                  className="text-[0.65rem] font-medium text-[var(--primary)] hover:underline disabled:opacity-50"
+                                >
+                                  翻译成泰语
+                                </button>
+                              </div>
+                              {translating?.startsWith(`${m.id}:`) && (
+                                <p className="mt-1 text-[0.65rem] text-[var(--muted-foreground)]">翻译中…</p>
+                              )}
+                              {translations.get(`${m.id}:中文`) && (
+                                <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-[var(--foreground)]/90">
+                                  <span className="text-[var(--muted-foreground)]">中文：</span>{translations.get(`${m.id}:中文`)}
+                                </p>
+                              )}
+                              {translations.get(`${m.id}:泰语`) && (
+                                <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-[var(--foreground)]/90">
+                                  <span className="text-[var(--muted-foreground)]">泰语：</span>{translations.get(`${m.id}:泰语`)}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
