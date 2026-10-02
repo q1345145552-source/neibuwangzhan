@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, Archive, PanelLeftClose } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -1662,39 +1662,42 @@ export default function MessagesPage() {
       <div
         key={item.kind + item.id}
         className={cn(
-          "group flex w-full items-center gap-1 px-3 py-2 text-left transition-all duration-200 ease-out hover:-translate-y-0.5",
-          active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
+          "group relative flex w-full items-center gap-1 rounded-lg px-3 py-2 text-left transition-all duration-200 ease-out",
+          active ? "bg-pink-50/70" : "hover:bg-slate-50/80"
         )}
       >
+        {active && (
+          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-pink-500" />
+        )}
         <button
           onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
           {item.kind === "group" ? (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)] transition-transform duration-200 ease-out group-hover:scale-105">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-pink-100 text-pink-600 transition-transform duration-200 ease-out group-hover:scale-105">
               <Users className="size-5" />
             </span>
           ) : item.avatar ? (
             <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover transition-transform duration-200 ease-out group-hover:scale-105" />
           ) : (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)] transition-transform duration-200 ease-out group-hover:scale-105">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-medium text-slate-500 transition-transform duration-200 ease-out group-hover:scale-105">
               {item.name.charAt(0)}
             </span>
           )}
           <span className="min-w-0 flex-1">
             <span className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1">
-                {pinned && <Pin className="size-3 shrink-0 fill-current text-[var(--primary)]" />}
-                <span className="truncate text-sm text-[var(--foreground)]">{item.name}</span>
+                {pinned && <Pin className="size-3 shrink-0 fill-current text-pink-500" />}
+                <span className={cn("truncate text-sm", active ? "font-semibold text-slate-900" : "font-medium text-slate-700")}>{item.name}</span>
               </span>
-              <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(item.lastAt)}</span>
+              <span className={cn("shrink-0 text-[0.65rem]", active ? "text-pink-500" : "text-slate-400")}>{fmtListTime(item.lastAt)}</span>
             </span>
             <span className="mt-0.5 flex items-center justify-between gap-2">
-              <span className="truncate text-xs text-[var(--muted-foreground)]">
+              <span className="truncate text-xs text-slate-400">
                 {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
               </span>
               {item.unread > 0 && (
-                <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">
+                <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-medium leading-4 text-white">
                   {item.unread > 99 ? "99+" : item.unread}
                 </span>
               )}
@@ -1705,8 +1708,8 @@ export default function MessagesPage() {
           onClick={() => togglePin(item.kind, item.id)}
           title={pinned ? "取消置顶" : "置顶"}
           className={cn(
-            "shrink-0 rounded-md p-1 transition-all duration-200 ease-out hover:bg-[var(--muted)]/70",
-            pinned ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]/40 hover:text-[var(--foreground)]"
+            "shrink-0 rounded-md p-1 transition-all duration-200 ease-out",
+            pinned ? "text-pink-500" : "text-slate-300 hover:bg-slate-50 hover:text-slate-600"
           )}
         >
           <Pin className={cn("size-3.5", pinned && "fill-current")} />
@@ -1764,26 +1767,26 @@ export default function MessagesPage() {
 
       <div className="grid min-h-0 flex-1 grid-rows-1 gap-2 lg:grid-cols-[280px_1fr]">
         {/* 左侧：群聊 + 员工列表 */}
-        <div className={cn("flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]", selected ? "hidden lg:flex" : "flex")}>
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-            <h2 className="text-sm font-medium text-[var(--foreground)]">会话</h2>
+        <div className={cn("flex flex-col overflow-hidden bg-white border-r border-slate-200/60", selected ? "hidden lg:flex" : "flex")}>
+          <div className="px-4 pb-2 pt-4">
             <button
               onClick={() => { setShowCreate(true); setCreateError(null); }}
-              className="rounded-md bg-[var(--primary)] px-2.5 py-1 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 px-4 py-2.5 text-sm font-medium text-white shadow-sm shadow-pink-200 transition-all duration-200 ease-out hover:scale-[1.02] hover:brightness-105"
             >
+              <Plus className="size-4" />
               新建群聊
             </button>
           </div>
 
           {/* 搜索聊天记录 */}
-          <div className="relative border-b border-[var(--border)] px-3 py-2">
+          <div className="relative px-3 pb-3">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
                 placeholder="搜索聊天记录"
-                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+                className="h-9 w-full rounded-lg bg-slate-50 pl-9 pr-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-pink-400"
               />
             </div>
             {searchOpen && (
@@ -1811,27 +1814,41 @@ export default function MessagesPage() {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto pb-2">
             {contactsLoading ? (
-              <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+              <p className="px-4 py-6 text-center text-xs text-slate-400">加载中…</p>
             ) : groupConversations.length === 0 && directConversations.length === 0 ? (
-              <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">暂无会话</p>
+              <p className="px-4 py-6 text-center text-xs text-slate-400">暂无会话</p>
             ) : (
               <>
-                <div className="px-3 pb-1 pt-3 text-xs font-medium text-[var(--muted-foreground)]">群聊</div>
+                <div className="px-3 pb-1.5 pt-1 text-[11px] font-medium uppercase tracking-wider text-slate-400">群聊</div>
                 {groupConversations.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-[var(--muted-foreground)]/70">暂无群聊</p>
+                  <p className="px-4 py-3 text-xs text-slate-300">暂无群聊</p>
                 ) : (
-                  <div className="divide-y divide-[var(--border)]">{groupConversations.map(conversationRow)}</div>
+                  <div className="space-y-0.5">{groupConversations.map(conversationRow)}</div>
                 )}
-                <div className="px-3 pb-1 pt-3 text-xs font-medium text-[var(--muted-foreground)]">一对一聊天</div>
+                <div className="px-3 pb-1.5 pt-4 text-[11px] font-medium uppercase tracking-wider text-slate-400">直连成员</div>
                 {directConversations.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-[var(--muted-foreground)]/70">暂无聊天</p>
+                  <p className="px-4 py-3 text-xs text-slate-300">暂无聊天</p>
                 ) : (
-                  <div className="divide-y divide-[var(--border)]">{directConversations.map(conversationRow)}</div>
+                  <div className="space-y-0.5">{directConversations.map(conversationRow)}</div>
                 )}
               </>
             )}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2">
+            <div className="flex items-center gap-1">
+              <button type="button" title="通知中心" className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600">
+                <Bell className="size-4" />
+              </button>
+              <button type="button" title="已归档会话" className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600">
+                <Archive className="size-4" />
+              </button>
+            </div>
+            <button type="button" title="折叠侧栏" className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600">
+              <PanelLeftClose className="size-4" />
+            </button>
           </div>
         </div>
 
