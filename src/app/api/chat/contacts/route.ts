@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const me = auth.name;
   const rows = db.prepare(`
-    SELECT e.name, e.role,
+    SELECT e.name, e.role, e.avatar,
       c.last_message_at AS last_at,
       c.last_message_preview AS last_preview,
       (SELECT m.sender FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   `).all(me, me, me, me) as {
     name: string;
     role: string;
+    avatar: string;
     last_at: string;
     last_preview: string;
     last_sender: string | null;
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(rows.map((r) => ({
     name: r.name,
     role: r.role,
+    avatar: r.avatar || "",
     last_at: r.last_at || null,
     last_preview: r.last_preview || null,
     last_sender: r.last_sender || null,

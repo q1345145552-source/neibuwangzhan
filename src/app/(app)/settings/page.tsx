@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Save, Pencil, Building2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Plus, Save, Pencil, Building2, Camera } from "lucide-react";
+import { cn, fileUrl } from "@/lib/utils";
 import { type Employee, fetchEmployees, createEmployee, updateEmployee, fetchOrderCustomerNames, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, setUser, logout } = useAuth();
   const router = useRouter();
   const isAdmin = user?.role === "admin";
   const [saved, setSaved] = useState(false);
@@ -48,6 +48,11 @@ export default function SettingsPage() {
   const [agencyEnabled, setAgencyEnabled] = useState(true);
   const [agencySaving, setAgencySaving] = useState(false);
 
+  // 个人头像
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     // 员工管理需要看到离职员工（以便恢复在职），所以拉全部，前端按开关过滤显示
     fetchEmployees({ include_left: true }).then(setEmployees).catch(() => {});
@@ -78,6 +83,68 @@ export default function SettingsPage() {
       }
     } catch { alert("保存失败"); }
     finally { setAgencySaving(false); }
+  };
+
+  // 选头像 → 上传 → 保存到自己的档案
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setAvatarMsg({ ok: false, text: "只能上传图片文件" }); return; }
+    if (file.size > 10 * 1024 * 1024) { setAvatarMsg({ ok: false, text: "图片不能超过 10MB" }); return; }
+
+    setAvatarUploading(true);
+    setAvatarMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (!up.ok || !upData.url) {
+        setAvatarMsg({ ok: false, text: upData.error || "头像上传失败" });
+        return;
+      }
+      const res = await fetchWithAuth("/api/employees/avatar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: upData.url }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAvatarMsg({ ok: false, text: d.error || "头像保存失败" });
+        return;
+      }
+      if (user) setUser({ ...user, avatar: d.avatar });
+      setAvatarMsg({ ok: true, text: "头像已更新" });
+    } catch {
+      setAvatarMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // 移除头像，回退到默认首字头像
+  const removeAvatar = async () => {
+    setAvatarUploading(true);
+    setAvatarMsg(null);
+    try {
+      const res = await fetchWithAuth("/api/employees/avatar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: "" }),
+      });
+      if (res.ok) {
+        if (user) setUser({ ...user, avatar: "" });
+        setAvatarMsg({ ok: true, text: "已移除头像" });
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setAvatarMsg({ ok: false, text: d.error || "移除失败" });
+      }
+    } catch {
+      setAvatarMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -492,6 +559,48 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* 个人资料 / 头像 */}
+        <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">个人资料</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              上传或更换你的头像，会显示在聊天列表和聊天窗口里。没上传时显示名字的第一个字。
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            {user?.avatar ? (
+              <img src={fileUrl(user.avatar)} alt="头像" className="size-16 shrink-0 rounded-full object-cover border border-[var(--border)]" />
+            ) : (
+              <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-2xl font-medium text-[var(--primary)]">
+                {user?.name?.charAt(0) || "?"}
+              </div>
+            )}
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="truncate text-sm font-medium text-[var(--foreground)]">{user?.name}</p>
+              <p className="truncate text-xs text-[var(--muted-foreground)]">{user?.email}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>
+                  <Camera className="size-3.5" />
+                  {avatarUploading ? "上传中…" : user?.avatar ? "更换头像" : "上传头像"}
+                </Button>
+                {user?.avatar && (
+                  <Button size="sm" variant="ghost" onClick={removeAvatar} disabled={avatarUploading}>移除头像</Button>
+                )}
+                <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarPick} className="hidden" />
+              </div>
+            </div>
+          </div>
+          {avatarMsg && (
+            <p className={`rounded-md px-3 py-2 text-xs ${
+              avatarMsg.ok
+                ? "bg-[color-mix(in_oklch,var(--success),var(--background)_88%)] text-[var(--success)]"
+                : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[var(--destructive)]"
+            }`}>
+              {avatarMsg.text}
+            </p>
+          )}
+        </div>
 
         {/* 修改自己的密码 */}
         <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">

@@ -49,6 +49,8 @@ export interface Employee {
   role?: string;
   /** 在职/离职，默认在职 */
   status?: string;
+  /** 头像地址（/api/files/...），空表示未上传 */
+  avatar?: string;
   /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
   customer_names?: string[];
 }
