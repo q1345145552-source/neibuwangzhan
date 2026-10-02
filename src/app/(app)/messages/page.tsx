@@ -1147,9 +1147,27 @@ export default function MessagesPage() {
   const myAvatar = user?.avatar || "";
   // 某个发送者的头像（自己用本人头像，别人从联系人里查，查不到回退空）
   const avatarOf = (name: string) => (name === me ? myAvatar : contacts.find((c) => c.name === name)?.avatar || "");
+  // 当前会话的 key：切换会话时用它触发聊天区重挂载，从而播放过渡动画
+  const selectedKey = selected ? (selected.kind === "direct" ? `d-${selected.name}` : `g-${selected.id}`) : "none";
 
   return (
     <div className="flex flex-col gap-6">
+      <style>{`
+        @keyframes msgSlideIn {
+          0% { opacity: 0; transform: translateY(16px) scale(0.95); }
+          60% { opacity: 1; transform: translateY(-2px) scale(1.02); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes msgListFade {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .msg-bubble-anim { animation: msgSlideIn 0.32s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+        .msg-list-anim { animation: msgListFade 0.24s ease-out both; }
+        @media (prefers-reduced-motion: reduce) {
+          .msg-bubble-anim, .msg-list-anim { animation: none; }
+        }
+      `}</style>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息</h1>
@@ -1246,7 +1264,7 @@ export default function MessagesPage() {
                     key={item.kind + item.id}
                     onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
                     className={cn(
-                      "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                      "flex w-full items-center gap-3 px-3 py-2.5 text-left transition active:scale-[0.98]",
                       active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
                     )}
                   >
@@ -1331,7 +1349,7 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
+              <div ref={scrollRef} key={selectedKey} className="msg-list-anim flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
@@ -1348,7 +1366,7 @@ export default function MessagesPage() {
                     const isMentioned = isGroup && !!m.mentioned_members?.includes(me);
                     const senderAvatar = avatarOf(m.sender);
                     return (
-                      <div key={m.id} id={`msg-${m.id}`} className={cn("flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}>
+                      <div key={m.id} id={`msg-${m.id}`} className={cn("msg-bubble-anim flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}>
                         {senderAvatar ? (
                           <img src={imgSrc(senderAvatar)} alt={m.sender} className="size-9 shrink-0 rounded-full object-cover" />
                         ) : (
