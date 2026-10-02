@@ -17,6 +17,7 @@ function isMember(db: Db, groupId: number, name: string): boolean {
 // 分享卡片类型 → 会话列表预览文案
 const CARD_LABELS: Record<string, string> = {
   order: "[订单]", todo: "[待办]", project: "[项目]", customer: "[客户]",
+  vat: "[VAT申报]", wht: "[预扣税]", problem: "[问题]",
 };
 
 // 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
@@ -38,6 +39,18 @@ function resolveCard(db: Db, type: string, id: string): { title: string; subtitl
   if (type === "customer") {
     const r = db.prepare("SELECT company_name FROM customers WHERE id = ?").get(n) as { company_name: string } | undefined;
     return r ? { title: r.company_name, subtitle: "" } : null;
+  }
+  if (type === "vat") {
+    const r = db.prepare("SELECT vc.company_name, v.year_month FROM vat_records v JOIN vat_customers vc ON vc.id = v.customer_id WHERE v.id = ?").get(n) as { company_name: string; year_month: string } | undefined;
+    return r ? { title: r.company_name, subtitle: r.year_month ? `申报月份：${r.year_month}` : "" } : null;
+  }
+  if (type === "wht") {
+    const r = db.prepare("SELECT wc.company_name, w.year_month FROM wht_records w JOIN wht_customers wc ON wc.id = w.customer_id WHERE w.id = ?").get(n) as { company_name: string; year_month: string } | undefined;
+    return r ? { title: r.company_name, subtitle: r.year_month ? `申报月份：${r.year_month}` : "" } : null;
+  }
+  if (type === "problem") {
+    const r = db.prepare("SELECT problem_number, company_name FROM problems WHERE id = ?").get(n) as { problem_number: string; company_name: string } | undefined;
+    return r ? { title: r.problem_number, subtitle: r.company_name || "" } : null;
   }
   return null;
 }

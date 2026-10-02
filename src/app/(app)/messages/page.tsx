@@ -85,8 +85,8 @@ function within2Min(createdAt: string): boolean {
   return !isNaN(t) && Date.now() - t < 2 * 60 * 1000;
 }
 
-// ── 分享卡片（订单/待办/项目/客户）──
-type CardKind = "order" | "todo" | "project" | "customer";
+// ── 分享卡片（订单/待办/项目/客户/VAT/预扣税/问题）──
+type CardKind = "order" | "todo" | "project" | "customer" | "vat" | "wht" | "problem";
 
 interface CardInfo {
   kind: CardKind;
@@ -101,6 +101,9 @@ const CARD_META: Record<CardKind, { label: string; href: (id: string) => string 
   todo:     { label: "待办", href: () => "/todos" },
   project:  { label: "项目", href: (id) => `/projects/${id}` },
   customer: { label: "客户", href: (id) => `/customers/${id}` },
+  vat:      { label: "VAT申报", href: (id) => `/vat/${id}` },
+  wht:      { label: "预扣税", href: (id) => `/wht/${id}` },
+  problem:  { label: "问题", href: (id) => `/problems/${id}` },
 };
 
 // 解析消息里的分享卡片：新格式 order_id = "类型:id"、content = JSON{title,subtitle}；
@@ -130,6 +133,9 @@ const SHARE_CATEGORIES: { key: CardKind; label: string }[] = [
   { key: "todo", label: "待办" },
   { key: "project", label: "项目" },
   { key: "customer", label: "客户" },
+  { key: "vat", label: "VAT申报" },
+  { key: "wht", label: "预扣税申报" },
+  { key: "problem", label: "问题跟踪" },
 ];
 
 // 各分类接口返回的条目 → 统一的 { id, title, subtitle }
@@ -138,6 +144,9 @@ function mapShareItem(cat: string, x: any): { id: string; title: string; subtitl
   if (cat === "todo") return { id: String(x.id), title: x.content || "", subtitle: "" };
   if (cat === "project") return { id: String(x.id), title: x.name || "", subtitle: x.current_phase ? `当前阶段：${x.current_phase}` : "" };
   if (cat === "customer") return { id: String(x.id), title: x.company_name || "", subtitle: "" };
+  if (cat === "vat") return { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
+  if (cat === "wht") return { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
+  if (cat === "problem") return { id: String(x.id), title: x.problem_number || "", subtitle: x.company_name || "" };
   return { id: "", title: "", subtitle: "" };
 }
 
@@ -565,13 +574,16 @@ export default function MessagesPage() {
     setShareError(null);
     const urlMap: Record<CardKind, string> = {
       order: "/api/orders", todo: "/api/todos", project: "/api/projects", customer: "/api/customers",
+      vat: "/api/vat/records?limit=100", wht: "/api/wht/records?pageSize=100", problem: "/api/problems",
     };
     fetchWithAuth(urlMap[cat], { cache: "no-store" })
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         if (!r.ok) { setShareItems([]); setShareError(d?.error || "加载失败"); return; }
-        if (!Array.isArray(d)) { setShareItems([]); setShareError("数据格式异常"); return; }
-        setShareItems(d.map((x: any) => mapShareItem(cat, x)));
+        // VAT / 预扣税 是分页接口，返回 { records } / { rows }；其余直接返回数组
+        const list = Array.isArray(d) ? d : Array.isArray(d?.records) ? d.records : Array.isArray(d?.rows) ? d.rows : null;
+        if (!list) { setShareItems([]); setShareError("数据格式异常"); return; }
+        setShareItems(list.map((x: any) => mapShareItem(cat, x)));
       })
       .catch(() => setShareError("加载失败"))
       .finally(() => setShareLoading(false));
