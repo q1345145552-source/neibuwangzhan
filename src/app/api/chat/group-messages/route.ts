@@ -52,7 +52,26 @@ export async function GET(req: NextRequest) {
 
   const memberCount = (db.prepare("SELECT COUNT(*) AS c FROM group_members WHERE group_id = ?").get(groupId) as { c: number }).c;
 
-  const result = (messages as any[]).map((m) => ({ ...m, read_members: readMap.get(m.id) || [] }));
+  // 该群消息 @ 了哪些成员（用于前端高亮「有人@我」）
+  const mentionRows = db.prepare(
+    "SELECT mm.message_id, mm.member FROM message_mentions mm JOIN messages m ON m.id = mm.message_id WHERE m.group_id = ?"
+  ).all(groupId) as { message_id: number; member: string }[];
+  const mentionMap = new Map<number, string[]>();
+  for (const r of mentionRows) {
+    if (!mentionMap.has(r.message_id)) mentionMap.set(r.message_id, []);
+    mentionMap.get(r.message_id)!.push(r.member);
+  }
+
+  // 打开群 = 我的 @提醒已读（提醒消掉）
+  db.prepare(
+    "UPDATE message_mentions SET is_read = 1 WHERE member = ? AND message_id IN (SELECT id FROM messages WHERE group_id = ?)"
+  ).run(auth.name, groupId);
+
+  const result = (messages as any[]).map((m) => ({
+    ...m,
+    read_members: readMap.get(m.id) || [],
+    mentioned_members: mentionMap.get(m.id) || [],
+  }));
 
   return NextResponse.json({ group: { ...group, member_count: memberCount }, messages: result, reads });
 }
@@ -95,9 +114,23 @@ export async function POST(req: NextRequest) {
   // 发送人自动视为已读自己这条消息
   db.prepare("INSERT OR IGNORE INTO message_reads (message_id, member) VALUES (?, ?)").run(messageId, auth.name);
 
+  // 解析 @提及：找出内容里 @ 了哪些群成员，写入提醒
+  const members = db.prepare("SELECT member FROM group_members WHERE group_id = ?").all(groupId) as { member: string }[];
+  const memberSet = new Set(members.map((m) => m.member));
+  const mentioned = new Set<string>();
+  const mentionRegex = /@([^\s@，。！？、;；:：]+)/g;
+  let mm;
+  while ((mm = mentionRegex.exec(finalContent)) !== null) {
+    const name = mm[1].trim();
+    if (name && name !== auth.name && memberSet.has(name)) mentioned.add(name);
+  }
+  for (const name of mentioned) {
+    db.prepare("INSERT OR IGNORE INTO message_mentions (message_id, member) VALUES (?, ?)").run(messageId, name);
+  }
+
   const message = db.prepare(
     "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE id = ?"
   ).get(messageId);
 
-  return NextResponse.json({ message: { ...(message as object), read_members: [auth.name] } }, { status: 201 });
+  return NextResponse.json({ message: { ...(message as object), read_members: [auth.name], mentioned_members: [...mentioned] } }, { status: 201 });
 }
