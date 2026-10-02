@@ -48,6 +48,16 @@ export default function SettingsPage() {
   const [agencyEnabled, setAgencyEnabled] = useState(true);
   const [agencySaving, setAgencySaving] = useState(false);
 
+  // AI 模型配置（仅管理员可见）
+  const [aiProvider, setAiProvider] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiApiBase, setAiApiBase] = useState("");
+  const [aiApiKey, setAiApiKey] = useState(""); // 输入框内容（新填的 Key 才覆盖）
+  const [aiKeyMasked, setAiKeyMasked] = useState(""); // 已保存 Key 的打码显示
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMsg, setAiMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // 个人头像
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarMsg, setAvatarMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -58,11 +68,20 @@ export default function SettingsPage() {
     fetchEmployees({ include_left: true }).then(setEmployees).catch(() => {});
   }, []);
 
-  // 读取机构业务总开关
+  // 读取机构业务总开关 + AI 配置
   useEffect(() => {
     fetchWithAuth("/api/settings", { cache: "no-store" })
       .then(r => r.json())
-      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .then(d => {
+        if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled);
+        if (d.ai) {
+          setAiProvider(d.ai.provider || "");
+          setAiModel(d.ai.model || "");
+          setAiApiBase(d.ai.api_base || "");
+          setAiKeyMasked(d.ai.api_key_masked || "");
+          setAiHasKey(!!d.ai.has_key);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -83,6 +102,38 @@ export default function SettingsPage() {
       }
     } catch { alert("保存失败"); }
     finally { setAgencySaving(false); }
+  };
+
+  // 保存 AI 模型配置（Key 留空 = 不覆盖已保存的）
+  const handleSaveAiConfig = async () => {
+    setAiSaving(true);
+    setAiMsg(null);
+    try {
+      const res = await fetchWithAuth("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ai: { provider: aiProvider, model: aiModel, api_base: aiApiBase, api_key: aiApiKey },
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setAiMsg({ ok: true, text: "已保存，立即生效" });
+        // 填了新 Key 才更新打码显示；否则维持原样
+        if (aiApiKey.trim()) {
+          const k = aiApiKey.trim();
+          setAiKeyMasked(k.length > 4 ? "****" + k.slice(-4) : "****");
+          setAiHasKey(true);
+        }
+        setAiApiKey("");
+      } else {
+        setAiMsg({ ok: false, text: d.error || "保存失败" });
+      }
+    } catch {
+      setAiMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setAiSaving(false);
+    }
   };
 
   // 选头像 → 上传 → 保存到自己的档案
@@ -674,6 +725,56 @@ export default function SettingsPage() {
             <p className="text-xs text-[var(--muted-foreground)]">仅管理员可配置</p>
           )}
         </div>
+
+        {/* AI 模型配置（仅管理员可见） */}
+        {isAdmin && (
+          <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+            <div>
+              <h3 className="text-sm font-medium text-[var(--foreground)]">AI 模型配置</h3>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                聊天 AI 总结等功能从这里读取模型配置。填好 API Key 后立即生效，无需重启。
+              </p>
+            </div>
+            <div className="flex max-w-sm flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">模型供应商</Label>
+                <Input value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} placeholder="例如 DeepSeek" className="h-9" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">API Key</Label>
+                <Input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(e) => setAiApiKey(e.target.value)}
+                  placeholder={aiHasKey ? `已保存：${aiKeyMasked}（输入新 Key 覆盖）` : "填写 API Key"}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">模型名称</Label>
+                <Input value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="例如 deepseek-chat" className="h-9" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">接口地址</Label>
+                <Input value={aiApiBase} onChange={(e) => setAiApiBase(e.target.value)} placeholder="留空使用默认（DeepSeek 官方接口）" className="h-9" />
+              </div>
+              {aiMsg && (
+                <p className={cn(
+                  "rounded-md px-3 py-2 text-xs",
+                  aiMsg.ok
+                    ? "bg-[color-mix(in_oklch,var(--success),var(--background)_88%)] text-[var(--success)]"
+                    : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[var(--destructive)]"
+                )}>
+                  {aiMsg.text}
+                </p>
+              )}
+              <Button size="sm" className="self-start" onClick={handleSaveAiConfig} disabled={aiSaving}>
+                <Save className="size-3.5" />
+                {aiSaving ? "保存中..." : "保存"}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Basic settings form */}
         <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">

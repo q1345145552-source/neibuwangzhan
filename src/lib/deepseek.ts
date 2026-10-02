@@ -1,5 +1,8 @@
 // DeepSeek 大模型调用封装（OpenAI 兼容接口）
 // 用途：把一段聊天记录发给大模型，总结成四块内容（话题/结论/待办/承诺）。
+// 模型供应商 / API Key / 模型名 / 接口地址 全部从系统设置表读取（每次调用即时读取，改完即生效）。
+
+import { getSystemSetting } from "./db";
 
 export interface ChatSummary {
   topics: string;
@@ -7,8 +10,6 @@ export interface ChatSummary {
   todos: string;
   commitments: string;
 }
-
-const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_BASE || "https://api.deepseek.com/chat/completions";
 
 const SYSTEM_PROMPT = `你是湘泰内部管理系统的聊天记录总结助手。请把下面这段聊天记录总结成四块内容，并且只输出一个 JSON 对象，字段固定为：
 - topics：聊了什么话题
@@ -29,19 +30,21 @@ function toString(v: unknown): string {
   return String(v).trim();
 }
 
-/** 把一段纯文本聊天记录发给 DeepSeek，返回四块总结 */
+/** 把一段纯文本聊天记录发给大模型，返回四块总结 */
 export async function summarizeChatTranscript(transcript: string): Promise<ChatSummary> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) throw new Error("未配置 DEEPSEEK_API_KEY 环境变量");
+  const apiKey = getSystemSetting("ai_api_key").trim();
+  if (!apiKey) throw new Error("未配置 AI Key，请到「系统设置 → AI 配置」填写后重试");
+  const apiBase = getSystemSetting("ai_api_base").trim() || "https://api.deepseek.com/chat/completions";
+  const model = getSystemSetting("ai_model").trim() || "deepseek-chat";
 
-  const res = await fetch(DEEPSEEK_API_URL, {
+  const res = await fetch(apiBase, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "deepseek-chat",
+      model,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: transcript },
