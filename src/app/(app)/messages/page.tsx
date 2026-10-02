@@ -487,6 +487,11 @@ export default function MessagesPage() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameText, setRenameText] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
+  // 群成员管理（群主）
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersSaving, setMembersSaving] = useState(false);
+  const [inviteCandidates, setInviteCandidates] = useState<string[]>([]);
+  const [membersError, setMembersError] = useState<string | null>(null);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
   // 消息翻译
@@ -1610,6 +1615,67 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开群成员管理（仅群主）
+  const openMembers = () => {
+    setInviteCandidates([]);
+    setMembersError(null);
+    setMembersOpen(true);
+  };
+
+  // 勾选/取消要邀请的员工
+  const toggleInvite = (name: string) => {
+    setInviteCandidates((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  };
+
+  // 群主邀请成员入群
+  const inviteMembers = async () => {
+    if (!selected || selected.kind !== "group" || inviteCandidates.length === 0) return;
+    setMembersSaving(true);
+    setMembersError(null);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, members: inviteCandidates }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === selected.id ? { ...g, members: d.members || g.members } : g)));
+        setInviteCandidates([]);
+      } else {
+        setMembersError(d?.error || "邀请失败");
+      }
+    } catch {
+      setMembersError("邀请失败");
+    } finally {
+      setMembersSaving(false);
+    }
+  };
+
+  // 群主移除成员
+  const removeMember = async (name: string) => {
+    if (!selected || selected.kind !== "group") return;
+    setMembersSaving(true);
+    setMembersError(null);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups/members", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, member: name }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === selected.id ? { ...g, members: d.members || g.members } : g)));
+      } else {
+        setMembersError(d?.error || "移除失败");
+      }
+    } catch {
+      setMembersError("移除失败");
+    } finally {
+      setMembersSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -2033,6 +2099,16 @@ export default function MessagesPage() {
                     >
                       <Pencil className="size-4" />
                       改名
+                    </button>
+                  )}
+                  {isGroupOwner && (
+                    <button
+                      onClick={openMembers}
+                      title="邀请/移除成员"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    >
+                      <Users className="size-4" />
+                      成员
                     </button>
                   )}
                   {isAdmin && (
@@ -3097,6 +3173,74 @@ export default function MessagesPage() {
                 className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
               >
                 {renameSaving ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 群成员管理（群主） */}
+      {membersOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMembersOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">群成员</h3>
+              <button onClick={() => setMembersOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">当前成员（{(activeGroup?.members ?? []).length}）</label>
+            <div className="mb-3 max-h-[28vh] overflow-y-auto rounded-md border border-[var(--border)] p-1">
+              {(activeGroup?.members ?? []).map((name) => {
+                const isOwner = name === activeGroup?.owner;
+                return (
+                  <div key={name} className="flex items-center gap-2 rounded px-2 py-1.5">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-xs text-[var(--primary)]">{name.charAt(0)}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{name}</span>
+                    <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{isOwner ? "群主" : "成员"}</span>
+                    {!isOwner && (
+                      <button
+                        onClick={() => removeMember(name)}
+                        disabled={membersSaving}
+                        className="shrink-0 rounded px-2 py-0.5 text-xs text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50"
+                      >
+                        移除
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">邀请成员（从员工里选）</label>
+            <div className="max-h-[28vh] overflow-y-auto rounded-md border border-[var(--border)] p-2">
+              {contacts.filter((c) => !(activeGroup?.members ?? []).includes(c.name)).length === 0 ? (
+                <p className="px-2 py-4 text-center text-xs text-[var(--muted-foreground)]">没有可邀请的员工</p>
+              ) : (
+                contacts.filter((c) => !(activeGroup?.members ?? []).includes(c.name)).map((c) => (
+                  <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-[var(--muted)]">
+                    <input
+                      type="checkbox"
+                      checked={inviteCandidates.includes(c.name)}
+                      onChange={() => toggleInvite(c.name)}
+                      className="size-4 accent-[var(--primary)]"
+                    />
+                    <span className="text-sm text-[var(--foreground)]">{c.name}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{c.role === "admin" ? "管理员" : "员工"}</span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            {membersError && <p className="mt-2 text-xs text-red-500">{membersError}</p>}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setMembersOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">关闭</button>
+              <button
+                onClick={inviteMembers}
+                disabled={membersSaving || inviteCandidates.length === 0}
+                className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+              >
+                {membersSaving ? "处理中…" : inviteCandidates.length > 0 ? `邀请（${inviteCandidates.length}）` : "邀请"}
               </button>
             </div>
           </div>
