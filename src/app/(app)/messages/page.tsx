@@ -1151,7 +1151,7 @@ export default function MessagesPage() {
   const selectedKey = selected ? (selected.kind === "direct" ? `d-${selected.name}` : `g-${selected.id}`) : "none";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex h-[calc(100dvh-6rem)] flex-col gap-2 lg:h-[calc(100dvh-4rem)]">
       <style>{`
         @keyframes msgSlideIn {
           0% { opacity: 0; transform: translateY(16px) scale(0.95); }
@@ -1168,13 +1168,10 @@ export default function MessagesPage() {
           .msg-bubble-anim, .msg-list-anim { animation: none; }
         }
       `}</style>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">内部聊天</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <h1 className="text-base font-semibold text-[var(--foreground)]">消息</h1>
         {isAdmin && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={openSummaryBoard}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
@@ -1200,9 +1197,9 @@ export default function MessagesPage() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+      <div className="grid min-h-0 flex-1 grid-rows-1 gap-2 lg:grid-cols-[280px_1fr]">
         {/* 左侧：群聊 + 员工列表 */}
-        <div className={cn("overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]", selected ? "hidden lg:block" : "block")}>
+        <div className={cn("flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]", selected ? "hidden lg:flex" : "flex")}>
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
             <h2 className="text-sm font-medium text-[var(--foreground)]">会话</h2>
             <button
@@ -1249,7 +1246,7 @@ export default function MessagesPage() {
             )}
           </div>
 
-          <div className="max-h-[calc(100dvh-13rem)] divide-y divide-[var(--border)] overflow-y-auto lg:max-h-[70vh]">
+          <div className="min-h-0 flex-1 divide-y divide-[var(--border)] overflow-y-auto">
             {contactsLoading ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
             ) : conversationList.length === 0 ? (
@@ -1264,7 +1261,7 @@ export default function MessagesPage() {
                     key={item.kind + item.id}
                     onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
                     className={cn(
-                      "flex w-full items-center gap-3 px-3 py-2.5 text-left transition active:scale-[0.98]",
+                      "flex w-full items-center gap-3 px-3 py-2 text-left transition active:scale-[0.98]",
                       active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
                     )}
                   >
@@ -1304,8 +1301,8 @@ export default function MessagesPage() {
 
         {/* 右侧：聊天窗口 */}
         <div className={cn(
-          "flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]",
-          selected ? "flex h-[calc(100dvh-11rem)] lg:h-[70vh]" : "hidden lg:flex lg:h-[70vh]"
+          "min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]",
+          selected ? "flex" : "hidden lg:flex"
         )}>
           {selected ? (
             <>
@@ -1359,7 +1356,7 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              <div ref={scrollRef} key={selectedKey} className="msg-list-anim flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
+              <div ref={scrollRef} key={selectedKey} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
