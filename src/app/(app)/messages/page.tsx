@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime } from "@/lib/utils";
+import { bangkokToday, bangkokDayRange, utcSecondBefore, utcNowStr } from "@/lib/time";
 import { useAuth } from "@/components/auth-provider";
 import { subscribeOpenChat, takePendingChatTarget, type ChatOpenTarget } from "@/lib/chat-nav";
 
@@ -150,15 +151,50 @@ function mapShareItem(cat: string, x: any): { id: string; title: string; subtitl
   return { id: "", title: "", subtitle: "" };
 }
 
+// ── AI 总结：时间档位 ──
+type SummaryRangeOption = "today" | "yesterday" | "7d" | "30d";
+
+const SUMMARY_RANGES: { key: SummaryRangeOption; label: string }[] = [
+  { key: "today", label: "今天" },
+  { key: "yesterday", label: "昨天" },
+  { key: "7d", label: "最近七天" },
+  { key: "30d", label: "最近三十天" },
+];
+
+// 把 "YYYY-MM-DD" 日历日期平移 N 天（纯日历运算，不涉及时区）
+function shiftDateStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
+}
+
+// 总结时间档位 → 存 UTC 的 from/to 闭区间（messages.created_at 存 UTC）
+function summaryTimeRange(option: SummaryRangeOption): { from: string; to: string } {
+  const today = bangkokToday();
+  if (option === "today") {
+    return { from: bangkokDayRange(today).start, to: utcNowStr() };
+  }
+  if (option === "yesterday") {
+    const y = shiftDateStr(today, -1);
+    const r = bangkokDayRange(y);
+    return { from: r.start, to: utcSecondBefore(r.end) };
+  }
+  if (option === "30d") {
+    return { from: bangkokDayRange(shiftDateStr(today, -29)).start, to: utcNowStr() };
+  }
+  return { from: bangkokDayRange(shiftDateStr(today, -6)).start, to: utcNowStr() };
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const me = user?.name || "";
+  const isAdmin = user?.role === "admin";
   const router = useRouter();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
   const [selected, setSelected] = useState<ChatTarget | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -180,6 +216,12 @@ export default function MessagesPage() {
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  // AI 总结
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryRange, setSummaryRange] = useState<SummaryRangeOption>("7d");
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<{ topics: string; conclusions: string; todos: string; commitments: string; cached: boolean } | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -285,6 +327,7 @@ export default function MessagesPage() {
   // 打开一对一会话
   const openDirect = useCallback((name: string) => {
     setSelected({ kind: "direct", name });
+    setConversationId(null);
     setMessages([]);
     setInput("");
     setError(null);
@@ -292,6 +335,7 @@ export default function MessagesPage() {
     fetchWithAuth(`/api/chat?other=${encodeURIComponent(name)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
+        if (d && typeof d.conversationId === "number") setConversationId(d.conversationId);
         if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
         if (d && Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
       })
@@ -598,6 +642,50 @@ export default function MessagesPage() {
     setSending(false);
   };
 
+  // 打开 AI 总结弹窗（默认最近七天）
+  const openSummary = () => {
+    setSummaryOpen(true);
+    setSummaryRange("7d");
+    setSummaryResult(null);
+    setSummaryError(null);
+  };
+
+  // 调总结接口，把结果四块显示出来
+  const generateSummary = async () => {
+    if (!selected) return;
+    if (selected.kind === "direct" && conversationId == null) {
+      setSummaryError("会话还没加载好，稍等一下再点");
+      return;
+    }
+    const range = summaryTimeRange(summaryRange);
+    setSummaryLoading(true);
+    setSummaryError(null);
+    setSummaryResult(null);
+    try {
+      const body = selected.kind === "direct"
+        ? { conversation_id: conversationId, from: range.from, to: range.to }
+        : { group_id: selected.id, from: range.from, to: range.to };
+      const r = await fetchWithAuth("/api/chat/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d && typeof d.topics === "string") {
+        setSummaryResult({
+          topics: d.topics, conclusions: d.conclusions, todos: d.todos, commitments: d.commitments,
+          cached: d.cached === true,
+        });
+      } else {
+        setSummaryError(d?.error || "总结失败");
+      }
+    } catch {
+      setSummaryError("总结失败");
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   // 点开群消息的已读人数：列出谁读了、谁没读
   const openReadDetail = (m: Message) => {
     if (selected?.kind !== "group") return;
@@ -848,15 +936,27 @@ export default function MessagesPage() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={exportChat}
-                  disabled={exporting}
-                  title="导出聊天记录"
-                  className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
-                >
-                  <Download className="size-4" />
-                  {exporting ? "导出中…" : "导出记录"}
-                </button>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  {isAdmin && (
+                    <button
+                      onClick={openSummary}
+                      title="AI 总结"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    >
+                      <Sparkles className="size-4" />
+                      总结
+                    </button>
+                  )}
+                  <button
+                    onClick={exportChat}
+                    disabled={exporting}
+                    title="导出聊天记录"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    <Download className="size-4" />
+                    {exporting ? "导出中…" : "导出记录"}
+                  </button>
+                </div>
               </div>
 
               <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
@@ -1151,6 +1251,66 @@ export default function MessagesPage() {
               </div>
             )}
             {shareError && shareItems.length > 0 && <p className="mt-2 text-xs text-red-500">{shareError}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* AI 总结 */}
+      {summaryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSummaryOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">AI 总结</h3>
+              <button onClick={() => setSummaryOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            {/* 时间档位 */}
+            <div className="flex flex-wrap gap-2">
+              {SUMMARY_RANGES.map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => setSummaryRange(r.key)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs transition-colors",
+                    summaryRange === r.key
+                      ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                  )}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={generateSummary}
+              disabled={summaryLoading}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <Sparkles className="size-3.5" />
+              {summaryLoading ? "生成中…" : "生成总结"}
+            </button>
+
+            {summaryError && <p className="mt-3 text-xs text-red-500">{summaryError}</p>}
+
+            {summaryResult && (
+              <div className="mt-4 space-y-2.5">
+                {summaryResult.cached && (
+                  <p className="text-[0.65rem] text-[var(--muted-foreground)]">本次结果来自缓存</p>
+                )}
+                {[
+                  ["聊了什么话题", summaryResult.topics],
+                  ["有什么结论", summaryResult.conclusions],
+                  ["待办事项", summaryResult.todos],
+                  ["承诺约定", summaryResult.commitments],
+                ].map(([label, content]) => (
+                  <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                    <p className="text-xs font-semibold text-[var(--foreground)]">{label}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]/90">{content || "无"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
