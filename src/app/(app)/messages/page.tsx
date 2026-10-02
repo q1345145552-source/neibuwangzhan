@@ -407,6 +407,7 @@ export default function MessagesPage() {
   const [replyTo, setReplyTo] = useState<{ id: number; sender: string; preview: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [groupMemberCount, setGroupMemberCount] = useState(0);
@@ -1116,16 +1117,43 @@ export default function MessagesPage() {
     }
   };
 
-  // 选图片 → 上传 → 作为图片消息发出
-  const handleImagePick = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  // 弹出图片预览确认框（选图 / 粘贴截图共用）
+  const openImagePreview = (file: File) => {
+    if (!selected || sending) return;
+    if (!file.type.startsWith("image/")) { setError("只能发送图片"); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("图片不能超过 10MB"); return; }
+    const url = URL.createObjectURL(file);
+    setPendingImage({ file, url });
+  };
+
+  // 确认发送图片
+  const confirmSendImage = async () => {
+    if (!pendingImage) return;
+    const file = pendingImage.file;
+    const url = pendingImage.url;
+    setPendingImage(null);
+    URL.revokeObjectURL(url);
     await sendImageFile(file);
   };
 
-  // 粘贴：剪贴板里有图片则作为图片消息发出；纯文字走默认粘贴
-  const handlePaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+  // 取消发送图片
+  const cancelSendImage = () => {
+    if (pendingImage) {
+      URL.revokeObjectURL(pendingImage.url);
+      setPendingImage(null);
+    }
+  };
+
+  // 选图片 → 弹预览确认框
+  const handleImagePick = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    openImagePreview(file);
+  };
+
+  // 粘贴：剪贴板里有图片则弹预览确认框；纯文字走默认粘贴
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
     let imageFile: File | null = null;
@@ -1136,8 +1164,8 @@ export default function MessagesPage() {
       }
     }
     if (!imageFile) return; // 没有图片 → 默认文字粘贴
-    e.preventDefault(); // 有图片 → 阻止文字粘贴，改成发图片
-    await sendImageFile(imageFile);
+    e.preventDefault(); // 有图片 → 弹预览确认框
+    openImagePreview(imageFile);
   };
 
   const toggleMember = (name: string) => {
@@ -3564,6 +3592,27 @@ export default function MessagesPage() {
                 className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
                 {disbandSaving ? "解散中…" : "确认解散"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 发送图片预览确认 */}
+      {pendingImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={cancelSendImage}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">发送图片</h3>
+              <button onClick={cancelSendImage} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <div className="mb-4 flex justify-center rounded-lg bg-[var(--muted)]/40 p-2">
+              <img src={pendingImage.url} alt="待发送图片" className="max-h-64 max-w-full rounded-md object-contain" />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={cancelSendImage} disabled={sending} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50">取消</button>
+              <button onClick={confirmSendImage} disabled={sending} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50">
+                {sending ? "发送中…" : "发送"}
               </button>
             </div>
           </div>
