@@ -388,6 +388,14 @@ export default function MessagesPage() {
   const [monitorDetail, setMonitorDetail] = useState<{ conversation: { user_a: string; user_b: string }; messages: Message[] } | null>(null);
   const [monitorRange, setMonitorRange] = useState<SummaryRangeOption>("7d");
   const [monitorEmployee, setMonitorEmployee] = useState("");
+  // 监控看板：消息量平均值（用于高亮「聊得特别频繁」的会话）
+  const monitorAvg = useMemo(() => {
+    if (!monitorList.length) return 0;
+    return monitorList.reduce((s, c) => s + c.message_count, 0) / monitorList.length;
+  }, [monitorList]);
+  // 高亮标准：≥50 条，或（会话≥3 且 ≥15 条且达到平均值的 2 倍）
+  const isHighVolume = (count: number) =>
+    count >= 50 || (monitorList.length >= 3 && count >= 15 && count >= monitorAvg * 2);
   // 总结板块（管理员）
   const [summaryBoardOpen, setSummaryBoardOpen] = useState(false);
   const [summaryBoardList, setSummaryBoardList] = useState<SummaryBoardItem[]>([]);
@@ -2311,20 +2319,35 @@ export default function MessagesPage() {
                 <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无员工之间的会话</p>
               ) : (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {monitorList.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => openMonitorConversation(c.id)}
-                      className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-[var(--foreground)]">{c.user_a} ↔ {c.user_b}</span>
-                        <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(c.last_at)}</span>
-                      </span>
-                      <span className="mt-1.5 block truncate text-xs text-[var(--muted-foreground)]">{c.last_sender}: {c.last_preview || "—"}</span>
-                      <span className="mt-1 block text-[0.65rem] text-[var(--muted-foreground)]">{c.message_count} 条消息</span>
-                    </button>
-                  ))}
+                  {monitorList.map((c) => {
+                    const high = isHighVolume(c.message_count);
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => openMonitorConversation(c.id)}
+                        className={cn(
+                          "rounded-xl border p-3 text-left transition-colors",
+                          high
+                            ? "border-[var(--destructive)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_94%)] hover:border-[var(--destructive)]"
+                            : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--primary)]"
+                        )}
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span className="truncate text-sm font-medium text-[var(--foreground)]">{c.user_a} ↔ {c.user_b}</span>
+                            {high && (
+                              <span className="shrink-0 rounded-full bg-[var(--destructive)] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-white">高频</span>
+                            )}
+                          </span>
+                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(c.last_at)}</span>
+                        </span>
+                        <span className="mt-1.5 block truncate text-xs text-[var(--muted-foreground)]">{c.last_sender}: {c.last_preview || "—"}</span>
+                        <span className={cn("mt-1 block text-[0.65rem]", high ? "font-medium text-[var(--destructive)]" : "text-[var(--muted-foreground)]")}>
+                          {c.message_count} 条消息
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
