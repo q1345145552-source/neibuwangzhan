@@ -1266,6 +1266,16 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 打字状态：某人在某个会话/群里正在输入（记录最近一次打字时间）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS typing_status (
+      user_name TEXT NOT NULL,
+      scope_key TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_name, scope_key)
+    );
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号

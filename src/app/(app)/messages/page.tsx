@@ -382,10 +382,15 @@ export default function MessagesPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [selected, setSelected] = useState<ChatTarget | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  // 打字提示的作用域：1:1 用会话 id（双方共享），群用群 id
+  const typingScopeKey = selected
+    ? (selected.kind === "direct" ? (conversationId != null ? `direct:${conversationId}` : "") : `group:${selected.id}`)
+    : "";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; sender: string; preview: string } | null>(null);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -486,6 +491,7 @@ export default function MessagesPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openedRef = useRef(false);
+  const lastTypingPingRef = useRef(0);
 
   // 联系人列表：在职员工（不含自己），带最后消息和未读
   const loadContacts = useCallback(() => {
@@ -923,6 +929,22 @@ export default function MessagesPage() {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, conversationId]);
+
+  // 打字提示：轮询对方是否正在输入
+  useEffect(() => {
+    if (!typingScopeKey) { setTypingUsers([]); return; }
+    let active = true;
+    const tick = async () => {
+      try {
+        const r = await fetchWithAuth(`/api/chat/typing?scope_key=${encodeURIComponent(typingScopeKey)}`, { cache: "no-store" });
+        const d = await r.json().catch(() => null);
+        if (active && r.ok && Array.isArray(d?.users)) setTypingUsers(d.users);
+      } catch { /* 忽略 */ }
+    };
+    tick();
+    const id = setInterval(tick, 1500);
+    return () => { active = false; clearInterval(id); };
+  }, [typingScopeKey]);
 
   // 新消息自动滚到底部
   useEffect(() => {
@@ -1513,9 +1535,25 @@ export default function MessagesPage() {
   }, [selected, groups, mentionQuery]);
 
   // 输入时检测 @，弹出成员选择
+  // 上报「我正在输入」（节流：至少间隔 1.5 秒）
+  const sendTypingPing = async () => {
+    if (!typingScopeKey) return;
+    const now = Date.now();
+    if (now - lastTypingPingRef.current < 1500) return;
+    lastTypingPingRef.current = now;
+    try {
+      await fetchWithAuth("/api/chat/typing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope_key: typingScopeKey }),
+      });
+    } catch { /* 忽略 */ }
+  };
+
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setInput(v);
+    sendTypingPing();
     if (selected?.kind === "group") {
       const atIdx = v.lastIndexOf("@");
       if (atIdx !== -1) {
@@ -1784,11 +1822,15 @@ export default function MessagesPage() {
                 )}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{selected.name}</p>
-                  {isGroup && (
+                  {typingUsers.length > 0 ? (
+                    <p className="truncate text-xs text-[var(--primary)]">
+                      {isGroup ? `${typingUsers.join("、")} 正在输入…` : "对方正在输入…"}
+                    </p>
+                  ) : isGroup ? (
                     <p className="text-xs text-[var(--muted-foreground)]">
                       {groups.find((g) => g.id === selected.id)?.members.length ?? 0} 人
                     </p>
-                  )}
+                  ) : null}
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-2">
                   {isGroupOwner && (
@@ -2111,7 +2153,12 @@ export default function MessagesPage() {
                   <button
                     onClick={sendText}
                     disabled={sending || !input.trim()}
-                    className="h-11 shrink-0 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
+                    className={cn(
+                      "h-11 shrink-0 rounded-xl px-4 text-sm font-medium transition active:scale-95",
+                      input.trim() && !sending
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90"
+                        : "cursor-not-allowed bg-[var(--muted)] text-[var(--muted-foreground)]"
+                    )}
                   >
                     {sending ? "发送中…" : "发送"}
                   </button>
