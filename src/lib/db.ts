@@ -1204,6 +1204,22 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_message_mentions_member ON message_mentions(member);
   `);
 
+  // 聊天 AI 总结缓存：同一会话 + 同一时间段只总结一次，结果落库复用
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope_key TEXT NOT NULL,
+      from_at TEXT NOT NULL,
+      to_at TEXT NOT NULL,
+      topics TEXT NOT NULL DEFAULT '',
+      conclusions TEXT NOT NULL DEFAULT '',
+      todos TEXT NOT NULL DEFAULT '',
+      commitments TEXT NOT NULL DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(scope_key, from_at, to_at)
+    );
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
