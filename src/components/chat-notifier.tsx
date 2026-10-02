@@ -16,8 +16,22 @@ interface Toast {
 
 let toastSeq = 0;
 
+// 消息提示音（叮咚）：放在 public/sounds 下，随应用静态资源一起部署
+const MESSAGE_SOUND_URL = "/sounds/message.wav";
+let messageAudio: HTMLAudioElement | null = null;
+
+// 播放「叮咚」提示音；浏览器未放行自动播放时静默失败（用户点过页面后即可正常响）
+function playMessageSound(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!messageAudio) messageAudio = new Audio(MESSAGE_SOUND_URL);
+    messageAudio.currentTime = 0;
+    void messageAudio.play().catch(() => {});
+  } catch { /* 忽略不支持的环境 */ }
+}
+
 // 全局消息提醒：轮询联系人 + 群，检测「别人发来的新消息」，
-// 在页面右下角弹气泡 + 发浏览器系统通知（首次会请求通知权限）。
+// 在页面右下角弹气泡 + 发浏览器系统通知 + 播放提示音（首次会请求通知权限）。
 export function ChatNotifier() {
   const { user } = useAuth();
   const me = user?.name || "";
@@ -90,6 +104,34 @@ export function ChatNotifier() {
     };
   }, []);
 
+  // 首次用户交互时「解锁」音频自动播放（播放策略：交互前可能被浏览器拦截）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const unlock = () => {
+      try {
+        if (!messageAudio) messageAudio = new Audio(MESSAGE_SOUND_URL);
+        messageAudio.muted = true;
+        void messageAudio.play()
+          .then(() => {
+            if (messageAudio) {
+              messageAudio.pause();
+              messageAudio.currentTime = 0;
+              messageAudio.muted = false;
+            }
+          })
+          .catch(() => {});
+      } catch { /* 忽略 */ }
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   // 轮询联系人 + 群：检测新消息并弹提醒
   useEffect(() => {
     if (!me) return;
@@ -124,6 +166,7 @@ export function ChatNotifier() {
             const target: ChatOpenTarget = { kind: "direct", name: c.name };
             pushToast(title, body, target);
             fireSystemNotification(title, body, target);
+            playMessageSound();
           }
           prevUnreadRef.current.set(c.name, cur);
         }
@@ -138,6 +181,7 @@ export function ChatNotifier() {
             const target: ChatOpenTarget = { kind: "group", id: Number(g.id), name: g.name };
             pushToast(title, body, target);
             fireSystemNotification(title, body, target);
+            playMessageSound();
           }
           prevGroupKeyRef.current.set(g.id, key);
         }
