@@ -43,6 +43,7 @@ export default function PayslipsPage() {
   const [generating, setGenerating] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [genMsg, setGenMsg] = useState("");
   const [detail, setDetail] = useState<Payslip | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export default function PayslipsPage() {
     if (!month) return;
     setGenerating(true);
     setErr("");
+    setGenMsg("");
     try {
       const r = await fetchWithAuth("/api/payslips", {
         method: "POST",
@@ -76,6 +78,8 @@ export default function PayslipsPage() {
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
         setPayslips(Array.isArray(d.payslips) ? d.payslips : payslips);
+        const created = typeof d.created === "number" ? d.created : 0;
+        setGenMsg(created > 0 ? `已生成 ${created} 张工资单` : "已刷新工资单（自动项已按最新工资档案更新）");
       } else {
         setErr(d?.error || "生成失败");
       }
@@ -219,8 +223,10 @@ export default function PayslipsPage() {
           <Download className="size-3.5" />
           导出 Excel
         </Button>
+        {genMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{genMsg}</span>}
         {err && <span className="text-xs text-red-500">{err}</span>}
       </div>
+      <p className="text-xs text-[var(--muted-foreground)]">改完「工资设置」后，请重新点「生成工资单」：底薪 / 勤奋奖 / 技能津贴会按最新档案刷新（奖金、佣金等手动项不变）。</p>
 
       {loading ? (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
