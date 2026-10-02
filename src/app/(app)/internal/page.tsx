@@ -846,7 +846,12 @@ export default function InternalPage() {
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">内部管理</h1>
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">问题工单 · 工作量 · 考勤打卡</p>
           </div>
-          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/payslips"}>工资单</Button>
+            )}
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
+          </div>
         </div>
       </div>
 

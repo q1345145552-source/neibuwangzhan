@@ -1826,6 +1826,25 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_project_summaries_project_id ON project_summaries(project_id);
   `);
 
+  // 工资单：每个员工每月一张，收入 = 底薪 + 勤奋奖 + 技能津贴 + 奖金 + 佣金 + 加班费
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS payslips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT DEFAULT '',
+      month TEXT NOT NULL,
+      base_salary REAL DEFAULT 0,
+      diligence_bonus REAL DEFAULT 0,
+      skill_allowance REAL DEFAULT 0,
+      bonus REAL DEFAULT 0,
+      commission REAL DEFAULT 0,
+      overtime REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, month)
+    );
+    CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
+  `);
+
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
   try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}
   try { database.exec("ALTER TABLE problems ADD COLUMN customer_requirement TEXT DEFAULT ''"); } catch {}
