@@ -1796,7 +1796,7 @@ export default function MessagesPage() {
 
         {/* 右侧：聊天窗口 */}
         <div className={cn(
-          "min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]",
+          "min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-[0_8px_28px_-8px_rgba(0,0,0,0.20)] dark:shadow-[0_8px_28px_-8px_rgba(0,0,0,0.60)]",
           selected ? "flex" : "hidden lg:flex"
         )}>
           {selected ? (
@@ -1892,7 +1892,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
-              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
+              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
@@ -1949,7 +1949,7 @@ export default function MessagesPage() {
                             <button
                               onClick={() => router.push(CARD_META[card.kind].href(card.id))}
                               className={cn(
-                                "block max-w-[250px] rounded-2xl p-3 text-left transition-colors",
+                                "block max-w-[250px] rounded-2xl p-3 text-left shadow-[0_2px_8px_-2px_rgba(0,0,0,0.18)] transition-colors",
                                 mine
                                   ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                                   : "border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:border-[var(--primary)]"
@@ -1966,7 +1966,7 @@ export default function MessagesPage() {
                           ) : (
                             <div
                               className={cn(
-                                "max-w-full rounded-2xl text-sm",
+                                "max-w-full rounded-2xl text-sm shadow-[0_2px_8px_-2px_rgba(0,0,0,0.18)]",
                                 mine
                                   ? "rounded-br-md bg-[var(--primary)] text-[var(--primary-foreground)]"
                                   : isMentioned
