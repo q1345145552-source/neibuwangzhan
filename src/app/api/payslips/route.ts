@@ -5,7 +5,7 @@ import { readJson } from "@/lib/req";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
-const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax";
+const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -91,17 +91,26 @@ function computeDeductions(db: Db, name: string, month: string, totalSalary: num
   return { social, late, personalLeave, sickLeave };
 }
 
-// GET /api/payslips?month=YYYY-MM — 某月工资单列表（仅管理员）
+// GET /api/payslips?month=YYYY-MM — 管理员看某月全部工资单；员工看自己的工资单
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
-
-  const month = new URL(req.url).searchParams.get("month") || "";
-  if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
 
   const db = getDb();
-  const rows = db.prepare(`SELECT ${FIELDS} FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC`).all(month);
+  const month = new URL(req.url).searchParams.get("month") || "";
+
+  if (auth.role === "admin") {
+    if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
+    const rows = db.prepare(`SELECT ${FIELDS} FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC`).all(month);
+    return NextResponse.json(rows);
+  }
+
+  // 员工：只看自己的工资单
+  if (month && MONTH_RE.test(month)) {
+    const rows = db.prepare(`SELECT ${FIELDS} FROM payslips WHERE employee_name = ? AND month = ? ORDER BY month DESC, id DESC`).all(auth.name, month);
+    return NextResponse.json(rows);
+  }
+  const rows = db.prepare(`SELECT ${FIELDS} FROM payslips WHERE employee_name = ? ORDER BY month DESC, id DESC`).all(auth.name);
   return NextResponse.json(rows);
 }
 
