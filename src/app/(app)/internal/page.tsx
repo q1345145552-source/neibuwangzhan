@@ -794,6 +794,7 @@ export default function InternalPage() {
   const [salaryRows, setSalaryRows] = useState<any[]>([]);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salarySavingId, setSalarySavingId] = useState<number | null>(null);
+  const [salarySavedId, setSalarySavedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -827,6 +828,8 @@ export default function InternalPage() {
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
         setSalaryRows((prev) => prev.map((e) => (e.id === id ? { ...e, base_salary: d.base_salary ?? 0, diligence_bonus: d.diligence_bonus ?? null, skill_allowance: d.skill_allowance ?? 0 } : e)));
+        setSalarySavedId(id);
+        setTimeout(() => setSalarySavedId((cur) => (cur === id ? null : cur)), 1500);
       } else {
         alert(d?.error || "保存失败");
       }
@@ -958,7 +961,7 @@ export default function InternalPage() {
                         </td>
                         <td className="py-2 px-3 text-right">
                           <Button size="sm" onClick={() => saveSalary(e.id)} disabled={salarySavingId === e.id} className="h-7 text-xs">
-                            {salarySavingId === e.id ? "保存中…" : "保存"}
+                            {salarySavingId === e.id ? "保存中…" : salarySavedId === e.id ? "已保存" : "保存"}
                           </Button>
                         </td>
                       </tr>
