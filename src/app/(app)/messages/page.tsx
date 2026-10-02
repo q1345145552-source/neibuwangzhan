@@ -433,6 +433,9 @@ export default function MessagesPage() {
   const [translateOpen, setTranslateOpen] = useState<Set<number>>(new Set());
   const [translations, setTranslations] = useState<Map<string, string>>(new Map());
   const [translating, setTranslating] = useState<string | null>(null);
+  // 长按消息菜单
+  const [menuState, setMenuState] = useState<{ id: number; x: number; y: number } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -544,6 +547,42 @@ export default function MessagesPage() {
       setTranslating(null);
     }
   };
+
+  // 关闭长按菜单
+  const closeMenu = () => setMenuState(null);
+
+  // 长按消息：弹出圆润操作菜单（桌面右键、移动端长按都触发）
+  const showMessageMenu = (id: number, clientX: number, clientY: number) => {
+    const x = Math.min(clientX, typeof window !== "undefined" ? window.innerWidth - 180 : clientX);
+    const y = Math.min(clientY, typeof window !== "undefined" ? window.innerHeight - 220 : clientY);
+    setMenuState({ id, x: Math.max(0, x), y: Math.max(0, y) });
+  };
+
+  const startLongPress = (e: React.TouchEvent, id: number) => {
+    const t = e.touches[0];
+    if (!t) return;
+    longPressTimerRef.current = setTimeout(() => {
+      showMessageMenu(id, t.clientX, t.clientY);
+    }, 500);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  // 复制消息文字
+  const copyMessage = async (m: Message) => {
+    try {
+      await navigator.clipboard.writeText(m.content || "");
+    } catch { /* 复制失败忽略 */ }
+    setMenuState(null);
+  };
+
+  // 引用回复 / 表情反应：先留入口，后续再做具体功能
+  const menuPlaceholder = () => setMenuState(null);
 
   // 会话列表：一对一 + 群聊 合并，置顶的固定最上面，其余按最后一条消息时间倒序
   const conversationList = useMemo(() => {
@@ -1712,7 +1751,15 @@ export default function MessagesPage() {
                     const isMentioned = isGroup && !!m.mentioned_members?.includes(me);
                     const senderAvatar = avatarOf(m.sender);
                     return (
-                      <div key={m.id} id={`msg-${m.id}`} className={cn("msg-bubble-anim flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}>
+                      <div
+                        key={m.id}
+                        id={`msg-${m.id}`}
+                        className={cn("msg-bubble-anim flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}
+                        onContextMenu={(e) => { e.preventDefault(); showMessageMenu(m.id, e.clientX, e.clientY); }}
+                        onTouchStart={(e) => startLongPress(e, m.id)}
+                        onTouchEnd={cancelLongPress}
+                        onTouchMove={cancelLongPress}
+                      >
                         {senderAvatar ? (
                           <img src={imgSrc(senderAvatar)} alt={m.sender} className="size-9 shrink-0 rounded-full object-cover" />
                         ) : (
@@ -2537,6 +2584,39 @@ export default function MessagesPage() {
           </div>
         </div>
       )}
+
+      {/* 长按消息操作菜单 */}
+      {menuState && (() => {
+        const m = messages.find((x) => x.id === menuState.id);
+        if (!m) return null;
+        const canRecall = m.sender === me && !m.recalled && within2Min(m.created_at);
+        const items: { label: string; onClick: () => void }[] = [
+          { label: "复制", onClick: () => copyMessage(m) },
+          { label: "翻译", onClick: () => { toggleTranslate(m.id); setMenuState(null); } },
+          ...(canRecall ? [{ label: "撤回", onClick: () => { recallMessage(m); setMenuState(null); } }] : []),
+          { label: "引用回复", onClick: menuPlaceholder },
+          { label: "表情反应", onClick: menuPlaceholder },
+        ];
+        return (
+          <>
+            <div className="fixed inset-0 z-[99]" onClick={closeMenu} />
+            <div
+              className="fixed z-[100] min-w-[128px] rounded-2xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-xl"
+              style={{ left: menuState.x, top: menuState.y }}
+            >
+              {items.map((it) => (
+                <button
+                  key={it.label}
+                  onClick={it.onClick}
+                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                >
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          </>
+        );
+      })()}
 
       {/* 群消息已读详情 */}
       {readDetail && (
