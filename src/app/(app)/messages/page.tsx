@@ -2094,7 +2094,7 @@ export default function MessagesPage() {
           .msg-bubble-anim, .msg-list-anim { animation: none; }
         }
       `}</style>
-      <div className="flex items-center justify-between">
+      <div className="hidden items-center justify-between lg:flex">
         <h1 className="text-base font-semibold text-[var(--foreground)]">消息</h1>
         <div className="relative">
           <button
@@ -2243,19 +2243,30 @@ export default function MessagesPage() {
                 </button>
                 {isGroup ? (
                   isGroupOwner ? (
-                    <button
-                      onClick={openGroupAvatar}
-                      title="设置群头像"
-                      className="shrink-0 overflow-hidden rounded-lg transition-opacity hover:opacity-80"
-                    >
-                      {activeGroup?.avatar ? (
-                        <img src={imgSrc(activeGroup.avatar)} alt={selected.name} className="size-10 rounded-lg object-cover" />
-                      ) : (
-                        <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-[var(--primary)]">
-                          <Users className="size-5" />
-                        </span>
-                      )}
-                    </button>
+                    <>
+                      <button
+                        onClick={openGroupAvatar}
+                        title="设置群头像"
+                        className="hidden shrink-0 overflow-hidden rounded-lg transition-opacity hover:opacity-80 lg:block"
+                      >
+                        {activeGroup?.avatar ? (
+                          <img src={imgSrc(activeGroup.avatar)} alt={selected.name} className="size-10 rounded-lg object-cover" />
+                        ) : (
+                          <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-[var(--primary)]">
+                            <Users className="size-5" />
+                          </span>
+                        )}
+                      </button>
+                      <span className="shrink-0 lg:hidden">
+                        {activeGroup?.avatar ? (
+                          <img src={imgSrc(activeGroup.avatar)} alt={selected.name} className="size-10 rounded-lg object-cover" />
+                        ) : (
+                          <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-[var(--primary)]">
+                            <Users className="size-5" />
+                          </span>
+                        )}
+                      </span>
+                    </>
                   ) : activeGroup?.avatar ? (
                     <img src={imgSrc(activeGroup.avatar)} alt={selected.name} className="size-10 shrink-0 rounded-lg object-cover" />
                   ) : (
@@ -2282,7 +2293,7 @@ export default function MessagesPage() {
                     </p>
                   ) : null}
                 </div>
-                <div className="ml-auto flex shrink-0 items-center gap-2">
+                <div className="ml-auto hidden shrink-0 items-center gap-2 lg:flex">
                   {isGroupOwner && (
                     <button
                       onClick={openAnnouncement}
