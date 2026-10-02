@@ -1130,6 +1130,8 @@ function initTables(database: Database.Database) {
       name TEXT NOT NULL,
       owner TEXT DEFAULT '',
       description TEXT DEFAULT '',
+      background TEXT DEFAULT '',
+      announcement TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
@@ -1169,6 +1171,10 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE messages ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE messages ADD COLUMN recalled INTEGER DEFAULT 0"); } catch {}
+
+  // chat_groups 迁移：补 background / announcement 列（群背景 / 群公告）
+  try { database.exec("ALTER TABLE chat_groups ADD COLUMN background TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE chat_groups ADD COLUMN announcement TEXT DEFAULT ''"); } catch {}
 
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_user_a ON conversations(user_a);
