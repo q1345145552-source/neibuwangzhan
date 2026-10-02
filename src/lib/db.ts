@@ -1826,7 +1826,9 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_project_summaries_project_id ON project_summaries(project_id);
   `);
 
-  // 工资单：每个员工每月一张，收入 = 底薪 + 勤奋奖 + 技能津贴 + 奖金 + 佣金 + 加班费
+  // 工资单：每个员工每月一张
+  // 收入 = 底薪 + 勤奋奖 + 技能津贴 + 奖金 + 佣金 + 加班费
+  // 扣除 = 社保 + 迟到 + 事假 + 病假 + 预扣税；净收入 = 收入 - 扣除
   database.exec(`
     CREATE TABLE IF NOT EXISTS payslips (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1839,11 +1841,22 @@ function initTables(database: Database.Database) {
       bonus REAL DEFAULT 0,
       commission REAL DEFAULT 0,
       overtime REAL DEFAULT 0,
+      social_security REAL DEFAULT 0,
+      late_deduction REAL DEFAULT 0,
+      personal_leave_deduction REAL DEFAULT 0,
+      sick_leave_deduction REAL DEFAULT 0,
+      withholding_tax REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(employee_id, month)
     );
     CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
   `);
+  // payslips 迁移：补扣除列（社保/迟到/事假/病假/预扣税）
+  try { database.exec("ALTER TABLE payslips ADD COLUMN social_security REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN late_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN sick_leave_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
   try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}

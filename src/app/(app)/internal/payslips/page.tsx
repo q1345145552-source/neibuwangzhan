@@ -18,6 +18,11 @@ interface Payslip {
   bonus: number | string;
   commission: number | string;
   overtime: number | string;
+  social_security: number;
+  late_deduction: number;
+  personal_leave_deduction: number;
+  sick_leave_deduction: number;
+  withholding_tax: number | string;
 }
 
 // 当前曼谷月份 YYYY-MM
@@ -93,11 +98,12 @@ export default function PayslipsPage() {
           bonus: row.bonus === "" || row.bonus === null ? 0 : Number(row.bonus),
           commission: row.commission === "" || row.commission === null ? 0 : Number(row.commission),
           overtime: row.overtime === "" || row.overtime === null ? 0 : Number(row.overtime),
+          withholding_tax: row.withholding_tax === "" || row.withholding_tax === null ? 0 : Number(row.withholding_tax),
         }),
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
-        setPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, bonus: d.bonus, commission: d.commission, overtime: d.overtime } : p)));
+        setPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, bonus: d.bonus, commission: d.commission, overtime: d.overtime, withholding_tax: d.withholding_tax } : p)));
       } else {
         setErr(d?.error || "保存失败");
       }
@@ -108,9 +114,12 @@ export default function PayslipsPage() {
     }
   };
 
+  const n = (v: unknown) => (v === "" || v === null || v === undefined ? 0 : Number(v));
   const totalOf = (p: Payslip) => {
-    const n = (v: unknown) => (v === "" || v === null || v === undefined ? 0 : Number(v));
     return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime);
+  };
+  const deductionOf = (p: Payslip) => {
+    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.withholding_tax);
   };
 
   return (
@@ -159,6 +168,12 @@ export default function PayslipsPage() {
                   <th className="py-3 px-3 text-right text-xs font-medium">佣金</th>
                   <th className="py-3 px-3 text-right text-xs font-medium">加班费</th>
                   <th className="py-3 px-3 text-right text-xs font-medium">收入合计</th>
+                  <th className="py-3 px-3 text-right text-xs font-medium">社保</th>
+                  <th className="py-3 px-3 text-right text-xs font-medium">迟到</th>
+                  <th className="py-3 px-3 text-right text-xs font-medium">事假</th>
+                  <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
+                  <th className="py-3 px-3 text-right text-xs font-medium">预扣税</th>
+                  <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
                   <th className="py-3 px-3 text-right text-xs font-medium">操作</th>
                 </tr>
               </thead>
@@ -179,6 +194,14 @@ export default function PayslipsPage() {
                       <input type="number" min="0" step="0.01" value={p.overtime ?? ""} onChange={(e) => updateField(p.id, "overtime", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                     </td>
                     <td className="py-2.5 px-3 text-right tabular-nums font-semibold">{totalOf(p).toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.social_security || 0).toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.late_deduction || 0).toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.personal_leave_deduction || 0).toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.sick_leave_deduction || 0).toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <input type="number" min="0" step="0.01" value={p.withholding_tax ?? ""} onChange={(e) => updateField(p.id, "withholding_tax", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                    </td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(totalOf(p) - deductionOf(p)).toFixed(2)}</td>
                     <td className="py-2.5 px-3 text-right">
                       <Button size="sm" className="h-7 text-xs" onClick={() => saveRow(p.id)} disabled={savingId === p.id}>
                         {savingId === p.id ? "保存中…" : "保存"}
