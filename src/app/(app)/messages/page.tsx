@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -345,6 +345,15 @@ const REACTION_EMOJIS = [
   { emoji: "😂", label: "大笑" },
 ];
 
+// Emoji 快捷面板常用表情（一排排，点选方便）
+const EMOJI_LIST = [
+  "😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎",
+  "🤔", "🙄", "😅", "😭", "😡", "😴", "🥺", "😇",
+  "👍", "👎", "🙏", "💪", "🤝", "👏", "🎉", "🔥",
+  "❤️", "💔", "⭐", "✅", "❌", "⚠️", "📢", "💰",
+  "📅", "⏰", "📝", "🚀", "🎯", "🍀", "🌹", "☕",
+];
+
 // 一条消息的反应分组
 interface ReactionGroup {
   emoji: string;
@@ -364,6 +373,7 @@ export default function MessagesPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -974,7 +984,15 @@ export default function MessagesPage() {
     setError(null);
     const ok = await postMessage(text, "");
     setSending(false);
-    if (ok) setInput("");
+    if (ok) {
+      setInput("");
+      setEmojiPanelOpen(false);
+    }
+  };
+
+  // 点表情 → 填进输入框
+  const insertEmoji = (emoji: string) => {
+    setInput((prev) => prev + emoji);
   };
 
   // 选图片 → 上传 → 作为图片消息发出
@@ -1990,6 +2008,21 @@ export default function MessagesPage() {
                     )}
                   </div>
                 )}
+                {emojiPanelOpen && (
+                  <div className="absolute bottom-full left-0 z-20 mb-2 w-[300px] rounded-xl border border-[var(--border)] bg-[var(--card)] p-2 shadow-xl">
+                    <div className="grid grid-cols-8 gap-0.5">
+                      {EMOJI_LIST.map((e) => (
+                        <button
+                          key={e}
+                          onClick={() => insertEmoji(e)}
+                          className="flex size-8 items-center justify-center rounded-md text-xl transition-colors hover:bg-[var(--muted)]"
+                        >
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <input
                     value={input}
@@ -2004,6 +2037,16 @@ export default function MessagesPage() {
                     placeholder={`发消息给 ${selected.name}`}
                     className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] transition-colors focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
                   />
+                  <button
+                    onClick={() => setEmojiPanelOpen((v) => !v)}
+                    title="表情"
+                    className={cn(
+                      "flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors",
+                      emojiPanelOpen ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                    )}
+                  >
+                    <Smile className="size-5" />
+                  </button>
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending}
