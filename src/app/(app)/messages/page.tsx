@@ -408,6 +408,7 @@ export default function MessagesPage() {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
+  const [plusOpen, setPlusOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [groupMemberCount, setGroupMemberCount] = useState(0);
@@ -529,6 +530,7 @@ export default function MessagesPage() {
   const cursorRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const openedRef = useRef(false);
   const lastTypingPingRef = useRef(0);
 
@@ -1153,7 +1155,7 @@ export default function MessagesPage() {
   };
 
   // 粘贴：剪贴板里有图片则弹预览确认框；纯文字走默认粘贴
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
     let imageFile: File | null = null;
@@ -1915,7 +1917,7 @@ export default function MessagesPage() {
     } catch { /* 忽略 */ }
   };
 
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value;
     setInput(v);
     sendTypingPing();
@@ -1932,6 +1934,15 @@ export default function MessagesPage() {
       setMentionOpen(false);
     }
   };
+
+  // 输入框自动长高：内容变化后重设高度，最多 160px，避免遮挡文字
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    }
+  }, [input]);
 
   // 选中某个成员：把最后一个 @ 及其后面的文字替换成 @名字
   const pickMention = (name: string) => {
@@ -2655,47 +2666,66 @@ export default function MessagesPage() {
                     </button>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <input
+                <div className="flex items-end gap-2">
+                  <textarea
+                    ref={textareaRef}
                     value={input}
                     onChange={handleInputChange}
                     onPaste={handlePaste}
                     onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing) return;
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         if (mentionOpen) { setMentionOpen(false); return; }
                         sendText();
                       }
                     }}
+                    rows={1}
                     placeholder={`发消息给 ${selected.name}`}
-                    className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] transition-colors focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+                    className="min-h-10 max-h-40 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] transition-colors focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
                   />
-                  <button
-                    onClick={() => setEmojiPanelOpen((v) => !v)}
-                    title="表情"
-                    className={cn(
-                      "flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors",
-                      emojiPanelOpen ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setPlusOpen((v) => !v)}
+                      title="更多"
+                      className={cn(
+                        "flex size-11 items-center justify-center rounded-lg transition-colors",
+                        plusOpen ? "bg-[var(--muted)] text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                      )}
+                    >
+                      <Plus className="size-5" />
+                    </button>
+                    {plusOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setPlusOpen(false)} />
+                        <div className="absolute bottom-full right-0 z-50 mb-2 w-40 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
+                          <button
+                            onClick={() => { setEmojiPanelOpen(true); setPlusOpen(false); }}
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                          >
+                            <Smile className="size-4" />
+                            表情
+                          </button>
+                          <button
+                            onClick={() => { fileInputRef.current?.click(); setPlusOpen(false); }}
+                            disabled={sending}
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+                          >
+                            <ImagePlus className="size-4" />
+                            图片
+                          </button>
+                          <button
+                            onClick={() => { openSharePicker(); setPlusOpen(false); }}
+                            disabled={sending}
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+                          >
+                            <FileText className="size-4" />
+                            分享
+                          </button>
+                        </div>
+                      </>
                     )}
-                  >
-                    <Smile className="size-5" />
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={sending}
-                    title="发送图片"
-                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
-                  >
-                    <ImagePlus className="size-5" />
-                  </button>
-                  <button
-                    onClick={openSharePicker}
-                    disabled={sending}
-                    title="分享"
-                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
-                  >
-                    <FileText className="size-5" />
-                  </button>
+                  </div>
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
                   <button
                     onClick={sendText}
