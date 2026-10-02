@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const groups = db.prepare(`
-    SELECT g.id, g.name, g.owner, g.background, g.announcement,
+    SELECT g.id, g.name, g.owner, g.background, g.announcement, g.avatar,
       (SELECT m.sender FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
       (SELECT m.content FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.image_url FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_image_url,
@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     owner: string;
     background: string;
     announcement: string;
+    avatar: string;
     last_sender: string | null;
     last_content: string | null;
     last_image_url: string | null;
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
       owner: g.owner,
       background: g.background || "",
       announcement: g.announcement || "",
+      avatar: g.avatar || "",
       members: (membersStmt.all(g.id) as { member: string }[]).map((m) => m.member),
       last_at: g.last_at || null,
       last_sender: g.last_sender || null,
@@ -130,9 +132,20 @@ export async function PATCH(req: NextRequest) {
   if (body.announcement !== undefined) {
     sets.push("announcement = ?"); params.push(String(body.announcement ?? "").trim());
   }
+  if (body.name !== undefined) {
+    const nm = String(body.name ?? "").trim();
+    if (!nm) return NextResponse.json({ error: "群名称不能为空" }, { status: 400 });
+    if (nm.length > 50) return NextResponse.json({ error: "群名称不能超过 50 字" }, { status: 400 });
+    sets.push("name = ?"); params.push(nm);
+  }
+  if (body.avatar !== undefined) {
+    const av = String(body.avatar ?? "").trim();
+    if (av && !av.startsWith("/api/files/")) return NextResponse.json({ error: "头像地址无效" }, { status: 400 });
+    sets.push("avatar = ?"); params.push(av);
+  }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
 
   db.prepare(`UPDATE chat_groups SET ${sets.join(", ")} WHERE id = ?`).run(...params, groupId);
-  const updated = db.prepare("SELECT id, name, owner, background, announcement FROM chat_groups WHERE id = ?").get(groupId);
+  const updated = db.prepare("SELECT id, name, owner, background, announcement, avatar FROM chat_groups WHERE id = ?").get(groupId);
   return NextResponse.json({ group: updated });
 }
