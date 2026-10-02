@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -207,6 +207,19 @@ interface MonitorConversation {
   last_preview: string;
 }
 
+// 总结板块里的一条会话总结
+interface SummaryBoardItem {
+  conversation_id: number;
+  user_a: string;
+  user_b: string;
+  message_count: number;
+  topics: string;
+  conclusions: string;
+  todos: string;
+  commitments: string;
+  cached: boolean;
+}
+
 // 把总结里的待办/承诺文本按行拆成一条条（去掉圆点/编号前缀）
 function splitSummaryItems(text: string): string[] {
   if (!text || text.trim() === "无") return [];
@@ -355,6 +368,12 @@ export default function MessagesPage() {
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorError, setMonitorError] = useState<string | null>(null);
   const [monitorDetail, setMonitorDetail] = useState<{ conversation: { user_a: string; user_b: string }; messages: Message[] } | null>(null);
+  // 总结板块（管理员）
+  const [summaryBoardOpen, setSummaryBoardOpen] = useState(false);
+  const [summaryBoardList, setSummaryBoardList] = useState<SummaryBoardItem[]>([]);
+  const [summaryBoardLoading, setSummaryBoardLoading] = useState(false);
+  const [summaryBoardGenerating, setSummaryBoardGenerating] = useState(false);
+  const [summaryBoardError, setSummaryBoardError] = useState<string | null>(null);
   // 总结里的待办/承诺一键转系统待办
   const [todoAssignee, setTodoAssignee] = useState("");
   const [convertedTodos, setConvertedTodos] = useState<Set<string>>(new Set());
@@ -968,6 +987,53 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开总结板块
+  const openSummaryBoard = () => {
+    setSummaryBoardOpen(true);
+    setSummaryBoardError(null);
+    loadSummaryBoard();
+  };
+
+  // 加载已生成的会话总结（缓存）
+  const loadSummaryBoard = async () => {
+    setSummaryBoardLoading(true);
+    setSummaryBoardError(null);
+    try {
+      const r = await fetchWithAuth("/api/chat/summary/board", { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(d)) {
+        setSummaryBoardList(d as SummaryBoardItem[]);
+      } else {
+        setSummaryBoardList([]);
+        setSummaryBoardError(d?.error || "加载失败");
+      }
+    } catch {
+      setSummaryBoardList([]);
+      setSummaryBoardError("加载失败");
+    } finally {
+      setSummaryBoardLoading(false);
+    }
+  };
+
+  // 一键批量总结所有有消息的会话（未缓存的才调大模型）
+  const generateSummaryBoard = async () => {
+    setSummaryBoardGenerating(true);
+    setSummaryBoardError(null);
+    try {
+      const r = await fetchWithAuth("/api/chat/summary/board", { method: "POST" });
+      const d = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(d)) {
+        setSummaryBoardList(d as SummaryBoardItem[]);
+      } else {
+        setSummaryBoardError(d?.error || "生成失败");
+      }
+    } catch {
+      setSummaryBoardError("生成失败");
+    } finally {
+      setSummaryBoardGenerating(false);
+    }
+  };
+
   // 点开群消息的已读人数：列出谁读了、谁没读
   const openReadDetail = (m: Message) => {
     if (selected?.kind !== "group") return;
@@ -1091,6 +1157,13 @@ export default function MessagesPage() {
         </div>
         {isAdmin && (
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={openSummaryBoard}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+            >
+              <ListChecks className="size-4" />
+              总结板块
+            </button>
             <button
               onClick={openMonitor}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
@@ -1711,6 +1784,50 @@ export default function MessagesPage() {
                 <SummaryBlocks data={empSummaryResult} onConvert={convertToTodo} converted={convertedTodos} />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 总结板块（管理员） */}
+      {summaryBoardOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSummaryBoardOpen(false)}>
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+              <h3 className="font-semibold text-[var(--foreground)]">总结板块</h3>
+              <button onClick={() => setSummaryBoardOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3">
+              <p className="text-xs text-[var(--muted-foreground)]">一键批量总结所有有消息的会话，生成后缓存，下次点直接看、不重复花钱。</p>
+              <button
+                onClick={generateSummaryBoard}
+                disabled={summaryBoardGenerating}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                <Sparkles className="size-3.5" />
+                {summaryBoardGenerating ? "生成中…" : "生成总结"}
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              {summaryBoardError ? (
+                <p className="py-8 text-center text-xs text-red-500">{summaryBoardError}</p>
+              ) : summaryBoardLoading ? (
+                <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+              ) : summaryBoardList.length === 0 ? (
+                <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">还没有总结，点右上角「生成总结」批量生成</p>
+              ) : (
+                summaryBoardList.map((s) => (
+                  <div key={s.conversation_id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                    <p className="mb-2 text-sm font-medium text-[var(--foreground)]">
+                      {s.user_a} ↔ {s.user_b}
+                      <span className="ml-2 text-xs font-normal text-[var(--muted-foreground)]">{s.message_count} 条</span>
+                    </p>
+                    <SummaryBlocks data={s} />
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
