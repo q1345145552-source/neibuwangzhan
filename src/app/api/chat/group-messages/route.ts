@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, sendNotification } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
@@ -124,8 +124,18 @@ export async function POST(req: NextRequest) {
     const name = mm[1].trim();
     if (name && name !== auth.name && memberSet.has(name)) mentioned.add(name);
   }
+  const preview = orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50);
   for (const name of mentioned) {
     db.prepare("INSERT OR IGNORE INTO message_mentions (message_id, member) VALUES (?, ?)").run(messageId, name);
+    // 通知中心：群聊里 @ 了某人，生成一条通知（点通知跳转打开该群）
+    sendNotification(
+      "mention",
+      `${auth.name} 在群「${group.name}」@了你`,
+      preview,
+      name,
+      String(groupId),
+      "chat_group"
+    );
   }
 
   const message = db.prepare(

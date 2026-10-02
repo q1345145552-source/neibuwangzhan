@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, sendNotification } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
@@ -95,6 +95,16 @@ export async function POST(req: NextRequest) {
   db.prepare(
     "UPDATE conversations SET last_message_at = ?, last_message_preview = ? WHERE id = ?"
   ).run(now, preview, conversationId);
+
+  // 通知中心：对方收到消息生成一条通知（点通知跳转打开与该人的一对一聊天）
+  sendNotification(
+    "mention",
+    `${auth.name} 给你发来消息`,
+    preview,
+    other,
+    auth.name,
+    "chat_direct"
+  );
 
   const message = db.prepare(
     "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE id = ?"

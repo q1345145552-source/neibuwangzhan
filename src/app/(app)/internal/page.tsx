@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ interface MonthlySummary {
 
 export default function InternalPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [staffNames, setStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
   // 机构业务总开关：关闭时工作量里隐藏达人相关列
@@ -240,6 +242,7 @@ export default function InternalPage() {
     issue: { label: "工单", color: "blue" },
     leave: { label: "请假 & 考勤", color: "purple" },
     vat:   { label: "VAT 申报", color: "green" },
+    chat:  { label: "聊天消息", color: "sky" },
     other: { label: "其他", color: "gray" },
   } as const;
 
@@ -248,6 +251,7 @@ export default function InternalPage() {
     if (rt === "issue") return "issue";
     if (rt === "leave" || rt === "attendance_request") return "leave";
     if (rt === "vat_notify") return "vat";
+    if (rt === "chat_direct" || rt === "chat_group") return "chat";
     return "other";
   };
 
@@ -763,6 +767,15 @@ export default function InternalPage() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
   };
 
+  // 点击聊天通知 → 跳到消息页并打开对应会话
+  const openNotifChat = (n: Notification) => {
+    if (n.related_type === "chat_direct") {
+      router.push(`/messages?open=direct:${encodeURIComponent(n.related_id)}`);
+    } else if (n.related_type === "chat_group") {
+      router.push(`/messages?open=group:${n.related_id}`);
+    }
+  };
+
   const markAllNotifRead = async () => {
     await fetchWithAuth("/api/notifications", {
       method: "PATCH",
@@ -775,7 +788,7 @@ export default function InternalPage() {
   const isAdmin = user?.role === "admin";
   // 考勤导出选中的月份（默认当前曼谷月，切换后明细/汇总导出都按这个月导出）
   const [attendanceMonth, setAttendanceMonth] = useState(bangkokMonthKey());
-  const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","other-today","other-week"]));
+  const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","chat-today","chat-week","other-today","other-week"]));
 
 
   return (
@@ -1481,11 +1494,12 @@ export default function InternalPage() {
           <div className="max-h-[480px] overflow-y-auto">
             {(() => {
               // 分组：category → timeGroup → notifications
-              const cats = ["issue","leave","vat","other"] as const;
+              const cats = ["issue","leave","vat","chat","other"] as const;
               const colorMap: Record<string, { border: string; bg: string; dot: string }> = {
                 blue:   { border: "border-l-blue-500",  bg: "bg-blue-50/60 dark:bg-blue-950/10",  dot: "bg-blue-500" },
                 purple: { border: "border-l-purple-500", bg: "bg-purple-50/60 dark:bg-purple-950/10", dot: "bg-purple-500" },
                 green:  { border: "border-l-emerald-500", bg: "bg-emerald-50/60 dark:bg-emerald-950/10", dot: "bg-emerald-500" },
+                sky:    { border: "border-l-sky-500",  bg: "bg-sky-50/60 dark:bg-sky-950/10",  dot: "bg-sky-500" },
                 gray:   { border: "border-l-gray-400",  bg: "bg-gray-50/60 dark:bg-gray-900/10",  dot: "bg-gray-400" },
               };
               const grouped: Record<string, Record<string, Notification[]>> = {};
@@ -1544,7 +1558,10 @@ export default function InternalPage() {
                               {items.map(n => (
                                 <div
                                   key={n.id}
-                                  onClick={() => { if (n.is_read === 0) markNotifRead(n.id); }}
+                                  onClick={() => {
+                                    if (n.is_read === 0) markNotifRead(n.id);
+                                    if (n.related_type === "chat_direct" || n.related_type === "chat_group") openNotifChat(n);
+                                  }}
                                   className={cn(
                                     "px-5 py-2.5 cursor-pointer transition-colors hover:bg-[var(--muted)]/30",
                                     n.is_read === 0
