@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -400,6 +400,8 @@ export default function MessagesPage() {
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementText, setAnnouncementText] = useState("");
   const [announcementSaving, setAnnouncementSaving] = useState(false);
+  // 会话置顶
+  const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -438,7 +440,48 @@ export default function MessagesPage() {
     return () => clearInterval(id);
   }, [loadContacts, loadGroups]);
 
-  // 会话列表：一对一 + 群聊 合并，按最后一条消息时间倒序（没消息的沉底）
+  // 加载我的置顶会话列表
+  useEffect(() => {
+    fetchWithAuth("/api/chat/pins", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && Array.isArray(d.pins)) setPinnedScopes(new Set(d.pins)); })
+      .catch(() => {});
+  }, []);
+
+  // 会话置顶/取消置顶
+  const togglePin = async (kind: "direct" | "group", id: string) => {
+    const scopeKey = `${kind}:${id}`;
+    const isPinned = pinnedScopes.has(scopeKey);
+    // 乐观更新
+    setPinnedScopes((prev) => {
+      const next = new Set(prev);
+      if (isPinned) next.delete(scopeKey); else next.add(scopeKey);
+      return next;
+    });
+    try {
+      const r = await fetchWithAuth("/api/chat/pins", {
+        method: isPinned ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope_key: scopeKey }),
+      });
+      if (!r.ok) {
+        // 失败回滚
+        setPinnedScopes((prev) => {
+          const next = new Set(prev);
+          if (isPinned) next.add(scopeKey); else next.delete(scopeKey);
+          return next;
+        });
+      }
+    } catch {
+      setPinnedScopes((prev) => {
+        const next = new Set(prev);
+        if (isPinned) next.add(scopeKey); else next.delete(scopeKey);
+        return next;
+      });
+    }
+  };
+
+  // 会话列表：一对一 + 群聊 合并，置顶的固定最上面，其余按最后一条消息时间倒序
   const conversationList = useMemo(() => {
     const items = [
       ...contacts.map((c) => ({
@@ -463,12 +506,15 @@ export default function MessagesPage() {
       })),
     ];
     return items.sort((a, b) => {
+      const aPinned = pinnedScopes.has(`${a.kind}:${a.id}`) ? 1 : 0;
+      const bPinned = pinnedScopes.has(`${b.kind}:${b.id}`) ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned; // 置顶的排前面
       const ta = a.lastAt || "";
       const tb = b.lastAt || "";
       if (ta !== tb) return ta > tb ? -1 : 1;
       return a.name.localeCompare(b.name, "zh");
     });
-  }, [contacts, groups]);
+  }, [contacts, groups, pinnedScopes]);
 
   // 合并消息（按 id 去重 + 升序），并推进游标
   const mergeIncoming = useCallback((incoming: Message[]) => {
@@ -1420,43 +1466,61 @@ export default function MessagesPage() {
                 const active = item.kind === "direct"
                   ? selected?.kind === "direct" && selected.name === item.id
                   : selected?.kind === "group" && selected.id === Number(item.id);
+                const pinned = pinnedScopes.has(`${item.kind}:${item.id}`);
                 return (
-                  <button
+                  <div
                     key={item.kind + item.id}
-                    onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
                     className={cn(
-                      "flex w-full items-center gap-3 px-3 py-2 text-left transition active:scale-[0.98]",
+                      "group flex w-full items-center gap-1 px-3 py-2 text-left transition",
                       active ? "bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]" : "hover:bg-[var(--muted)]/60"
                     )}
                   >
-                    {item.kind === "group" ? (
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
-                        <Users className="size-5" />
-                      </span>
-                    ) : item.avatar ? (
-                      <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover" />
-                    ) : (
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
-                        {item.name.charAt(0)}
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm text-[var(--foreground)]">{item.name}</span>
-                        <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(item.lastAt)}</span>
-                      </span>
-                      <span className="mt-0.5 flex items-center justify-between gap-2">
-                        <span className="truncate text-xs text-[var(--muted-foreground)]">
-                          {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
+                    <button
+                      onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      {item.kind === "group" ? (
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+                          <Users className="size-5" />
                         </span>
-                        {item.unread > 0 && (
-                          <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">
-                            {item.unread > 99 ? "99+" : item.unread}
+                      ) : item.avatar ? (
+                        <img src={imgSrc(item.avatar)} alt={item.name} className="size-10 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
+                          {item.name.charAt(0)}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-1">
+                            {pinned && <Pin className="size-3 shrink-0 fill-current text-[var(--primary)]" />}
+                            <span className="truncate text-sm text-[var(--foreground)]">{item.name}</span>
                           </span>
-                        )}
+                          <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{fmtListTime(item.lastAt)}</span>
+                        </span>
+                        <span className="mt-0.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-xs text-[var(--muted-foreground)]">
+                            {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
+                          </span>
+                          {item.unread > 0 && (
+                            <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">
+                              {item.unread > 99 ? "99+" : item.unread}
+                            </span>
+                          )}
+                        </span>
                       </span>
-                    </span>
-                  </button>
+                    </button>
+                    <button
+                      onClick={() => togglePin(item.kind, item.id)}
+                      title={pinned ? "取消置顶" : "置顶"}
+                      className={cn(
+                        "shrink-0 rounded-md p-1 transition-colors",
+                        pinned ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]/40 hover:text-[var(--foreground)]"
+                      )}
+                    >
+                      <Pin className={cn("size-3.5", pinned && "fill-current")} />
+                    </button>
+                  </div>
                 );
               })
             )}
