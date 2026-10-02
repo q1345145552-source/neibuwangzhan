@@ -218,6 +218,13 @@ interface MonitorConversation {
   has_sensitive: boolean;
 }
 
+// 员工活跃度：某个员工最近聊了几个人、总共多少条
+interface MonitorActivity {
+  employee: string;
+  partner_count: number;
+  message_count: number;
+}
+
 // 总结板块里的一条会话总结
 interface SummaryBoardItem {
   conversation_id: number;
@@ -385,6 +392,7 @@ export default function MessagesPage() {
   // 聊天监控（管理员）
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [monitorList, setMonitorList] = useState<MonitorConversation[]>([]);
+  const [monitorActivity, setMonitorActivity] = useState<MonitorActivity[]>([]);
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorError, setMonitorError] = useState<string | null>(null);
   const [monitorDetail, setMonitorDetail] = useState<{ conversation: { user_a: string; user_b: string }; messages: Message[] } | null>(null);
@@ -1085,14 +1093,17 @@ export default function MessagesPage() {
       if (employee) qs.set("employee", employee);
       const r = await fetchWithAuth(`/api/chat/monitor?${qs.toString()}`, { cache: "no-store" });
       const d = await r.json().catch(() => null);
-      if (r.ok && Array.isArray(d)) {
-        setMonitorList(d as MonitorConversation[]);
+      if (r.ok && d && Array.isArray(d.conversations)) {
+        setMonitorList(d.conversations as MonitorConversation[]);
+        setMonitorActivity(Array.isArray(d.activity) ? (d.activity as MonitorActivity[]) : []);
       } else {
         setMonitorList([]);
+        setMonitorActivity([]);
         setMonitorError(d?.error || "加载失败");
       }
     } catch {
       setMonitorList([]);
+      setMonitorActivity([]);
       setMonitorError("加载失败");
     } finally {
       setMonitorLoading(false);
@@ -2326,6 +2337,28 @@ export default function MessagesPage() {
               ) : monitorList.length === 0 ? (
                 <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">暂无员工之间的会话</p>
               ) : (
+                <>
+                {monitorActivity.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5">
+                    <p className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">员工活跃度（按消息量排行）</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {monitorActivity.map((a, i) => (
+                        <div
+                          key={a.employee}
+                          className={cn(
+                            "flex items-center gap-1.5 rounded-md border px-2 py-1",
+                            i === 0
+                              ? "border-[var(--primary)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)]"
+                              : "border-[var(--border)] bg-[var(--background)]"
+                          )}
+                        >
+                          <span className="text-xs font-medium text-[var(--foreground)]">{a.employee}</span>
+                          <span className="text-[0.65rem] text-[var(--muted-foreground)]">{a.partner_count} 人 · {a.message_count} 条</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {monitorList.map((c) => {
                     const high = isHighVolume(c.message_count);
@@ -2360,6 +2393,7 @@ export default function MessagesPage() {
                     );
                   })}
                 </div>
+                </>
               )}
             </div>
           </div>
