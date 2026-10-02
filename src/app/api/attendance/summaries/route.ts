@@ -49,13 +49,22 @@ const FIELDS = "id, employee_id, employee_name, month, attendance_days, late_det
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
-
-  const month = new URL(req.url).searchParams.get("month") || "";
-  if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
 
   const db = getDb();
-  const rows = db.prepare(`SELECT ${FIELDS} FROM attendance_summaries WHERE month = ? ORDER BY employee_name ASC, id ASC`).all(month);
+  const month = new URL(req.url).searchParams.get("month") || "";
+
+  if (auth.role === "admin") {
+    if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
+    const rows = db.prepare(`SELECT ${FIELDS} FROM attendance_summaries WHERE month = ? ORDER BY employee_name ASC, id ASC`).all(month);
+    return NextResponse.json(rows);
+  }
+
+  // 员工只看自己的考勤汇总
+  if (month && MONTH_RE.test(month)) {
+    const rows = db.prepare(`SELECT ${FIELDS} FROM attendance_summaries WHERE employee_name = ? AND month = ? ORDER BY month DESC, id DESC`).all(auth.name, month);
+    return NextResponse.json(rows);
+  }
+  const rows = db.prepare(`SELECT ${FIELDS} FROM attendance_summaries WHERE employee_name = ? ORDER BY month DESC, id DESC`).all(auth.name);
   return NextResponse.json(rows);
 }
 
@@ -92,15 +101,17 @@ export async function POST(req: NextRequest) {
       const leaveRows = db.prepare(
         "SELECT leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND start_date LIKE ? ORDER BY start_date"
       ).all(e.name, `${month}%`) as { leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string }[];
-      const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean }[] = [];
+      const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = [];
       for (const l of leaveRows) {
         const days = daysBetween(l.start_date, l.end_date);
         const hours = days === 1 ? hoursBetween(l.start_time, l.end_time) : days * 8;
+        const images = (() => { try { const a = JSON.parse(l.images || "[]"); return Array.isArray(a) ? a.filter((x: unknown) => x && String(x).trim()) : []; } catch { return []; } })();
         leaveDetails.push({
           type: l.leave_type,
           days,
           hours: Math.round(hours * 10) / 10,
-          has_certificate: l.leave_type === "病假" && hasImages(l.images),
+          has_certificate: l.leave_type === "病假" && images.length > 0,
+          images,
         });
       }
 
