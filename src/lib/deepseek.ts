@@ -30,12 +30,50 @@ function toString(v: unknown): string {
   return String(v).trim();
 }
 
-/** 把一段纯文本聊天记录发给大模型，返回四块总结 */
-export async function summarizeChatTranscript(transcript: string): Promise<ChatSummary> {
+// 读取 AI 模型配置（聊天总结、翻译共用同一套配置，每次即时读取）
+function getAiConfig() {
   const apiKey = getSystemSetting("ai_api_key").trim();
   if (!apiKey) throw new Error("未配置 AI Key，请到「系统设置 → AI 配置」填写后重试");
-  const apiBase = getSystemSetting("ai_api_base").trim() || "https://api.deepseek.com/chat/completions";
-  const model = getSystemSetting("ai_model").trim() || "deepseek-chat";
+  return {
+    apiKey,
+    apiBase: getSystemSetting("ai_api_base").trim() || "https://api.deepseek.com/chat/completions",
+    model: getSystemSetting("ai_model").trim() || "deepseek-chat",
+  };
+}
+
+/** 把一段文字翻译成目标语言（中文 / 泰语），返回翻译结果文本 */
+export async function translateText(text: string, target: "中文" | "泰语"): Promise<string> {
+  const { apiKey, apiBase, model } = getAiConfig();
+  const res = await fetch(apiBase, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: `你是一个翻译助手。把用户发来的文字翻译成${target}。只输出翻译结果本身，不要输出任何解释、注释、引号或原文。` },
+        { role: "user", content: text },
+      ],
+      temperature: 0.2,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`DeepSeek 调用失败（${res.status}）：${t.slice(0, 300)}`);
+  }
+  const data = await res.json().catch(() => null);
+  const raw: unknown = data?.choices?.[0]?.message?.content;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
+  return raw.trim();
+}
+
+/** 把一段纯文本聊天记录发给大模型，返回四块总结 */
+export async function summarizeChatTranscript(transcript: string): Promise<ChatSummary> {
+  const { apiKey, apiBase, model } = getAiConfig();
 
   const res = await fetch(apiBase, {
     method: "POST",
