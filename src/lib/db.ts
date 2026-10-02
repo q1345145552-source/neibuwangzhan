@@ -778,7 +778,7 @@ function initTables(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected')),
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip')),
       title TEXT DEFAULT '',
       body TEXT DEFAULT '',
       recipient TEXT DEFAULT '',
@@ -795,7 +795,7 @@ function initTables(database: Database.Database) {
     database.exec(`
       CREATE TABLE notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected')),
+        type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip')),
         title TEXT DEFAULT '',
         body TEXT DEFAULT '',
         recipient TEXT DEFAULT '',
@@ -1846,17 +1846,21 @@ function initTables(database: Database.Database) {
       personal_leave_deduction REAL DEFAULT 0,
       sick_leave_deduction REAL DEFAULT 0,
       withholding_tax REAL DEFAULT 0,
+      status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回')),
+      reject_reason TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(employee_id, month)
     );
     CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
   `);
-  // payslips 迁移：补扣除列（社保/迟到/事假/病假/预扣税）
+  // payslips 迁移：补扣除列（社保/迟到/事假/病假/预扣税）和流程列（状态/打回意见）
   try { database.exec("ALTER TABLE payslips ADD COLUMN social_security REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN late_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN sick_leave_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回'))"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
   try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}

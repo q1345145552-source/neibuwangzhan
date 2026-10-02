@@ -837,6 +837,52 @@ export default function InternalPage() {
     }
   };
 
+  // ── 我的工资单（员工）──
+  const [myPayslips, setMyPayslips] = useState<any[]>([]);
+  const [myPayslipsLoading, setMyPayslipsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    setMyPayslipsLoading(true);
+    fetchWithAuth("/api/payslips", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setMyPayslips(Array.isArray(d) ? d : []))
+      .catch(() => setMyPayslips([]))
+      .finally(() => setMyPayslipsLoading(false));
+  }, [isAdmin]);
+
+  const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0);
+  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.withholding_tax) || 0);
+
+  const payslipAction = async (id: number, action: string, reason?: string) => {
+    try {
+      const r = await fetchWithAuth("/api/payslips/flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action, reason }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.id) {
+        setMyPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p)));
+      } else {
+        alert(d?.error || "操作失败");
+      }
+    } catch {
+      alert("操作失败");
+    }
+  };
+
+  const confirmPayslip = (id: number) => {
+    if (confirm("确认这份工资单无误？")) payslipAction(id, "confirm");
+  };
+  const rejectPayslip = (id: number) => {
+    const reason = prompt("请填写修改意见");
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) { alert("请填写修改意见"); return; }
+    payslipAction(id, "reject", trimmed);
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -914,6 +960,63 @@ export default function InternalPage() {
                           <Button size="sm" onClick={() => saveSalary(e.id)} disabled={salarySavingId === e.id} className="h-7 text-xs">
                             {salarySavingId === e.id ? "保存中…" : "保存"}
                           </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 我的工资单（员工） ── */}
+      {!isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2"><Wallet className="size-4" />我的工资单</h2>
+          </div>
+          <div className="p-5">
+            {myPayslipsLoading ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : myPayslips.length === 0 ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无工资单</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
+                      <th className="py-3 px-4 text-left text-xs font-medium">月份</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">收入</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">扣除</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
+                      <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myPayslips.map((p) => (
+                      <tr key={p.id} className="border-b border-[var(--border)] last:border-0">
+                        <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.month}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums">{payslipTotal(p).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{payslipDeduct(p).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(payslipTotal(p) - payslipDeduct(p)).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", p.status === "打回" ? "bg-red-500/15 text-red-600" : p.status === "已发放" ? "bg-emerald-500/15 text-emerald-600" : p.status === "已确认" ? "bg-green-500/15 text-green-600" : p.status === "待确认" ? "bg-blue-500/15 text-blue-600" : "bg-slate-500/15 text-slate-600")}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {p.status === "待确认" && (
+                            <>
+                              <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
+                            </>
+                          )}
+                          {p.status === "打回" && p.reject_reason && (
+                            <span className="text-xs text-red-500">意见：{p.reject_reason}</span>
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
+import { cn } from "@/lib/utils";
 import { ArrowLeft, Wallet } from "lucide-react";
 
 interface Payslip {
@@ -23,6 +24,8 @@ interface Payslip {
   personal_leave_deduction: number;
   sick_leave_deduction: number;
   withholding_tax: number | string;
+  status: string;
+  reject_reason: string;
 }
 
 // 当前曼谷月份 YYYY-MM
@@ -122,6 +125,33 @@ export default function PayslipsPage() {
     return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.withholding_tax);
   };
 
+  const statusClass: Record<string, string> = {
+    "草稿": "bg-slate-500/15 text-slate-600",
+    "待确认": "bg-blue-500/15 text-blue-600",
+    "已确认": "bg-green-500/15 text-green-600",
+    "已发放": "bg-emerald-500/15 text-emerald-600",
+    "打回": "bg-red-500/15 text-red-600",
+  };
+
+  const flowAction = async (id: number, action: string, reason?: string) => {
+    setErr("");
+    try {
+      const r = await fetchWithAuth("/api/payslips/flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action, reason }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.id) {
+        setPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p)));
+      } else {
+        setErr(d?.error || "操作失败");
+      }
+    } catch {
+      setErr("操作失败");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -174,6 +204,7 @@ export default function PayslipsPage() {
                   <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
                   <th className="py-3 px-3 text-right text-xs font-medium">预扣税</th>
                   <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
+                  <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
                   <th className="py-3 px-3 text-right text-xs font-medium">操作</th>
                 </tr>
               </thead>
@@ -202,10 +233,27 @@ export default function PayslipsPage() {
                       <input type="number" min="0" step="0.01" value={p.withholding_tax ?? ""} onChange={(e) => updateField(p.id, "withholding_tax", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                     </td>
                     <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(totalOf(p) - deductionOf(p)).toFixed(2)}</td>
-                    <td className="py-2.5 px-3 text-right">
+                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", statusClass[p.status] || "bg-slate-500/15 text-slate-600")} title={p.reject_reason || ""}>
+                        {p.status}
+                      </span>
+                      {p.status === "打回" && p.reject_reason && (
+                        <p className="mt-1 text-[0.6rem] text-red-500">意见：{p.reject_reason}</p>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       <Button size="sm" className="h-7 text-xs" onClick={() => saveRow(p.id)} disabled={savingId === p.id}>
                         {savingId === p.id ? "保存中…" : "保存"}
                       </Button>
+                      {p.status === "草稿" && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>发送</Button>
+                      )}
+                      {p.status === "打回" && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>重发</Button>
+                      )}
+                      {p.status === "已确认" && (
+                        <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "pay")}>发放</Button>
+                      )}
                     </td>
                   </tr>
                 ))}
