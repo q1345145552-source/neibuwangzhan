@@ -95,7 +95,12 @@ export async function GET(req: NextRequest) {
     "SELECT id FROM messages WHERE conversation_id = ? AND sender = ? AND is_read = 1"
   ).all(conversationId, auth.name) as { id: number }[]).map((r) => r.id);
 
-  return NextResponse.json({ conversationId, other, messages, readMessageIds });
+  // 本会话所有被撤回的消息 id（对方撤回后，前端轮询据此把旧消息实时改成「已撤回」）
+  const recalledIds = (db.prepare(
+    "SELECT id FROM messages WHERE conversation_id = ? AND recalled = 1"
+  ).all(conversationId) as { id: number }[]).map((r) => r.id);
+
+  return NextResponse.json({ conversationId, other, messages, readMessageIds, recalledIds });
 }
 
 // POST /api/chat — 发一条消息（body: { other, content?, image_url? }），文字/图片二选一或可带文字说明

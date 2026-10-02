@@ -102,13 +102,18 @@ export async function GET(req: NextRequest) {
     "UPDATE message_mentions SET is_read = 1 WHERE member = ? AND message_id IN (SELECT id FROM messages WHERE group_id = ?)"
   ).run(auth.name, groupId);
 
+  // 本群所有被撤回的消息 id（有人撤回后，前端轮询据此把旧消息实时改成「已撤回」）
+  const recalledIds = (db.prepare(
+    "SELECT id FROM messages WHERE group_id = ? AND recalled = 1"
+  ).all(groupId) as { id: number }[]).map((r) => r.id);
+
   const result = (messages as any[]).map((m) => ({
     ...m,
     read_members: readMap.get(m.id) || [],
     mentioned_members: mentionMap.get(m.id) || [],
   }));
 
-  return NextResponse.json({ group: { ...group, member_count: memberCount }, messages: result, reads });
+  return NextResponse.json({ group: { ...group, member_count: memberCount }, messages: result, reads, recalledIds });
 }
 
 // POST /api/chat/group-messages — 群内发消息（body: { group_id, content?, image_url? }），仅群成员
