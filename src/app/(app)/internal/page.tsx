@@ -899,6 +899,9 @@ export default function InternalPage() {
             {isAdmin && (
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/payslips"}>工资单</Button>
             )}
+            {isAdmin && (
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/attendance-summaries"}>考勤汇总</Button>
+            )}
             <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
           </div>
         </div>
