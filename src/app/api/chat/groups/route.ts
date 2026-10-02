@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const groups = db.prepare(`
-    SELECT g.id, g.name, g.owner,
+    SELECT g.id, g.name, g.owner, g.background, g.announcement,
       (SELECT m.sender FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
       (SELECT m.content FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.image_url FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_image_url,
@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
     id: number;
     name: string;
     owner: string;
+    background: string;
+    announcement: string;
     last_sender: string | null;
     last_content: string | null;
     last_image_url: string | null;
@@ -42,6 +44,8 @@ export async function GET(req: NextRequest) {
       id: g.id,
       name: g.name,
       owner: g.owner,
+      background: g.background || "",
+      announcement: g.announcement || "",
       members: (membersStmt.all(g.id) as { member: string }[]).map((m) => m.member),
       last_at: g.last_at || null,
       last_sender: g.last_sender || null,
@@ -96,4 +100,39 @@ export async function POST(req: NextRequest) {
   ).all(groupId) as { member: string }[];
 
   return NextResponse.json({ group: { ...group, members: memberRows.map((m) => m.member) } }, { status: 201 });
+}
+
+// PATCH /api/chat/groups — 群主设置群背景 / 群公告（body: { group_id, background?, announcement? }）
+// 只有群主（创建人）能设置，普通成员无权。
+export async function PATCH(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+  const body = await readJson(req);
+  const groupId = Number(body?.group_id);
+  if (!Number.isInteger(groupId) || groupId <= 0) return NextResponse.json({ error: "缺少群" }, { status: 400 });
+
+  const db = getDb();
+  const group = db.prepare("SELECT id, owner FROM chat_groups WHERE id = ?").get(groupId) as
+    { id: number; owner: string } | undefined;
+  if (!group) return NextResponse.json({ error: "群不存在" }, { status: 404 });
+  if (group.owner !== auth.name) return NextResponse.json({ error: "只有群主能设置" }, { status: 403 });
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (body.background !== undefined) {
+    const bg = String(body.background ?? "").trim();
+    if (bg && !bg.startsWith("/api/files/") && !/^[a-z0-9_-]+$/.test(bg)) {
+      return NextResponse.json({ error: "背景值无效" }, { status: 400 });
+    }
+    sets.push("background = ?"); params.push(bg);
+  }
+  if (body.announcement !== undefined) {
+    sets.push("announcement = ?"); params.push(String(body.announcement ?? "").trim());
+  }
+  if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
+
+  db.prepare(`UPDATE chat_groups SET ${sets.join(", ")} WHERE id = ?`).run(...params, groupId);
+  const updated = db.prepare("SELECT id, name, owner, background, announcement FROM chat_groups WHERE id = ?").get(groupId);
+  return NextResponse.json({ group: updated });
 }

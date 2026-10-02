@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -24,6 +24,8 @@ interface Group {
   id: number;
   name: string;
   owner: string;
+  background: string;
+  announcement: string;
   members: string[];
   last_at: string | null;
   last_preview: string | null;
@@ -391,6 +393,13 @@ export default function MessagesPage() {
   const [bgOpen, setBgOpen] = useState(false);
   const [bgSaving, setBgSaving] = useState(false);
   const bgInputRef = useRef<HTMLInputElement>(null);
+  // 群背景 / 群公告（群主）
+  const [groupBgOpen, setGroupBgOpen] = useState(false);
+  const [groupBgSaving, setGroupBgSaving] = useState(false);
+  const groupBgInputRef = useRef<HTMLInputElement>(null);
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [announcementText, setAnnouncementText] = useState("");
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -1106,6 +1115,87 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开群背景选择（仅群主）
+  const openGroupBackground = () => setGroupBgOpen(true);
+
+  // 群主设置群背景（预设 key / 图片 URL / 空串恢复默认），全群统一
+  const applyGroupBackground = async (value: string) => {
+    if (!selected || selected.kind !== "group") return;
+    setGroupBgSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, background: value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === selected.id ? { ...g, background: value } : g)));
+      } else {
+        setError(d?.error || "设置失败");
+      }
+    } catch {
+      setError("设置失败");
+    } finally {
+      setGroupBgSaving(false);
+    }
+  };
+
+  // 群主上传自定义群背景图片
+  const handleGroupBgPick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("只能上传图片"); return; }
+    if (file.size > 10 * 1024 * 1024) { setError("图片不能超过 10MB"); return; }
+    setGroupBgSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (up.ok && upData.url) {
+        await applyGroupBackground(upData.url);
+      } else {
+        setError(upData.error || "图片上传失败");
+      }
+    } catch {
+      setError("图片上传失败");
+    } finally {
+      setGroupBgSaving(false);
+    }
+  };
+
+  // 打开群公告编辑（带出当前公告）
+  const openAnnouncement = () => {
+    setAnnouncementText(groupAnnouncement || "");
+    setAnnouncementOpen(true);
+  };
+
+  // 群主发布/修改群公告（覆盖旧的，只保留最新一条）
+  const saveAnnouncement = async () => {
+    if (!selected || selected.kind !== "group") return;
+    setAnnouncementSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id, announcement: announcementText }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setGroups((prev) => prev.map((g) => (g.id === selected.id ? { ...g, announcement: announcementText.trim() } : g)));
+        setAnnouncementOpen(false);
+      } else {
+        setError(d?.error || "发布失败");
+      }
+    } catch {
+      setError("发布失败");
+    } finally {
+      setAnnouncementSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -1214,9 +1304,15 @@ export default function MessagesPage() {
   const selectedKey = selected ? (selected.kind === "direct" ? `d-${selected.name}` : `g-${selected.id}`) : "none";
   // 当前用户自己设置的聊天背景 → 应用到聊天区（各看各的，互不影响）
   const chatBackground = user?.chat_background || "";
-  const chatBgStyle: React.CSSProperties = chatBackground.startsWith("/api/files/")
-    ? { backgroundImage: `url(${imgSrc(chatBackground)})`, backgroundSize: "cover", backgroundPosition: "center" }
-    : (() => { const p = CHAT_BACKGROUND_PRESETS.find((x) => x.key === chatBackground); return p ? { background: p.style } : {}; })();
+  // 群聊背景（群主设置，全群统一）优先于个人背景；群背景未设置则回退个人背景
+  const activeGroup = isGroup ? groups.find((g) => g.id === selected?.id) : undefined;
+  const groupBackground = activeGroup?.background || "";
+  const groupAnnouncement = activeGroup?.announcement || "";
+  const isGroupOwner = isGroup && activeGroup?.owner === me;
+  const effectiveBackground = isGroup && groupBackground ? groupBackground : chatBackground;
+  const chatBgStyle: React.CSSProperties = effectiveBackground.startsWith("/api/files/")
+    ? { backgroundImage: `url(${imgSrc(effectiveBackground)})`, backgroundSize: "cover", backgroundPosition: "center" }
+    : (() => { const p = CHAT_BACKGROUND_PRESETS.find((x) => x.key === effectiveBackground); return p ? { background: p.style } : {}; })();
 
   return (
     <div className="flex h-[calc(100dvh-6rem)] flex-col gap-2 lg:h-[calc(100dvh-4rem)]">
@@ -1402,6 +1498,26 @@ export default function MessagesPage() {
                   )}
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-2">
+                  {isGroupOwner && (
+                    <button
+                      onClick={openAnnouncement}
+                      title="群公告"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    >
+                      <Megaphone className="size-4" />
+                      公告
+                    </button>
+                  )}
+                  {isGroupOwner && (
+                    <button
+                      onClick={openGroupBackground}
+                      title="群背景"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    >
+                      <Palette className="size-4" />
+                      群背景
+                    </button>
+                  )}
                   {isAdmin && (
                     <button
                       onClick={openSummary}
@@ -1431,6 +1547,15 @@ export default function MessagesPage() {
                   </button>
                 </div>
               </div>
+
+              {isGroup && groupAnnouncement && (
+                <div className="border-b border-[var(--border)] bg-[color-mix(in_oklch,var(--primary),var(--background)_92%)] px-4 py-2">
+                  <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--foreground)]">
+                    <Megaphone className="mt-0.5 size-3.5 shrink-0 text-[var(--primary)]" />
+                    <span className="whitespace-pre-wrap break-words">{groupAnnouncement}</span>
+                  </p>
+                </div>
+              )}
 
               <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4">
                 {messages.length === 0 ? (
@@ -2074,6 +2199,90 @@ export default function MessagesPage() {
             >
               恢复默认背景
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 群背景设置（群主） */}
+      {groupBgOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setGroupBgOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">群背景</h3>
+              <button onClick={() => setGroupBgOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">设置后全群统一显示该背景。</p>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {CHAT_BACKGROUND_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => applyGroupBackground(p.key)}
+                  disabled={groupBgSaving}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-colors disabled:opacity-60",
+                    groupBackground === p.key ? "border-[var(--primary)]" : "border-[var(--border)] hover:border-[var(--primary)]"
+                  )}
+                >
+                  <span className="h-12 w-full rounded-md border border-[var(--border)]" style={{ background: p.style }} />
+                  <span className="text-xs text-[var(--foreground)]">{p.label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => groupBgInputRef.current?.click()}
+                disabled={groupBgSaving}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-colors disabled:opacity-60",
+                  groupBackground.startsWith("/api/files/") ? "border-[var(--primary)]" : "border-dashed border-[var(--border)] hover:border-[var(--primary)]"
+                )}
+              >
+                <span className="flex h-12 w-full items-center justify-center rounded-md border border-dashed border-[var(--border)] text-[var(--muted-foreground)]">
+                  <ImagePlus className="size-5" />
+                </span>
+                <span className="text-xs text-[var(--foreground)]">自定义图片</span>
+              </button>
+            </div>
+
+            <input ref={groupBgInputRef} type="file" accept="image/*" onChange={handleGroupBgPick} className="hidden" />
+
+            <button
+              onClick={() => applyGroupBackground("")}
+              disabled={groupBgSaving}
+              className="mt-4 inline-flex items-center rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              恢复默认背景
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 群公告编辑（群主） */}
+      {announcementOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAnnouncementOpen(false)}>
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">群公告</h3>
+              <button onClick={() => setAnnouncementOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-2 text-xs text-[var(--muted-foreground)]">发布后全群可见，重新发布会覆盖旧的，只保留最新一条。</p>
+            <textarea
+              value={announcementText}
+              onChange={(e) => setAnnouncementText(e.target.value)}
+              placeholder="写一条群公告…"
+              rows={4}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button onClick={() => setAnnouncementOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
+              <button
+                onClick={saveAnnouncement}
+                disabled={announcementSaving}
+                className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+              >
+                {announcementSaving ? "发布中…" : "发布"}
+              </button>
+            </div>
           </div>
         </div>
       )}
