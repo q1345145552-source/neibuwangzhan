@@ -42,6 +42,7 @@ interface Message {
   recalled: number;
   created_at: string;
   read_members?: string[];
+  mentioned_members?: string[];
 }
 
 // 当前打开的聊天对象：要么是一对一（员工名），要么是群
@@ -103,6 +104,8 @@ export default function MessagesPage() {
   const [searching, setSearching] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [pendingScrollTo, setPendingScrollTo] = useState<number | null>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
   const [showOrders, setShowOrders] = useState(false);
   const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -437,6 +440,42 @@ export default function MessagesPage() {
     }
   };
 
+  // 群里 @ 成员选择：当前群成员，按输入过滤
+  const mentionMembers = useMemo(() => {
+    if (selected?.kind !== "group") return [];
+    const all = groups.find((g) => g.id === selected.id)?.members || [];
+    const q = mentionQuery.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((n) => n.toLowerCase().includes(q));
+  }, [selected, groups, mentionQuery]);
+
+  // 输入时检测 @，弹出成员选择
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setInput(v);
+    if (selected?.kind === "group") {
+      const atIdx = v.lastIndexOf("@");
+      if (atIdx !== -1) {
+        const after = v.slice(atIdx + 1);
+        if (!/\s/.test(after)) {
+          setMentionQuery(after);
+          setMentionOpen(true);
+          return;
+        }
+      }
+      setMentionOpen(false);
+    }
+  };
+
+  // 选中某个成员：把最后一个 @ 及其后面的文字替换成 @名字
+  const pickMention = (name: string) => {
+    const atIdx = input.lastIndexOf("@");
+    const newInput = input.slice(0, atIdx) + "@" + name + " ";
+    setInput(newInput);
+    setMentionOpen(false);
+    setMentionQuery("");
+  };
+
   const createGroup = async () => {
     const name = groupName.trim();
     if (!name) { setCreateError("请填写群名称"); return; }
@@ -606,6 +645,7 @@ export default function MessagesPage() {
                     const showRead = isDirect && mine;
                     const recalled = !!m.recalled;
                     const canRecall = mine && !recalled && within2Min(m.created_at);
+                    const isMentioned = isGroup && !!m.mentioned_members?.includes(me);
                     return (
                       <div key={m.id} id={`msg-${m.id}`} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div className="max-w-[75%]">
@@ -636,7 +676,7 @@ export default function MessagesPage() {
                                 <div
                                   className={cn(
                                     "rounded-lg text-sm",
-                                    mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
+                                    mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : isMentioned ? "bg-amber-500/15 text-[var(--foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
                                     isImage ? "p-1.5" : "px-3 py-2"
                                   )}
                                 >
@@ -657,6 +697,7 @@ export default function MessagesPage() {
                                   )}
                                   <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
                                     {toThaiTime(m.created_at) || "—"}
+                                    {isMentioned && !mine && <span className="ml-1 font-medium text-amber-600">@你</span>}
                                     {canRecall && <button onClick={() => recallMessage(m)} className="ml-1.5 opacity-70 hover:opacity-100">撤回</button>}
                                     {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
                                     {isGroup && (
@@ -670,6 +711,7 @@ export default function MessagesPage() {
                               {isOrder && (
                                 <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
                                   {toThaiTime(m.created_at) || "—"}
+                                  {isMentioned && !mine && <span className="ml-1 font-medium text-amber-600">@你</span>}
                                   {canRecall && <button onClick={() => recallMessage(m)} className="ml-1.5 opacity-70 hover:opacity-100">撤回</button>}
                                   {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
                                   {isGroup && (
@@ -690,43 +732,64 @@ export default function MessagesPage() {
 
               {error && <p className="px-4 pt-2 text-xs text-red-500">{error}</p>}
 
-              <div className="flex gap-2 border-t border-[var(--border)] p-3">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendText();
-                    }
-                  }}
-                  placeholder={`发消息给 ${selected.name}`}
-                  className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={sending}
-                  title="发送图片"
-                  className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
-                >
-                  <ImagePlus className="size-5" />
-                </button>
-                <button
-                  onClick={openOrderPicker}
-                  disabled={sending}
-                  title="分享订单"
-                  className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
-                >
-                  <FileText className="size-5" />
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
-                <button
-                  onClick={sendText}
-                  disabled={sending || !input.trim()}
-                  className="shrink-0 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
-                >
-                  {sending ? "发送中…" : "发送"}
-                </button>
+              <div className="relative border-t border-[var(--border)] p-3">
+                {mentionOpen && selected?.kind === "group" && (
+                  <div className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-48 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
+                    {mentionMembers.length === 0 ? (
+                      <p className="px-3 py-3 text-center text-xs text-[var(--muted-foreground)]">没有匹配的成员</p>
+                    ) : (
+                      mentionMembers.map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => pickMention(n)}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                        >
+                          <span className="flex size-6 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-xs text-[var(--primary)]">{n.charAt(0)}</span>
+                          {n}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (mentionOpen) { setMentionOpen(false); return; }
+                        sendText();
+                      }
+                    }}
+                    placeholder={`发消息给 ${selected.name}`}
+                    className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)]"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    title="发送图片"
+                    className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    <ImagePlus className="size-5" />
+                  </button>
+                  <button
+                    onClick={openOrderPicker}
+                    disabled={sending}
+                    title="分享订单"
+                    className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    <FileText className="size-5" />
+                  </button>
+                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
+                  <button
+                    onClick={sendText}
+                    disabled={sending || !input.trim()}
+                    className="shrink-0 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
+                  >
+                    {sending ? "发送中…" : "发送"}
+                  </button>
+                </div>
               </div>
             </>
           ) : (

@@ -1190,6 +1190,19 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_message_reads_message_id ON message_reads(message_id);
   `);
 
+  // 群聊 @提醒：记录每条群消息 @ 了哪些成员，及该成员是否已读（看完提醒即消）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_mentions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      member TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(message_id, member)
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_mentions_member ON message_mentions(member);
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
