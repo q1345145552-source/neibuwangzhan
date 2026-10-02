@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (!isMember(db, groupId, auth.name)) return NextResponse.json({ error: "你不是该群成员" }, { status: 403 });
 
   const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(groupId, after);
 
   // 打开群会话 = 我把该群所有消息标记为已读（发送人发消息时已自动记一条，OR IGNORE 去重）
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
   db.prepare("INSERT OR IGNORE INTO message_reads (message_id, member) VALUES (?, ?)").run(messageId, auth.name);
 
   const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE id = ?"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE id = ?"
   ).get(messageId);
 
   return NextResponse.json({ message: { ...(message as object), read_members: [auth.name] } }, { status: 201 });

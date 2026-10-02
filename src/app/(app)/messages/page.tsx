@@ -39,6 +39,7 @@ interface Message {
   order_id: string;
   is_read: number;
   read_at: string | null;
+  recalled: number;
   created_at: string;
   read_members?: string[];
 }
@@ -63,6 +64,12 @@ function fmtListTime(utc: string | null): string {
   const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split("T")[0];
   if (t.slice(0, 10) === today) return t.slice(11, 16);
   return t.slice(5, 10);
+}
+
+// 消息是否在两分钟内（用于显示撤回按钮）
+function within2Min(createdAt: string): boolean {
+  const t = new Date(createdAt.replace(" ", "T") + "Z").getTime();
+  return !isNaN(t) && Date.now() - t < 2 * 60 * 1000;
 }
 
 export default function MessagesPage() {
@@ -348,6 +355,25 @@ export default function MessagesPage() {
     setReadDetail({ readMembers, unreadMembers });
   };
 
+  // 撤回自己发的消息（两分钟内）
+  const recallMessage = async (m: Message) => {
+    try {
+      const r = await fetchWithAuth("/api/chat/recall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: m.id }),
+      });
+      if (r.ok) {
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, recalled: 1 } : x)));
+      } else {
+        const d = await r.json().catch(() => ({}));
+        setError(d?.error || "撤回失败");
+      }
+    } catch {
+      setError("撤回失败");
+    }
+  };
+
   const createGroup = async () => {
     const name = groupName.trim();
     if (!name) { setCreateError("请填写群名称"); return; }
@@ -478,67 +504,82 @@ export default function MessagesPage() {
                     const isImage = !!m.image_url;
                     const isOrder = !!m.order_id;
                     const showRead = isDirect && mine;
+                    const recalled = !!m.recalled;
+                    const canRecall = mine && !recalled && within2Min(m.created_at);
                     return (
                       <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                         <div className="max-w-[75%]">
                           {isGroup && !mine && (
                             <p className="mb-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>
                           )}
-                          {isOrder ? (
-                            <button
-                              onClick={() => router.push(`/orders/${m.order_id}`)}
-                              className="block w-full rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
-                            >
-                              <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]">
-                                <FileText className="size-3.5" /> 订单
-                              </span>
-                              <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{m.order_id}</span>
-                              <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{m.content || "—"}</span>
-                            </button>
-                          ) : (
-                            <div
-                              className={cn(
-                                "rounded-lg text-sm",
-                                mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
-                                isImage ? "p-1.5" : "px-3 py-2"
-                              )}
-                            >
-                              {isImage ? (
-                                <button
-                                  onClick={() => setLightbox(m.image_url)}
-                                  className="block max-w-full"
-                                  title="查看大图"
-                                >
-                                  <img
-                                    src={imgSrc(m.image_url)}
-                                    alt="图片消息"
-                                    className="max-h-60 max-w-full cursor-zoom-in rounded-md object-contain"
-                                  />
-                                </button>
-                              ) : (
-                                <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                              )}
+                          {recalled ? (
+                            <div className={cn("rounded-lg px-3 py-2 text-sm", mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]")}>
+                              <p className="italic opacity-60">已撤回</p>
                               <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
                                 {toThaiTime(m.created_at) || "—"}
-                                {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
-                                {isGroup && (
-                                  <button onClick={() => openReadDetail(m)} className={cn("ml-1.5", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")} title="查看谁读了谁没读">
-                                    已读 {m.read_members?.length ?? 0}/{groupMemberCount}
-                                  </button>
-                                )}
                               </p>
                             </div>
-                          )}
-                          {isOrder && (
-                            <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
-                              {toThaiTime(m.created_at) || "—"}
-                              {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
-                              {isGroup && (
-                                <button onClick={() => openReadDetail(m)} className="ml-1.5 text-[var(--muted-foreground)]" title="查看谁读了谁没读">
-                                  已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                          ) : (
+                            <>
+                              {isOrder ? (
+                                <button
+                                  onClick={() => router.push(`/orders/${m.order_id}`)}
+                                  className="block w-full rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
+                                >
+                                  <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]">
+                                    <FileText className="size-3.5" /> 订单
+                                  </span>
+                                  <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{m.order_id}</span>
+                                  <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{m.content || "—"}</span>
                                 </button>
+                              ) : (
+                                <div
+                                  className={cn(
+                                    "rounded-lg text-sm",
+                                    mine ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)] text-[var(--foreground)]",
+                                    isImage ? "p-1.5" : "px-3 py-2"
+                                  )}
+                                >
+                                  {isImage ? (
+                                    <button
+                                      onClick={() => setLightbox(m.image_url)}
+                                      className="block max-w-full"
+                                      title="查看大图"
+                                    >
+                                      <img
+                                        src={imgSrc(m.image_url)}
+                                        alt="图片消息"
+                                        className="max-h-60 max-w-full cursor-zoom-in rounded-md object-contain"
+                                      />
+                                    </button>
+                                  ) : (
+                                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                                  )}
+                                  <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
+                                    {toThaiTime(m.created_at) || "—"}
+                                    {canRecall && <button onClick={() => recallMessage(m)} className="ml-1.5 opacity-70 hover:opacity-100">撤回</button>}
+                                    {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
+                                    {isGroup && (
+                                      <button onClick={() => openReadDetail(m)} className={cn("ml-1.5", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")} title="查看谁读了谁没读">
+                                        已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                                      </button>
+                                    )}
+                                  </p>
+                                </div>
                               )}
-                            </p>
+                              {isOrder && (
+                                <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
+                                  {toThaiTime(m.created_at) || "—"}
+                                  {canRecall && <button onClick={() => recallMessage(m)} className="ml-1.5 opacity-70 hover:opacity-100">撤回</button>}
+                                  {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
+                                  {isGroup && (
+                                    <button onClick={() => openReadDetail(m)} className="ml-1.5 text-[var(--muted-foreground)]" title="查看谁读了谁没读">
+                                      已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                                    </button>
+                                  )}
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
