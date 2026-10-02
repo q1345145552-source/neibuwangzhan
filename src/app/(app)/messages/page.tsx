@@ -7,6 +7,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
+import { subscribeOpenChat, takePendingChatTarget, type ChatOpenTarget } from "@/lib/chat-nav";
 
 interface Contact {
   name: string;
@@ -269,6 +270,18 @@ export default function MessagesPage() {
       }
     }
   }, [groups, openDirect, openGroup]);
+
+  // 消息提醒气泡 / 系统通知点击跳转：打开对应会话
+  // （已经在消息页时靠订阅直接切换；从别的页面跳过来时靠挂载时取走暂存目标）
+  useEffect(() => {
+    const apply = (t: ChatOpenTarget) => {
+      if (t.kind === "direct") openDirect(t.name);
+      else if (t.kind === "group") openGroup(t.id, t.name);
+    };
+    const pending = takePendingChatTarget();
+    if (pending) apply(pending);
+    return subscribeOpenChat(apply);
+  }, [openDirect, openGroup]);
 
   // 导出当前会话（一对一/群聊）的全部聊天记录为 .txt 文件
   const exportChat = async () => {
