@@ -5,8 +5,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn } from "@/lib/utils";
-import { ArrowLeft, Wallet, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { cn, fileUrl } from "@/lib/utils";
+import { ArrowLeft, Wallet, ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 
 interface Payslip {
   id: number;
@@ -26,6 +26,7 @@ interface Payslip {
   withholding_tax: number | string;
   status: string;
   reject_reason: string;
+  summary: string;
 }
 
 // 当前曼谷月份 YYYY-MM
@@ -42,6 +43,8 @@ export default function PayslipsPage() {
   const [generating, setGenerating] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [detail, setDetail] = useState<Payslip | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin || !month) return;
@@ -283,7 +286,8 @@ export default function PayslipsPage() {
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      <Button size="sm" className="h-7 text-xs" onClick={() => saveRow(p.id)} disabled={savingId === p.id}>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setDetail(p)}>详情</Button>
+                      <Button size="sm" className="h-7 text-xs ml-1" onClick={() => saveRow(p.id)} disabled={savingId === p.id}>
                         {savingId === p.id ? "保存中…" : "保存"}
                       </Button>
                       {p.status === "草稿" && (
@@ -301,6 +305,73 @@ export default function PayslipsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 工资单详情：底部显示考勤汇总 */}
+      {detail && (() => {
+        const s = (() => { try { return JSON.parse(detail.summary || "{}"); } catch { return {}; } })();
+        const lates: { date: string; minutes: number }[] = Array.isArray(s.late_details) ? s.late_details : [];
+        const leaves: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = Array.isArray(s.leave_details) ? s.leave_details : [];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetail(null)}>
+            <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-semibold text-[var(--foreground)]">{detail.employee_name} · {detail.month} 工资单</h3>
+                <button onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              </div>
+
+              <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">考勤汇总</p>
+              <div className="rounded-md border border-[var(--border)] p-3">
+                <p className="text-sm text-[var(--foreground)]">出勤天数：<span className="font-semibold">{s.attendance_days ?? 0}</span></p>
+
+                <p className="mt-2 text-xs font-medium text-[var(--muted-foreground)]">迟到明细</p>
+                {lates.length === 0 ? (
+                  <p className="text-xs text-[var(--muted-foreground)]">无迟到</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {lates.map((l, i) => (
+                      <p key={i} className="text-xs text-[var(--foreground)]"><span className="text-amber-600">{l.date}</span> 迟到 {l.minutes} 分钟</p>
+                    ))}
+                  </div>
+                )}
+
+                <p className="mt-2 text-xs font-medium text-[var(--muted-foreground)]">请假明细</p>
+                {leaves.length === 0 ? (
+                  <p className="text-xs text-[var(--muted-foreground)]">无请假</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {leaves.map((l, i) => (
+                      <div key={i}>
+                        <p className="text-xs text-[var(--foreground)]">
+                          {l.type} {l.days} 天
+                          {l.type === "事假" && l.days === 1 ? `（${l.hours} 小时）` : ""}
+                          {l.type === "病假" && (l.has_certificate ? "（有医院证明）" : "（无医院证明）")}
+                        </p>
+                        {l.images?.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            {l.images.map((img, j) => (
+                              <button key={j} onClick={() => setLightbox(img)} className="overflow-hidden rounded-md border border-[var(--border)]">
+                                <img src={fileUrl(img)} alt="医院证明" className="h-16 w-16 object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 医院证明大图 */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
+          <img src={fileUrl(lightbox)} alt="医院证明大图" className="max-h-[90vh] max-w-full rounded-lg object-contain" />
+          <button onClick={() => setLightbox(null)} className="absolute right-4 top-4 text-white/80 hover:text-white"><X className="size-6" /></button>
         </div>
       )}
     </div>

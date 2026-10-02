@@ -1848,12 +1848,13 @@ function initTables(database: Database.Database) {
       withholding_tax REAL DEFAULT 0,
       status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回')),
       reject_reason TEXT DEFAULT '',
+      summary TEXT DEFAULT '{}',
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(employee_id, month)
     );
     CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
   `);
-  // payslips 迁移：补扣除列（社保/迟到/事假/病假/预扣税）和流程列（状态/打回意见）
+  // payslips 迁移：补扣除列（社保/迟到/事假/病假/预扣税）、流程列（状态/打回意见）、考勤汇总（summary）
   try { database.exec("ALTER TABLE payslips ADD COLUMN social_security REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN late_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
@@ -1861,6 +1862,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回'))"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN summary TEXT DEFAULT '{}'"); } catch {}
 
   // 考勤汇总：每个员工每月一份，出勤天数 + 迟到明细 + 请假明细
   database.exec(`
