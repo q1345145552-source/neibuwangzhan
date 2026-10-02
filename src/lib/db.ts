@@ -1163,14 +1163,18 @@ function initTables(database: Database.Database) {
       is_read INTEGER DEFAULT 0,
       read_at TEXT,
       recalled INTEGER DEFAULT 0,
+      reply_to INTEGER,
+      reply_preview TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
 
-  // messages 迁移：补 image_url / order_id / recalled 列（图片消息 / 分享订单 / 撤回）
+  // messages 迁移：补 image_url / order_id / recalled / reply_to / reply_preview 列
   try { database.exec("ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE messages ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE messages ADD COLUMN recalled INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN reply_to INTEGER"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN reply_preview TEXT DEFAULT ''"); } catch {}
 
   // chat_groups 迁移：补 background / announcement 列（群背景 / 群公告）
   try { database.exec("ALTER TABLE chat_groups ADD COLUMN background TEXT DEFAULT ''"); } catch {}

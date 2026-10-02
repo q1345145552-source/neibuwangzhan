@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
   const conversationId = getOrCreateConversation(db, auth.name, other);
 
   const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(conversationId, after);
 
   // 打开会话即视为已读：把对方发给我的未读消息标记为已读
@@ -111,6 +111,8 @@ export async function POST(req: NextRequest) {
   const orderId = String(body?.order_id || "").trim();
   const cardType = String(body?.card_type || "").trim();
   const cardId = String(body?.card_id || "").trim();
+  const replyTo = Number(body?.reply_to) || null;
+  const replyPreview = String(body?.reply_preview || "").trim();
   if (!other) return NextResponse.json({ error: "缺少聊天对象" }, { status: 400 });
   if (!content && !imageUrl && !orderId && !cardType) return NextResponse.json({ error: "消息内容不能为空" }, { status: 400 });
   if (imageUrl && !imageUrl.startsWith("/api/files/")) return NextResponse.json({ error: "图片地址无效" }, { status: 400 });
@@ -139,8 +141,8 @@ export async function POST(req: NextRequest) {
   const conversationId = getOrCreateConversation(db, auth.name, other);
   const now = new Date().toISOString().replace("T", " ").split(".")[0];
   const r = db.prepare(
-    "INSERT INTO messages (conversation_id, sender, receiver, content, image_url, order_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)"
-  ).run(conversationId, auth.name, other, finalContent, imageUrl, finalOrderId, now);
+    "INSERT INTO messages (conversation_id, sender, receiver, content, image_url, order_id, is_read, reply_to, reply_preview, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)"
+  ).run(conversationId, auth.name, other, finalContent, imageUrl, finalOrderId, replyTo, replyPreview, now);
 
   // 更新会话最后一条消息（后续会话列表排序/预览用）
   const preview = cardLabel || (orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50));
@@ -149,7 +151,7 @@ export async function POST(req: NextRequest) {
   ).run(now, preview, conversationId);
 
   const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, created_at FROM messages WHERE id = ?"
+    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at FROM messages WHERE id = ?"
   ).get(Number(r.lastInsertRowid));
 
   return NextResponse.json({ message }, { status: 201 });
