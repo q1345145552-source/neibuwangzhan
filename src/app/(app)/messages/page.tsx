@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { MessageSquare, X, Users, ImagePlus, FileText } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
@@ -11,6 +11,10 @@ import { useAuth } from "@/components/auth-provider";
 interface Contact {
   name: string;
   role: string;
+  last_at: string | null;
+  last_preview: string | null;
+  last_sender: string | null;
+  unread: number;
 }
 
 interface Group {
@@ -18,6 +22,10 @@ interface Group {
   name: string;
   owner: string;
   members: string[];
+  last_at: string | null;
+  last_preview: string | null;
+  last_sender: string | null;
+  unread: number;
 }
 
 interface Message {
@@ -44,6 +52,16 @@ function imgSrc(url: string): string {
   const token = getStoredAuthToken();
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}token=${encodeURIComponent(token || "")}`;
+}
+
+// 会话列表时间：今天显示 HH:mm，更早显示 MM-DD
+function fmtListTime(utc: string | null): string {
+  if (!utc) return "";
+  const t = toThaiTime(utc);
+  if (!t) return "";
+  const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split("T")[0];
+  if (t.slice(0, 10) === today) return t.slice(11, 16);
+  return t.slice(5, 10);
 }
 
 export default function MessagesPage() {
@@ -76,15 +94,13 @@ export default function MessagesPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 联系人列表：在职员工（不含自己）
-  useEffect(() => {
-    let active = true;
+  // 联系人列表：在职员工（不含自己），带最后消息和未读
+  const loadContacts = useCallback(() => {
     fetchWithAuth("/api/chat/contacts", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (active && Array.isArray(d)) setContacts(d); })
+      .then((d) => { if (Array.isArray(d)) setContacts(d); })
       .catch(() => {})
-      .finally(() => { if (active) setContactsLoading(false); });
-    return () => { active = false; };
+      .finally(() => setContactsLoading(false));
   }, []);
 
   // 群列表
@@ -95,13 +111,43 @@ export default function MessagesPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => { loadGroups(); }, [loadGroups]);
-
-  // 轮询群列表（新群 / 被拉进群自动出现）
+  // 初次加载 + 每 3 秒轮询：新消息/新群/已读 都会实时更新会话列表排序、预览和未读
   useEffect(() => {
-    const id = setInterval(loadGroups, 3000);
+    loadContacts();
+    loadGroups();
+    const id = setInterval(() => { loadContacts(); loadGroups(); }, 3000);
     return () => clearInterval(id);
-  }, [loadGroups]);
+  }, [loadContacts, loadGroups]);
+
+  // 会话列表：一对一 + 群聊 合并，按最后一条消息时间倒序（没消息的沉底）
+  const conversationList = useMemo(() => {
+    const items = [
+      ...contacts.map((c) => ({
+        kind: "direct" as const,
+        id: c.name,
+        name: c.name,
+        lastAt: c.last_at,
+        lastSender: c.last_sender,
+        lastPreview: c.last_preview,
+        unread: c.unread || 0,
+      })),
+      ...groups.map((g) => ({
+        kind: "group" as const,
+        id: String(g.id),
+        name: g.name,
+        lastAt: g.last_at,
+        lastSender: g.last_sender,
+        lastPreview: g.last_preview,
+        unread: 0,
+      })),
+    ];
+    return items.sort((a, b) => {
+      const ta = a.lastAt || "";
+      const tb = b.lastAt || "";
+      if (ta !== tb) return ta > tb ? -1 : 1;
+      return a.name.localeCompare(b.name, "zh");
+    });
+  }, [contacts, groups]);
 
   // 合并消息（按 id 去重 + 升序），并推进游标
   const mergeIncoming = useCallback((incoming: Message[]) => {
@@ -327,78 +373,50 @@ export default function MessagesPage() {
             </button>
           </div>
           <div className="max-h-[40vh] overflow-y-auto p-2 lg:max-h-[70vh]">
-            {/* 群聊 */}
-            <p className="px-3 pb-1 pt-1 text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">群聊</p>
-            {groups.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-[var(--muted-foreground)]">还没有群，点右上角新建</p>
-            ) : (
-              groups.map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() => openGroup(g.id, g.name)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                    isGroup && selected?.id === g.id
-                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                      : "text-[var(--foreground)] hover:bg-[var(--muted)]"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-medium",
-                      isGroup && selected?.id === g.id
-                        ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]"
-                        : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
-                    )}
-                  >
-                    <Users className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{g.name}</span>
-                    <span className={cn("block text-xs", isGroup && selected?.id === g.id ? "opacity-80" : "text-[var(--muted-foreground)]")}>
-                      {g.members.length} 人
-                    </span>
-                  </span>
-                </button>
-              ))
-            )}
-
-            {/* 员工 */}
-            <p className="px-3 pb-1 pt-3 text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">员工</p>
             {contactsLoading ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
-            ) : contacts.length === 0 ? (
-              <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">暂无员工</p>
+            ) : conversationList.length === 0 ? (
+              <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">暂无会话</p>
             ) : (
-              contacts.map((c) => (
-                <button
-                  key={c.name}
-                  onClick={() => openDirect(c.name)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
-                    selected?.kind === "direct" && selected.name === c.name
-                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                      : "text-[var(--foreground)] hover:bg-[var(--muted)]"
-                  )}
-                >
-                  <span
+              conversationList.map((item) => {
+                const active = item.kind === "direct"
+                  ? selected?.kind === "direct" && selected.name === item.id
+                  : selected?.kind === "group" && selected.id === Number(item.id);
+                return (
+                  <button
+                    key={item.kind + item.id}
+                    onClick={() => item.kind === "direct" ? openDirect(item.id) : openGroup(Number(item.id), item.name)}
                     className={cn(
-                      "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-medium",
-                      selected?.kind === "direct" && selected.name === c.name
-                        ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]"
-                        : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
+                      active ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--foreground)] hover:bg-[var(--muted)]"
                     )}
                   >
-                    {c.name.charAt(0)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{c.name}</span>
-                    <span className={cn("block text-xs", selected?.kind === "direct" && selected.name === c.name ? "opacity-80" : "text-[var(--muted-foreground)]")}>
-                      {c.role === "admin" ? "管理员" : "员工"}
+                    <span className={cn(
+                      "flex size-9 shrink-0 items-center justify-center text-sm font-medium",
+                      item.kind === "group" ? "rounded-lg" : "rounded-full",
+                      active ? "bg-[var(--primary-foreground)]/20 text-[var(--primary-foreground)]" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-[var(--primary)]"
+                    )}>
+                      {item.kind === "group" ? <Users className="size-4" /> : item.name.charAt(0)}
                     </span>
-                  </span>
-                </button>
-              ))
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">{item.name}</span>
+                        <span className={cn("shrink-0 text-[0.65rem]", active ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>{fmtListTime(item.lastAt)}</span>
+                      </span>
+                      <span className="flex items-center justify-between gap-2">
+                        <span className={cn("truncate text-xs", active ? "text-[var(--primary-foreground)]/80" : "text-[var(--muted-foreground)]")}>
+                          {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
+                        </span>
+                        {item.unread > 0 && (
+                          <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold text-white">
+                            {item.unread > 99 ? "99+" : item.unread}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

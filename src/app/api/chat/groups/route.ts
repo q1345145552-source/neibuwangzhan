@@ -3,26 +3,52 @@ import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
-// GET /api/chat/groups — 我所在的群（含成员名单，群主在前）
+// GET /api/chat/groups — 我所在的群（含成员名单，群主在前），带最后一条消息预览，按最新消息倒序
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const db = getDb();
   const groups = db.prepare(`
-    SELECT g.id, g.name, g.owner
+    SELECT g.id, g.name, g.owner,
+      (SELECT m.sender FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
+      (SELECT m.content FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_content,
+      (SELECT m.image_url FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_image_url,
+      (SELECT m.order_id FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_order_id,
+      (SELECT m.created_at FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_at
     FROM chat_groups g
     JOIN group_members me ON me.group_id = g.id AND me.member = ?
-    ORDER BY g.id DESC
-  `).all(auth.name) as { id: number; name: string; owner: string }[];
+    ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1), '') DESC, g.id DESC
+  `).all(auth.name) as {
+    id: number;
+    name: string;
+    owner: string;
+    last_sender: string | null;
+    last_content: string | null;
+    last_image_url: string | null;
+    last_order_id: string | null;
+    last_at: string | null;
+  }[];
 
   const membersStmt = db.prepare(
     "SELECT member FROM group_members WHERE group_id = ? ORDER BY (role = 'owner') DESC, member ASC"
   );
-  const result = groups.map((g) => ({
-    ...g,
-    members: (membersStmt.all(g.id) as { member: string }[]).map((m) => m.member),
-  }));
+  const result = groups.map((g) => {
+    let preview: string | null = null;
+    if (g.last_image_url) preview = "[图片]";
+    else if (g.last_order_id) preview = "[订单]";
+    else if (g.last_content) preview = g.last_content.slice(0, 50);
+    return {
+      id: g.id,
+      name: g.name,
+      owner: g.owner,
+      members: (membersStmt.all(g.id) as { member: string }[]).map((m) => m.member),
+      last_at: g.last_at || null,
+      last_sender: g.last_sender || null,
+      last_preview: preview,
+      unread: 0,
+    };
+  });
   return NextResponse.json(result);
 }
 
