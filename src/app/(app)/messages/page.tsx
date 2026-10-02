@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, Archive, PanelLeftClose, Pencil } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, Archive, PanelLeftClose, Pencil, LogOut } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -492,6 +492,9 @@ export default function MessagesPage() {
   const [membersSaving, setMembersSaving] = useState(false);
   const [inviteCandidates, setInviteCandidates] = useState<string[]>([]);
   const [membersError, setMembersError] = useState<string | null>(null);
+  // 退群（普通成员）
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState(false);
   // 会话置顶
   const [pinnedScopes, setPinnedScopes] = useState<Set<string>>(new Set());
   // 消息翻译
@@ -1676,6 +1679,36 @@ export default function MessagesPage() {
     }
   };
 
+  // 普通成员退群
+  const leaveGroup = async () => {
+    if (!selected || selected.kind !== "group") return;
+    setLeaveSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/chat/groups/leave", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: selected.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        const gid = selected.id;
+        setGroups((prev) => prev.filter((g) => g.id !== gid));
+        setLeaveOpen(false);
+        setSelected(null);
+        setMessages([]);
+        cursorRef.current = 0;
+      } else {
+        setError(d?.error || "退群失败");
+        setLeaveOpen(false);
+      }
+    } catch {
+      setError("退群失败");
+      setLeaveOpen(false);
+    } finally {
+      setLeaveSaving(false);
+    }
+  };
+
   // 撤回自己发的消息（两分钟内）
   const recallMessage = async (m: Message) => {
     try {
@@ -1856,7 +1889,7 @@ export default function MessagesPage() {
             </span>
             <span className="mt-0.5 flex items-center justify-between gap-2">
               <span className="truncate text-xs text-slate-400">
-                {item.lastPreview ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : "暂无消息"}
+                {item.lastPreview ? (item.lastSender ? `${item.lastSender === me ? "我" : item.lastSender}: ${item.lastPreview}` : item.lastPreview) : "暂无消息"}
               </span>
               {item.unread > 0 && (
                 <span className="flex min-w-4 shrink-0 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-medium leading-4 text-white">
@@ -2111,6 +2144,16 @@ export default function MessagesPage() {
                       成员
                     </button>
                   )}
+                  {isGroup && !isGroupOwner && (
+                    <button
+                      onClick={() => setLeaveOpen(true)}
+                      title="退出群聊"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                    >
+                      <LogOut className="size-4" />
+                      退群
+                    </button>
+                  )}
                   {isAdmin && (
                     <button
                       onClick={openSummary}
@@ -2158,6 +2201,14 @@ export default function MessagesPage() {
                   </div>
                 ) : (
                   messages.map((m) => {
+                    // 系统消息（退群等，sender 为空串）：居中灰字显示，不按普通气泡渲染
+                    if (m.sender === "") {
+                      return (
+                        <div key={m.id} id={`msg-${m.id}`} className="msg-bubble-anim flex justify-center py-1">
+                          <p className="rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs text-[var(--muted-foreground)]">{m.content}</p>
+                        </div>
+                      );
+                    }
                     const mine = m.sender === me;
                     const isImage = !!m.image_url;
                     const card = parseCard(m);
@@ -3241,6 +3292,31 @@ export default function MessagesPage() {
                 className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
               >
                 {membersSaving ? "处理中…" : inviteCandidates.length > 0 ? `邀请（${inviteCandidates.length}）` : "邀请"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 退群确认（普通成员） */}
+      {leaveOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!leaveSaving) setLeaveOpen(false); }}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">退出群聊</h3>
+              <button onClick={() => setLeaveOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-4 text-sm text-[var(--foreground)]">
+              确定退出群聊「{selected?.kind === "group" ? selected.name : ""}」吗？退出后将看不到这个群，也收不到群消息。
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setLeaveOpen(false)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">取消</button>
+              <button
+                onClick={leaveGroup}
+                disabled={leaveSaving}
+                className="rounded-md bg-red-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {leaveSaving ? "退出中…" : "确认退出"}
               </button>
             </div>
           </div>
