@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks } from "lucide-react";
+import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
@@ -1168,13 +1168,13 @@ export default function MessagesPage() {
           .msg-bubble-anim, .msg-list-anim { animation: none; }
         }
       `}</style>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">内部聊天</p>
         </div>
         {isAdmin && (
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={openSummaryBoard}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
@@ -1202,7 +1202,7 @@ export default function MessagesPage() {
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         {/* 左侧：群聊 + 员工列表 */}
-        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <div className={cn("overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]", selected ? "hidden lg:block" : "block")}>
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
             <h2 className="text-sm font-medium text-[var(--foreground)]">会话</h2>
             <button
@@ -1249,7 +1249,7 @@ export default function MessagesPage() {
             )}
           </div>
 
-          <div className="max-h-[40vh] divide-y divide-[var(--border)] overflow-y-auto lg:max-h-[70vh]">
+          <div className="max-h-[calc(100dvh-13rem)] divide-y divide-[var(--border)] overflow-y-auto lg:max-h-[70vh]">
             {contactsLoading ? (
               <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
             ) : conversationList.length === 0 ? (
@@ -1303,10 +1303,20 @@ export default function MessagesPage() {
         </div>
 
         {/* 右侧：聊天窗口 */}
-        <div className="flex h-[70vh] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <div className={cn(
+          "flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]",
+          selected ? "flex h-[calc(100dvh-11rem)] lg:h-[70vh]" : "hidden lg:flex lg:h-[70vh]"
+        )}>
           {selected ? (
             <>
               <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+                <button
+                  onClick={() => setSelected(null)}
+                  aria-label="返回会话列表"
+                  className="-ml-1 shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] lg:hidden"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
                 {isGroup ? (
                   <span className="flex size-10 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
                     <Users className="size-5" />
@@ -1478,7 +1488,7 @@ export default function MessagesPage() {
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending}
                     title="发送图片"
-                    className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     <ImagePlus className="size-5" />
                   </button>
@@ -1486,7 +1496,7 @@ export default function MessagesPage() {
                     onClick={openSharePicker}
                     disabled={sending}
                     title="分享"
-                    className="shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     <FileText className="size-5" />
                   </button>
@@ -1494,7 +1504,7 @@ export default function MessagesPage() {
                   <button
                     onClick={sendText}
                     disabled={sending || !input.trim()}
-                    className="shrink-0 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
+                    className="h-11 shrink-0 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-50"
                   >
                     {sending ? "发送中…" : "发送"}
                   </button>
