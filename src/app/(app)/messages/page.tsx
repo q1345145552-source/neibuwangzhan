@@ -40,6 +40,7 @@ interface Message {
   is_read: number;
   read_at: string | null;
   created_at: string;
+  read_members?: string[];
 }
 
 // 当前打开的聊天对象：要么是一对一（员工名），要么是群
@@ -78,6 +79,8 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [groupMemberCount, setGroupMemberCount] = useState(0);
+  const [readDetail, setReadDetail] = useState<{ readMembers: string[]; unreadMembers: string[] } | null>(null);
   const [showOrders, setShowOrders] = useState(false);
   const [orders, setOrders] = useState<{ id: string; customer_name: string }[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -172,6 +175,15 @@ export default function MessagesPage() {
     });
   }, []);
 
+  // 群聊：把每条消息的已读成员列表刷到本地（用于「已读 X/Y」实时更新）
+  const applyGroupReads = useCallback((reads: Record<string, string[]>) => {
+    setMessages((prev) => prev.map((m) => {
+      const members = reads[String(m.id)];
+      if (!members) return m;
+      return { ...m, read_members: members };
+    }));
+  }, []);
+
   // 打开一对一会话
   const openDirect = useCallback((name: string) => {
     setSelected({ kind: "direct", name });
@@ -197,9 +209,13 @@ export default function MessagesPage() {
     cursorRef.current = 0;
     fetchWithAuth(`/api/chat/group-messages?group_id=${id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && Array.isArray(d.messages)) mergeIncoming(d.messages); })
+      .then((d) => {
+        if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
+        if (d && typeof d.group?.member_count === "number") setGroupMemberCount(d.group.member_count);
+        if (d && d.reads && typeof d.reads === "object") applyGroupReads(d.reads);
+      })
       .catch(() => {});
-  }, [mergeIncoming]);
+  }, [mergeIncoming, applyGroupReads]);
 
   // 实时轮询：每 1 秒拉取游标之后的新消息（文字/图片都实时）
   useEffect(() => {
@@ -216,6 +232,8 @@ export default function MessagesPage() {
         if (active) {
           if (Array.isArray(d.messages)) mergeIncoming(d.messages);
           if (Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
+          if (d && typeof d.group?.member_count === "number") setGroupMemberCount(d.group.member_count);
+          if (d && d.reads && typeof d.reads === "object") applyGroupReads(d.reads);
         }
       } catch { /* 轮询失败静默，下一轮重试 */ }
     };
@@ -319,6 +337,15 @@ export default function MessagesPage() {
     setError(null);
     await postMessage("", "", orderId);
     setSending(false);
+  };
+
+  // 点开群消息的已读人数：列出谁读了、谁没读
+  const openReadDetail = (m: Message) => {
+    if (selected?.kind !== "group") return;
+    const readMembers = m.read_members || [];
+    const allMembers = groups.find((g) => g.id === selected.id)?.members || [];
+    const unreadMembers = allMembers.filter((n) => !readMembers.includes(n));
+    setReadDetail({ readMembers, unreadMembers });
   };
 
   const createGroup = async () => {
@@ -494,6 +521,11 @@ export default function MessagesPage() {
                               <p className={cn("mt-1 text-[0.6rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
                                 {toThaiTime(m.created_at) || "—"}
                                 {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
+                                {isGroup && (
+                                  <button onClick={() => openReadDetail(m)} className={cn("ml-1.5", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")} title="查看谁读了谁没读">
+                                    已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                                  </button>
+                                )}
                               </p>
                             </div>
                           )}
@@ -501,6 +533,11 @@ export default function MessagesPage() {
                             <p className={cn("mt-1 text-[0.6rem] text-[var(--muted-foreground)]", mine ? "text-right" : "text-left")}>
                               {toThaiTime(m.created_at) || "—"}
                               {showRead && <span className="ml-1">{m.is_read ? "已读" : "未读"}</span>}
+                              {isGroup && (
+                                <button onClick={() => openReadDetail(m)} className="ml-1.5 text-[var(--muted-foreground)]" title="查看谁读了谁没读">
+                                  已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                                </button>
+                              )}
                             </p>
                           )}
                         </div>
@@ -662,6 +699,31 @@ export default function MessagesPage() {
               </div>
             )}
             {ordersError && <p className="mt-2 text-xs text-red-500">{ordersError}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* 群消息已读详情 */}
+      {readDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setReadDetail(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">已读详情</h3>
+              <button onClick={() => setReadDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mb-3 text-sm text-[var(--muted-foreground)]">
+              已读 {readDetail.readMembers.length}/{readDetail.readMembers.length + readDetail.unreadMembers.length} 人
+            </p>
+            <div className="space-y-3">
+              <div>
+                <p className="mb-1 text-xs text-[var(--muted-foreground)]">已读（{readDetail.readMembers.length}）</p>
+                <p className="text-sm text-[var(--foreground)]">{readDetail.readMembers.length ? readDetail.readMembers.join("、") : "—"}</p>
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-[var(--muted-foreground)]">未读（{readDetail.unreadMembers.length}）</p>
+                <p className="text-sm text-[var(--muted-foreground)]">{readDetail.unreadMembers.length ? readDetail.unreadMembers.join("、") : "—"}</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

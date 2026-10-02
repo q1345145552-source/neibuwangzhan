@@ -33,7 +33,28 @@ export async function GET(req: NextRequest) {
     "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE group_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
   ).all(groupId, after);
 
-  return NextResponse.json({ group, messages });
+  // 打开群会话 = 我把该群所有消息标记为已读（发送人发消息时已自动记一条，OR IGNORE 去重）
+  db.prepare(
+    "INSERT OR IGNORE INTO message_reads (message_id, member) SELECT id, ? FROM messages WHERE group_id = ?"
+  ).run(auth.name, groupId);
+
+  // 该群所有消息的已读成员（用于每条消息显示「已读 X/Y」和点开看谁读了谁没读）
+  const readRows = db.prepare(
+    "SELECT mr.message_id, mr.member FROM message_reads mr JOIN messages m ON m.id = mr.message_id WHERE m.group_id = ?"
+  ).all(groupId) as { message_id: number; member: string }[];
+  const readMap = new Map<number, string[]>();
+  for (const r of readRows) {
+    if (!readMap.has(r.message_id)) readMap.set(r.message_id, []);
+    readMap.get(r.message_id)!.push(r.member);
+  }
+  const reads: Record<string, string[]> = {};
+  for (const [k, v] of readMap) reads[String(k)] = v;
+
+  const memberCount = (db.prepare("SELECT COUNT(*) AS c FROM group_members WHERE group_id = ?").get(groupId) as { c: number }).c;
+
+  const result = (messages as any[]).map((m) => ({ ...m, read_members: readMap.get(m.id) || [] }));
+
+  return NextResponse.json({ group: { ...group, member_count: memberCount }, messages: result, reads });
 }
 
 // POST /api/chat/group-messages — 群内发消息（body: { group_id, content?, image_url? }），仅群成员
@@ -69,10 +90,14 @@ export async function POST(req: NextRequest) {
   const r = db.prepare(
     "INSERT INTO messages (group_id, sender, receiver, content, image_url, order_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)"
   ).run(groupId, auth.name, group.name, finalContent, imageUrl, finalOrderId, now);
+  const messageId = Number(r.lastInsertRowid);
+
+  // 发送人自动视为已读自己这条消息
+  db.prepare("INSERT OR IGNORE INTO message_reads (message_id, member) VALUES (?, ?)").run(messageId, auth.name);
 
   const message = db.prepare(
     "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, created_at FROM messages WHERE id = ?"
-  ).get(Number(r.lastInsertRowid));
+  ).get(messageId);
 
-  return NextResponse.json({ message }, { status: 201 });
+  return NextResponse.json({ message: { ...(message as object), read_members: [auth.name] } }, { status: 201 });
 }
