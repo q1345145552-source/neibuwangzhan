@@ -1837,12 +1837,12 @@ export default function MessagesPage() {
 
         {/* 右侧：聊天窗口 */}
         <div className={cn(
-          "min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-[0_8px_28px_-8px_rgba(0,0,0,0.20)] dark:shadow-[0_8px_28px_-8px_rgba(0,0,0,0.60)]",
+          "min-h-0 flex-col overflow-hidden rounded-3xl border border-[var(--border)]/60 bg-[var(--card)]/55 backdrop-blur-xl shadow-[0_8px_32px_-8px_rgba(0,0,0,0.22)] dark:border-white/15 dark:bg-[var(--card)]/45 dark:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.6)]",
           selected ? "flex" : "hidden lg:flex"
         )}>
           {selected ? (
             <>
-              <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+              <div className="flex items-center gap-3 border-b border-[var(--border)]/60 bg-gradient-to-b from-white/30 via-white/10 to-transparent px-4 py-3 dark:border-white/10 dark:from-white/10 dark:via-white/5">
                 <button
                   onClick={() => setSelected(null)}
                   aria-label="返回会话列表"
@@ -1933,7 +1933,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
-              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)] p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
+              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
@@ -1983,7 +1983,7 @@ export default function MessagesPage() {
                             </button>
                           )}
                           {recalled ? (
-                            <div className="rounded-2xl bg-[var(--muted)] px-3 py-2 text-sm text-[var(--muted-foreground)]">
+                            <div className="rounded-2xl border border-white/20 bg-[var(--muted)]/60 px-3 py-2 text-sm text-[var(--muted-foreground)] backdrop-blur-sm dark:border-white/10">
                               <p className="italic">已撤回</p>
                             </div>
                           ) : card ? (
@@ -1993,7 +1993,7 @@ export default function MessagesPage() {
                                 "block max-w-[250px] rounded-2xl p-3 text-left shadow-[0_2px_8px_-2px_rgba(0,0,0,0.18)] transition-colors",
                                 mine
                                   ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                                  : "border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                                  : "border border-white/40 bg-[var(--background)]/70 text-[var(--foreground)] backdrop-blur-sm hover:border-[var(--primary)] dark:border-white/15"
                               )}
                             >
                               <span className={cn("inline-flex items-center gap-1 text-[0.65rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
@@ -2012,7 +2012,7 @@ export default function MessagesPage() {
                                   ? "rounded-br-md bg-[var(--primary)] text-[var(--primary-foreground)]"
                                   : isMentioned
                                     ? "rounded-bl-md bg-amber-500/15 text-[var(--foreground)]"
-                                    : "rounded-bl-md border border-[var(--border)]/70 bg-[var(--background)] text-[var(--foreground)]",
+                                    : "rounded-bl-md border border-white/40 bg-[var(--background)]/70 text-[var(--foreground)] backdrop-blur-sm dark:border-white/15",
                                 isImage ? "p-1" : "px-3 py-2"
                               )}
                             >
@@ -2140,7 +2140,7 @@ export default function MessagesPage() {
 
               {error && <p className="px-4 pt-2 text-xs text-red-500">{error}</p>}
 
-              <div className="relative border-t border-[var(--border)] bg-[var(--card)] p-3">
+              <div className="relative border-t border-[var(--border)]/60 bg-transparent p-3 dark:border-white/10">
                 {mentionOpen && selected?.kind === "group" && (
                   <div className="absolute bottom-full left-3 right-3 z-20 mb-1 max-h-48 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl">
                     {mentionMembers.length === 0 ? (
