@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
 import { bangkokToday, bangkokDayRange, utcSecondBefore, utcNowStr } from "@/lib/time";
 import { useAuth } from "@/components/auth-provider";
 import { subscribeOpenChat, takePendingChatTarget, type ChatOpenTarget } from "@/lib/chat-nav";
@@ -184,6 +184,37 @@ function summaryTimeRange(option: SummaryRangeOption): { from: string; to: strin
   return { from: bangkokDayRange(shiftDateStr(today, -6)).start, to: utcNowStr() };
 }
 
+// 历史总结列表里的一条
+interface SummaryHistoryItem {
+  id: number;
+  from_at: string;
+  to_at: string;
+  topics: string;
+  conclusions: string;
+  todos: string;
+  commitments: string;
+  created_at: string;
+}
+
+// 渲染四块总结内容（生成结果 / 历史详情共用）
+function SummaryBlocks({ data }: { data: { topics: string; conclusions: string; todos: string; commitments: string } }) {
+  return (
+    <div className="space-y-2.5">
+      {[
+        ["聊了什么话题", data.topics],
+        ["有什么结论", data.conclusions],
+        ["待办事项", data.todos],
+        ["承诺约定", data.commitments],
+      ].map(([label, content]) => (
+        <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+          <p className="text-xs font-semibold text-[var(--foreground)]">{label}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]/90">{content || "无"}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const me = user?.name || "";
@@ -222,6 +253,12 @@ export default function MessagesPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryResult, setSummaryResult] = useState<{ topics: string; conclusions: string; todos: string; commitments: string; cached: boolean } | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  // AI 总结历史
+  const [summaryTab, setSummaryTab] = useState<"generate" | "history">("generate");
+  const [summaryHistory, setSummaryHistory] = useState<SummaryHistoryItem[]>([]);
+  const [summaryHistoryLoading, setSummaryHistoryLoading] = useState(false);
+  const [summaryHistoryError, setSummaryHistoryError] = useState<string | null>(null);
+  const [viewingSummary, setViewingSummary] = useState<SummaryHistoryItem | null>(null);
 
   // 建群弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -648,6 +685,10 @@ export default function MessagesPage() {
     setSummaryRange("7d");
     setSummaryResult(null);
     setSummaryError(null);
+    setSummaryTab("generate");
+    setSummaryHistory([]);
+    setSummaryHistoryError(null);
+    setViewingSummary(null);
   };
 
   // 调总结接口，把结果四块显示出来
@@ -683,6 +724,35 @@ export default function MessagesPage() {
       setSummaryError("总结失败");
     } finally {
       setSummaryLoading(false);
+    }
+  };
+
+  // 拉取该会话的历史总结列表（按生成时间倒序）
+  const loadSummaryHistory = async () => {
+    if (!selected) return;
+    if (selected.kind === "direct" && conversationId == null) {
+      setSummaryHistoryError("会话还没加载好，稍等一下再点");
+      return;
+    }
+    setSummaryHistoryLoading(true);
+    setSummaryHistoryError(null);
+    try {
+      const q = selected.kind === "direct"
+        ? `conversation_id=${conversationId}`
+        : `group_id=${selected.id}`;
+      const r = await fetchWithAuth(`/api/chat/summary?${q}`, { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(d)) {
+        setSummaryHistory(d as SummaryHistoryItem[]);
+      } else {
+        setSummaryHistory([]);
+        setSummaryHistoryError(d?.error || "加载失败");
+      }
+    } catch {
+      setSummaryHistory([]);
+      setSummaryHistoryError("加载失败");
+    } finally {
+      setSummaryHistoryLoading(false);
     }
   };
 
@@ -1264,50 +1334,96 @@ export default function MessagesPage() {
               <button onClick={() => setSummaryOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
 
-            {/* 时间档位 */}
-            <div className="flex flex-wrap gap-2">
-              {SUMMARY_RANGES.map((r) => (
-                <button
-                  key={r.key}
-                  onClick={() => setSummaryRange(r.key)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs transition-colors",
-                    summaryRange === r.key
-                      ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                      : "border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
-                  )}
-                >
-                  {r.label}
-                </button>
-              ))}
+            {/* 生成 / 历史 切换 */}
+            <div className="mb-3 flex gap-1 rounded-lg bg-[var(--muted)]/40 p-1">
+              <button
+                onClick={() => { setSummaryTab("generate"); setViewingSummary(null); }}
+                className={cn(
+                  "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  summaryTab === "generate" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                )}
+              >
+                生成
+              </button>
+              <button
+                onClick={() => { setSummaryTab("history"); setViewingSummary(null); loadSummaryHistory(); }}
+                className={cn(
+                  "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  summaryTab === "history" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                )}
+              >
+                历史总结
+              </button>
             </div>
 
-            <button
-              onClick={generateSummary}
-              disabled={summaryLoading}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              <Sparkles className="size-3.5" />
-              {summaryLoading ? "生成中…" : "生成总结"}
-            </button>
+            {summaryTab === "generate" ? (
+              <>
+                {/* 时间档位 */}
+                <div className="flex flex-wrap gap-2">
+                  {SUMMARY_RANGES.map((r) => (
+                    <button
+                      key={r.key}
+                      onClick={() => setSummaryRange(r.key)}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs transition-colors",
+                        summaryRange === r.key
+                          ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                          : "border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
 
-            {summaryError && <p className="mt-3 text-xs text-red-500">{summaryError}</p>}
+                <button
+                  onClick={generateSummary}
+                  disabled={summaryLoading}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  <Sparkles className="size-3.5" />
+                  {summaryLoading ? "生成中…" : "生成总结"}
+                </button>
 
-            {summaryResult && (
-              <div className="mt-4 space-y-2.5">
-                {summaryResult.cached && (
-                  <p className="text-[0.65rem] text-[var(--muted-foreground)]">本次结果来自缓存</p>
-                )}
-                {[
-                  ["聊了什么话题", summaryResult.topics],
-                  ["有什么结论", summaryResult.conclusions],
-                  ["待办事项", summaryResult.todos],
-                  ["承诺约定", summaryResult.commitments],
-                ].map(([label, content]) => (
-                  <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
-                    <p className="text-xs font-semibold text-[var(--foreground)]">{label}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]/90">{content || "无"}</p>
+                {summaryError && <p className="mt-3 text-xs text-red-500">{summaryError}</p>}
+
+                {summaryResult && (
+                  <div className="mt-4">
+                    {summaryResult.cached && (
+                      <p className="mb-2 text-[0.65rem] text-[var(--muted-foreground)]">本次结果来自缓存</p>
+                    )}
+                    <SummaryBlocks data={summaryResult} />
                   </div>
+                )}
+              </>
+            ) : viewingSummary ? (
+              <>
+                <button onClick={() => setViewingSummary(null)} className="mb-3 text-xs text-[var(--primary)] hover:underline">← 返回列表</button>
+                <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                  生成于 {toThaiTime(viewingSummary.created_at)} · 范围 {toThaiDate(viewingSummary.from_at)} ~ {toThaiDate(viewingSummary.to_at)}
+                </p>
+                <SummaryBlocks data={viewingSummary} />
+              </>
+            ) : summaryHistoryLoading ? (
+              <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : summaryHistoryError ? (
+              <p className="py-8 text-center text-xs text-red-500">{summaryHistoryError}</p>
+            ) : summaryHistory.length === 0 ? (
+              <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">还没有总结记录，先生成一次试试</p>
+            ) : (
+              <div className="space-y-1.5">
+                {summaryHistory.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setViewingSummary(s)}
+                    className="flex w-full flex-col gap-0.5 rounded-lg border border-[var(--border)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]"
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-[var(--foreground)]">{toThaiTime(s.created_at) || "—"}</span>
+                      <span className="shrink-0 text-[0.65rem] text-[var(--muted-foreground)]">{toThaiDate(s.from_at)} ~ {toThaiDate(s.to_at)}</span>
+                    </span>
+                    <span className="truncate text-xs text-[var(--muted-foreground)]">{s.topics}</span>
+                  </button>
                 ))}
               </div>
             )}
