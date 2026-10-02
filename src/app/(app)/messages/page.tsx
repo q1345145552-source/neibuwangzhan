@@ -740,6 +740,17 @@ export default function MessagesPage() {
     });
   }, []);
 
+  // 把会话里被撤回的消息标记为已撤回（对方撤回后轮询实时生效，不用刷新）
+  const applyRecalledIds = useCallback((ids: number[]) => {
+    if (!ids.length) return;
+    const set = new Set(ids);
+    setMessages((prev) => {
+      let changed = false;
+      const next = prev.map((m) => (set.has(m.id) && m.recalled !== 1 ? ((changed = true), { ...m, recalled: 1 }) : m));
+      return changed ? next : prev;
+    });
+  }, []);
+
   // 群聊：把每条消息的已读成员列表刷到本地（用于「已读 X/Y」实时更新）
   const applyGroupReads = useCallback((reads: Record<string, string[]>) => {
     setMessages((prev) => prev.map((m) => {
@@ -764,9 +775,10 @@ export default function MessagesPage() {
         if (d && typeof d.conversationId === "number") setConversationId(d.conversationId);
         if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
         if (d && Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
+        if (d && Array.isArray(d.recalledIds)) applyRecalledIds(d.recalledIds);
       })
       .catch(() => {});
-  }, [mergeIncoming, applyReadIds]);
+  }, [mergeIncoming, applyReadIds, applyRecalledIds]);
 
   // 打开群会话
   const openGroup = useCallback((id: number, name: string) => {
@@ -780,11 +792,12 @@ export default function MessagesPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
+        if (d && Array.isArray(d.recalledIds)) applyRecalledIds(d.recalledIds);
         if (d && typeof d.group?.member_count === "number") setGroupMemberCount(d.group.member_count);
         if (d && d.reads && typeof d.reads === "object") applyGroupReads(d.reads);
       })
       .catch(() => {});
-  }, [mergeIncoming, applyGroupReads]);
+  }, [mergeIncoming, applyGroupReads, applyRecalledIds]);
 
   // 从通知中心跳转过来：?open=direct:姓名 或 ?open=group:群id，打开对应会话
   useEffect(() => {
@@ -911,6 +924,7 @@ export default function MessagesPage() {
         if (active) {
           if (Array.isArray(d.messages)) mergeIncoming(d.messages);
           if (Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
+          if (Array.isArray(d.recalledIds)) applyRecalledIds(d.recalledIds);
           if (d && typeof d.group?.member_count === "number") setGroupMemberCount(d.group.member_count);
           if (d && d.reads && typeof d.reads === "object") applyGroupReads(d.reads);
         }
@@ -919,7 +933,7 @@ export default function MessagesPage() {
     tick();
     const id = setInterval(tick, 1000);
     return () => { active = false; clearInterval(id); };
-  }, [selected, mergeIncoming, applyReadIds]);
+  }, [selected, mergeIncoming, applyReadIds, applyRecalledIds]);
 
   // 表情反应：切会话/新会话时拉一次，之后每 5 秒刷新（看到别人加的表情）
   useEffect(() => {
