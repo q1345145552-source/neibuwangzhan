@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
-import { Users, Zap, X, Activity } from "lucide-react";
+import { Users, Zap, X, Activity, ChevronRight } from "lucide-react";
 
 interface ActivityStats {
   today: string;
@@ -18,6 +19,9 @@ interface TimelineItem {
   action: string;
   target_type: string;
   target_id: string;
+  detail: string;
+  href: string;
+  parent_label: string;
   created_at: string;
 }
 
@@ -81,6 +85,7 @@ function TrendChart({ points }: { points: { date: string; count: number }[] }) {
 }
 
 export default function ActivityPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState("today");
@@ -345,17 +350,39 @@ export default function ActivityPage() {
               <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无操作记录</p>
             ) : (
               <div className="space-y-2">
-                {filteredTimeline.map((t) => (
-                  <div key={t.id} className="rounded-md border border-[var(--border)] px-3 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-[0.65rem] text-[var(--primary)]">
-                        {CATEGORY_LABELS[t.target_type] || t.target_type}
-                      </span>
-                      <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.created_at) || "—"}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-[var(--foreground)]">{t.action}</p>
-                  </div>
-                ))}
+                {filteredTimeline.map((t) => {
+                  const canJump = !!t.href;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => { if (t.href) router.push(t.href); }}
+                      disabled={!canJump}
+                      className={cn(
+                        "w-full rounded-md border border-[var(--border)] px-3 py-2 text-left transition-colors",
+                        canJump ? "hover:border-[var(--primary)] hover:bg-[var(--muted)]/40" : "cursor-default"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-[0.65rem] text-[var(--primary)]">
+                          {CATEGORY_LABELS[t.target_type] || t.target_type}
+                        </span>
+                        <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.created_at) || "—"}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-[var(--foreground)]">{t.action}</p>
+                      {t.parent_label && (
+                        <p className="mt-0.5 text-xs font-medium text-[var(--primary)]">{t.parent_label}</p>
+                      )}
+                      {t.detail && (
+                        <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-[var(--muted-foreground)]">{t.detail}</p>
+                      )}
+                      {canJump && (
+                        <span className="mt-1 inline-flex items-center gap-0.5 text-[0.65rem] text-[var(--muted-foreground)]">
+                          查看详情 <ChevronRight className="size-3" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

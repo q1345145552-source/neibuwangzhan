@@ -18,6 +18,48 @@ function mapCategory(tt: string): string | null {
   return null;
 }
 
+// 解析日志 target → 跳转链接 + 父级标识（订单号 / 柜号等）
+function resolveTarget(db: ReturnType<typeof getDb>, tt: string, tid: string): { href: string; parent_label: string } {
+  const none = { href: "", parent_label: "" };
+  if (!tt || !tid) return none;
+  // 订单本体
+  if (tt === "order") return { href: `/orders/${tid}`, parent_label: `订单 ${tid}` };
+  // 订单子记录（步骤/步骤备注/步骤文件/文档/费用/证书）→ 归属订单
+  if (["step", "step_note", "step_document", "document", "finance", "certificate"].includes(tt)) {
+    let orderId = "";
+    if (tt === "step") orderId = (db.prepare("SELECT order_id FROM order_steps WHERE id = ?").get(Number(tid)) as { order_id: string } | undefined)?.order_id || "";
+    else if (tt === "step_note") orderId = (db.prepare("SELECT order_id FROM step_notes WHERE id = ?").get(Number(tid)) as { order_id: string } | undefined)?.order_id || "";
+    else if (tt === "step_document") orderId = (db.prepare("SELECT order_id FROM step_documents WHERE id = ?").get(Number(tid)) as { order_id: string } | undefined)?.order_id || "";
+    else if (tt === "document") orderId = (db.prepare("SELECT order_id FROM documents WHERE id = ?").get(Number(tid)) as { order_id: string } | undefined)?.order_id || "";
+    else if (tt === "finance") orderId = (db.prepare("SELECT order_id FROM finances WHERE id = ?").get(Number(tid)) as { order_id: string } | undefined)?.order_id || "";
+    else if (tt === "certificate") orderId = (db.prepare("SELECT order_id FROM certificates WHERE id = ?").get(Number(tid)) as { order_id: string } | undefined)?.order_id || "";
+    // document 的 target_id 有时直接是订单号（例如「添加文档」）
+    if (!orderId && tt === "document") orderId = tid;
+    if (orderId) return { href: `/orders/${orderId}`, parent_label: `订单 ${orderId}` };
+    return none;
+  }
+  // 物流（柜号）
+  if (tt === "logistics" || tt === "logistics_note") return { href: `/logistics/${tid}`, parent_label: "" };
+  if (tt === "logistics_step" || tt === "logistics_file") {
+    const r = (tt === "logistics_step"
+      ? db.prepare("SELECT so.id AS lid, so.cabinet_number FROM shipping_steps s JOIN shipping_orders so ON so.id = s.order_id WHERE s.id = ?").get(Number(tid))
+      : db.prepare("SELECT so.id AS lid, so.cabinet_number FROM shipping_order_files f JOIN shipping_orders so ON so.id = f.order_id WHERE f.id = ?").get(Number(tid))) as { lid: number; cabinet_number: string } | undefined;
+    if (r?.lid) return { href: `/logistics/${r.lid}`, parent_label: `柜号 ${r.cabinet_number || r.lid}` };
+    return none;
+  }
+  // 待办 / 问题 / 工单 / 考勤 / 请假
+  if (tt === "todo") return { href: "/todos", parent_label: "" };
+  if (tt === "problem") return { href: `/problems/${tid}`, parent_label: "" };
+  if (tt === "issue") return { href: "/internal", parent_label: "" };
+  if (tt === "attendance" || tt === "attendance_request") return { href: "/internal", parent_label: "" };
+  if (tt === "leave") return { href: "/internal/leave-dashboard", parent_label: "" };
+  // 客户 / 项目 / 达人
+  if (tt === "customer") return { href: `/customers/${tid}`, parent_label: "" };
+  if (tt === "project") return { href: `/projects/${tid}`, parent_label: "" };
+  if (tt === "influencer") return { href: `/agency/influencers/${tid}`, parent_label: "" };
+  return none;
+}
+
 // 员工动态只统计普通员工（role=employee 且在職）；老板/管理员等管理层账号不计入
 const STAFF_FILTER = "actor IN (SELECT name FROM employees WHERE role = 'employee' AND status = '在职')";
 
@@ -59,12 +101,15 @@ export async function GET(req: NextRequest) {
   ).all(start, end).map((r: any) => r.target_type);
 
   // 时间线：范围内普通员工 + 员工/分类筛选，按时间倒序（最新在上）
-  let tlSql = `SELECT id, actor, action, target_type, target_id, created_at FROM audit_logs WHERE created_at >= ? AND created_at < ? AND ${STAFF_FILTER}`;
+  let tlSql = `SELECT id, actor, action, target_type, target_id, detail, created_at FROM audit_logs WHERE created_at >= ? AND created_at < ? AND ${STAFF_FILTER}`;
   const tlParams: unknown[] = [start, end];
   if (employee) { tlSql += " AND actor = ?"; tlParams.push(employee); }
   if (category) { tlSql += " AND target_type = ?"; tlParams.push(category); }
   tlSql += " ORDER BY created_at DESC, id DESC LIMIT 300";
-  const timeline = db.prepare(tlSql).all(...tlParams);
+  const timeline = (db.prepare(tlSql).all(...tlParams) as any[]).map((t) => {
+    const r = resolveTarget(db, t.target_type, t.target_id);
+    return { ...t, href: r.href, parent_label: r.parent_label };
+  });
 
   // 昨天范围（对比用）
   const yesterdayDate = daysAgo(1);
