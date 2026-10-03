@@ -26,14 +26,21 @@ Object.assign(process.env, {
 });
 
 // ── 内部：真路由 + 本进程转发服务 ──
-const [orders, documents, docsRoute, { getDb }, { signToken }] = await Promise.all([
+const [orders, documents, docsRoute, { getDb }, { signToken }, certificates, requests, deliveryFile] = await Promise.all([
   import('../src/app/api/sync/orders/route'), import('../src/app/api/orders/[id]/documents/route'),
   import('../src/app/api/sync/documents/route'), import('../src/lib/db'), import('../src/lib/auth'),
+  import('../src/app/api/orders/[id]/certificates/route'), import('../src/app/api/orders/[id]/supplement-requests/route'),
+  import('../src/app/api/sync/deliveries/[deliveryId]/file/route'),
 ]);
 const internalDir = path.join(dir, 'internal-cwd'); fs.mkdirSync(internalDir); process.chdir(internalDir); // 内部上传目录 = cwd/uploads
 const idb = getDb();
 const shim = http.createServer(async (req, res) => {
   const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
+  const fileMatch = /^\/api\/sync\/deliveries\/([^/]+)\/file$/.exec(req.url || '');
+  if (fileMatch && req.method === 'GET') {
+    const response = await deliveryFile.GET(new NextRequest(`http://127.0.0.1:${internalPort}${req.url}`, { headers: req.headers as Record<string, string> }), { params: Promise.resolve({ deliveryId: fileMatch[1] }) });
+    res.writeHead(response.status, Object.fromEntries(response.headers.entries())).end(Buffer.from(await response.arrayBuffer())); return;
+  }
   const handler = req.url === '/api/sync/orders' ? orders.POST : req.url === '/api/sync/documents' ? docsRoute.POST : null;
   if (!handler || req.method !== 'POST') { res.writeHead(404).end('{}'); return; }
   const response = await handler(new NextRequest(`http://127.0.0.1:${internalPort}${req.url}`, { method: 'POST', headers: req.headers as Record<string, string>, body: Buffer.concat(chunks) }));
@@ -66,9 +73,9 @@ async function client(method: string, url: string, body?: unknown, as = 'buyer')
   const r = await fetch(`http://127.0.0.1:${clientPort}${url}`, { method, headers, body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body) });
   return { status: r.status, body: await r.json().catch(() => ({})) as any };
 }
-async function until<T>(label: string, fn: () => T | undefined | null | false, ms = 45_000): Promise<T> {
+async function until<T>(label: string, fn: () => T | undefined | null | false | Promise<T | undefined | null | false>, ms = 45_000): Promise<T> {
   const start = Date.now();
-  for (;;) { const v = fn(); if (v) return v as T; if (Date.now() - start > ms) throw new Error(`等待超时：${label}`); await new Promise(r => setTimeout(r, 300)); }
+  for (;;) { const v = await fn(); if (v) return v as T; if (Date.now() - start > ms) throw new Error(`等待超时：${label}`); await new Promise(r => setTimeout(r, 300)); }
 }
 const staff = idb.prepare("SELECT id,name,auth_version FROM employees WHERE role='admin' LIMIT 1").get() as { id: number; name: string; auth_version: number };
 idb.prepare('UPDATE employees SET must_change_password=0 WHERE id=?').run(staff.id);
@@ -173,6 +180,90 @@ try {
     const imageSub = up.body.files[0].id as string;
     assert.equal((await client('DELETE', `/api/tax-orders/${tax.id}/supplements/${imageSub}`)).status, 200);
     await until('撤回到内部', () => docsOf(internalTax).some(d => d.name === '补充资料 · 银行流水.png（客户已删除）'));
+  });
+  // ── 补件要求与交付文件回传（2026-10-03，规则 13）──
+  const staffCall = async (handler: (r: NextRequest, c: { params: Promise<{ id: string }> }) => Promise<Response>, orderId: string, method: string, body?: unknown) => {
+    const r = await handler(new NextRequest(`http://127.0.0.1/api/orders/${orderId}/x`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${staffToken}` },
+      body: body === undefined ? undefined : JSON.stringify(body) }), { params: Promise.resolve({ id: orderId }) });
+    return { status: r.status, body: await r.json() as any };
+  };
+  await test('supplement request: reaches the customer to-do, customer submits against it, internal sees 客户已交', async () => {
+    const sent = await staffCall(requests.POST, internalOrders[0], 'POST', { name: '最新营业执照', description: '要 3 个月内开的' });
+    assert.equal(sent.status, 201, JSON.stringify(sent.body));
+    const reqId = `sreq-${sent.body.id}`;
+    await until('补件要求到客户站', () => cdb.prepare('SELECT doc_name,doc_desc,status FROM doc_requirements WHERE id=?').get(reqId));
+    assert.deepEqual(cdb.prepare('SELECT doc_name,doc_desc,status FROM doc_requirements WHERE id=?').get(reqId), { doc_name: '最新营业执照', doc_desc: '要 3 个月内开的', status: 'pending' });
+    assert.equal(cdb.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id='buyer' AND title='资料需求通知' AND content LIKE '%最新营业执照%'").get().n, 1);
+    const form = new FormData(); form.append('file', new Blob([Buffer.from('%PDF-1.4 new license')], { type: 'application/pdf' }), 'license-new.pdf'); form.append('requirementId', reqId);
+    assert.equal((await client('POST', `/api/orders/${order.id}/documents`, form)).status, 200);
+    await until('客户按补件交的资料到内部并标已交', () => (idb.prepare('SELECT submitted_at FROM sync_document_requests WHERE id=?').get(sent.body.id) as { submitted_at: string | null }).submitted_at);
+    assert(docsOf(internalOrders[0]).some(d => d.name === '最新营业执照 · license-new.pdf'));
+    const listed = await staffCall(requests.GET, internalOrders[0], 'GET');
+    assert.equal(listed.body[0].submitted_at !== null, true);
+  });
+  await test('published document is delivered: customer sees and downloads it, others cannot; unpublish hides it', async () => {
+    const bytes = Buffer.from('%PDF-1.4 company certificate ' + 'y'.repeat(500));
+    fs.mkdirSync(path.join(internalDir, 'uploads'), { recursive: true });
+    fs.writeFileSync(path.join(internalDir, 'uploads', 'deliv-cert.pdf'), bytes);
+    const added = await staffCall(documents.POST, internalOrders[0], 'POST', { name: '公司注册证书', direction: 'client_to_us', file_url: '/api/files/deliv-cert.pdf' });
+    assert.equal(added.status, 201);
+    assert.equal((await staffCall(documents.PATCH, internalOrders[0], 'PATCH', { document_id: added.body.id, status: '已审核', direction: 'us_to_client' })).status, 200);
+    const list = await until('交付到客户站', async () => { const r = await client('GET', `/api/orders/${order.id}/deliveries`); return r.body.length ? r.body : null; });
+    const item = (list as any[]).find((d: any) => d.name === '公司注册证书');
+    assert(item && item.has_file && item.file_ext === '.pdf', JSON.stringify(list));
+    const dl = await fetch(`http://127.0.0.1:${clientPort}/api/orders/${order.id}/deliveries/${item.id}/download`, { headers: { authorization: `Bearer ${clientToken('buyer', 'customer')}` } });
+    assert.equal(dl.status, 200); assert.deepEqual(Buffer.from(await dl.arrayBuffer()), bytes);
+    cdb.prepare("INSERT INTO users(id,name,email,password,role) VALUES ('other','other','other@example.invalid','fixture-unused','customer')").run();
+    assert.equal((await fetch(`http://127.0.0.1:${clientPort}/api/orders/${order.id}/deliveries`, { headers: { authorization: `Bearer ${clientToken('other', 'customer')}` } })).status, 403);
+    assert.equal(cdb.prepare("SELECT COUNT(*) n FROM notifications WHERE user_id='buyer' AND title='交付文件' AND content LIKE '%公司注册证书%'").get().n, 1);
+    assert.equal((await staffCall(documents.PATCH, internalOrders[0], 'PATCH', { document_id: added.body.id, direction: 'client_to_us' })).status, 200);
+    await until('撤回后客户看不到', async () => { const r = await client('GET', `/api/orders/${order.id}/deliveries`); return !r.body.some((d: any) => d.name === '公司注册证书'); });
+    assert.equal((await fetch(`http://127.0.0.1:${clientPort}/api/orders/${order.id}/deliveries/${item.id}/download`, { headers: { authorization: `Bearer ${clientToken('buyer', 'customer')}` } })).status, 404);
+  });
+  await test('certificate is delivered with its dates and file; deleting it withdraws it', async () => {
+    fs.writeFileSync(path.join(internalDir, 'uploads', 'fda-cert.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]));
+    const cert = await staffCall(certificates.POST, internalOrders[1], 'POST', { certificate_number: 'FDA-123', product_name: '面霜', issue_date: '2026-10-01', expiry_date: '2031-10-01', file_url: '/api/files/fda-cert.png' });
+    assert.equal(cert.status, 201);
+    const list = await until('证书交付到客户站', async () => { const r = await client('GET', `/api/orders/${order.id}/deliveries`); return r.body.find((d: any) => d.kind === 'certificate'); });
+    assert.equal((list as any).name, '证书 · 面霜 · 编号 FDA-123'); assert.equal((list as any).meta.expiry_date, '2031-10-01'); assert.equal((list as any).file_ext, '.png');
+    assert.equal((await staffCall(certificates.DELETE, internalOrders[1], 'DELETE', { cert_id: cert.body.id })).status, 200);
+    await until('删证书后撤回', async () => { const r = await client('GET', `/api/orders/${order.id}/deliveries`); return !r.body.some((d: any) => d.kind === 'certificate'); });
+  });
+  await test('internal-only orders: no supplement requests, publishing sends nothing; delivery file endpoint guarded', async () => {
+    idb.prepare("INSERT INTO orders(id,customer_name,business_type_id,status) VALUES ('LOCAL-ONLY','本地客户',1,'待处理')").run();
+    const r = await staffCall(requests.POST, 'LOCAL-ONLY', 'POST', { name: '护照' });
+    assert.equal(r.status, 409);
+    const before = (idb.prepare('SELECT COUNT(*) n FROM sync_document_outbox').get() as { n: number }).n;
+    const d = await staffCall(documents.POST, 'LOCAL-ONLY', 'POST', { name: '本地文件', direction: 'us_to_client', status: '已审核', file_url: '/api/files/deliv-cert.pdf' });
+    assert.equal(d.status, 201);
+    assert.equal((idb.prepare('SELECT COUNT(*) n FROM sync_document_outbox').get() as { n: number }).n, before);
+    assert.equal((await fetch(`http://127.0.0.1:${internalPort}/api/sync/deliveries/doc-${d.body.id}/file`, { headers: { authorization: `Bearer ${SECRET}` } })).status, 404, 'not a synced order');
+    assert.equal((await fetch(`http://127.0.0.1:${internalPort}/api/sync/deliveries/doc-1/file`)).status, 401, 'needs the key');
+  });
+  await test('stale delivery event does not resurrect a withdrawn file', async () => {
+    const r = await fetch(`http://127.0.0.1:${clientPort}/api/sync/documents/delivery`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${SECRET}` },
+      body: JSON.stringify({ event: 'delivery', source_order_no: order.order_no, delivery_id: cdb.prepare("SELECT delivery_id FROM order_deliveries WHERE kind='certificate'").get().delivery_id, seq: 1, action: 'upsert', kind: 'certificate', name: '旧事件', meta: {}, has_file: false }) });
+    assert.equal(r.status, 200); assert.equal((await r.json() as any).stale, true);
+    const list = await client('GET', `/api/orders/${order.id}/deliveries`);
+    assert(!list.body.some((d: any) => d.name === '旧事件'));
+  });
+  await test('a delivery number arriving for another order moves there; the replaced file is removed', async () => {
+    const second = await client('POST', '/api/orders', { serviceName: '税务合规', subCategory: '做账', skuName: '做账', skuCode: 'TAX-005', price: 100, productId: 'p-tax', quantity: 1 });
+    assert.equal(second.status, 200, JSON.stringify(second.body));
+    const order2 = cdb.prepare("SELECT id,order_no FROM orders WHERE sku_code='TAX-005' ORDER BY rowid DESC LIMIT 1").get() as { id: string; order_no: string };
+    await until('第二张单接单回执', () => cdb.prepare('SELECT receipt FROM sync_outbox WHERE order_id=?').get(order2.id)?.receipt);
+    const added = await staffCall(documents.POST, internalOrders[0], 'POST', { name: '换单前的文件', direction: 'us_to_client', status: '已审核', file_url: '/api/files/deliv-cert.pdf' });
+    assert.equal(added.status, 201);
+    const row = await until('第一张单收到交付', () => cdb.prepare("SELECT delivery_id,seq,file_path FROM order_deliveries WHERE order_id=? AND name='换单前的文件' AND status='active' AND file_path IS NOT NULL").get(order.id) as { delivery_id: string; seq: number; file_path: string } | undefined);
+    const oldFile = path.join(server, row.file_path);
+    assert(fs.existsSync(oldFile), 'delivered file stored under the client server');
+    const r = await fetch(`http://127.0.0.1:${clientPort}/api/sync/documents/delivery`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${SECRET}` },
+      body: JSON.stringify({ event: 'delivery', source_order_no: order2.order_no, delivery_id: row.delivery_id, seq: row.seq + 1, action: 'upsert', kind: 'document', name: '另一单的交付', meta: {}, has_file: false }) });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert(!(await client('GET', `/api/orders/${order.id}/deliveries`)).body.some((d: any) => d.delivery_id === row.delivery_id), 'gone from the first order');
+    assert((await client('GET', `/api/orders/${order2.id}/deliveries`)).body.some((d: any) => d.name === '另一单的交付'), 'shown on the second order');
+    assert(!fs.existsSync(oldFile), 'replaced file removed');
+    assert(cdb.prepare("SELECT 1 FROM notifications WHERE content LIKE '%另一单的交付%' AND link=?").get(`/dashboard/order/${order2.id}`), 'second order owner notified');
   });
 } finally {
   child.kill('SIGTERM');

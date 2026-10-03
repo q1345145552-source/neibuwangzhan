@@ -155,18 +155,23 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
     let sent = 0, failed = 0;
     for (const row of rows) {
       try {
-        const resp = await fetch(`${url.replace(/\/$/, "")}/api/sync/documents/review`, {
+        // 同一个发件箱三类事件：资料审核结果（旧行无 event）、补件要求、交付文件（2026-10-03）
+        const event = JSON.parse(row.payload);
+        const kind = event.event === "request" ? "request" : event.event === "delivery" ? "delivery" : "review";
+        const resp = await fetch(`${url.replace(/\/$/, "")}/api/sync/documents/${kind}`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
           body: row.payload,
-          signal: AbortSignal.timeout(15_000),
+          // 交付要等客户站回拉文件，给足时间
+          signal: AbortSignal.timeout(kind === "delivery" ? 90_000 : 15_000),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const ack = await resp.json() as Record<string, unknown>;
-        const event = JSON.parse(row.payload);
-        if (ack.ok !== true || ack.submission_id !== event.submission_id || !Number.isSafeInteger(ack.seq) || Number(ack.seq) < event.seq) {
-          throw new Error("客户站未确认这份资料的审核结果");
-        }
+        const confirmed = ack.ok === true && (
+          kind === "request" ? ack.request_id === event.request_id
+          : kind === "delivery" ? ack.delivery_id === event.delivery_id && Number.isSafeInteger(ack.seq) && Number(ack.seq) >= event.seq
+          : ack.submission_id === event.submission_id && Number.isSafeInteger(ack.seq) && Number(ack.seq) >= event.seq);
+        if (!confirmed) throw new Error(`客户站未确认（${kind}）`);
         db.prepare("UPDATE sync_document_outbox SET status = 'sent', sent_at = datetime('now'), last_error = NULL WHERE id = ?").run(row.id);
         sent++;
       } catch (error) {
@@ -175,7 +180,7 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
         const delay = Math.min(2 ** Math.min(attempts, 16) * 5, 600);
         db.prepare("UPDATE sync_document_outbox SET attempts=?,next_attempt_at=datetime('now','+' || ? || ' seconds'),last_error=? WHERE id=?")
           .run(attempts, delay, String(error).slice(0, 500), row.id);
-        console.error("[documents] 审核结果回传失败，退避后重试:", error);
+        console.error("[documents] 资料审核/补件/交付回传失败，退避后重试:", error);
       }
     }
     return { sent, failed, skipped: false };

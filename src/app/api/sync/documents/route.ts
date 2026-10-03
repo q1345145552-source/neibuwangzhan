@@ -6,6 +6,7 @@ import { readJson } from '@/lib/req';
 import { getDb, logOperation } from '@/lib/db';
 import { isSyncRequest, syncRateLimited, recordSyncAuthFailure } from '@/lib/sync-auth';
 import { notifyCustomerDocuments } from '@/lib/order-alerts';
+import { markRequestSubmitted } from '@/lib/delivery-sync';
 
 /**
  * 资料打通（2026-10-03，规则 12）：接收客户站按单批量送来的资料清单。
@@ -17,7 +18,7 @@ const FETCH_TIMEOUT_MS = 60_000;
 const EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.xlsx', '.xls', '.txt', '.csv', '.doc', '.docx']);
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 
-type Item = { kind: 'submit' | 'withdraw'; submission_id: string; name: string; requirement: string | null; type: 'file' | 'text'; text?: string };
+type Item = { kind: 'submit' | 'withdraw'; submission_id: string; name: string; requirement: string | null; requirement_id?: string; type: 'file' | 'text'; text?: string };
 type Result = { submission_id: string; kind: string; status: string; note?: string };
 class BadRequest extends Error {}
 
@@ -41,6 +42,7 @@ function parse(body: unknown) {
     if (r.kind === 'withdraw') return { kind: 'withdraw', submission_id: submissionId, name: '', requirement: null, type: 'file' };
     if (r.type !== 'file' && r.type !== 'text') throw new BadRequest('资料类型无效');
     return { kind: 'submit', submission_id: submissionId, name: text(r.name, 'name', 255), requirement: text(r.requirement, 'requirement', 200, false) || null,
+      requirement_id: text(r.requirement_id, 'requirement_id', 120, false) || undefined,
       type: r.type, ...(r.type === 'text' ? { text: text(r.text, 'text', 20_000) } : {}) };
   });
   return { sourceOrderNo, customerName, items };
@@ -128,6 +130,7 @@ export async function POST(req: NextRequest) {
           insertLink.run(sourceOrderNo, s.item.submission_id, orderId, Number(doc.lastInsertRowid));
         }
         names.push(displayName(s.item));
+        markRequestSubmitted(db, s.item.requirement_id); // 客户按本站发的补件要求交的：标记「客户已交」
         results.push({ submission_id: s.item.submission_id, kind: 'submit', status: 'created' });
       }
       for (const item of items.filter(i => i.kind === 'withdraw')) {
