@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { computeDeductions } from "@/lib/payslips";
+import { bangkokMonthKey } from "@/lib/time";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
@@ -41,6 +42,11 @@ export async function POST(req: NextRequest) {
   const body = await readJson(req);
   const month = String(body?.month || "").trim();
   if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
+
+  // 当月还没过完、或未来月份，禁止生成工资单：只能算已经过完的月份
+  if (month >= bangkokMonthKey()) {
+    return NextResponse.json({ error: "当月还没结束，不能生成工资单，只能生成已过完的月份" }, { status: 400 });
+  }
 
   const employees = db.prepare(
     "SELECT id, name, base_salary, diligence_bonus, skill_allowance FROM employees WHERE status = '在职' AND role != 'client'"
