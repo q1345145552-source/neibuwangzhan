@@ -887,8 +887,8 @@ export default function InternalPage() {
       .finally(() => setMyPayslipsLoading(false));
   }, [isAdmin]);
 
-  const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0);
-  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.withholding_tax) || 0);
+  const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0) + (Number(p.merit_income) || 0);
+  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.demerit_deduction) || 0) + (Number(p.withholding_tax) || 0);
   const payslipStatusClass = (s: string) => (
     s === "打回" ? "bg-red-500/15 text-red-600" :
     s === "已发放" ? "bg-emerald-500/15 text-emerald-600" :
@@ -1046,7 +1046,7 @@ export default function InternalPage() {
                         <div>
                           <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">收入</p>
                           <div className="space-y-1">
-                            {[["底薪", p.base_salary], ["勤奋奖", p.diligence_bonus], ["技能津贴", p.skill_allowance], ["奖金", p.bonus], ["佣金", p.commission], ["加班费", p.overtime]].map(([label, val]) => (
+                            {[["底薪", p.base_salary], ["勤奋奖", p.diligence_bonus], ["技能津贴", p.skill_allowance], ["奖金", p.bonus], ["佣金", p.commission], ["加班费", p.overtime], ["功过收入", p.merit_income]].map(([label, val]) => (
                               <div key={String(label)} className="flex justify-between text-sm">
                                 <span className="text-[var(--muted-foreground)]">{label}</span>
                                 <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>
@@ -1061,7 +1061,7 @@ export default function InternalPage() {
                         <div>
                           <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">扣除</p>
                           <div className="space-y-1">
-                            {[["社保", p.social_security], ["迟到扣款", p.late_deduction], ["事假扣款", p.personal_leave_deduction], ["病假扣款", p.sick_leave_deduction], ["缺勤扣款", p.absence_deduction], ["预扣税", p.withholding_tax]].map(([label, val]) => (
+                            {[["社保", p.social_security], ["迟到扣款", p.late_deduction], ["事假扣款", p.personal_leave_deduction], ["病假扣款", p.sick_leave_deduction], ["缺勤扣款", p.absence_deduction], ["功过扣款", p.demerit_deduction], ["预扣税", p.withholding_tax]].map(([label, val]) => (
                               <div key={String(label)} className="flex justify-between text-sm">
                                 <span className="text-[var(--muted-foreground)]">{label}</span>
                                 <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>

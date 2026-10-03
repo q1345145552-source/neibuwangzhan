@@ -1830,11 +1830,13 @@ function initTables(database: Database.Database) {
       bonus REAL DEFAULT 0,
       commission REAL DEFAULT 0,
       overtime REAL DEFAULT 0,
+      merit_income REAL DEFAULT 0,
       social_security REAL DEFAULT 0,
       late_deduction REAL DEFAULT 0,
       personal_leave_deduction REAL DEFAULT 0,
       sick_leave_deduction REAL DEFAULT 0,
       absence_deduction REAL DEFAULT 0,
+      demerit_deduction REAL DEFAULT 0,
       withholding_tax REAL DEFAULT 0,
       status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回')),
       reject_reason TEXT DEFAULT '',
@@ -1850,6 +1852,8 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN sick_leave_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN absence_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN merit_income REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN demerit_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回'))"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}

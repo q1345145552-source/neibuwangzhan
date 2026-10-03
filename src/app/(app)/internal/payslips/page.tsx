@@ -19,11 +19,13 @@ interface Payslip {
   bonus: number | string;
   commission: number | string;
   overtime: number | string;
+  merit_income: number;
   social_security: number;
   late_deduction: number;
   personal_leave_deduction: number;
   sick_leave_deduction: number;
   absence_deduction: number;
+  demerit_deduction: number;
   withholding_tax: number | string;
   status: string;
   reject_reason: string;
@@ -186,10 +188,10 @@ export default function PayslipsPage() {
 
   const n = (v: unknown) => (v === "" || v === null || v === undefined ? 0 : Number(v));
   const totalOf = (p: Payslip) => {
-    return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime);
+    return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime) + n(p.merit_income);
   };
   const deductionOf = (p: Payslip) => {
-    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.absence_deduction) + n(p.withholding_tax);
+    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.absence_deduction) + n(p.demerit_deduction) + n(p.withholding_tax);
   };
 
   const statusClass: Record<string, string> = {
@@ -385,12 +387,14 @@ export default function PayslipsPage() {
                         <th className="py-3 px-3 text-right text-xs font-medium">奖金</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">佣金</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">加班费</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">功过收入</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">收入合计</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">社保</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">迟到</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">事假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">缺勤</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">功过扣款</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">预扣税</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
                         <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
@@ -413,12 +417,14 @@ export default function PayslipsPage() {
                           <td className="py-2.5 px-3 text-right">
                             <input type="number" min="0" step="0.01" value={p.overtime ?? ""} onChange={(e) => updateField(p.id, "overtime", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                           </td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-emerald-600">{(p.merit_income || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums font-semibold">{totalOf(p).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.social_security || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.late_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.personal_leave_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.sick_leave_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.absence_deduction || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-red-500">{(p.demerit_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right">
                             <input type="number" min="0" step="0.01" value={p.withholding_tax ?? ""} onChange={(e) => updateField(p.id, "withholding_tax", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                           </td>
@@ -475,7 +481,7 @@ export default function PayslipsPage() {
                       <p className="mb-2 text-center text-sm font-semibold text-[var(--foreground)]">工资条</p>
 
                       <div className="space-y-1">
-                        {[["底薪", detail.base_salary], ["勤奋奖", detail.diligence_bonus], ["技能津贴", detail.skill_allowance], ["奖金", detail.bonus], ["佣金", detail.commission], ["加班费", detail.overtime]].map(([label, val]) => (
+                        {[["底薪", detail.base_salary], ["勤奋奖", detail.diligence_bonus], ["技能津贴", detail.skill_allowance], ["奖金", detail.bonus], ["佣金", detail.commission], ["加班费", detail.overtime], ["功过收入", detail.merit_income]].map(([label, val]) => (
                           <div key={String(label)} className="flex justify-between text-sm">
                             <span className="text-[var(--muted-foreground)]">{label}</span>
                             <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
@@ -488,7 +494,7 @@ export default function PayslipsPage() {
                       </div>
 
                       <div className="mt-3 space-y-1">
-                        {[["社保", detail.social_security], ["迟到扣款", detail.late_deduction], ["事假扣款", detail.personal_leave_deduction], ["病假扣款", detail.sick_leave_deduction], ["缺勤扣款", detail.absence_deduction], ["预扣税", detail.withholding_tax]].map(([label, val]) => (
+                        {[["社保", detail.social_security], ["迟到扣款", detail.late_deduction], ["事假扣款", detail.personal_leave_deduction], ["病假扣款", detail.sick_leave_deduction], ["缺勤扣款", detail.absence_deduction], ["功过扣款", detail.demerit_deduction], ["预扣税", detail.withholding_tax]].map(([label, val]) => (
                           <div key={String(label)} className="flex justify-between text-sm">
                             <span className="text-[var(--muted-foreground)]">{label}</span>
                             <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
