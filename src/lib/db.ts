@@ -500,6 +500,20 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_employee_records_employee ON employee_records(employee_id);
 
+    -- 员工档案文件：合同/错误承认书/其他
+    CREATE TABLE IF NOT EXISTS employee_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      category TEXT NOT NULL DEFAULT '其他' CHECK(category IN ('合同','错误承认书','其他')),
+      filename TEXT NOT NULL,
+      original_name TEXT DEFAULT '',
+      size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_files_employee ON employee_files(employee_id);
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
