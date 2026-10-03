@@ -466,6 +466,7 @@ function initTables(database: Database.Database) {
       base_salary REAL DEFAULT 0,
       diligence_bonus REAL,
       skill_allowance REAL DEFAULT 0,
+      hire_date TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -1228,6 +1229,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN base_salary REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN diligence_bonus REAL"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN skill_allowance REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN hire_date TEXT DEFAULT ''"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。

@@ -54,6 +54,8 @@ export interface Employee {
   status?: string;
   /** 头像地址（/api/files/...），空表示未上传 */
   avatar?: string;
+  /** 入职日期 YYYY-MM-DD，空表示未填写 */
+  hire_date?: string;
   /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
   customer_names?: string[];
 }
@@ -221,7 +223,7 @@ export async function fetchEmployees(params?: { include_left?: boolean }) {
   return res.json() as Promise<Employee[]>;
 }
 
-export async function createEmployee(data: { name: string; email: string; role?: string; password?: string }) {
+export async function createEmployee(data: { name: string; email: string; role?: string; password?: string; hire_date?: string }) {
   const res = await fetch("/api/employees", {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -510,7 +512,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",

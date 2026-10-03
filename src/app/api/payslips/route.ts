@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
   }
 
   const employees = db.prepare(
-    "SELECT id, name, base_salary, diligence_bonus, skill_allowance FROM employees WHERE status = '在职' AND role != 'client'"
-  ).all() as { id: number; name: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null }[];
+    "SELECT id, name, base_salary, diligence_bonus, skill_allowance FROM employees WHERE status = '在职' AND role != 'client' AND (hire_date = '' OR hire_date <= ?)"
+  ).all(`${month}-31`) as { id: number; name: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null }[];
 
   let created = 0;
   db.transaction(() => {

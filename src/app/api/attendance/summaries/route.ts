@@ -105,8 +105,8 @@ export async function POST(req: NextRequest) {
   if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
 
   const employees = db.prepare(
-    "SELECT id, name FROM employees WHERE status = '在职' AND role != 'client' ORDER BY name"
-  ).all() as { id: number; name: string }[];
+    "SELECT id, name FROM employees WHERE status = '在职' AND role != 'client' AND (hire_date = '' OR hire_date <= ?) ORDER BY name"
+  ).all(`${month}-31`) as { id: number; name: string }[];
 
   // 应出勤天数 = 当月天数 - 周日数 - 法定假日额度
   const monthNumber = Number(month.split("-")[1]);

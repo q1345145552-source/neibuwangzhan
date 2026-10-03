@@ -22,11 +22,13 @@ export default function SettingsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState("employee");
   const [newPassword, setNewPassword] = useState("");
+  const [newHireDate, setNewHireDate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
   const [editPassword, setEditPassword] = useState("");
+  const [editHireDate, setEditHireDate] = useState("");
   // 员工列表是否显示离职员工（默认只显示在职）
   const [showLeft, setShowLeft] = useState(false);
 
@@ -261,9 +263,9 @@ export default function SettingsPage() {
     if (!newName.trim() || !newEmail.trim()) return;
     setEmpError("");
     try {
-      const emp = await createEmployee({ name: newName, email: newEmail, role: newRole, password: newPassword || "123456" });
+      const emp = await createEmployee({ name: newName, email: newEmail, role: newRole, password: newPassword || "123456", hire_date: newHireDate });
       setEmployees(prev => [...prev, emp]);
-      setNewName(""); setNewEmail(""); setNewRole("employee"); setNewPassword("");
+      setNewName(""); setNewEmail(""); setNewRole("employee"); setNewPassword(""); setNewHireDate("");
       setShowAddForm(false);
     } catch (err) {
       console.error("Add employee failed:", err);
@@ -277,13 +279,14 @@ export default function SettingsPage() {
     setEditEmail(emp.email ?? "");
     setEditRole(emp.role ?? "");
     setEditPassword("");
+    setEditHireDate(emp.hire_date ?? "");
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
     setEmpError("");
     try {
-      const emp = await updateEmployee(editingId, { name: editName, email: editEmail, role: editRole, ...(editPassword.trim() ? { password: editPassword.trim() } : {}) });
+      const emp = await updateEmployee(editingId, { name: editName, email: editEmail, role: editRole, hire_date: editHireDate, ...(editPassword.trim() ? { password: editPassword.trim() } : {}) });
       setEmployees(prev => prev.map(e => e.id === editingId ? emp : e));
       setEditingId(null);
     } catch (err) {
@@ -352,6 +355,10 @@ export default function SettingsPage() {
             <div className="space-y-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
               <Input placeholder="姓名" value={newName} onChange={(e) => setNewName(e.target.value)} className="h-8 text-sm" />
               <Input placeholder="邮箱" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="h-8 text-sm" />
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-xs text-[var(--muted-foreground)]">入职日期</span>
+                <Input type="date" value={newHireDate} onChange={(e) => setNewHireDate(e.target.value)} className="h-8 text-sm flex-1" />
+              </div>
               <div className="flex gap-2">
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
                   <option value="employee">员工</option>
@@ -386,6 +393,10 @@ export default function SettingsPage() {
                             <option value="admin">管理员</option>
                             <option value="client">客户</option>
                           </select>
+                          <div className="flex items-center gap-2">
+                            <span className="whitespace-nowrap text-xs text-[var(--muted-foreground)]">入职日期</span>
+                            <Input type="date" value={editHireDate} onChange={(e) => setEditHireDate(e.target.value)} className="h-7 text-sm flex-1" />
+                          </div>
                           <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} type="password" placeholder="新密码（留空则不修改）" className="h-7 text-sm" />
                         </div>
                       ) : (
@@ -469,6 +480,10 @@ export default function SettingsPage() {
                         <option value="admin">管理员</option>
                         <option value="client">客户</option>
                       </select>
+                      <div className="flex items-center gap-2">
+                        <span className="whitespace-nowrap text-xs text-[var(--muted-foreground)]">入职日期</span>
+                        <Input type="date" value={editHireDate} onChange={(e) => setEditHireDate(e.target.value)} className="h-8 text-sm flex-1" />
+                      </div>
                       <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} type="password" placeholder="新密码（留空则不修改）" className="h-8 text-sm" />
                       <div className="flex gap-2 pt-1">
                         <Button variant="ghost" size="icon-xs" onClick={handleSaveEdit}><Save className="size-3" /></Button>
