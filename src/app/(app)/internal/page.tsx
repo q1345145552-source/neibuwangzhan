@@ -1055,7 +1055,7 @@ export default function InternalPage() {
                         <div>
                           <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">扣除</p>
                           <div className="space-y-1">
-                            {[["社保", p.social_security], ["迟到", p.late_deduction], ["事假", p.personal_leave_deduction], ["病假", p.sick_leave_deduction], ["缺勤", p.absence_deduction], ["预扣税", p.withholding_tax]].map(([label, val]) => (
+                            {[["社保", p.social_security], ["迟到扣款", p.late_deduction], ["事假扣款", p.personal_leave_deduction], ["病假扣款", p.sick_leave_deduction], ["缺勤扣款", p.absence_deduction], ["预扣税", p.withholding_tax]].map(([label, val]) => (
                               <div key={String(label)} className="flex justify-between text-sm">
                                 <span className="text-[var(--muted-foreground)]">{label}</span>
                                 <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>
