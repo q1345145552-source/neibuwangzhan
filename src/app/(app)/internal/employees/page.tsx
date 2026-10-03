@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, type EmployeeRecord } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, type EmployeeRecord, type EmployeeFile } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn, toThaiTime } from "@/lib/utils";
-import { ArrowLeft, IdCard } from "lucide-react";
+import { cn, toThaiTime, fileUrl } from "@/lib/utils";
+import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
 
 interface ProfileEmployee {
   id: number;
@@ -63,6 +63,13 @@ export default function EmployeeProfilesPage() {
   const [recordContent, setRecordContent] = useState("");
   const [recordSaving, setRecordSaving] = useState(false);
   const [recordErr, setRecordErr] = useState("");
+  // 档案文件
+  const [files, setFiles] = useState<EmployeeFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [fileCategory, setFileCategory] = useState("合同");
+  const [fileUploading, setFileUploading] = useState(false);
+  const [fileErr, setFileErr] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -80,6 +87,41 @@ export default function EmployeeProfilesPage() {
       .then((r) => setRecords(Array.isArray(r) ? r : []))
       .catch(() => setRecords([]))
       .finally(() => setRecordsLoading(false));
+    // 加载该员工的档案文件
+    setFiles([]);
+    setFilesLoading(true);
+    setFileErr("");
+    fetchEmployeeFiles(e.id)
+      .then((r) => setFiles(Array.isArray(r) ? r : []))
+      .catch(() => setFiles([]))
+      .finally(() => setFilesLoading(false));
+  };
+
+  const uploadFile = async () => {
+    if (!selected) return;
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) { setFileErr("请选择文件"); return; }
+    setFileUploading(true);
+    setFileErr("");
+    try {
+      const rec = await uploadEmployeeFile(selected.id, fileCategory, file);
+      setFiles((prev) => [rec, ...prev]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err) {
+      setFileErr(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setFileUploading(false);
+    }
+  };
+
+  const removeFile = async (id: number) => {
+    if (!confirm("确定删除这个文件？")) return;
+    try {
+      await deleteEmployeeFile(id);
+      setFiles((prev) => prev.filter((f) => f.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "删除失败");
+    }
   };
 
   useEffect(() => {
@@ -323,6 +365,47 @@ export default function EmployeeProfilesPage() {
                     </div>
                     {recordsList()}
                   </section>
+
+                  {/* 档案文件 */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">档案文件</h3>
+                    <div className="mb-4 rounded-md border border-[var(--border)] p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select value={fileCategory} onChange={(e) => setFileCategory(e.target.value)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                          <option value="合同">合同</option>
+                          <option value="错误承认书">错误承认书</option>
+                          <option value="其他">其他</option>
+                        </select>
+                        <input ref={fileInputRef} type="file" className="h-9 min-w-[160px] flex-1 text-sm text-[var(--foreground)]" />
+                        <Button size="sm" onClick={uploadFile} disabled={fileUploading} className="h-9">{fileUploading ? "上传中…" : "上传"}</Button>
+                      </div>
+                      {fileErr && <p className="mt-1.5 text-xs text-red-500">{fileErr}</p>}
+                    </div>
+
+                    {filesLoading ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                    ) : files.length === 0 ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">暂无文件</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {files.map((f) => (
+                          <li key={f.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="min-w-0">
+                                <span className="mr-2 rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-[var(--muted)]/40 text-[var(--muted-foreground)]">{f.category}</span>
+                                <span className="text-sm text-[var(--foreground)]">{f.original_name || f.filename}</span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1">
+                                <a href={fileUrl(f.url)} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Eye className="size-3" />查看</a>
+                                <a href={fileUrl(f.url)} download={f.original_name || f.filename} className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Download className="size-3" />下载</a>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-red-500" onClick={() => removeFile(f.id)}><Trash2 className="size-3" />删除</Button>
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
                 </div>
               )}
             </div>
@@ -398,6 +481,32 @@ export default function EmployeeProfilesPage() {
                 <section>
                   <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">记过 / 记优点</h3>
                   {recordsList()}
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">档案文件</h3>
+                  {filesLoading ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                  ) : files.length === 0 ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">暂无文件</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {files.map((f) => (
+                        <li key={f.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="mr-2 rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-[var(--muted)]/40 text-[var(--muted-foreground)]">{f.category}</span>
+                              <span className="text-sm text-[var(--foreground)]">{f.original_name || f.filename}</span>
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1">
+                              <a href={fileUrl(f.url)} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Eye className="size-3" />查看</a>
+                              <a href={fileUrl(f.url)} download={f.original_name || f.filename} className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Download className="size-3" />下载</a>
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </section>
               </div>
             )}

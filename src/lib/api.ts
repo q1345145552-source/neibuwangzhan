@@ -109,6 +109,21 @@ export interface EmployeeRecord {
   created_at: string;
 }
 
+/** 员工档案文件 */
+export interface EmployeeFile {
+  id: number;
+  employee_id: number;
+  /** 合同 / 错误承认书 / 其他 */
+  category: string;
+  filename: string;
+  original_name: string;
+  size: number;
+  mime_type: string;
+  created_by: string;
+  created_at: string;
+  url: string;
+}
+
 export interface Document {
   publication_verified?: number;
   id: number;
@@ -590,6 +605,38 @@ export async function createEmployeeRecord(data: { employee_id: number; type: "d
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "记录失败");
   return result as EmployeeRecord;
+}
+
+/** 员工档案文件列表 */
+export async function fetchEmployeeFiles(employeeId: number): Promise<EmployeeFile[]> {
+  const res = await fetch(`/api/employees/files?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取文件失败");
+  return res.json();
+}
+
+/** 上传员工档案文件（multipart） */
+export async function uploadEmployeeFile(employeeId: number, category: string, file: File): Promise<EmployeeFile> {
+  const fd = new FormData();
+  fd.append("employee_id", String(employeeId));
+  fd.append("category", category);
+  fd.append("file", file);
+  const res = await fetch("/api/employees/files", { method: "POST", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "上传失败");
+  return result as EmployeeFile;
+}
+
+/** 删除员工档案文件 */
+export async function deleteEmployeeFile(id: number): Promise<void> {
+  const res = await fetch("/api/employees/files", {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const result = await res.json().catch(() => ({}));
+    throw new Error(result.error || "删除失败");
+  }
 }
 
 /** 订单里出现过的全部客户公司名，供配置客户账号可见范围时选择 */
