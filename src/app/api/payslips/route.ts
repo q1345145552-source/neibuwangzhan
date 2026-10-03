@@ -3,10 +3,11 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { computeDeductions } from "@/lib/payslips";
+import { bangkokMonthKey } from "@/lib/time";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
-const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason, summary";
+const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, withholding_tax, status, reject_reason, summary";
 
 // GET /api/payslips?month=YYYY-MM — 管理员看某月全部工资单；员工看自己的工资单
 export async function GET(req: NextRequest) {
@@ -43,6 +44,11 @@ export async function POST(req: NextRequest) {
   const month = String(body?.month || "").trim();
   if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
 
+  // 当月还没过完、或未来月份，禁止生成工资单：只能算已经过完的月份
+  if (month >= bangkokMonthKey()) {
+    return NextResponse.json({ error: "当月还没结束，不能生成工资单，只能生成已过完的月份" }, { status: 400 });
+  }
+
   const employees = db.prepare(
     "SELECT id, name, base_salary, diligence_bonus, skill_allowance FROM employees WHERE status = '在职' AND role != 'client'"
   ).all() as { id: number; name: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null }[];
@@ -61,13 +67,13 @@ export async function POST(req: NextRequest) {
       if (existing) {
         // 已存在：刷新自动字段（收入自动项 + 扣除自动项 + 考勤汇总），保留手动填写的奖金/佣金/加班费/预扣税
         db.prepare(
-          `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ?, summary = ? WHERE employee_id = ? AND month = ?`
-        ).run(e.name, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, summary, e.id, month);
+          `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ?, absence_deduction = ?, summary = ? WHERE employee_id = ? AND month = ?`
+        ).run(e.name, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, ded.absenceDeduction, summary, e.id, month);
       } else {
         db.prepare(
-          `INSERT INTO payslips (employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, summary)
-           VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, 0, ?)`
-        ).run(e.id, e.name, month, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, summary);
+          `INSERT INTO payslips (employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, withholding_tax, summary)
+           VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, 0, ?)`
+        ).run(e.id, e.name, month, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, ded.absenceDeduction, summary);
         created++;
       }
     }

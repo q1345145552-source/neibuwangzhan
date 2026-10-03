@@ -23,6 +23,7 @@ interface Payslip {
   late_deduction: number;
   personal_leave_deduction: number;
   sick_leave_deduction: number;
+  absence_deduction: number;
   withholding_tax: number | string;
   status: string;
   reject_reason: string;
@@ -37,6 +38,7 @@ interface AttendanceSummary {
   employee_name: string;
   month: string;
   attendance_days: number;
+  expected_days: number;
   late_details: string;
   early_details: string;
   leave_details: string;
@@ -172,7 +174,7 @@ export default function PayslipsPage() {
     return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime);
   };
   const deductionOf = (p: Payslip) => {
-    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.withholding_tax);
+    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.absence_deduction) + n(p.withholding_tax);
   };
 
   const statusClass: Record<string, string> = {
@@ -252,6 +254,15 @@ export default function PayslipsPage() {
   const attLates = attDetail ? parseJson<LateDetail[]>(attDetail.late_details, []) : [];
   const attEarlies = attDetail ? parseJson<LateDetail[]>(attDetail.early_details, []) : [];
   const attLeaves = attDetail ? parseJson<LeaveDetail[]>(attDetail.leave_details, []) : [];
+  const attLeaveDays = attLeaves.reduce((a, l) => a + (l.days || 0), 0);
+
+  // 考勤汇总详情跳转：出勤天数/迟到某天 → 打卡日历；请假 → 请假看板
+  const goAttendanceRecords = (date?: string) => {
+    if (!attDetail) return;
+    const base = `/internal?att_emp=${encodeURIComponent(attDetail.employee_name)}&att_month=${attDetail.month}`;
+    window.location.href = date ? `${base}&att_date=${encodeURIComponent(date)}` : base;
+  };
+  const goLeavePage = () => { window.location.href = "/internal/leave-dashboard"; };
 
   return (
     <div className="flex flex-col gap-6">
@@ -338,6 +349,7 @@ export default function PayslipsPage() {
                         <th className="py-3 px-3 text-right text-xs font-medium">迟到</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">事假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">缺勤</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">预扣税</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
                         <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
@@ -365,6 +377,7 @@ export default function PayslipsPage() {
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.late_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.personal_leave_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.sick_leave_deduction || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.absence_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right">
                             <input type="number" min="0" step="0.01" value={p.withholding_tax ?? ""} onChange={(e) => updateField(p.id, "withholding_tax", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                           </td>
@@ -491,12 +504,13 @@ export default function PayslipsPage() {
                     <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                       <th className="py-3 px-4 text-left text-xs font-medium">员工</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">月份</th>
-                      <th className="py-3 px-4 text-center text-xs font-medium">出勤天数</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">应出勤</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">实际出勤</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">请假</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">缺勤</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">迟到</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">早退</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">工作时间</th>
-                      <th className="py-3 px-4 text-center text-xs font-medium">缺勤</th>
-                      <th className="py-3 px-4 text-center text-xs font-medium">请假</th>
                       <th className="py-3 px-4 text-right text-xs font-medium">操作</th>
                     </tr>
                   </thead>
@@ -507,11 +521,19 @@ export default function PayslipsPage() {
                       const leaves = parseJson<LeaveDetail[]>(s.leave_details, []);
                       const lateMins = lates.reduce((a, l) => a + l.minutes, 0);
                       const earlyMins = earlies.reduce((a, l) => a + l.minutes, 0);
+                      const leaveDays = leaves.reduce((a, l) => a + (l.days || 0), 0);
                       return (
                         <tr key={s.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20">
                           <td className="py-3 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{s.employee_name}</td>
                           <td className="py-3 px-4 text-center tabular-nums">{s.month}</td>
-                          <td className="py-3 px-4 text-center tabular-nums font-semibold">{s.attendance_days}</td>
+                          <td className="py-3 px-4 text-center tabular-nums">{s.expected_days ?? 0} 天</td>
+                          <td className="py-3 px-4 text-center tabular-nums font-semibold">{s.attendance_days} 天</td>
+                          <td className={cn("py-3 px-4 text-center tabular-nums", leaveDays > 0 ? "text-blue-600" : "text-[var(--muted-foreground)]")}>
+                            {leaveDays > 0 ? `${leaveDays} 天` : "0 天"}
+                          </td>
+                          <td className={cn("py-3 px-4 text-center tabular-nums", (s.absence_days || 0) > 0 ? "text-red-600 font-semibold" : "text-[var(--muted-foreground)]")}>
+                            {(s.absence_days || 0)} 天
+                          </td>
                           <td className={cn("py-3 px-4 text-center tabular-nums", lates.length > 0 ? "text-amber-600" : "text-[var(--muted-foreground)]")}>
                             {lates.length > 0 ? `${lates.length} 次 · ${lateMins} 分` : "—"}
                           </td>
@@ -519,12 +541,6 @@ export default function PayslipsPage() {
                             {earlies.length > 0 ? `${earlies.length} 次 · ${earlyMins} 分` : "—"}
                           </td>
                           <td className="py-3 px-4 text-center tabular-nums">{(s.work_hours || 0)} 小时</td>
-                          <td className={cn("py-3 px-4 text-center tabular-nums", (s.absence_days || 0) > 0 ? "text-red-600 font-semibold" : "text-[var(--muted-foreground)]")}>
-                            {(s.absence_days || 0)} 天
-                          </td>
-                          <td className={cn("py-3 px-4 text-center tabular-nums", leaves.length > 0 ? "text-blue-600" : "text-[var(--muted-foreground)]")}>
-                            {leaves.length > 0 ? `${leaves.length} 次` : "—"}
-                          </td>
                           <td className="py-3 px-4 text-right">
                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setAttDetail(s)}>查看详情</Button>
                           </td>
@@ -546,14 +562,26 @@ export default function PayslipsPage() {
                   <button onClick={() => setAttDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
                 </div>
 
-                <div className="mb-3 flex items-center gap-2 rounded-md bg-[var(--muted)]/40 px-3 py-2">
-                  <span className="text-xs text-[var(--muted-foreground)]">出勤天数</span>
-                  <span className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.attendance_days}</span>
-                </div>
-
-                <div className="mb-3 flex items-center gap-4 rounded-md bg-[var(--muted)]/40 px-3 py-2 text-sm">
-                  <span className="text-[var(--foreground)]">工作时间 <span className="font-semibold tabular-nums">{(attDetail.work_hours || 0)}</span> 小时</span>
-                  <span className="text-[var(--foreground)]">缺勤 <span className="font-semibold tabular-nums">{(attDetail.absence_days || 0)}</span> 天</span>
+                <div className="mb-3 rounded-md bg-[var(--muted)]/40 px-3 py-3">
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">应出勤</p>
+                      <p className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.expected_days ?? 0}</p>
+                    </div>
+                    <button onClick={() => goAttendanceRecords()} className="group text-center">
+                      <p className="text-xs text-[var(--muted-foreground)]">实际出勤</p>
+                      <p className="text-lg font-semibold tabular-nums text-[var(--foreground)] underline decoration-dotted underline-offset-2 group-hover:text-blue-600">{attDetail.attendance_days}</p>
+                    </button>
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">请假</p>
+                      <p className="text-lg font-semibold tabular-nums text-blue-600">{attLeaveDays}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">缺勤</p>
+                      <p className={cn("text-lg font-semibold tabular-nums", (attDetail.absence_days || 0) > 0 ? "text-red-600" : "text-[var(--foreground)]")}>{attDetail.absence_days || 0}</p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-center text-xs text-[var(--muted-foreground)]">工作时间 {(attDetail.work_hours || 0)} 小时</p>
                 </div>
 
                 <div className="mb-3">
@@ -564,7 +592,7 @@ export default function PayslipsPage() {
                     <div className="space-y-1">
                       {attLates.map((l, i) => (
                         <p key={i} className="text-sm text-[var(--foreground)]">
-                          <span className="text-amber-600">{l.date}</span> 迟到 {l.minutes} 分钟
+                          <button onClick={() => goAttendanceRecords(l.date)} className="text-amber-600 underline decoration-dotted underline-offset-2 hover:text-blue-600">{l.date}</button> 迟到 {l.minutes} 分钟
                         </p>
                       ))}
                     </div>
@@ -587,7 +615,7 @@ export default function PayslipsPage() {
                 </div>
 
                 <div>
-                  <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">请假明细</p>
+                  <button onClick={goLeavePage} className="mb-1 text-xs font-medium text-[var(--muted-foreground)] underline decoration-dotted underline-offset-2 hover:text-blue-600">请假明细 →</button>
                   {attLeaves.length === 0 ? (
                     <p className="text-xs text-[var(--muted-foreground)]">无请假</p>
                   ) : (
