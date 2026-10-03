@@ -16,10 +16,10 @@ export async function GET(req: NextRequest) {
   // 默认只返回在职员工（供选人下拉框用，避免给离职员工派活）；?include_left=1 时返回全部（含离职）。
   const includeLeft = new URL(req.url).searchParams.get("include_left") === "1";
   const sql = includeLeft
-    ? "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number FROM employees"
-    : "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number FROM employees WHERE status != '离职'";
+    ? "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes FROM employees"
+    : "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes FROM employees WHERE status != '离职'";
   const rows = db.prepare(sql).all() as
-    { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string }[];
+    { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string }[];
 
   // 客户账号带上它能看到哪些公司的订单（外部客户端口的可见范围）
   const scoped = rows.map((r) => {
@@ -136,8 +136,8 @@ export async function PATCH(req: NextRequest) {
   if (hire_date !== undefined) {
     sets.push("hire_date = ?"); params.push(hire_date === null ? "" : String(hire_date));
   }
-  // 员工档案基本信息：性别/出生日期/电话/住址/身份证号或护照号（均可空）
-  for (const key of ["gender", "birth_date", "phone", "address", "id_number"] as const) {
+  // 员工档案字段：基本信息 + 工作信息 + 银行信息 + 紧急联系人 + 其他（均可空）
+  for (const key of ["gender", "birth_date", "phone", "address", "id_number", "department", "position", "contract_term", "bank_name", "bank_account", "emergency_name", "emergency_phone", "emergency_relation", "education", "skills", "notes"] as const) {
     const v = body?.[key];
     if (v !== undefined) {
       sets.push(`${key} = ?`); params.push(v === null ? "" : String(v));
@@ -190,8 +190,8 @@ export async function PATCH(req: NextRequest) {
       `可见公司: ${(customer_names as unknown[]).join("、") || "（清空）"}`);
   }
 
-  const emp = db.prepare("SELECT id, name, email, role, status, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number FROM employees WHERE id = ?").get(id) as
-    { id: number; role: string; status: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string } | undefined;
+  const emp = db.prepare("SELECT id, name, email, role, status, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes FROM employees WHERE id = ?").get(id) as
+    { id: number; role: string; status: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string } | undefined;
   const scope = db.prepare(
     "SELECT customer_name FROM client_account_customers WHERE employee_id = ? ORDER BY customer_name"
   ).all(id) as { customer_name: string }[];
