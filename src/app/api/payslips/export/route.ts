@@ -16,14 +16,14 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const rows = db.prepare(
-    "SELECT employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC"
+    "SELECT employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, withholding_tax, status FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC"
   ).all(month) as any[];
 
-  const header = ["员工", "月份", "底薪", "勤奋奖", "技能津贴", "奖金", "佣金", "加班费", "收入合计", "社保", "迟到扣款", "事假扣款", "病假扣款", "预扣税", "扣除合计", "净收入", "状态"];
+  const header = ["员工", "月份", "底薪", "勤奋奖", "技能津贴", "奖金", "佣金", "加班费", "收入合计", "社保", "迟到扣款", "事假扣款", "病假扣款", "缺勤扣款", "预扣税", "扣除合计", "净收入", "状态"];
 
   const data = rows.map((p) => {
     const income = (p.base_salary || 0) + (p.diligence_bonus || 0) + (p.skill_allowance || 0) + (p.bonus || 0) + (p.commission || 0) + (p.overtime || 0);
-    const deduct = (p.social_security || 0) + (p.late_deduction || 0) + (p.personal_leave_deduction || 0) + (p.sick_leave_deduction || 0) + (p.withholding_tax || 0);
+    const deduct = (p.social_security || 0) + (p.late_deduction || 0) + (p.personal_leave_deduction || 0) + (p.sick_leave_deduction || 0) + (p.absence_deduction || 0) + (p.withholding_tax || 0);
     return [
       p.employee_name,
       p.month,
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
       p.late_deduction || 0,
       p.personal_leave_deduction || 0,
       p.sick_leave_deduction || 0,
+      p.absence_deduction || 0,
       p.withholding_tax || 0,
       round2(deduct),
       round2(income - deduct),

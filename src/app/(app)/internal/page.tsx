@@ -855,7 +855,7 @@ export default function InternalPage() {
   }, [isAdmin]);
 
   const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0);
-  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.withholding_tax) || 0);
+  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.withholding_tax) || 0);
 
   const payslipAction = async (id: number, action: string, reason?: string) => {
     try {

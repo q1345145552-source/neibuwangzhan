@@ -23,6 +23,7 @@ interface Payslip {
   late_deduction: number;
   personal_leave_deduction: number;
   sick_leave_deduction: number;
+  absence_deduction: number;
   withholding_tax: number | string;
   status: string;
   reject_reason: string;
@@ -173,7 +174,7 @@ export default function PayslipsPage() {
     return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime);
   };
   const deductionOf = (p: Payslip) => {
-    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.withholding_tax);
+    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.absence_deduction) + n(p.withholding_tax);
   };
 
   const statusClass: Record<string, string> = {
@@ -340,6 +341,7 @@ export default function PayslipsPage() {
                         <th className="py-3 px-3 text-right text-xs font-medium">迟到</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">事假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">缺勤</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">预扣税</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
                         <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
@@ -367,6 +369,7 @@ export default function PayslipsPage() {
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.late_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.personal_leave_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.sick_leave_deduction || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.absence_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right">
                             <input type="number" min="0" step="0.01" value={p.withholding_tax ?? ""} onChange={(e) => updateField(p.id, "withholding_tax", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                           </td>
