@@ -378,7 +378,7 @@ export default function PayslipsPage() {
                     </thead>
                     <tbody>
                       {payslips.map((p) => (
-                        <tr key={p.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20">
+                        <tr key={p.id} className={cn("border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20", p.status === "打回" && "bg-red-500/[0.06]")}>
                           <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.employee_name}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums">{p.base_salary}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums">{p.diligence_bonus}</td>
@@ -407,7 +407,7 @@ export default function PayslipsPage() {
                               {p.status}
                             </span>
                             {p.status === "打回" && p.reject_reason && (
-                              <p className="mt-1 text-[0.6rem] text-red-500">意见：{p.reject_reason}</p>
+                              <p className="mt-1 text-xs font-medium text-red-500">意见：{p.reject_reason}</p>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right whitespace-nowrap">
@@ -419,7 +419,7 @@ export default function PayslipsPage() {
                               <Button size="sm" variant="outline" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>发送</Button>
                             )}
                             {p.status === "打回" && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>重发</Button>
+                              <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>重发</Button>
                             )}
                             {p.status === "已确认" && (
                               <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "pay")}>发放</Button>
