@@ -204,6 +204,26 @@ export default function PayslipsPage() {
     }
   };
 
+  const deleteRow = async (id: number) => {
+    if (!confirm("确定删除这份工资单？删除后可重新点「生成工资单」重新计算。")) return;
+    setErr("");
+    try {
+      const r = await fetchWithAuth("/api/payslips", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setPayslips((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        alert(d?.error || "删除失败");
+      }
+    } catch {
+      alert("删除失败");
+    }
+  };
+
   const exportExcel = async () => {
     if (!month) return;
     setErr("");
@@ -403,6 +423,9 @@ export default function PayslipsPage() {
                             )}
                             {p.status === "已确认" && (
                               <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "pay")}>发放</Button>
+                            )}
+                            {(p.status === "草稿" || p.status === "打回") && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => deleteRow(p.id)}>删除</Button>
                             )}
                           </td>
                         </tr>
