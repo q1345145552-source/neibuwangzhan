@@ -426,6 +426,42 @@ export default function PayslipsPage() {
                       <button onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
                     </div>
 
+                    {/* 工资条：收入 / 扣除 / 净收入 */}
+                    <div className="mb-4 rounded-lg border border-[var(--border)] p-3">
+                      <p className="mb-2 text-center text-sm font-semibold text-[var(--foreground)]">工资条</p>
+
+                      <div className="space-y-1">
+                        {[["底薪", detail.base_salary], ["勤奋奖", detail.diligence_bonus], ["技能津贴", detail.skill_allowance], ["奖金", detail.bonus], ["佣金", detail.commission], ["加班费", detail.overtime]].map(([label, val]) => (
+                          <div key={String(label)} className="flex justify-between text-sm">
+                            <span className="text-[var(--muted-foreground)]">{label}</span>
+                            <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1 flex justify-between border-t border-[var(--border)] pt-1 text-sm font-medium">
+                        <span>收入合计</span>
+                        <span className="tabular-nums">{totalOf(detail).toFixed(2)}</span>
+                      </div>
+
+                      <div className="mt-3 space-y-1">
+                        {[["社保", detail.social_security], ["迟到扣款", detail.late_deduction], ["事假扣款", detail.personal_leave_deduction], ["病假扣款", detail.sick_leave_deduction], ["缺勤扣款", detail.absence_deduction], ["预扣税", detail.withholding_tax]].map(([label, val]) => (
+                          <div key={String(label)} className="flex justify-between text-sm">
+                            <span className="text-[var(--muted-foreground)]">{label}</span>
+                            <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1 flex justify-between border-t border-[var(--border)] pt-1 text-sm font-medium">
+                        <span>扣除合计</span>
+                        <span className="tabular-nums">{deductionOf(detail).toFixed(2)}</span>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between rounded-md bg-[var(--muted)]/40 px-3 py-2">
+                        <span className="text-sm font-semibold text-[var(--foreground)]">净收入</span>
+                        <span className="text-xl font-bold tabular-nums text-emerald-600">{(totalOf(detail) - deductionOf(detail)).toFixed(2)}</span>
+                      </div>
+                    </div>
+
                     <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">考勤汇总</p>
                     <div className="rounded-md border border-[var(--border)] p-3">
                       <p className="text-sm text-[var(--foreground)]">出勤天数：<span className="font-semibold">{s.attendance_days ?? 0}</span></p>
