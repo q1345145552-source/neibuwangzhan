@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation, INFLUENCER_UPDATABLE_FIELDS } from "@/lib/db";
@@ -10,6 +10,7 @@ export async function GET(
 ) {
   const auth = await verifyAuth(_req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -34,6 +35,7 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -67,6 +69,7 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   // 主数据删除不可恢复：仅管理员或创建人本人可删
   const _delId = (await params).id;

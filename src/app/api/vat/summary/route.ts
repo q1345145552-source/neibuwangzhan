@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // 泰国 VAT 逾期罚款：申报逾期 7 天以上罚款 ฿1,000，之后每天加 ฿200，上限 ฿41,000
@@ -16,6 +16,7 @@ function calcLateFine(deadline: Date, taxAmount: number): number {
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const url = new URL(req.url);
   const year = url.searchParams.get("year") || String(new Date().getFullYear());

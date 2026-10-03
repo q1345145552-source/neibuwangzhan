@@ -55,6 +55,7 @@ interface FinanceRecord {
   slip_file: string;
   created_at: string;
   customer_name?: string;
+  commerce_refund?: boolean;
   business_type_id?: number;
   business_name?: string;
   currency?: string;
@@ -92,7 +93,7 @@ export default function FinancePage() {
       );
     }
     if (typeFilter !== "all") {
-      result = result.filter((r: FinanceRecord) => r.type === typeFilter);
+      result = result.filter((r: FinanceRecord) => (r.commerce_refund ? "refund" : r.type) === typeFilter);
     }
     return result;
   }, [allFinances, search, typeFilter]);
@@ -111,6 +112,10 @@ export default function FinancePage() {
   );
   const totalExpense = useMemo(
     () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "expense")),
+    [filtered]
+  );
+  const totalRefund = useMemo(
+    () => sumByCurrency(filtered.filter(r => r.commerce_refund)),
     [filtered]
   );
   const totalPending = useMemo(
@@ -296,6 +301,7 @@ export default function FinancePage() {
             <TrendingDown className="size-4 text-[var(--destructive)]" />总支出
           </div>
           <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">{totalExpense}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">其中商城实际退款 {totalRefund}（不是办理成本）</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
@@ -317,7 +323,7 @@ export default function FinancePage() {
           />
         </div>
         <div className="flex gap-1.5">
-          {["all", "income", "expense"].map((t) => (
+          {["all", "income", "expense", "refund"].map((t) => (
             <Button
               key={t}
               variant={typeFilter === t ? "default" : "ghost"}
@@ -357,7 +363,7 @@ export default function FinancePage() {
                       <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
                         r.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
                       )}>
-                        {typeLabels[r.type] || r.type}
+                        {r.commerce_refund ? "退款" : typeLabels[r.type] || r.type}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono tabular-nums">{(r as { currency?: string }).currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>

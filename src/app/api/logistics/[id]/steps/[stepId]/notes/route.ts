@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
@@ -10,9 +10,11 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM shipping_steps WHERE id = ? AND order_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   const body = await readJson(req);
   const { content, created_by } = body;
 
@@ -38,12 +40,14 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id, stepId } = await params;
   const noteId = new URL(req.url).searchParams.get("id");
   if (!noteId) return NextResponse.json({ error: "缺少备注ID" }, { status: 400 });
 
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM shipping_steps WHERE id = ? AND order_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   db.prepare("DELETE FROM shipping_step_notes WHERE id = ? AND step_id = ? AND order_id = ?").run(noteId, stepId, id);
 
   const notes = db.prepare(

@@ -1,25 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb, logOperation } from "@/lib/db";
 import { readJson } from "@/lib/req";
-import { existsSync, unlinkSync } from "fs";
-import path from "path";
-import os from "os";
-
-const UPLOAD_DIRS = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
-
-/** 从 /api/files/xxx 地址解析出文件名并删除磁盘文件 */
-function deleteDiskFile(url: string): void {
-  const m = (url || "").match(/\/api\/files\/([A-Za-z0-9._-]+)/);
-  if (!m) return;
-  const base = path.basename(m[1]);
-  for (const dir of UPLOAD_DIRS) {
-    const fp = path.join(dir, base);
-    if (existsSync(fp)) {
-      try { unlinkSync(fp); } catch (e) { console.error("[物流文件] 删除磁盘文件失败", fp, e); }
-    }
-  }
-}
+// Removing a reference does not delete a possibly shared physical file.
 
 // POST /api/logistics/[id]/files — 上传后把文件记录写进独立文件表
 export async function POST(
@@ -28,6 +11,7 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -52,13 +36,14 @@ export async function POST(
   return NextResponse.json(file, { status: 201 });
 }
 
-// DELETE /api/logistics/[id]/files?id=文件编号 — 删除记录 + 磁盘文件
+// DELETE /api/logistics/[id]/files?id=文件编号 — 仅删除本业务引用（保留共享磁盘文件）
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -72,7 +57,7 @@ export async function DELETE(
   if (!file) return NextResponse.json({ error: "文件不存在" }, { status: 404 });
 
   db.prepare("DELETE FROM shipping_order_files WHERE id = ? AND order_id = ?").run(fileId, id);
-  deleteDiskFile(file.url);
+  // Physical file retained for verified, reference-aware garbage collection.
 
   return NextResponse.json({ success: true });
 }

@@ -1,5 +1,7 @@
+import { publicDocument, isPublicDocument } from "@/lib/client-view";
+import { getClientCustomerNames, customerNameFilter } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
@@ -12,14 +14,22 @@ export async function GET(req: NextRequest) {
   const business = searchParams.get("business");
 
   let sql = "SELECT d.*, o.customer_name, bt.name AS business_line FROM documents d LEFT JOIN orders o ON d.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
+  const conditions: string[] = [];
   const params: string[] = [];
+  if (auth.role === "client") {
+    const { names } = getClientCustomerNames(auth.id, auth.name);
+    const scope = customerNameFilter(names);
+    conditions.push(scope.clause);
+    params.push(...scope.params);
+  }
   if (business) {
-    sql += " WHERE bt.name = ?";
+    conditions.push("bt.name = ?");
     params.push(business);
   }
+  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
   sql += " ORDER BY d.created_at DESC";
   const rows = db.prepare(sql).all(...params);
-  const res = NextResponse.json(rows);
+  const res = NextResponse.json(auth.role === "client" ? rows.filter(row => isPublicDocument(row, auth.id)).map(publicDocument) : rows);
   res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   return res;
 }
@@ -27,6 +37,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const db = getDb();
@@ -44,6 +55,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);

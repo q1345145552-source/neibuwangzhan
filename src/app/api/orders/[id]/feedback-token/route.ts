@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import crypto from "crypto";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
   const existing = db.prepare("SELECT * FROM feedback_tokens WHERE order_id = ?").get(id) as any;
   if (existing) {
@@ -26,8 +28,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
   const existing = db.prepare("SELECT * FROM feedback_tokens WHERE order_id = ?").get(id) as any;
   if (!existing) return NextResponse.json({ link: null, submitted: false });

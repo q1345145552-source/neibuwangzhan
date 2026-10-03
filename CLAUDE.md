@@ -1,5 +1,7 @@
 # 湘泰内部管理系统 — 开发指南
 
+> 2026-09-12 当前更新：同库商城首片仅本地试点，默认关闭。先读 docs/INDEX.md 与 docs/commerce-pilot.md，使用 scripts/preview-commerce.cjs 创建隔离副本。下文旧的“首次自动建库/删库重置”说明已废止：缺库/空库默认拒绝，只有明确 test 或首次 ALLOW_EMPTY_DB=1 初始化；日常不删除数据库掩盖路径问题。真实迁移/部署/切换另做验收，旧订阅调度本轮未改。
+
 ## 项目概览
 
 这是一套面向泰国/中国跨境企业服务公司的内部管理系统，覆盖 9 条业务线的订单全流程管理（公司注册/商标/FDA认证/TISI/DLD/清关/地址认证/Mall开店/NBTC），另含达人代运营（agency/influencers/factories/contracts/discovery-tasks）、内部管理（考勤/补卡/请假/工单/通知/周报）等模块。

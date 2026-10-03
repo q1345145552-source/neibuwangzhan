@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb } from "@/lib/db";
 
@@ -31,9 +31,11 @@ export async function GET(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM vat_record_steps WHERE id = ? AND record_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   ensureTable(db);
   const rows = db.prepare("SELECT * FROM vat_step_notes WHERE record_id = ? AND step_id = ? ORDER BY created_at DESC").all(id, stepId);
   return NextResponse.json(rows);
@@ -46,10 +48,12 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM vat_record_steps WHERE id = ? AND record_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   ensureTable(db);
   const body = await readJson(req);
   const { content, created_by } = body;
@@ -69,14 +73,17 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const url = new URL(req.url);
   const noteId = url.searchParams.get("id");
   if (!noteId) return NextResponse.json({ error: "缺少 note_id" }, { status: 400 });
 
+  const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM vat_record_steps WHERE id = ? AND record_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   ensureTable(db);
-  db.prepare("DELETE FROM vat_step_notes WHERE id = ?").run(noteId);
+  db.prepare("DELETE FROM vat_step_notes WHERE id = ? AND record_id = ? AND step_id = ?").run(noteId, id, stepId);
   return NextResponse.json({ success: true });
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
@@ -7,6 +7,8 @@ import { getDb, logOperation } from "@/lib/db";
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const db = getDb();
   const body = await readJson(req);
   const { order_id, overall, attitude, speed, professionalism, comment } = body;
@@ -54,6 +56,8 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const db = getDb();
   const order_id = req.nextUrl.searchParams.get("order_id") || "";
   let records: any[];

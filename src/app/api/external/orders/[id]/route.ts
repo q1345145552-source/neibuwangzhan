@@ -1,3 +1,4 @@
+import { publicOrder, publicSteps, publicDocument, publicCertificate, isPublicDocument } from "@/lib/client-view";
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
@@ -49,19 +50,15 @@ export async function GET(
     "SELECT * FROM documents WHERE order_id = ? ORDER BY created_at DESC"
   ).all(id);
 
-  const finances = db.prepare(
-    "SELECT * FROM finances WHERE order_id = ? ORDER BY created_at DESC"
-  ).all(id);
 
   const certificates = db.prepare(
     "SELECT * FROM certificates WHERE order_id = ? ORDER BY created_at DESC"
   ).all(id);
 
   return corsResponse({
-    ...order,
-    steps,
-    documents,
-    finances,
-    certificates,
+    ...publicOrder(order),
+    steps: publicSteps(steps),
+    documents: documents.filter(row => isPublicDocument(row, payload.id)).map(publicDocument),
+    certificates: certificates.map(publicCertificate),
   }, 200, origin);
 }

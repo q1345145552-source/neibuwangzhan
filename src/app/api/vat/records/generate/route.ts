@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { isCronRequest } from "@/lib/cron-auth";
 import { getDb, logOperation } from "@/lib/db";
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
   if (!isCron) {
     const auth = await verifyAuth(req);
     if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
     if (auth.role !== "admin") return NextResponse.json({ error: "无权限" }, { status: 403 });
     actor = auth.name;
   }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
@@ -10,6 +10,7 @@ export async function GET(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
   const db = getDb();
   const rows = db.prepare("SELECT * FROM vat_record_finances WHERE record_id = ? ORDER BY created_at DESC").all(id);
@@ -23,6 +24,7 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const { id } = await params;
   const db = getDb();
@@ -54,6 +56,7 @@ export async function PUT(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const { id } = await params;
   const db = getDb();
@@ -74,6 +77,7 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const url = new URL(req.url);
   const financeId = url.searchParams.get("id");
