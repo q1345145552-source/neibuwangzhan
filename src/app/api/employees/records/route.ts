@@ -5,15 +5,16 @@ import { readJson } from "@/lib/req";
 
 const FIELDS = "id, employee_id, type, points, content, created_by, created_at";
 
-// GET /api/employees/records?employee_id=X — 某员工的记过/记优点记录（仅管理员，按时间倒序）
+// GET /api/employees/records?employee_id=X — 记过/记优点记录（管理员看任意员工；普通员工只能看自己，按时间倒序）
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
 
   const db = getDb();
   const employeeId = Number(new URL(req.url).searchParams.get("employee_id"));
   if (!Number.isInteger(employeeId) || employeeId <= 0) return NextResponse.json({ error: "缺少员工ID" }, { status: 400 });
+  // 权限：普通员工只能看自己的记录
+  if (auth.role !== "admin" && employeeId !== auth.id) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const rows = db.prepare(`SELECT ${FIELDS} FROM employee_records WHERE employee_id = ? ORDER BY created_at DESC, id DESC`).all(employeeId);
   return NextResponse.json(rows);
