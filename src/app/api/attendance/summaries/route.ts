@@ -68,7 +68,7 @@ function daysBetween(start: string, end: string): number {
   return Math.round((e - s) / 86400000) + 1;
 }
 
-const FIELDS = "id, employee_id, employee_name, month, attendance_days, late_details, early_details, leave_details, work_hours, absence_days";
+const FIELDS = "id, employee_id, employee_name, month, attendance_days, expected_days, late_details, early_details, leave_details, work_hours, absence_days";
 
 // GET /api/attendance/summaries?month=YYYY-MM — 某月考勤汇总列表（仅管理员）
 export async function GET(req: NextRequest) {
@@ -161,12 +161,12 @@ export async function POST(req: NextRequest) {
       const existing = db.prepare("SELECT id FROM attendance_summaries WHERE employee_id = ? AND month = ?").get(e.id, month);
       if (existing) {
         db.prepare(
-          "UPDATE attendance_summaries SET employee_name = ?, attendance_days = ?, late_details = ?, early_details = ?, leave_details = ?, work_hours = ?, absence_days = ? WHERE employee_id = ? AND month = ?"
-        ).run(e.name, attendanceDays, lateJson, earlyJson, leaveJson, workHours, absenceDays, e.id, month);
+          "UPDATE attendance_summaries SET employee_name = ?, attendance_days = ?, expected_days = ?, late_details = ?, early_details = ?, leave_details = ?, work_hours = ?, absence_days = ? WHERE employee_id = ? AND month = ?"
+        ).run(e.name, attendanceDays, expectedDays, lateJson, earlyJson, leaveJson, workHours, absenceDays, e.id, month);
       } else {
         db.prepare(
-          "INSERT INTO attendance_summaries (employee_id, employee_name, month, attendance_days, late_details, early_details, leave_details, work_hours, absence_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        ).run(e.id, e.name, month, attendanceDays, lateJson, earlyJson, leaveJson, workHours, absenceDays);
+          "INSERT INTO attendance_summaries (employee_id, employee_name, month, attendance_days, expected_days, late_details, early_details, leave_details, work_hours, absence_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ).run(e.id, e.name, month, attendanceDays, expectedDays, lateJson, earlyJson, leaveJson, workHours, absenceDays);
         created++;
       }
     }

@@ -37,6 +37,7 @@ interface AttendanceSummary {
   employee_name: string;
   month: string;
   attendance_days: number;
+  expected_days: number;
   late_details: string;
   early_details: string;
   leave_details: string;
@@ -252,6 +253,7 @@ export default function PayslipsPage() {
   const attLates = attDetail ? parseJson<LateDetail[]>(attDetail.late_details, []) : [];
   const attEarlies = attDetail ? parseJson<LateDetail[]>(attDetail.early_details, []) : [];
   const attLeaves = attDetail ? parseJson<LeaveDetail[]>(attDetail.leave_details, []) : [];
+  const attLeaveDays = attLeaves.reduce((a, l) => a + (l.days || 0), 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -491,12 +493,13 @@ export default function PayslipsPage() {
                     <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                       <th className="py-3 px-4 text-left text-xs font-medium">员工</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">月份</th>
-                      <th className="py-3 px-4 text-center text-xs font-medium">出勤天数</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">应出勤</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">实际出勤</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">请假</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">缺勤</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">迟到</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">早退</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">工作时间</th>
-                      <th className="py-3 px-4 text-center text-xs font-medium">缺勤</th>
-                      <th className="py-3 px-4 text-center text-xs font-medium">请假</th>
                       <th className="py-3 px-4 text-right text-xs font-medium">操作</th>
                     </tr>
                   </thead>
@@ -507,11 +510,19 @@ export default function PayslipsPage() {
                       const leaves = parseJson<LeaveDetail[]>(s.leave_details, []);
                       const lateMins = lates.reduce((a, l) => a + l.minutes, 0);
                       const earlyMins = earlies.reduce((a, l) => a + l.minutes, 0);
+                      const leaveDays = leaves.reduce((a, l) => a + (l.days || 0), 0);
                       return (
                         <tr key={s.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20">
                           <td className="py-3 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{s.employee_name}</td>
                           <td className="py-3 px-4 text-center tabular-nums">{s.month}</td>
-                          <td className="py-3 px-4 text-center tabular-nums font-semibold">{s.attendance_days}</td>
+                          <td className="py-3 px-4 text-center tabular-nums">{s.expected_days ?? 0} 天</td>
+                          <td className="py-3 px-4 text-center tabular-nums font-semibold">{s.attendance_days} 天</td>
+                          <td className={cn("py-3 px-4 text-center tabular-nums", leaveDays > 0 ? "text-blue-600" : "text-[var(--muted-foreground)]")}>
+                            {leaveDays > 0 ? `${leaveDays} 天` : "0 天"}
+                          </td>
+                          <td className={cn("py-3 px-4 text-center tabular-nums", (s.absence_days || 0) > 0 ? "text-red-600 font-semibold" : "text-[var(--muted-foreground)]")}>
+                            {(s.absence_days || 0)} 天
+                          </td>
                           <td className={cn("py-3 px-4 text-center tabular-nums", lates.length > 0 ? "text-amber-600" : "text-[var(--muted-foreground)]")}>
                             {lates.length > 0 ? `${lates.length} 次 · ${lateMins} 分` : "—"}
                           </td>
@@ -519,12 +530,6 @@ export default function PayslipsPage() {
                             {earlies.length > 0 ? `${earlies.length} 次 · ${earlyMins} 分` : "—"}
                           </td>
                           <td className="py-3 px-4 text-center tabular-nums">{(s.work_hours || 0)} 小时</td>
-                          <td className={cn("py-3 px-4 text-center tabular-nums", (s.absence_days || 0) > 0 ? "text-red-600 font-semibold" : "text-[var(--muted-foreground)]")}>
-                            {(s.absence_days || 0)} 天
-                          </td>
-                          <td className={cn("py-3 px-4 text-center tabular-nums", leaves.length > 0 ? "text-blue-600" : "text-[var(--muted-foreground)]")}>
-                            {leaves.length > 0 ? `${leaves.length} 次` : "—"}
-                          </td>
                           <td className="py-3 px-4 text-right">
                             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setAttDetail(s)}>查看详情</Button>
                           </td>
@@ -546,14 +551,26 @@ export default function PayslipsPage() {
                   <button onClick={() => setAttDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
                 </div>
 
-                <div className="mb-3 flex items-center gap-2 rounded-md bg-[var(--muted)]/40 px-3 py-2">
-                  <span className="text-xs text-[var(--muted-foreground)]">出勤天数</span>
-                  <span className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.attendance_days}</span>
-                </div>
-
-                <div className="mb-3 flex items-center gap-4 rounded-md bg-[var(--muted)]/40 px-3 py-2 text-sm">
-                  <span className="text-[var(--foreground)]">工作时间 <span className="font-semibold tabular-nums">{(attDetail.work_hours || 0)}</span> 小时</span>
-                  <span className="text-[var(--foreground)]">缺勤 <span className="font-semibold tabular-nums">{(attDetail.absence_days || 0)}</span> 天</span>
+                <div className="mb-3 rounded-md bg-[var(--muted)]/40 px-3 py-3">
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">应出勤</p>
+                      <p className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.expected_days ?? 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">实际出勤</p>
+                      <p className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.attendance_days}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">请假</p>
+                      <p className="text-lg font-semibold tabular-nums text-blue-600">{attLeaveDays}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[var(--muted-foreground)]">缺勤</p>
+                      <p className={cn("text-lg font-semibold tabular-nums", (attDetail.absence_days || 0) > 0 ? "text-red-600" : "text-[var(--foreground)]")}>{attDetail.absence_days || 0}</p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-center text-xs text-[var(--muted-foreground)]">工作时间 {(attDetail.work_hours || 0)} 小时</p>
                 </div>
 
                 <div className="mb-3">

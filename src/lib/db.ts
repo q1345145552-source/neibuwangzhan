@@ -1815,6 +1815,7 @@ function initTables(database: Database.Database) {
       employee_name TEXT DEFAULT '',
       month TEXT NOT NULL,
       attendance_days INTEGER DEFAULT 0,
+      expected_days REAL DEFAULT 0,
       late_details TEXT DEFAULT '[]',
       early_details TEXT DEFAULT '[]',
       leave_details TEXT DEFAULT '[]',
@@ -1826,10 +1827,11 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_attendance_summaries_month ON attendance_summaries(month);
   `);
 
-  // attendance_summaries 迁移：补早退明细 / 工作时间 / 缺勤天数
+  // attendance_summaries 迁移：补早退明细 / 工作时间 / 缺勤天数 / 应出勤天数
   try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN early_details TEXT DEFAULT '[]'"); } catch {}
   try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN work_hours REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN absence_days REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN expected_days REAL DEFAULT 0"); } catch {}
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
   try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}
