@@ -24,8 +24,26 @@ const FORM_FIELDS = [
   "department", "position", "contract_term",
   "bank_name", "bank_account",
   "emergency_name", "emergency_phone", "emergency_relation",
-  "education", "skills", "notes",
+  "education", "skills", "notes", "bazi", "fortune",
 ] as const;
+
+// 出生日期（YYYY-MM-DD）对应的西方星座，自动算
+function zodiacFromBirthDate(birthDate: string): string {
+  const m = (birthDate || "").match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  const boundaries: [number, number, string][] = [
+    [1, 20, "水瓶座"], [2, 19, "双鱼座"], [3, 21, "白羊座"], [4, 20, "金牛座"],
+    [5, 21, "双子座"], [6, 21, "巨蟹座"], [7, 23, "狮子座"], [8, 23, "处女座"],
+    [9, 23, "天秤座"], [10, 23, "天蝎座"], [11, 22, "射手座"], [12, 22, "摩羯座"],
+  ];
+  let zodiac = "摩羯座";
+  for (const [bm, bd, name] of boundaries) {
+    if (month > bm || (month === bm && day >= bd)) zodiac = name;
+  }
+  return zodiac;
+}
 
 export default function EmployeeProfilesPage() {
   const { user } = useAuth();
@@ -232,6 +250,10 @@ export default function EmployeeProfilesPage() {
                         </select>
                       </div>
                       {textField("出生日期", "birth_date", undefined, "date")}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-[var(--muted-foreground)]">星座（自动）</Label>
+                        <p className="flex h-9 items-center text-sm text-[var(--foreground)]">{zodiacFromBirthDate(form.birth_date) || "—"}</p>
+                      </div>
                       {textField("电话", "phone", "电话号码")}
                       {textField("身份证号 / 护照号", "id_number", "证件号码")}
                       <div className="space-y-1 sm:col-span-2">
@@ -271,6 +293,8 @@ export default function EmployeeProfilesPage() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       {textField("学历", "education", "学历")}
                       {textField("技能", "skills", "技能")}
+                      {textField("生辰八字", "bazi", "如 1995年6月15日 子时")}
+                      {textField("算命", "fortune", "命理分析 / 算命结果")}
                       <div className="space-y-1 sm:col-span-2">
                         {textField("备注", "notes", "备注")}
                       </div>
@@ -327,6 +351,7 @@ export default function EmployeeProfilesPage() {
                   <div className="rounded-md border border-[var(--border)] px-3">
                     {readOnlyRow("性别", selected.gender)}
                     {readOnlyRow("出生日期", selected.birth_date)}
+                    {readOnlyRow("星座", zodiacFromBirthDate(selected.birth_date))}
                     {readOnlyRow("电话", selected.phone)}
                     {readOnlyRow("住址", selected.address)}
                     {readOnlyRow("身份证号 / 护照号", selected.id_number)}
@@ -364,6 +389,8 @@ export default function EmployeeProfilesPage() {
                   <div className="rounded-md border border-[var(--border)] px-3">
                     {readOnlyRow("学历", selected.education)}
                     {readOnlyRow("技能", selected.skills)}
+                    {readOnlyRow("生辰八字", selected.bazi)}
+                    {readOnlyRow("算命", selected.fortune)}
                     {readOnlyRow("备注", selected.notes)}
                   </div>
                 </section>
