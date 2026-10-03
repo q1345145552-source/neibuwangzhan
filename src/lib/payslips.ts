@@ -56,7 +56,35 @@ function parseImages(imagesJson: string): string[] {
   }
 }
 
-// 计算某员工某月的扣除：社保 / 迟到 / 事假 / 病假；同时返回考勤汇总明细（出勤天数/迟到明细/请假明细）
+// 法定假日额度（每月固定天数，用于算应出勤）
+const HOLIDAY_QUOTA: Record<number, number> = {
+  1: 1, 2: 1, 3: 0, 4: 3, 5: 2, 6: 0, 7: 2, 8: 1, 9: 0, 10: 1, 11: 0, 12: 1,
+};
+
+// 当月天数（YYYY-MM → 该月有多少天）
+function daysInMonth(month: string): number {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+// 当月周日（单休日）的天数
+function sundayCount(month: string): number {
+  const [y, m] = month.split("-").map(Number);
+  const total = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  let count = 0;
+  for (let d = 1; d <= total; d++) {
+    if (new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0) count++;
+  }
+  return count;
+}
+
+// 应出勤天数 = 当月天数 - 周日数 - 法定假日额度
+export function expectedAttendanceDays(month: string): number {
+  const monthNumber = Number(month.split("-")[1]);
+  return daysInMonth(month) - sundayCount(month) - (HOLIDAY_QUOTA[monthNumber] ?? 0);
+}
+
+// 计算某员工某月的扣除：社保 / 迟到 / 事假 / 病假 / 缺勤；同时返回考勤汇总明细（出勤天数/迟到明细/请假明细）
 export function computeDeductions(db: Db, name: string, month: string, totalSalary: number) {
   const base = (db.prepare("SELECT base_salary FROM employees WHERE name = ?").get(name) as { base_salary: number | null } | undefined)?.base_salary ?? 0;
 
@@ -112,7 +140,14 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
   personalLeave = round2(personalLeave);
   sickLeave = round2(sickLeave);
 
-  return { social, late, personalLeave, sickLeave, attendanceDays, lateDetails, leaveDetails };
+  // 缺勤 = 应出勤 - 实际出勤 - 请假天数；负数按 0
+  // 缺勤扣款 = 缺勤天数 × (总工资 / 应出勤天数)
+  const expectedDays = expectedAttendanceDays(month);
+  const leaveDays = leaveDetails.reduce((s, l) => s + l.days, 0);
+  const absenceDays = Math.max(0, expectedDays - attendanceDays - leaveDays);
+  const absenceDeduction = expectedDays > 0 ? round2(absenceDays * (totalSalary / expectedDays)) : 0;
+
+  return { social, late, personalLeave, sickLeave, absenceDeduction, expectedDays, absenceDays, attendanceDays, lateDetails, leaveDetails };
 }
 
 /**
@@ -139,8 +174,8 @@ export function refreshPayslipAutoFields(db: Db, employeeId: number, month: stri
   const summary = JSON.stringify({ attendance_days: ded.attendanceDays, late_details: ded.lateDetails, leave_details: ded.leaveDetails });
 
   db.prepare(
-    `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ?, summary = ? WHERE employee_id = ? AND month = ?`
-  ).run(e.name, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, summary, employeeId, month);
+    `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ?, absence_deduction = ?, summary = ? WHERE employee_id = ? AND month = ?`
+  ).run(e.name, base, diligence, skill, ded.social, ded.late, ded.personalLeave, ded.sickLeave, ded.absenceDeduction, summary, employeeId, month);
 
   return true;
 }
