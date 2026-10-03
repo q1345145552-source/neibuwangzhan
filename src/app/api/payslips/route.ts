@@ -115,3 +115,25 @@ export async function PATCH(req: NextRequest) {
   const row = db.prepare(`SELECT ${FIELDS} FROM payslips WHERE id = ?`).get(id);
   return NextResponse.json(row);
 }
+
+// DELETE /api/payslips — 删除草稿/打回状态的工资单（仅管理员）
+export async function DELETE(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
+
+  const db = getDb();
+  const body = await readJson(req);
+  const id = Number(body?.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "缺少工资单" }, { status: 400 });
+
+  const existing = db.prepare("SELECT id, status FROM payslips WHERE id = ?").get(id) as { id: number; status: string } | undefined;
+  if (!existing) return NextResponse.json({ error: "工资单不存在" }, { status: 404 });
+  if (existing.status !== "草稿" && existing.status !== "打回") {
+    return NextResponse.json({ error: "只有草稿或打回状态的工资单能删除" }, { status: 400 });
+  }
+
+  db.prepare("DELETE FROM payslips WHERE id = ?").run(id);
+  logOperation(auth.name, "删除工资单", "payslip", String(id), `删除 ${existing.status} 状态工资单`);
+  return NextResponse.json({ success: true, id });
+}
