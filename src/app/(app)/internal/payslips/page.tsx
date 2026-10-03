@@ -256,6 +256,14 @@ export default function PayslipsPage() {
   const attLeaves = attDetail ? parseJson<LeaveDetail[]>(attDetail.leave_details, []) : [];
   const attLeaveDays = attLeaves.reduce((a, l) => a + (l.days || 0), 0);
 
+  // 考勤汇总详情跳转：出勤天数/迟到某天 → 打卡日历；请假 → 请假看板
+  const goAttendanceRecords = (date?: string) => {
+    if (!attDetail) return;
+    const base = `/internal?att_emp=${encodeURIComponent(attDetail.employee_name)}&att_month=${attDetail.month}`;
+    window.location.href = date ? `${base}&att_date=${encodeURIComponent(date)}` : base;
+  };
+  const goLeavePage = () => { window.location.href = "/internal/leave-dashboard"; };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -560,10 +568,10 @@ export default function PayslipsPage() {
                       <p className="text-xs text-[var(--muted-foreground)]">应出勤</p>
                       <p className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.expected_days ?? 0}</p>
                     </div>
-                    <div>
+                    <button onClick={() => goAttendanceRecords()} className="group text-center">
                       <p className="text-xs text-[var(--muted-foreground)]">实际出勤</p>
-                      <p className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.attendance_days}</p>
-                    </div>
+                      <p className="text-lg font-semibold tabular-nums text-[var(--foreground)] underline decoration-dotted underline-offset-2 group-hover:text-blue-600">{attDetail.attendance_days}</p>
+                    </button>
                     <div>
                       <p className="text-xs text-[var(--muted-foreground)]">请假</p>
                       <p className="text-lg font-semibold tabular-nums text-blue-600">{attLeaveDays}</p>
@@ -584,7 +592,7 @@ export default function PayslipsPage() {
                     <div className="space-y-1">
                       {attLates.map((l, i) => (
                         <p key={i} className="text-sm text-[var(--foreground)]">
-                          <span className="text-amber-600">{l.date}</span> 迟到 {l.minutes} 分钟
+                          <button onClick={() => goAttendanceRecords(l.date)} className="text-amber-600 underline decoration-dotted underline-offset-2 hover:text-blue-600">{l.date}</button> 迟到 {l.minutes} 分钟
                         </p>
                       ))}
                     </div>
@@ -607,7 +615,7 @@ export default function PayslipsPage() {
                 </div>
 
                 <div>
-                  <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">请假明细</p>
+                  <button onClick={goLeavePage} className="mb-1 text-xs font-medium text-[var(--muted-foreground)] underline decoration-dotted underline-offset-2 hover:text-blue-600">请假明细 →</button>
                   {attLeaves.length === 0 ? (
                     <p className="text-xs text-[var(--muted-foreground)]">无请假</p>
                   ) : (

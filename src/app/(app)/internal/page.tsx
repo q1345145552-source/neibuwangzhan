@@ -87,6 +87,9 @@ export default function InternalPage() {
   const [requestForm, setRequestForm] = useState({ date: "", time: "", reason: "" });
   const [requestErr, setRequestErr] = useState("");
 
+  // 考勤汇总详情深链：?att_emp=&att_month=&att_date= 定位到某员工某月（可选某天）的打卡记录
+  const pendingAttLinkRef = useRef<{ emp: string; month: string; date?: string } | null>(null);
+
   // Photo upload state
   const [photoModal, setPhotoModal] = useState<{ action: "check_in" | "check_out" } | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -328,6 +331,14 @@ export default function InternalPage() {
       const calData = await res.json();
       if (!run.isLatest()) return;
       setCalendarData(calData);
+      // 考勤汇总详情深链跳来：定位到该月后自动打开某天的打卡详情
+      const link = pendingAttLinkRef.current;
+      if (link && link.date && link.month === calendarMonth && link.emp === emp) {
+        const rec = (Array.isArray(calData) ? calData : []).find((r: any) => r.date === link.date);
+        const isSunday = bangkokDayOfWeek(link.date!) === 0;
+        setCalDetailDay(rec ? { ...rec, date: link.date, isSunday } : { date: link.date, isSunday, check_in: null, check_out: null, type: null, check_in_photo: null, check_out_photo: null, ip_address: null });
+        pendingAttLinkRef.current = null;
+      }
     } catch (e) { console.error("[内部管理] 加载日历数据失败", e); }
   };
   const handleAnomalyClick = async (type: string, label: string, emp: string) => {
@@ -342,6 +353,25 @@ export default function InternalPage() {
   };
 
   useEffect(() => { loadAll(); loadAttendance(); loadCalendar(); }, [summaryMonth, calendarMonth, calendarEmployee, user?.name]);
+
+  // 读取 URL 深链参数：考勤汇总详情点「出勤天数/迟到某天」跳过来，定位打卡日历
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const emp = sp.get("att_emp");
+      const month = sp.get("att_month");
+      const date = sp.get("att_date");
+      if (emp) setCalendarEmployee(emp);
+      if (month && /^\d{4}-\d{2}$/.test(month)) setCalendarMonth(month);
+      if (emp && month && /^\d{4}-\d{2}$/.test(month)) {
+        pendingAttLinkRef.current = { emp, month, date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined };
+      }
+      if (emp || month) {
+        setTimeout(() => document.getElementById("attendance-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     fetchWithAuth("/api/thai-holidays")
@@ -1319,7 +1349,7 @@ export default function InternalPage() {
       <input ref={supplementInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleSupplementLeaveImage} />
 
       {/* ── 考勤日历 ── */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+      <div id="attendance-calendar" className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />考勤日历</h2>
           <div className="flex items-center gap-2">
