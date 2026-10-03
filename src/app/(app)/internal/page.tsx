@@ -400,6 +400,7 @@ export default function InternalPage() {
   };
 
   const handleClockAction = async (action: "check_in" | "check_out") => {
+    if (isAdmin) { alert("管理员无需打卡"); return; }
     setPhotoModal({ action });
   };
 
