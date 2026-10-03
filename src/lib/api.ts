@@ -56,6 +56,16 @@ export interface Employee {
   avatar?: string;
   /** 入职日期 YYYY-MM-DD，空表示未填写 */
   hire_date?: string;
+  /** 性别 */
+  gender?: string;
+  /** 出生日期 YYYY-MM-DD */
+  birth_date?: string;
+  /** 电话 */
+  phone?: string;
+  /** 住址 */
+  address?: string;
+  /** 身份证号或护照号 */
+  id_number?: string;
   /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
   customer_names?: string[];
 }
@@ -512,7 +522,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",
