@@ -13,13 +13,20 @@ export async function GET(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const db = getDb();
+  const COLS = "id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes";
+  type EmpRow = { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string };
+
+  const url = new URL(req.url);
+  // 员工档案权限：?self=1 只返回当前登录员工自己的档案（普通员工只能看自己）
+  if (url.searchParams.get("self") === "1") {
+    const row = db.prepare(`SELECT ${COLS} FROM employees WHERE id = ?`).get(auth.id) as EmpRow | undefined;
+    return NextResponse.json(row ? [row] : []);
+  }
+
   // 默认只返回在职员工（供选人下拉框用，避免给离职员工派活）；?include_left=1 时返回全部（含离职）。
-  const includeLeft = new URL(req.url).searchParams.get("include_left") === "1";
-  const sql = includeLeft
-    ? "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes FROM employees"
-    : "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes FROM employees WHERE status != '离职'";
-  const rows = db.prepare(sql).all() as
-    { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string }[];
+  const includeLeft = url.searchParams.get("include_left") === "1";
+  const sql = includeLeft ? `SELECT ${COLS} FROM employees` : `SELECT ${COLS} FROM employees WHERE status != '离职'`;
+  const rows = db.prepare(sql).all() as EmpRow[];
 
   // 客户账号带上它能看到哪些公司的订单（外部客户端口的可见范围）
   const scoped = rows.map((r) => {
