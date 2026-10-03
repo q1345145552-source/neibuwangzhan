@@ -38,7 +38,10 @@ interface AttendanceSummary {
   month: string;
   attendance_days: number;
   late_details: string;
+  early_details: string;
   leave_details: string;
+  work_hours: number;
+  absence_days: number;
 }
 
 // 当前曼谷月份 YYYY-MM
@@ -247,6 +250,7 @@ export default function PayslipsPage() {
   };
 
   const attLates = attDetail ? parseJson<LateDetail[]>(attDetail.late_details, []) : [];
+  const attEarlies = attDetail ? parseJson<LateDetail[]>(attDetail.early_details, []) : [];
   const attLeaves = attDetail ? parseJson<LeaveDetail[]>(attDetail.leave_details, []) : [];
 
   return (
@@ -489,6 +493,9 @@ export default function PayslipsPage() {
                       <th className="py-3 px-4 text-center text-xs font-medium">月份</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">出勤天数</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">迟到</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">早退</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">工作时间</th>
+                      <th className="py-3 px-4 text-center text-xs font-medium">缺勤</th>
                       <th className="py-3 px-4 text-center text-xs font-medium">请假</th>
                       <th className="py-3 px-4 text-right text-xs font-medium">操作</th>
                     </tr>
@@ -496,14 +503,24 @@ export default function PayslipsPage() {
                   <tbody>
                     {summaries.map((s) => {
                       const lates = parseJson<LateDetail[]>(s.late_details, []);
+                      const earlies = parseJson<LateDetail[]>(s.early_details, []);
                       const leaves = parseJson<LeaveDetail[]>(s.leave_details, []);
+                      const lateMins = lates.reduce((a, l) => a + l.minutes, 0);
+                      const earlyMins = earlies.reduce((a, l) => a + l.minutes, 0);
                       return (
                         <tr key={s.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20">
                           <td className="py-3 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{s.employee_name}</td>
                           <td className="py-3 px-4 text-center tabular-nums">{s.month}</td>
                           <td className="py-3 px-4 text-center tabular-nums font-semibold">{s.attendance_days}</td>
                           <td className={cn("py-3 px-4 text-center tabular-nums", lates.length > 0 ? "text-amber-600" : "text-[var(--muted-foreground)]")}>
-                            {lates.length > 0 ? `${lates.length} 次` : "—"}
+                            {lates.length > 0 ? `${lates.length} 次 · ${lateMins} 分` : "—"}
+                          </td>
+                          <td className={cn("py-3 px-4 text-center tabular-nums", earlies.length > 0 ? "text-orange-600" : "text-[var(--muted-foreground)]")}>
+                            {earlies.length > 0 ? `${earlies.length} 次 · ${earlyMins} 分` : "—"}
+                          </td>
+                          <td className="py-3 px-4 text-center tabular-nums">{(s.work_hours || 0)} 小时</td>
+                          <td className={cn("py-3 px-4 text-center tabular-nums", (s.absence_days || 0) > 0 ? "text-red-600 font-semibold" : "text-[var(--muted-foreground)]")}>
+                            {(s.absence_days || 0)} 天
                           </td>
                           <td className={cn("py-3 px-4 text-center tabular-nums", leaves.length > 0 ? "text-blue-600" : "text-[var(--muted-foreground)]")}>
                             {leaves.length > 0 ? `${leaves.length} 次` : "—"}
@@ -534,6 +551,11 @@ export default function PayslipsPage() {
                   <span className="text-lg font-semibold tabular-nums text-[var(--foreground)]">{attDetail.attendance_days}</span>
                 </div>
 
+                <div className="mb-3 flex items-center gap-4 rounded-md bg-[var(--muted)]/40 px-3 py-2 text-sm">
+                  <span className="text-[var(--foreground)]">工作时间 <span className="font-semibold tabular-nums">{(attDetail.work_hours || 0)}</span> 小时</span>
+                  <span className="text-[var(--foreground)]">缺勤 <span className="font-semibold tabular-nums">{(attDetail.absence_days || 0)}</span> 天</span>
+                </div>
+
                 <div className="mb-3">
                   <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">迟到明细</p>
                   {attLates.length === 0 ? (
@@ -543,6 +565,21 @@ export default function PayslipsPage() {
                       {attLates.map((l, i) => (
                         <p key={i} className="text-sm text-[var(--foreground)]">
                           <span className="text-amber-600">{l.date}</span> 迟到 {l.minutes} 分钟
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-3">
+                  <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">早退明细</p>
+                  {attEarlies.length === 0 ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">无早退</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {attEarlies.map((l, i) => (
+                        <p key={i} className="text-sm text-[var(--foreground)]">
+                          <span className="text-orange-600">{l.date}</span> 早退 {l.minutes} 分钟
                         </p>
                       ))}
                     </div>

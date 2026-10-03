@@ -1864,7 +1864,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN summary TEXT DEFAULT '{}'"); } catch {}
 
-  // 考勤汇总：每个员工每月一份，出勤天数 + 迟到明细 + 请假明细
+  // 考勤汇总：每个员工每月一份，出勤天数 + 迟到明细 + 早退明细 + 请假明细 + 工作时间 + 缺勤天数
   database.exec(`
     CREATE TABLE IF NOT EXISTS attendance_summaries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1873,12 +1873,20 @@ function initTables(database: Database.Database) {
       month TEXT NOT NULL,
       attendance_days INTEGER DEFAULT 0,
       late_details TEXT DEFAULT '[]',
+      early_details TEXT DEFAULT '[]',
       leave_details TEXT DEFAULT '[]',
+      work_hours REAL DEFAULT 0,
+      absence_days REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(employee_id, month)
     );
     CREATE INDEX IF NOT EXISTS idx_attendance_summaries_month ON attendance_summaries(month);
   `);
+
+  // attendance_summaries 迁移：补早退明细 / 工作时间 / 缺勤天数
+  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN early_details TEXT DEFAULT '[]'"); } catch {}
+  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN work_hours REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN absence_days REAL DEFAULT 0"); } catch {}
 
   // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
   try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}
