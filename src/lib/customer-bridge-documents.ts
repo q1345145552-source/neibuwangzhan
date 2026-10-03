@@ -9,6 +9,7 @@ import { fail } from "./commerce-validation";
 import { importedRows } from "./customer-bridge";
 import { POST as upload } from "@/app/api/upload/route";
 import { GET as download } from "@/app/api/files/[filename]/route";
+import { uploadsDir } from "./uploads";
 
 type Db=Database.Database;
 const initialized=new WeakSet<Db>();
@@ -49,7 +50,7 @@ export async function submitCustomerDocuments(req:NextRequest,db:Db,actor:TokenP
    staged.push({name:(kind==="receipt"?"水单-":"")+file.name,url:value.url,fileType:file.type,text:"",filename:value.url.split("/").pop()});
   }
   if(text){
-   const filename=randomUUID()+"_customer-note.txt";await mkdir(path.join(process.cwd(),"uploads"),{recursive:true});await writeFile(path.join(process.cwd(),"uploads",filename),text,{flag:"wx"});
+   const filename=randomUUID()+"_customer-note.txt";await mkdir(path.join(uploadsDir),{recursive:true});await writeFile(path.join(uploadsDir,filename),text,{flag:"wx"});
    // Track the written file before the registry write so a DB failure also removes it.
    staged.push({name:"文字资料.txt",url:"/api/files/"+filename,fileType:"text/plain",text,filename});
    db.prepare("INSERT INTO file_uploads(filename,uploaded_by_id,uploaded_by_role,mime_type,size) VALUES (?,?,?,?,?)").run(filename,actor.id,actor.role,"text/plain",Buffer.byteLength(text));
@@ -61,10 +62,10 @@ export async function submitCustomerDocuments(req:NextRequest,db:Db,actor:TokenP
     if(!fresh||(fresh.status==="客户取消"&&kind!=="receipt"))return fail(409,"ORDER_CHANGED","办理状态已变化，资料未提交");
     for(const f of staged){const r=db.prepare("INSERT INTO documents(order_id,name,file_type,status,direction,file_url,uploaded_by,client_author_id,publication_verified) VALUES (?,?,?,'待审核','client_to_us',?,?,?,0)").run(selected.order_id,f.name,f.fileType,f.url,actor.name,actor.id);const id=Number(r.lastInsertRowid);db.prepare("INSERT INTO commerce_customer_document_links VALUES (?,?,?,?,?)").run(id,saleId,requirement||null,kind,f.text);added.push({id,filename:f.filename});}
    }).immediate();
-  }catch(error){for(const f of staged){db.prepare("DELETE FROM file_uploads WHERE filename=? AND uploaded_by_id=?").run(f.filename,actor.id);await unlink(path.join(process.cwd(),"uploads",f.filename)).catch(()=>{});}throw error;}
+  }catch(error){for(const f of staged){db.prepare("DELETE FROM file_uploads WHERE filename=? AND uploaded_by_id=?").run(f.filename,actor.id);await unlink(path.join(uploadsDir,f.filename)).catch(()=>{});}throw error;}
   return {ok:true,documents:added.map(x=>({id:String(x.id)}))};
  }catch(error){
-  for(const f of staged){db.prepare("DELETE FROM file_uploads WHERE filename=? AND uploaded_by_id=?").run(f.filename,actor.id);await unlink(path.join(process.cwd(),"uploads",f.filename)).catch(()=>{});}
+  for(const f of staged){db.prepare("DELETE FROM file_uploads WHERE filename=? AND uploaded_by_id=?").run(f.filename,actor.id);await unlink(path.join(uploadsDir,f.filename)).catch(()=>{});}
   throw error;
  }
 }

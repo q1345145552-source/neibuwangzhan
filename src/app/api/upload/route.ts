@@ -6,6 +6,7 @@ import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
 import path from "path";
 import os from "os";
 import { verifyAuth } from "@/lib/auth";
+import { uploadsDir } from "@/lib/uploads";
 
 const ALLOWED_TYPES = [
   "image/jpeg", "image/png", "image/webp", "image/gif",
@@ -16,7 +17,7 @@ const ALLOWED_TYPES = [
 ];
 const MAX_SIZE = 10 * 1024 * 1024;
 
-const PROJECT_UPLOADS = path.join(process.cwd(), "uploads");
+const PROJECT_UPLOADS = uploadsDir;
 const TMP_UPLOADS = path.join(os.tmpdir(), "xiangtai-uploads");
 
 function getUploadsDir(): string {
