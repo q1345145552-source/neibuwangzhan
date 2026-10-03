@@ -886,6 +886,14 @@ export default function InternalPage() {
 
   const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0);
   const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.withholding_tax) || 0);
+  const payslipStatusClass = (s: string) => (
+    s === "打回" ? "bg-red-500/15 text-red-600" :
+    s === "已发放" ? "bg-emerald-500/15 text-emerald-600" :
+    s === "已确认" ? "bg-green-500/15 text-green-600" :
+    s === "待确认" ? "bg-blue-500/15 text-blue-600" :
+    "bg-slate-500/15 text-slate-600"
+  );
+  const payslipMoney = (v: any) => (Number(v) || 0).toFixed(2);
 
   const payslipAction = async (id: number, action: string, reason?: string) => {
     try {
@@ -1016,45 +1024,68 @@ export default function InternalPage() {
             ) : myPayslips.length === 0 ? (
               <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无工资单</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
-                      <th className="py-3 px-4 text-left text-xs font-medium">月份</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">收入</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">扣除</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
-                      <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myPayslips.map((p) => (
-                      <tr key={p.id} className="border-b border-[var(--border)] last:border-0">
-                        <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.month}</td>
-                        <td className="py-2.5 px-3 text-right tabular-nums">{payslipTotal(p).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{payslipDeduct(p).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(payslipTotal(p) - payslipDeduct(p)).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", p.status === "打回" ? "bg-red-500/15 text-red-600" : p.status === "已发放" ? "bg-emerald-500/15 text-emerald-600" : p.status === "已确认" ? "bg-green-500/15 text-green-600" : p.status === "待确认" ? "bg-blue-500/15 text-blue-600" : "bg-slate-500/15 text-slate-600")}>
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          {p.status === "待确认" && (
-                            <>
-                              <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
-                            </>
-                          )}
-                          {p.status === "打回" && p.reject_reason && (
-                            <span className="text-xs text-red-500">意见：{p.reject_reason}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-col gap-3">
+                {myPayslips.map((p) => {
+                  const income = payslipTotal(p);
+                  const deduct = payslipDeduct(p);
+                  const net = income - deduct;
+                  return (
+                    <div key={p.id} className="rounded-lg border border-[var(--border)] p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="font-medium text-[var(--foreground)]">{p.month} 工资单</span>
+                        <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", payslipStatusClass(p.status))}>{p.status}</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">收入</p>
+                          <div className="space-y-1">
+                            {[["底薪", p.base_salary], ["勤奋奖", p.diligence_bonus], ["技能津贴", p.skill_allowance], ["奖金", p.bonus], ["佣金", p.commission], ["加班费", p.overtime]].map(([label, val]) => (
+                              <div key={String(label)} className="flex justify-between text-sm">
+                                <span className="text-[var(--muted-foreground)]">{label}</span>
+                                <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-1.5 flex justify-between border-t border-[var(--border)] pt-1.5 text-sm font-medium">
+                            <span>收入合计</span>
+                            <span className="tabular-nums">{income.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">扣除</p>
+                          <div className="space-y-1">
+                            {[["社保", p.social_security], ["迟到", p.late_deduction], ["事假", p.personal_leave_deduction], ["病假", p.sick_leave_deduction], ["缺勤", p.absence_deduction], ["预扣税", p.withholding_tax]].map(([label, val]) => (
+                              <div key={String(label)} className="flex justify-between text-sm">
+                                <span className="text-[var(--muted-foreground)]">{label}</span>
+                                <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-1.5 flex justify-between border-t border-[var(--border)] pt-1.5 text-sm font-medium">
+                            <span>扣除合计</span>
+                            <span className="tabular-nums">{deduct.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between rounded-md bg-[var(--muted)]/40 px-3 py-2">
+                        <span className="text-sm font-medium text-[var(--foreground)]">净收入</span>
+                        <span className="text-lg font-semibold tabular-nums text-emerald-600">{net.toFixed(2)}</span>
+                      </div>
+
+                      {p.status === "打回" && p.reject_reason && (
+                        <p className="mt-2 text-xs text-red-500">修改意见：{p.reject_reason}</p>
+                      )}
+                      {p.status === "待确认" && (
+                        <div className="mt-3 flex gap-2">
+                          <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
