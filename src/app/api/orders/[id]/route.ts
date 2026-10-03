@@ -6,6 +6,7 @@ import { readJson } from "@/lib/req";
 import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 import { subServices } from "@/lib/constants";
 import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
+import { approvePending } from "@/lib/cancel-sync";
 import { isClientOrderVisible } from "@/lib/client-scope";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
@@ -175,7 +176,9 @@ export async function PATCH(
         });
       }
       db.prepare(sql).run(...values);
-      const queued = queueProgressEventsForOrder(id, db);
+      // 管理员直接取消：这张单上客户待处理的取消申请一并记同意并回传（2026-10-03，规则 19）
+      const approvedRequests = body.cancel === true ? approvePending(db, id, auth.name) : 0;
+      const queued = queueProgressEventsForOrder(id, db) + approvedRequests;
       return { queued, order: db.prepare("SELECT * FROM orders WHERE id = ?").get(id) };
     }).immediate();
   } catch (error) {

@@ -26,11 +26,12 @@ Object.assign(process.env, {
 });
 
 // ── 内部：真路由 + 本进程转发服务 ──
-const [orders, documents, docsRoute, { getDb }, { signToken }, certificates, requests, deliveryFile] = await Promise.all([
+const [orders, documents, docsRoute, { getDb }, { signToken }, certificates, requests, deliveryFile, cancelSync, cancelDecide, orderRoute] = await Promise.all([
   import('../src/app/api/sync/orders/route'), import('../src/app/api/orders/[id]/documents/route'),
   import('../src/app/api/sync/documents/route'), import('../src/lib/db'), import('../src/lib/auth'),
   import('../src/app/api/orders/[id]/certificates/route'), import('../src/app/api/orders/[id]/supplement-requests/route'),
   import('../src/app/api/sync/deliveries/[deliveryId]/file/route'),
+  import('../src/app/api/sync/cancel-requests/route'), import('../src/app/api/orders/[id]/cancel-requests/route'), import('../src/app/api/orders/[id]/route'),
 ]);
 const internalDir = path.join(dir, 'internal-cwd'); fs.mkdirSync(internalDir); process.chdir(internalDir); // 内部上传目录 = cwd/uploads
 const idb = getDb();
@@ -41,7 +42,7 @@ const shim = http.createServer(async (req, res) => {
     const response = await deliveryFile.GET(new NextRequest(`http://127.0.0.1:${internalPort}${req.url}`, { headers: req.headers as Record<string, string> }), { params: Promise.resolve({ deliveryId: fileMatch[1] }) });
     res.writeHead(response.status, Object.fromEntries(response.headers.entries())).end(Buffer.from(await response.arrayBuffer())); return;
   }
-  const handler = req.url === '/api/sync/orders' ? orders.POST : req.url === '/api/sync/documents' ? docsRoute.POST : null;
+  const handler = req.url === '/api/sync/orders' ? orders.POST : req.url === '/api/sync/documents' ? docsRoute.POST : req.url === '/api/sync/cancel-requests' ? cancelSync.POST : null;
   if (!handler || req.method !== 'POST') { res.writeHead(404).end('{}'); return; }
   const response = await handler(new NextRequest(`http://127.0.0.1:${internalPort}${req.url}`, { method: 'POST', headers: req.headers as Record<string, string>, body: Buffer.concat(chunks) }));
   res.writeHead(response.status, { 'content-type': 'application/json' }).end(await response.text());
@@ -264,6 +265,76 @@ try {
     assert((await client('GET', `/api/orders/${order2.id}/deliveries`)).body.some((d: any) => d.name === '另一单的交付'), 'shown on the second order');
     assert(!fs.existsSync(oldFile), 'replaced file removed');
     assert(cdb.prepare("SELECT 1 FROM notifications WHERE content LIKE '%另一单的交付%' AND link=?").get(`/dashboard/order/${order2.id}`), 'second order owner notified');
+  });
+  // ── 站内申请取消（2026-10-03，规则 19/20）──
+  const copyOrder = (copy: number) => (idb.prepare('SELECT internal_order_id id FROM sync_inbox WHERE source_order_no=? AND line_no=1 AND copy_no=?').get(order.order_no, copy) as { id: string }).id;
+  const admins = (idb.prepare("SELECT COUNT(DISTINCT name) n FROM employees WHERE role='admin' AND status='在职' AND name<>''").get() as { n: number }).n;
+  const cancelOf = (copy: number, status = 'pending') => idb.prepare('SELECT * FROM sync_cancel_requests WHERE internal_order_id=? AND status=? ORDER BY rowid DESC').get(copyOrder(copy), status) as any;
+  const clientReq = (id: string) => cdb.prepare('SELECT * FROM order_cancel_requests WHERE id=?').get(id) as any;
+  await test('customer cancel request reaches internal admins only; the order keeps running', async () => {
+    assert.equal((await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 2, reason: '' })).status, 400, 'reason required');
+    const r = await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 2, reason: '第二家公司不需要了' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 2, reason: '再点一次' })).status, 409, 'one pending per copy');
+    assert.equal((await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 9, reason: '不存在' })).status, 404);
+    assert.equal((await fetch(`http://127.0.0.1:${clientPort}/api/orders/${order.id}/cancel-requests`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${clientToken('other', 'customer')}` }, body: JSON.stringify({ line_no: 1, copy_no: 1, reason: 'x' }) })).status, 403);
+    const row = await until('申请送到内部', () => cancelOf(2));
+    assert.equal(row.id, r.body.id); assert.equal(row.reason, '第二家公司不需要了');
+    assert.notEqual((idb.prepare('SELECT status FROM orders WHERE id=?').get(copyOrder(2)) as any).status, '客户取消', 'request alone does not cancel');
+    assert.equal((idb.prepare("SELECT COUNT(*) n FROM notifications WHERE title='客户申请取消' AND related_id=?").get(copyOrder(2)) as any).n, admins);
+    assert.equal((idb.prepare("SELECT COUNT(*) n FROM notifications n JOIN employees e ON e.name=n.recipient WHERE n.title='客户申请取消' AND e.role<>'admin'").get() as any).n, 0, 'admins only');
+    assert.equal(clientReq(r.body.id).send_status, 'sent');
+  });
+  await test('only an admin decides; rejecting needs a reason and the customer sees it', async () => {
+    const row = cancelOf(2);
+    const emp = idb.prepare("SELECT id,name,auth_version FROM employees WHERE role='employee' AND status='在职' LIMIT 1").get() as { id: number; name: string; auth_version: number };
+    idb.prepare('UPDATE employees SET must_change_password=0 WHERE id=?').run(emp.id);
+    const empToken = await signToken({ id: emp.id, name: emp.name, role: 'employee', auth_version: emp.auth_version, must_change_password: 0 });
+    const asEmp = await cancelDecide.POST(new NextRequest('http://127.0.0.1/x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${empToken}` }, body: JSON.stringify({ request_id: row.id, decision: 'approve' }) }), { params: Promise.resolve({ id: copyOrder(2) }) });
+    assert.equal(asEmp.status, 403);
+    assert.equal((await staffCall(cancelDecide.POST, copyOrder(2), 'POST', { request_id: row.id, decision: 'reject' })).status, 400, 'reason required');
+    assert.equal((await staffCall(cancelDecide.POST, copyOrder(2), 'POST', { request_id: row.id, decision: 'reject', note: '材料已递交官方，撤不回来' })).status, 200);
+    assert.equal((await staffCall(cancelDecide.POST, copyOrder(2), 'POST', { request_id: row.id, decision: 'approve' })).status, 409, 'decided once');
+    await until('驳回回到客户站', () => clientReq(row.id).status === 'rejected');
+    assert.equal(clientReq(row.id).decision_note, '材料已递交官方，撤不回来');
+    assert(cdb.prepare("SELECT 1 FROM notifications WHERE user_id='buyer' AND title='取消申请结果' AND content LIKE '%材料已递交官方%' AND content LIKE '%继续办理%'").get());
+    assert.notEqual((idb.prepare('SELECT status FROM orders WHERE id=?').get(copyOrder(2)) as any).status, '客户取消');
+  });
+  await test('approving cancels only that copy; the customer sees it cancelled and the other copy continues', async () => {
+    const r = await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 2, reason: '还是不要了' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const row = await until('第二次申请送到内部', () => cancelOf(2));
+    assert.equal((await staffCall(cancelDecide.POST, copyOrder(2), 'POST', { request_id: row.id, decision: 'approve' })).status, 200);
+    const internal = idb.prepare('SELECT status,cancel_reason FROM orders WHERE id=?').get(copyOrder(2)) as any;
+    assert.equal(internal.status, '客户取消'); assert.equal(internal.cancel_reason, '客户申请取消：还是不要了');
+    await until('同意回到客户站', () => clientReq(row.id).status === 'approved');
+    await until('该份进度变客户取消', () => (cdb.prepare('SELECT status FROM sync_progress WHERE order_id=? AND line_no=1 AND copy_no=2').get(order.id) as any)?.status === '客户取消');
+    assert.notEqual((idb.prepare('SELECT status FROM orders WHERE id=?').get(copyOrder(1)) as any).status, '客户取消');
+    assert.notEqual((cdb.prepare('SELECT status FROM orders WHERE id=?').get(order.id) as any).status, 'cancelled', 'other copy still active');
+    assert(cdb.prepare("SELECT 1 FROM notifications WHERE user_id='buyer' AND title='取消申请结果' AND content LIKE '%已同意%' AND content LIKE '%另行%'").get());
+    assert.equal((await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 2, reason: '再申请' })).status, 409, 'already cancelled');
+  });
+  await test('an admin cancelling directly also answers the pending request; all copies cancelled → order cancelled', async () => {
+    const r = await client('POST', `/api/orders/${order.id}/cancel-requests`, { line_no: 1, copy_no: 1, reason: '第一家也不要了' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    await until('申请送到内部', () => cancelOf(1));
+    assert.equal((await staffCall(orderRoute.PATCH, copyOrder(1), 'PATCH', { cancel: true, cancel_reason: '客户电话确认不做了' })).status, 200);
+    await until('直接取消也回传同意', () => clientReq(r.body.id).status === 'approved');
+    await until('整单变已取消', () => (cdb.prepare('SELECT status FROM orders WHERE id=?').get(order.id) as any).status === 'cancelled');
+  });
+  await test('legacy cancel points synced orders to the new flow; a request for an already-cancelled copy is answered at once', async () => {
+    const order2 = cdb.prepare("SELECT id,order_no,status FROM orders WHERE sku_code='TAX-005' ORDER BY rowid DESC LIMIT 1").get() as { id: string; order_no: string; status: string };
+    const legacy = await client('POST', `/api/orders/${order2.id}/cancel`);
+    assert.equal(legacy.status, 409); assert.match(legacy.body.error, /按服务申请取消/);
+    const target = (idb.prepare('SELECT internal_order_id id FROM sync_inbox WHERE source_order_no=? AND line_no=1 AND copy_no=1').get(order2.order_no) as { id: string }).id;
+    assert.equal((await staffCall(orderRoute.PATCH, target, 'PATCH', { cancel: true, cancel_reason: '内部先取消' })).status, 200);
+    const before = (idb.prepare("SELECT COUNT(*) n FROM notifications WHERE title='客户申请取消'").get() as any).n;
+    const resp = await fetch(`http://127.0.0.1:${internalPort}/api/sync/cancel-requests`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${SECRET}` },
+      body: JSON.stringify({ source_order_no: order2.order_no, request_id: 'already-cancelled-1', line_no: 1, copy_no: 1, reason: '晚到的申请' }) });
+    const ack = await resp.json() as any;
+    assert.equal(resp.status, 200); assert.equal(ack.status, 'approved');
+    assert.equal((idb.prepare("SELECT COUNT(*) n FROM notifications WHERE title='客户申请取消'").get() as any).n, before, 'no reminder for a done deal');
+    assert.equal((await fetch(`http://127.0.0.1:${internalPort}/api/sync/cancel-requests`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 401);
   });
 } finally {
   child.kill('SIGTERM');

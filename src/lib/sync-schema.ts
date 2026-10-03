@@ -91,8 +91,23 @@ export function initializeSyncSchema(database: Database.Database): void {
         submitted_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_sync_document_requests_order ON sync_document_requests(internal_order_id);
-      -- 回传客户站的发送队列（与业务写入同事务入队，提交后再发）：资料审核结果、补件要求、交付文件。
-      -- submission_id 列作通用键（审核=客户站资料号，补件=request_id，交付=delivery_id），payload.event 决定发往哪个接口。
+      -- 客户站内申请取消（2026-10-03，规则 19/20）：按份（一张办理单）申请，管理员同意/不同意后回传结果。id = 客户站申请号。
+      CREATE TABLE IF NOT EXISTS sync_cancel_requests (
+        id TEXT PRIMARY KEY,
+        source_order_no TEXT NOT NULL,
+        internal_order_id TEXT NOT NULL,
+        line_no INTEGER NOT NULL,
+        copy_no INTEGER NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+        decision_note TEXT NOT NULL DEFAULT '',
+        decided_by TEXT,
+        decided_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_cancel_requests_order ON sync_cancel_requests(internal_order_id, status);
+      -- 回传客户站的发送队列（与业务写入同事务入队，提交后再发）：资料审核结果、补件要求、交付文件、取消申请结果。
+      -- submission_id 列作通用键（审核=客户站资料号，补件=request_id，交付=delivery_id，取消=客户站申请号），payload.event 决定发往哪个接口。
       CREATE TABLE IF NOT EXISTS sync_document_outbox (
         id TEXT PRIMARY KEY,
         submission_id TEXT NOT NULL,
