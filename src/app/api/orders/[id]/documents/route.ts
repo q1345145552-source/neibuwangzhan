@@ -6,6 +6,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { queueDocumentReview, requestProgressFlush } from "@/lib/progress-sync";
+import { syncDocumentDelivery } from "@/lib/delivery-sync";
 
 export async function GET(
   req: NextRequest,
@@ -44,10 +45,15 @@ export async function POST(
     return NextResponse.json({ error: "请上传自己的文件，或选择已公开且有权查看的资料" }, { status: 403 });
   }
   const docStatus = auth.role === "client" ? "待审核" : status || "已审核";
-  const result = db.prepare(
-    "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url, client_author_id, publication_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, name, file_type || "", docStatus, auth.role === "client" ? "client_to_us" : direction || "client_to_us", auth.name, file_url || "", auth.role === "client" ? auth.id : null, isStaff(auth) && direction === "us_to_client" && docStatus === "已审核" ? 1 : 0);
-  const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid);
+  const { doc, delivered } = db.transaction(() => {
+    const result = db.prepare(
+      "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url, client_author_id, publication_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(id, name, file_type || "", docStatus, auth.role === "client" ? "client_to_us" : direction || "client_to_us", auth.name, file_url || "", auth.role === "client" ? auth.id : null, isStaff(auth) && direction === "us_to_client" && docStatus === "已审核" ? 1 : 0);
+    const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid) as Parameters<typeof syncDocumentDelivery>[3];
+    // 员工直接加的已核对公开文件：客户站同步单同时交付给客户（2026-10-03）
+    return { doc, delivered: syncDocumentDelivery(db, id, undefined, doc) };
+  })();
+  if (delivered) requestProgressFlush();
   // 审计日志操作人以登录身份为准，不信任请求体
   logOperation(auth.name, "添加文档", "document", id);
     return NextResponse.json(auth.role === "client" ? publicDocument(doc) : doc, { status: 201 });
@@ -72,10 +78,15 @@ export async function DELETE(
 
   if (!document_id) return NextResponse.json({ error: "缺少 document_id" }, { status: 400 });
 
-  const existing = db.prepare("SELECT * FROM documents WHERE id = ? AND order_id = ?").get(document_id, id);
+  const existing = db.prepare("SELECT * FROM documents WHERE id = ? AND order_id = ?").get(document_id, id) as Parameters<typeof syncDocumentDelivery>[2];
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
 
-  db.prepare("DELETE FROM documents WHERE id = ?").run(document_id);
+  // 已交付给客户站客户的文件被删：同时撤回（2026-10-03）
+  const withdrawn = db.transaction(() => {
+    db.prepare("DELETE FROM documents WHERE id = ?").run(document_id);
+    return syncDocumentDelivery(db, id, existing, undefined);
+  })();
+  if (withdrawn) requestProgressFlush();
   logOperation(auth.name, "删除文档", "document", String(document_id), `订单:${id}`);
   return NextResponse.json({ success: true });
 }
@@ -92,7 +103,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (status !== undefined && !['待审核', '已审核', '已退回'].includes(status)) return NextResponse.json({ error: "审核状态无效" }, { status: 400 });
   if (direction !== undefined && !['client_to_us', 'us_to_client'].includes(direction)) return NextResponse.json({ error: "资料方向无效" }, { status: 400 });
   const db = getDb();
-  const existing = db.prepare('SELECT * FROM documents WHERE id = ? AND order_id = ?').get(document_id, id) as { status: string; direction: string; publication_verified: number } | undefined;
+  const existing = db.prepare('SELECT * FROM documents WHERE id = ? AND order_id = ?').get(document_id, id) as (Parameters<typeof syncDocumentDelivery>[2] & { status: string; direction: string; publication_verified: number }) | undefined;
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
   const nextStatus = status ?? existing.status;
   const nextDirection = direction ?? existing.direction;
@@ -106,6 +117,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       db.prepare("UPDATE documents SET status = ? WHERE id IN (SELECT document_id FROM sync_documents WHERE submission_id = ?) AND id <> ?").run(nextStatus, link.submission_id, document_id);
       review = queueDocumentReview(db, link.submission_id, nextStatus, String(review_note || ""));
     }
+    // 对客公开状态变化：客户站同步单交付或撤回（2026-10-03）
+    const after = db.prepare("SELECT * FROM documents WHERE id = ? AND order_id = ?").get(document_id, id) as Parameters<typeof syncDocumentDelivery>[3];
+    if (syncDocumentDelivery(db, id, existing, after)) review = true;
     logOperation(auth.name, "审核资料", "document", String(document_id), `订单:${id} 状态:${nextStatus} 方向:${nextDirection}${review_note ? ` 原因:${String(review_note).slice(0, 100)}` : ""}`);
     return review;
   })();

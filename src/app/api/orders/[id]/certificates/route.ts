@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { requestProgressFlush } from "@/lib/progress-sync";
+import { syncCertificateDelivery } from "@/lib/delivery-sync";
 
 export async function GET(
   req: NextRequest,
@@ -45,10 +47,15 @@ export async function POST(
     const diffDays = Math.floor((new Date(expiry_date).getTime() - Date.now()) / 86400000);
     initialStatus = diffDays < 0 ? "expired" : diffDays <= 30 ? "expiring" : "valid";
   }
-  const result = db.prepare(
-    "INSERT INTO certificates (order_id, certificate_number, product_name, issue_date, expiry_date, status, notes, file_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, certificate_number, product_name || "", issue_date || "", expiry_date || "", initialStatus, notes || "", file_url || "");
-  const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(result.lastInsertRowid) as { id: number };
+  // 证书即交付结果：客户站同步单同时交付给客户（2026-10-03）
+  const { cert, delivered } = db.transaction(() => {
+    const result = db.prepare(
+      "INSERT INTO certificates (order_id, certificate_number, product_name, issue_date, expiry_date, status, notes, file_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(id, certificate_number, product_name || "", issue_date || "", expiry_date || "", initialStatus, notes || "", file_url || "");
+    const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(result.lastInsertRowid) as Parameters<typeof syncCertificateDelivery>[3] & { id: number };
+    return { cert, delivered: syncCertificateDelivery(db, id, cert.id, cert) };
+  })();
+  if (delivered) requestProgressFlush();
   logOperation(auth.name, "添加证书", "certificate", String(cert.id), `订单:${id}`);
   return NextResponse.json(cert, { status: 201 });
 }
@@ -99,8 +106,12 @@ export async function PATCH(
 
   if (fields.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   values.push(cert_id, id);
-  db.prepare(`UPDATE certificates SET ${fields.join(", ")} WHERE id = ? AND order_id = ?`).run(...values);
-  const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(cert_id);
+  const { cert, delivered } = db.transaction(() => {
+    db.prepare(`UPDATE certificates SET ${fields.join(", ")} WHERE id = ? AND order_id = ?`).run(...values);
+    const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(cert_id) as Parameters<typeof syncCertificateDelivery>[3] & { id: number };
+    return { cert, delivered: syncCertificateDelivery(db, id, cert.id, cert) };
+  })();
+  if (delivered) requestProgressFlush();
   return NextResponse.json(cert);
 }
 
@@ -126,7 +137,11 @@ export async function DELETE(
   const existing = db.prepare("SELECT * FROM certificates WHERE id = ? AND order_id = ?").get(cert_id, id);
   if (!existing) return NextResponse.json({ error: "证书不存在" }, { status: 404 });
 
-  db.prepare("DELETE FROM certificates WHERE id = ?").run(cert_id);
+  const withdrawn = db.transaction(() => {
+    db.prepare("DELETE FROM certificates WHERE id = ?").run(cert_id);
+    return syncCertificateDelivery(db, id, Number(cert_id), null);
+  })();
+  if (withdrawn) requestProgressFlush();
   logOperation("系统", "删除证书", "certificate", String(cert_id), `订单:${id}`);
   return NextResponse.json({ success: true });
 }

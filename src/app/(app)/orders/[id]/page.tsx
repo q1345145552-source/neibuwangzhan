@@ -169,6 +169,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [uploadingCert, setUploadingCert] = useState(false);
   const [docFileUrl, setDocFileUrl] = useState("");
   const [docErrorMsg, setDocErrorMsg] = useState("");
+  // 补件要求（2026-10-03）：只有客户网站同步过来的单才有
+  const [supplementRequests, setSupplementRequests] = useState<{ id: string; name: string; description: string; created_by: string; created_at: string; submitted_at: string | null }[]>([]);
+  const [reqName, setReqName] = useState("");
+  const [reqDesc, setReqDesc] = useState("");
+  const [reqError, setReqError] = useState("");
+  const [sendingReq, setSendingReq] = useState(false);
   const [certErrorMsg, setCertErrorMsg] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [feedbackLink, setFeedbackLink] = useState<string | null>(null);
@@ -241,6 +247,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         if (ignore) return;
         setStepNotes(notesMap);
         setStepDocs(docsMap);
+        if (!isClient && data.source_system === "storefront") {
+          try {
+            const r = await fetchWithAuth(`/api/orders/${id}/supplement-requests`, { cache: "no-store" });
+            if (r.ok && !ignore) setSupplementRequests(await r.json());
+          } catch { /* 拿不到不影响主体展示 */ }
+        }
       } catch {
         if (!ignore) setError("订单加载失败");
       } finally {
@@ -388,6 +400,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       if (!response.ok) throw new Error(result.error || "退回失败");
       reload();
     } catch (error) { setDocErrorMsg(error instanceof Error ? error.message : "退回失败"); }
+  };
+
+  // 发补件要求给客户网站的客户（2026-10-03）：进客户的资料待办，客户按它交的资料会回到这里
+  const handleSendSupplementRequest = async () => {
+    if (!reqName.trim()) { setReqError("请填写要补的资料名称"); return; }
+    setSendingReq(true); setReqError("");
+    try {
+      const response = await fetchWithAuth(`/api/orders/${id}/supplement-requests`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: reqName.trim(), description: reqDesc.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "发送失败");
+      setReqName(""); setReqDesc("");
+      reload();
+    } catch (error) { setReqError(error instanceof Error ? error.message : "发送失败"); }
+    finally { setSendingReq(false); }
   };
 
   // 文档删除
@@ -1221,6 +1250,29 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
                 )}
                 {docErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{docErrorMsg}</p>}
+                {!isClient && order.source_system === "storefront" && (
+                  <div className="mt-3 space-y-1.5 border-t border-[var(--border)] pt-3">
+                    <p className="text-xs font-medium text-[var(--foreground)]">要求客户补件 <span className="font-normal text-[var(--muted-foreground)]">（发到客户网站的资料待办）</span></p>
+                    <input placeholder="要补的资料名称，如：最新营业执照" value={reqName} onChange={(e) => { setReqName(e.target.value); setReqError(""); }} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                    <input placeholder="说明（客户能看到，可不填）" value={reqDesc} onChange={(e) => setReqDesc(e.target.value)} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                    <div className="flex justify-end">
+                      <button onClick={handleSendSupplementRequest} disabled={sendingReq} className="rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] disabled:opacity-50">{sendingReq ? "发送中…" : "发给客户"}</button>
+                    </div>
+                    {reqError && <p className="text-xs text-[var(--destructive)]">{reqError}</p>}
+                    {supplementRequests.length > 0 && (
+                      <ul className="flex flex-col gap-1">
+                        {supplementRequests.map((r) => (
+                          <li key={r.id} className="rounded-md bg-[var(--secondary)] px-2 py-1.5 text-xs">
+                            <p className="font-medium text-[var(--foreground)]">{r.name}{r.description && <span className="font-normal text-[var(--muted-foreground)]"> — {r.description}</span>}</p>
+                            <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">
+                              {r.created_by} · {toThaiTime(r.created_at)} · <span className={r.submitted_at ? "text-[var(--success)]" : "text-[var(--warning)]"}>{r.submitted_at ? `客户已交（${toThaiTime(r.submitted_at)}）` : "等客户交"}</span>
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
               );})()}
 

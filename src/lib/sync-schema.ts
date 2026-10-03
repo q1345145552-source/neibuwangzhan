@@ -79,7 +79,20 @@ export function initializeSyncSchema(database: Database.Database): void {
         UNIQUE(submission_id, internal_order_id)
       );
       CREATE INDEX IF NOT EXISTS idx_sync_documents_document ON sync_documents(document_id);
-      -- 审核结果回传客户站的发送队列（与业务写入同事务入队，提交后再发）
+      -- 补件要求（2026-10-03，规则 13）：员工发给客户站客户的补件要求；客户按它交的资料到达时记 submitted_at
+      CREATE TABLE IF NOT EXISTS sync_document_requests (
+        id TEXT PRIMARY KEY,
+        source_order_no TEXT NOT NULL,
+        internal_order_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        submitted_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_document_requests_order ON sync_document_requests(internal_order_id);
+      -- 回传客户站的发送队列（与业务写入同事务入队，提交后再发）：资料审核结果、补件要求、交付文件。
+      -- submission_id 列作通用键（审核=客户站资料号，补件=request_id，交付=delivery_id），payload.event 决定发往哪个接口。
       CREATE TABLE IF NOT EXISTS sync_document_outbox (
         id TEXT PRIMARY KEY,
         submission_id TEXT NOT NULL,
