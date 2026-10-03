@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, type EmployeeRecord, type EmployeeFile } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn, toThaiTime, fileUrl } from "@/lib/utils";
+import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
 
 interface ProfileEmployee {
@@ -26,24 +26,6 @@ const FORM_FIELDS = [
   "emergency_name", "emergency_phone", "emergency_relation",
   "education", "skills", "notes", "bazi", "fortune",
 ] as const;
-
-// 出生日期（YYYY-MM-DD）对应的西方星座，自动算
-function zodiacFromBirthDate(birthDate: string): string {
-  const m = (birthDate || "").match(/^\d{4}-(\d{2})-(\d{2})$/);
-  if (!m) return "";
-  const month = Number(m[1]);
-  const day = Number(m[2]);
-  const boundaries: [number, number, string][] = [
-    [1, 20, "水瓶座"], [2, 19, "双鱼座"], [3, 21, "白羊座"], [4, 20, "金牛座"],
-    [5, 21, "双子座"], [6, 21, "巨蟹座"], [7, 23, "狮子座"], [8, 23, "处女座"],
-    [9, 23, "天秤座"], [10, 23, "天蝎座"], [11, 22, "射手座"], [12, 22, "摩羯座"],
-  ];
-  let zodiac = "摩羯座";
-  for (const [bm, bd, name] of boundaries) {
-    if (month > bm || (month === bm && day >= bd)) zodiac = name;
-  }
-  return zodiac;
-}
 
 export default function EmployeeProfilesPage() {
   const { user } = useAuth();
@@ -121,6 +103,25 @@ export default function EmployeeProfilesPage() {
       setFiles((prev) => prev.filter((f) => f.id !== id));
     } catch (err) {
       alert(err instanceof Error ? err.message : "删除失败");
+    }
+  };
+
+  const downloadPdf = async () => {
+    if (!selected) return;
+    try {
+      const res = await fetchWithAuth(`/api/employees/${selected.id}/pdf`, {});
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e?.error || "导出失败"); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `员工档案-${selected.name}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("导出失败");
     }
   };
 
@@ -345,6 +346,7 @@ export default function EmployeeProfilesPage() {
 
                   <div className="flex items-center gap-3">
                     <Button size="sm" onClick={save} disabled={saving}>{saving ? "保存中…" : "保存"}</Button>
+                    <Button size="sm" variant="outline" onClick={downloadPdf}><Download className="size-3.5" />导出 PDF</Button>
                     {savedMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{savedMsg}</span>}
                   </div>
 
@@ -414,8 +416,9 @@ export default function EmployeeProfilesPage() {
       ) : (
         /* 员工端：只看自己的档案，只读 */
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
-          <div className="px-5 py-4 border-b border-[var(--border)]">
+          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
             <h2 className="text-sm font-medium flex items-center gap-2"><IdCard className="size-4" />我的档案</h2>
+            <Button size="sm" variant="outline" onClick={downloadPdf} disabled={!selected}><Download className="size-3.5" />导出 PDF</Button>
           </div>
           <div className="p-5">
             {loading ? (

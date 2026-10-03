@@ -26,3 +26,21 @@ export function fileUrl(url: string | null | undefined): string {
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}token=${encodeURIComponent(token)}`;
 }
+
+// 出生日期（YYYY-MM-DD）对应的西方星座，自动算
+export function zodiacFromBirthDate(birthDate: string): string {
+  const m = (birthDate || "").match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  const boundaries: [number, number, string][] = [
+    [1, 20, "水瓶座"], [2, 19, "双鱼座"], [3, 21, "白羊座"], [4, 20, "金牛座"],
+    [5, 21, "双子座"], [6, 21, "巨蟹座"], [7, 23, "狮子座"], [8, 23, "处女座"],
+    [9, 23, "天秤座"], [10, 23, "天蝎座"], [11, 22, "射手座"], [12, 22, "摩羯座"],
+  ];
+  let zodiac = "摩羯座";
+  for (const [bm, bd, name] of boundaries) {
+    if (month > bm || (month === bm && day >= bd)) zodiac = name;
+  }
+  return zodiac;
+}
