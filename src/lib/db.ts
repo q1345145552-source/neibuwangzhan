@@ -486,7 +486,7 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
-    // 员工记过/记优点记录：type=demerit 记过(扣分)，type=merit 记优点(加分)，points 为正数分值
+    -- 员工记过/记优点记录：type=demerit 记过(扣分)，type=merit 记优点(加分)，points 为正数分值
     CREATE TABLE IF NOT EXISTS employee_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
