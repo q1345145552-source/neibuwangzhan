@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // POST /api/vat/records/batch
 export async function POST(req: NextRequest) {
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
   
     })();
     db.prepare(`UPDATE vat_records SET updated_at = datetime('now') WHERE id IN (${placeholders})`).run(...record_ids);
+    logOperation(auth.name, "批量催交VAT资料", "vat_batch", String(record_ids.length), `催交 ${record_ids.length} 条`);
     return NextResponse.json({ success: true, message: `已催交 ${record_ids.length} 条记录` });
   }
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
       }
   
     })();
+    logOperation(auth.name, "批量发VAT确认通知", "vat_batch", String(record_ids.length), `发送 ${record_ids.length} 条`);
     return NextResponse.json({ success: true, message: `已发送 ${record_ids.length} 条确认通知` });
   }
 
@@ -74,6 +76,7 @@ export async function POST(req: NextRequest) {
       ).run(...customerIds.map(c => c.customer_id));
       paused = res.changes;
     }
+    logOperation(auth.name, "批量暂停VAT客户", "vat_batch", String(paused), `暂停 ${paused} 个客户`);
     return NextResponse.json({ success: true, message: `已暂停 ${paused} 个客户` });
   }
 

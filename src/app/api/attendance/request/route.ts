@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO attendance_requests (employee_name, date, time, type, reason, photo) VALUES (?, ?, ?, '补签', ?, ?)"
   ).run(employee_name, date, time, reason || "", body.photo || "");
+  logOperation(employee_name, "补签申请", "attendance_request", String(result.lastInsertRowid), `${date} ${time}`);
 
   // 通知管理员
   const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
@@ -70,6 +71,7 @@ export async function PATCH(req: NextRequest) {
   db.prepare(
     "UPDATE attendance_requests SET status = ?, approved_by = ?, approved_at = datetime('now') WHERE id = ?"
   ).run(status, auth.name, id);
+  logOperation(req_.employee_name, status === "已通过" ? "补签审批通过" : "补签审批驳回", "attendance_request", String(id), `${req_.date} ${req_.time}`);
 
   // 审批通过：自动补打卡记录
   if (status === "已通过") {

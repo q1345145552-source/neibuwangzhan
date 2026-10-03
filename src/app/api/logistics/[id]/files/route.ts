@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { readJson } from "@/lib/req";
 // Removing a reference does not delete a possibly shared physical file.
 
@@ -26,6 +26,8 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO shipping_order_files (order_id, name, url, uploaded_by) VALUES (?, ?, ?, ?)"
   ).run(id, name, url, auth.name);
+
+  logOperation(auth.name, "上传柜号文件", "logistics_file", String(result.lastInsertRowid), name);
 
   const file = db.prepare(
     "SELECT id, order_id, name, url, uploaded_by, created_at FROM shipping_order_files WHERE id = ?"

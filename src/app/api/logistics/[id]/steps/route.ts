@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 const VALID_STATUSES = ["待处理", "进行中", "已完成", "阻塞"] as const;
 
@@ -47,6 +47,8 @@ export async function PATCH(
       db.prepare("UPDATE shipping_steps SET assignee = ? WHERE id = ?").run(assignee, step_id);
     }
   }
+
+  logOperation(auth.name, "更新步骤状态", "logistics_step", String(step_id), `${step.step_name}: ${safeStatus}`);
 
   // Update order progress
   const allSteps = db.prepare("SELECT status FROM shipping_steps WHERE order_id = ?").all(id) as { status: string }[];

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
   const result = db.prepare(
     "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, start_time, end_time, destination, reason, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(employee_name, leave_type || "事假", start_date, end_date, start_time || "09:00", end_time || "17:00", destination || "", reason || "", imagesJson);
+  logOperation(employee_name, "提交请假", "leave", String(result.lastInsertRowid), `${leave_type || "事假"} ${start_date} ~ ${end_date}`);
   const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
   for (const admin of admins) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -127,7 +128,7 @@ export async function PATCH(req: NextRequest) {
   const validStatuses = ["待审批", "已通过", "已驳回"];
   if (!validStatuses.includes(status)) return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
 
-  const target = db.prepare("SELECT id FROM leave_requests WHERE id = ?").get(id);
+  const target = db.prepare("SELECT id, employee_name FROM leave_requests WHERE id = ?").get(id) as { id: number; employee_name: string } | undefined;
   if (!target) return NextResponse.json({ error: "请假记录不存在" }, { status: 404 });
 
   const sets = ["status = ?"]; const vals: any[] = [status];
@@ -158,6 +159,11 @@ export async function PATCH(req: NextRequest) {
       }
     }
   })();
+
+  // 审批通过/驳回记日志
+  if (status === "已通过" || status === "已驳回") {
+    logOperation(target.employee_name, status === "已通过" ? "请假审批通过" : "请假审批驳回", "leave", String(id));
+  }
 
   return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
 }

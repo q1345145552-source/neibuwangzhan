@@ -461,6 +461,11 @@ function initTables(database: Database.Database) {
       failed_login_attempts INTEGER NOT NULL DEFAULT 0,
       locked_until INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职')),
+      avatar TEXT DEFAULT '',
+      chat_background TEXT DEFAULT '',
+      base_salary REAL DEFAULT 0,
+      diligence_bonus REAL,
+      skill_allowance REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -775,7 +780,7 @@ function initTables(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue')),
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip')),
       title TEXT DEFAULT '',
       body TEXT DEFAULT '',
       recipient TEXT DEFAULT '',
@@ -787,7 +792,8 @@ function initTables(database: Database.Database) {
   `);
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue"]);
+  // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip"]);
 
   // 模板库
   database.exec(`
@@ -1033,6 +1039,179 @@ function initTables(database: Database.Database) {
 
 
 
+  // ── 内部聊天 ──
+  // 会话表：1 对 1 私聊（跟谁聊）。约定 user_a < user_b，配合 UNIQUE 防止同一对产生重复会话。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      last_message_at TEXT DEFAULT '',
+      last_message_preview TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_a, user_b)
+    );
+  `);
+
+  // 群聊表：存群
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      owner TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      background TEXT DEFAULT '',
+      announcement TEXT DEFAULT '',
+      avatar TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // 群成员表：存群里有哪些人
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS group_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL REFERENCES chat_groups(id),
+      member TEXT NOT NULL,
+      role TEXT DEFAULT 'member' CHECK(role IN ('owner','member')),
+      muted INTEGER DEFAULT 0,
+      joined_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(group_id, member)
+    );
+  `);
+
+  // 消息表：存每条消息（发送人/接收人/内容/时间/已读未读）
+  // conversation_id = 私聊会话，group_id = 群聊，二者互斥（其一为空，另一个有值）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER,
+      group_id INTEGER,
+      sender TEXT NOT NULL,
+      receiver TEXT DEFAULT '',
+      content TEXT NOT NULL,
+      image_url TEXT DEFAULT '',
+      order_id TEXT DEFAULT '',
+      is_read INTEGER DEFAULT 0,
+      read_at TEXT,
+      recalled INTEGER DEFAULT 0,
+      reply_to INTEGER,
+      reply_preview TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // messages 迁移：补 image_url / order_id / recalled / reply_to / reply_preview 列
+  try { database.exec("ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN recalled INTEGER DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN reply_to INTEGER"); } catch {}
+  try { database.exec("ALTER TABLE messages ADD COLUMN reply_preview TEXT DEFAULT ''"); } catch {}
+
+  // chat_groups 迁移：补 background / announcement / avatar 列（群背景 / 群公告 / 群头像）
+  try { database.exec("ALTER TABLE chat_groups ADD COLUMN background TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE chat_groups ADD COLUMN announcement TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE chat_groups ADD COLUMN avatar TEXT DEFAULT ''"); } catch {}
+
+  // group_members 迁移：补 muted 列（成员对单个群的免打扰，各设各的）
+  try { database.exec("ALTER TABLE group_members ADD COLUMN muted INTEGER DEFAULT 0"); } catch {}
+
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_a ON conversations(user_a);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_b ON conversations(user_b);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_group_id ON messages(group_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+    CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id);
+    CREATE INDEX IF NOT EXISTS idx_group_members_member ON group_members(member);
+  `);
+
+  // 群聊已读回执：记录每个成员读了哪条群消息（发送人发送时自动计入已读）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_reads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      member TEXT NOT NULL,
+      read_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(message_id, member)
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_reads_message_id ON message_reads(message_id);
+  `);
+
+  // 群聊 @提醒：记录每条群消息 @ 了哪些成员，及该成员是否已读（看完提醒即消）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_mentions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      member TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(message_id, member)
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_mentions_member ON message_mentions(member);
+  `);
+
+  // 聊天 AI 总结缓存：同一会话 + 同一时间段只总结一次，结果落库复用
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope_key TEXT NOT NULL,
+      from_at TEXT NOT NULL,
+      to_at TEXT NOT NULL,
+      topics TEXT NOT NULL DEFAULT '',
+      conclusions TEXT NOT NULL DEFAULT '',
+      todos TEXT NOT NULL DEFAULT '',
+      commitments TEXT NOT NULL DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(scope_key, from_at, to_at)
+    );
+  `);
+
+  // 会话置顶：每个用户各自置顶自己的会话（scope_key 形如 direct:姓名 / group:群id）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS pinned_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_name TEXT NOT NULL,
+      scope_key TEXT NOT NULL,
+      pinned_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_name, scope_key)
+    );
+  `);
+
+  // 消息翻译缓存：同一条消息 + 目标语言只翻译一次
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_translations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      target TEXT NOT NULL,
+      translated TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(message_id, target)
+    );
+  `);
+
+  // 消息表情反应：某人对某条消息加了某个表情（同一人同一消息同一表情只一条）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_reactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      user_name TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(message_id, user_name, emoji)
+    );
+  `);
+
+  // 打字状态：某人在某个会话/群里正在输入（记录最近一次打字时间）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS typing_status (
+      user_name TEXT NOT NULL,
+      scope_key TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_name, scope_key)
+    );
+  `);
+
   // ── 强制修改初始密码 ──
   // 种子数据给所有账号设的都是 123456，而系统原本连改密码的接口都没有，
   // 所以"通知大家自己改"根本无从改起。这里加一个标记：还在用初始密码的账号
@@ -1044,6 +1223,11 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职'))"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN avatar TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN chat_background TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN base_salary REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN diligence_bonus REAL"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN skill_allowance REAL DEFAULT 0"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。
@@ -1467,6 +1651,231 @@ function initTables(database: Database.Database) {
     }
   } catch (e) { console.error("[DB] 迁移订单级文件失败:", e); }
 
+  // 系统设置（键值对，用于全局开关等）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    );
+  `);
+
+  // ── 问题跟踪 ──
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS problems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_number TEXT NOT NULL UNIQUE,
+      company_name TEXT NOT NULL,
+      problem_type TEXT NOT NULL DEFAULT '税务问题' CHECK(problem_type IN ('税务问题','证件问题','地址变更问题','年审问题','代持问题','合同问题','金额问题')),
+      status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','跟进中','已解决','老板验收','搁置')),
+      assignee TEXT DEFAULT '',
+      priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
+      source TEXT NOT NULL DEFAULT '客户反馈' CHECK(source IN ('客户反馈','内部发现')),
+      description TEXT DEFAULT '',
+      customer_requirement TEXT DEFAULT '',
+      deadline TEXT DEFAULT '',
+      resolve_note TEXT DEFAULT '',
+      resolved_at TEXT DEFAULT '',
+      suspend_reason TEXT DEFAULT '',
+      order_id TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS problem_follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS problem_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id),
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_problem_follow_ups_problem_id ON problem_follow_ups(problem_id);
+    CREATE INDEX IF NOT EXISTS idx_problem_attachments_problem_id ON problem_attachments(problem_id);
+
+    CREATE TABLE IF NOT EXISTS todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      assignee TEXT DEFAULT '',
+      priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
+      status TEXT NOT NULL DEFAULT '未完成' CHECK(status IN ('未完成','已完成')),
+      completed_at TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      seen_at TEXT DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS todo_follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id INTEGER NOT NULL REFERENCES todos(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS todo_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id INTEGER NOT NULL REFERENCES todos(id),
+      url TEXT NOT NULL,
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_todo_follow_ups_todo_id ON todo_follow_ups(todo_id);
+    CREATE INDEX IF NOT EXISTS idx_todo_images_todo_id ON todo_images(todo_id);
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      assignee TEXT DEFAULT '',
+      current_phase TEXT DEFAULT '构思',
+      status TEXT NOT NULL DEFAULT '孵化中' CHECK(status IN ('孵化中','已孵化为业务线','已搁置')),
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS project_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      content TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS project_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      phase TEXT DEFAULT '',
+      conclusion TEXT DEFAULT '',
+      lesson TEXT DEFAULT '',
+      adjustment TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_progress_project_id ON project_progress(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_summaries_project_id ON project_summaries(project_id);
+  `);
+
+  // 工资单：每个员工每月一张
+  // 收入 = 底薪 + 勤奋奖 + 技能津贴 + 奖金 + 佣金 + 加班费
+  // 扣除 = 社保 + 迟到 + 事假 + 病假 + 预扣税；净收入 = 收入 - 扣除
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS payslips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT DEFAULT '',
+      month TEXT NOT NULL,
+      base_salary REAL DEFAULT 0,
+      diligence_bonus REAL DEFAULT 0,
+      skill_allowance REAL DEFAULT 0,
+      bonus REAL DEFAULT 0,
+      commission REAL DEFAULT 0,
+      overtime REAL DEFAULT 0,
+      social_security REAL DEFAULT 0,
+      late_deduction REAL DEFAULT 0,
+      personal_leave_deduction REAL DEFAULT 0,
+      sick_leave_deduction REAL DEFAULT 0,
+      withholding_tax REAL DEFAULT 0,
+      status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回')),
+      reject_reason TEXT DEFAULT '',
+      summary TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, month)
+    );
+    CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
+  `);
+  // payslips 迁移：补扣除列（社保/迟到/事假/病假/预扣税）、流程列（状态/打回意见）、考勤汇总（summary）
+  try { database.exec("ALTER TABLE payslips ADD COLUMN social_security REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN late_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN sick_leave_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回'))"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN summary TEXT DEFAULT '{}'"); } catch {}
+
+  // 考勤汇总：每个员工每月一份，出勤天数 + 迟到明细 + 请假明细
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS attendance_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT DEFAULT '',
+      month TEXT NOT NULL,
+      attendance_days INTEGER DEFAULT 0,
+      late_details TEXT DEFAULT '[]',
+      leave_details TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, month)
+    );
+    CREATE INDEX IF NOT EXISTS idx_attendance_summaries_month ON attendance_summaries(month);
+  `);
+
+  // problems 表迁移：补充 来源/客户需求/截止日期 列，并把紧急程度从 2 档扩到 3 档（加"不急"）
+  try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN customer_requirement TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN deadline TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN resolve_note TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN resolved_at TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN suspend_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE problems ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+  // todos 表迁移：补完成时间列
+  try { database.exec("ALTER TABLE todos ADD COLUMN completed_at TEXT DEFAULT ''"); } catch {}
+  // todos 表迁移：补 seen_at 列（未读提醒）；老待办一次性回填为「已看过」，避免一上线全变未读
+  let addedTodoSeenAt = false;
+  try { database.exec("ALTER TABLE todos ADD COLUMN seen_at TEXT DEFAULT ''"); addedTodoSeenAt = true; } catch {}
+  if (addedTodoSeenAt) {
+    try { database.exec("UPDATE todos SET seen_at = datetime('now') WHERE seen_at = ''"); } catch {}
+  }
+  // project_summaries 迁移：把总结内容拆成 结论/经验教训/方向调整
+  try { database.exec("ALTER TABLE project_summaries ADD COLUMN conclusion TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE project_summaries ADD COLUMN lesson TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE project_summaries ADD COLUMN adjustment TEXT DEFAULT ''"); } catch {}
+  try {
+    const p = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='problems'").get() as { sql: string } | undefined;
+    if (p && !p.sql.includes("'不急'")) {
+      database.exec(`
+        ALTER TABLE problems RENAME TO problems_old;
+        CREATE TABLE problems (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          problem_number TEXT NOT NULL UNIQUE,
+          company_name TEXT NOT NULL,
+          problem_type TEXT NOT NULL DEFAULT '税务问题' CHECK(problem_type IN ('税务问题','证件问题','地址变更问题','年审问题','代持问题','合同问题','金额问题')),
+          status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待处理','跟进中','已解决','老板验收','搁置')),
+          assignee TEXT DEFAULT '',
+          priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
+          source TEXT NOT NULL DEFAULT '客户反馈' CHECK(source IN ('客户反馈','内部发现')),
+          description TEXT DEFAULT '',
+          customer_requirement TEXT DEFAULT '',
+          deadline TEXT DEFAULT '',
+          resolve_note TEXT DEFAULT '',
+          resolved_at TEXT DEFAULT '',
+          suspend_reason TEXT DEFAULT '',
+          order_id TEXT DEFAULT '',
+          created_by TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO problems (id, problem_number, company_name, problem_type, status, assignee, priority, source, description, customer_requirement, deadline, resolve_note, resolved_at, suspend_reason, order_id, created_by, created_at, updated_at)
+          SELECT id, problem_number, company_name, problem_type, status, assignee, priority, source, description, customer_requirement, deadline, resolve_note, resolved_at, suspend_reason, order_id, created_by, created_at, updated_at FROM problems_old;
+        DROP TABLE problems_old;
+      `);
+      console.log("[DB] problems 表已升级：新增来源/客户需求/截止日期，紧急程度扩展为 3 档");
+    }
+  } catch (e) { console.error("[DB] problems 迁移失败:", e); }
+
   // ── 性能索引（原位于建表语句中间，2026-09-11 移到所有表之后——
   //    空库首次初始化时前面的表尚不存在，CREATE INDEX 会抛 "no such table" 并中断建表）──
   database.exec(`
@@ -1543,7 +1952,50 @@ function initTables(database: Database.Database) {
   // 若放在这里的 initTables，会把 btCount.c 变成非 0，11 条基础业务线种子会被整体跳过。
 }
 
-/* ── 积分规则种子 ── */
+/* ── 系统设置读写 ── */
+export function getSystemSetting(key: string): string {
+  const row = getDb().prepare("SELECT value FROM system_settings WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value || "";
+}
+
+export function setSystemSetting(key: string, value: string): void {
+  getDb().prepare(
+    "INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(key, value);
+}
+
+/** 机构业务总开关是否开启（默认关闭） */
+export function isAgencyEnabled(): boolean {
+  return getSystemSetting("agency_enabled") === "1";
+}
+
+/** 生成问题编号：Q + 4 位数字（按现有最大 id 递增），每个唯一 */
+export function generateProblemNumber(): string {
+  const row = getDb().prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM problems").get() as { next: number };
+  return `Q${String(row.next).padStart(4, "0")}`;
+}
+
+/** 发送站内通知（recipient 为员工姓名） */
+export function sendNotification(
+  type: string,
+  title: string,
+  body: string,
+  recipient: string,
+  relatedId = "",
+  relatedType = ""
+): void {
+  getDb().prepare(
+    "INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(type, title, body, recipient, relatedId, relatedType);
+}
+
+/** 给所有管理员（老板）各发一条站内通知 */
+export function notifyAdmins(type: string, title: string, body: string, relatedId = "", relatedType = ""): void {
+  const admins = getDb().prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
+  for (const a of admins) {
+    if (a.name) sendNotification(type, title, body, a.name, relatedId, relatedType);
+  }
+}
 
 /* ── 积分规则种子 ── */
 let pointsRulesSeeded = false;

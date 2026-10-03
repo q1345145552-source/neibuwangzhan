@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, isAgencyEnabled, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokMonthKey, bangkokMonthBounds, bangkokDayOfWeek, bangkokToday, bangkokLastDayOfMonth, bangkokTimeToUtc, utcNowStr } from "@/lib/time";
@@ -170,7 +170,8 @@ export async function POST(req: NextRequest) {
   const { employee_name, points, reason } = body;
   if (!employee_name || !points || !reason) return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
 
-  db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, is_manual, created_by) VALUES (?, ?, ?, 'manual', 1, ?)").run(employee_name, Number(points), reason, auth.name || "");
+  const result = db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, is_manual, created_by) VALUES (?, ?, ?, 'manual', 1, ?)").run(employee_name, Number(points), reason, auth.name || "");
+  logOperation(auth.name, "手动奖惩积分", "points", String(result.lastInsertRowid), `${employee_name} ${Number(points) > 0 ? "+" : ""}${points}: ${reason}`);
   return NextResponse.json({ success: true });
 }
 
@@ -188,6 +189,7 @@ export async function PATCH(req: NextRequest) {
     const record = db.prepare("SELECT * FROM points_records WHERE id = ? AND status != '已撤销'").get(body.id);
     if (!record) return NextResponse.json({ error: "记录不存在或已撤销" }, { status: 404 });
     db.prepare("UPDATE points_records SET status = '已撤销', undone_by = ?, undone_at = datetime('now') WHERE id = ?").run(auth.name || "", body.id);
+    logOperation(auth.name, "撤销积分", "points", String(body.id));
     return NextResponse.json({ success: true });
   }
   // 管理员恢复已撤销的记录
@@ -195,6 +197,7 @@ export async function PATCH(req: NextRequest) {
     const record = db.prepare("SELECT * FROM points_records WHERE id = ? AND status = '已撤销'").get(body.id);
     if (!record) return NextResponse.json({ error: "记录不存在或未被撤销" }, { status: 404 });
     db.prepare("UPDATE points_records SET status = '有效', undone_by = '', undone_at = '' WHERE id = ?").run(body.id);
+    logOperation(auth.name, "恢复积分", "points", String(body.id));
     return NextResponse.json({ success: true });
   }
   if (body.action === "appeal") {
@@ -374,13 +377,15 @@ function computeAutoPoints(db: any, month: string) {
     ).get(en, utcFrom, utcTo) as { c: number }).c;
     if (ri > 0) addPoints(en, ri * 3, `${month} 解决工单${ri}个，加${ri * 3}分`, "issue_resolved");
 
-    // A级评估
+    // A级评估（机构业务关闭时跳过）
     // LIKE 'A%' 而不是 = 'A'：直播占比≥50% 的 A 级会被打成 'A+'，
     // 用等号会把最好的那批全漏掉（改之前这条规则从来没发过分）
-    const ag = (db.prepare(
-      "SELECT COUNT(*) as c FROM influencer_evaluations WHERE evaluated_by = ? AND final_rating LIKE 'A%' AND created_at >= ? AND created_at <= ?"
-    ).get(en, utcFrom, utcTo) as { c: number }).c;
-    if (ag > 0) addPoints(en, ag * 5, `${month} A级达人评估${ag}个，加${ag * 5}分`, "influencer_a_grade");
+    if (isAgencyEnabled()) {
+      const ag = (db.prepare(
+        "SELECT COUNT(*) as c FROM influencer_evaluations WHERE evaluated_by = ? AND final_rating LIKE 'A%' AND created_at >= ? AND created_at <= ?"
+      ).get(en, utcFrom, utcTo) as { c: number }).c;
+      if (ag > 0) addPoints(en, ag * 5, `${month} A级达人评估${ag}个，加${ag * 5}分`, "influencer_a_grade");
+    }
   }
 
   // 互评点赞积分（已由 POST 实时写入，这里只做已有记录的核查）

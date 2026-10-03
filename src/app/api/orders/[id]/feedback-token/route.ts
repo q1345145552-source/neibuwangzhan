@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import crypto from "crypto";
 
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const token = crypto.randomBytes(16).toString("hex");
   db.prepare("INSERT INTO feedback_tokens (token, order_id) VALUES (?, ?)").run(token, id);
+  logOperation(auth.name, "生成反馈链接", "feedback_token", String(id), token);
   return NextResponse.json({ token, link: `${req.headers.get('x-forwarded-proto') || 'http'}://${req.headers.get('host') || 'localhost:3000'}/feedback/${token}` }, { status: 201 });
 }
 
