@@ -20,20 +20,27 @@ export class CancelRequestError extends Error {
 const REQUEST_ID = /^[A-Za-z0-9-]{8,80}$/;
 const positiveInt = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) > 0;
 
-function queueResult(db: Database.Database, row: Pick<CancelRequestRow, "id" | "source_order_no" | "line_no" | "copy_no">, status: "approved" | "rejected", note: string): void {
+/** 这一份当前的进度版本：结果随带它，客户站据此判断「同意之后的进度到了没有」（不能拿两站各自的收到时间比先后）。 */
+function progressSeqOf(db: Database.Database, internalOrderId: string, lineNo: number, copyNo: number): number {
+  const row = db.prepare("SELECT progress_seq FROM sync_inbox WHERE internal_order_id = ? AND line_no = ? AND copy_no = ?").get(internalOrderId, lineNo, copyNo) as { progress_seq: number } | undefined;
+  return row?.progress_seq ?? 0;
+}
+
+function queueResult(db: Database.Database, row: Pick<CancelRequestRow, "id" | "source_order_no" | "internal_order_id" | "line_no" | "copy_no">, status: "approved" | "rejected", note: string): void {
   db.prepare("INSERT INTO sync_document_outbox (id, submission_id, payload) VALUES (?, ?, ?)").run(`CNL-${row.id}-${status}`, row.id,
-    JSON.stringify({ event: "cancel", source_order_no: row.source_order_no, request_id: row.id, line_no: row.line_no, copy_no: row.copy_no, status, note }));
+    JSON.stringify({ event: "cancel", source_order_no: row.source_order_no, request_id: row.id, line_no: row.line_no, copy_no: row.copy_no, status, note,
+      progress_seq: progressSeqOf(db, row.internal_order_id, row.line_no, row.copy_no) }));
 }
 
 /** 客户站送来的申请：幂等（同一申请号重发只回现状）。办理单已是客户取消的，直接记同意。 */
-export function receiveCancelRequest(db: Database.Database, body: unknown, customerName = ""): { request_id: string; status: string; note: string } {
+export function receiveCancelRequest(db: Database.Database, body: unknown, customerName = ""): { request_id: string; status: string; note: string; progress_seq: number } {
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
   const { source_order_no, request_id, line_no, copy_no, reason } = b;
   if (typeof source_order_no !== "string" || !source_order_no || source_order_no.length > 64 || typeof request_id !== "string" || !REQUEST_ID.test(request_id) ||
     !positiveInt(line_no) || !positiveInt(copy_no) || typeof reason !== "string" || !reason.trim() || reason.length > 500) throw new CancelRequestError("取消申请字段非法");
   return db.transaction(() => {
-    const existing = db.prepare("SELECT status, decision_note FROM sync_cancel_requests WHERE id = ?").get(request_id) as { status: string; decision_note: string } | undefined;
-    if (existing) return { request_id, status: existing.status, note: existing.decision_note };
+    const existing = db.prepare("SELECT status, decision_note, internal_order_id FROM sync_cancel_requests WHERE id = ?").get(request_id) as { status: string; decision_note: string; internal_order_id: string } | undefined;
+    if (existing) return { request_id, status: existing.status, note: existing.decision_note, progress_seq: progressSeqOf(db, existing.internal_order_id, line_no, copy_no) };
     const target = db.prepare(`SELECT i.internal_order_id, o.status FROM sync_inbox i JOIN orders o ON o.id = i.internal_order_id
       WHERE i.source_order_no = ? AND i.line_no = ? AND i.copy_no = ? AND i.internal_order_id IS NOT NULL LIMIT 1`).get(source_order_no, line_no, copy_no) as { internal_order_id: string; status: string } | undefined;
     if (!target) throw new CancelRequestError("找不到这项服务对应的办理单，稍后重试", 409);
@@ -43,7 +50,7 @@ export function receiveCancelRequest(db: Database.Database, body: unknown, custo
       .run(request_id, source_order_no, target.internal_order_id, line_no, copy_no, reason.trim(), already ? "approved" : "pending", already ? "该服务已取消" : "", already ? "系统" : null);
     if (!already) notifyCancelRequest(db, target.internal_order_id,
       `客户站订单 ${source_order_no}（${customerName || "客户"}）申请取消第 ${line_no} 项服务第 ${copy_no} 份（办理单 ${target.internal_order_id}），原因：${reason.trim().slice(0, 200)}。请管理员到该订单页处理；处理前照常办理。`);
-    return { request_id, status: already ? "approved" : "pending", note: already ? "该服务已取消" : "" };
+    return { request_id, status: already ? "approved" : "pending", note: already ? "该服务已取消" : "", progress_seq: progressSeqOf(db, target.internal_order_id, line_no, copy_no) };
   }).immediate();
 }
 

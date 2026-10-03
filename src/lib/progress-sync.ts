@@ -136,7 +136,10 @@ export function queueDocumentReview(db: Database.Database, submissionId: string,
   const seq = ((db.prepare("SELECT MAX(review_seq) AS n FROM sync_documents WHERE submission_id = ?").get(submissionId) as { n: number | null }).n ?? 0) + 1;
   db.prepare("UPDATE sync_documents SET review_seq = ? WHERE submission_id = ?").run(seq, submissionId);
   db.prepare("INSERT INTO sync_document_outbox (id, submission_id, payload) VALUES (?, ?, ?)").run(`DRV-${randomUUID()}`, submissionId,
-    JSON.stringify({ submission_id: submissionId, seq, status: result, note: result === "rejected" ? note.slice(0, 500) : "" }));
+    // decided_at：内部做决定的时刻（UTC，与 SQLite datetime('now') 同格式）。客户站按它判断同一需求多份资料谁的结果更新，
+    // 不按到达先后——回传失败重试会让旧结果晚到（2026-10-03）
+    JSON.stringify({ submission_id: submissionId, seq, status: result, note: result === "rejected" ? note.slice(0, 500) : "",
+      decided_at: new Date().toISOString().replace("T", " ").slice(0, 19) }));
   return true;
 }
 

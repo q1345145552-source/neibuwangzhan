@@ -176,9 +176,11 @@ export async function PATCH(
         });
       }
       db.prepare(sql).run(...values);
-      // 管理员直接取消：这张单上客户待处理的取消申请一并记同意并回传（2026-10-03，规则 19）
+      const progressQueued = queueProgressEventsForOrder(id, db);
+      // 管理员直接取消：这张单上客户待处理的取消申请一并记同意并回传（2026-10-03，规则 19）；
+      // 放在进度入队之后，结果里带的才是这次取消对应的进度版本
       const approvedRequests = body.cancel === true ? approvePending(db, id, auth.name) : 0;
-      const queued = queueProgressEventsForOrder(id, db) + approvedRequests;
+      const queued = progressQueued + approvedRequests;
       return { queued, order: db.prepare("SELECT * FROM orders WHERE id = ?").get(id) };
     }).immediate();
   } catch (error) {

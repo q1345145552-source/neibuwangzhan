@@ -310,6 +310,8 @@ try {
     const internal = idb.prepare('SELECT status,cancel_reason FROM orders WHERE id=?').get(copyOrder(2)) as any;
     assert.equal(internal.status, '客户取消'); assert.equal(internal.cancel_reason, '客户申请取消：还是不要了');
     await until('同意回到客户站', () => clientReq(row.id).status === 'approved');
+    const inboxSeq = (copy: number) => (idb.prepare('SELECT progress_seq FROM sync_inbox WHERE source_order_no=? AND line_no=1 AND copy_no=?').get(order.order_no, copy) as any).progress_seq;
+    assert.equal(clientReq(row.id).progress_seq, inboxSeq(2), 'result carries the progress version of the cancellation');
     await until('该份进度变客户取消', () => (cdb.prepare('SELECT status FROM sync_progress WHERE order_id=? AND line_no=1 AND copy_no=2').get(order.id) as any)?.status === '客户取消');
     assert.notEqual((idb.prepare('SELECT status FROM orders WHERE id=?').get(copyOrder(1)) as any).status, '客户取消');
     assert.notEqual((cdb.prepare('SELECT status FROM orders WHERE id=?').get(order.id) as any).status, 'cancelled', 'other copy still active');
@@ -322,6 +324,7 @@ try {
     await until('申请送到内部', () => cancelOf(1));
     assert.equal((await staffCall(orderRoute.PATCH, copyOrder(1), 'PATCH', { cancel: true, cancel_reason: '客户电话确认不做了' })).status, 200);
     await until('直接取消也回传同意', () => clientReq(r.body.id).status === 'approved');
+    assert.equal(clientReq(r.body.id).progress_seq, (idb.prepare('SELECT progress_seq FROM sync_inbox WHERE source_order_no=? AND line_no=1 AND copy_no=1').get(order.order_no) as any).progress_seq, 'direct cancel: version after the cancel event');
     await until('整单变已取消', () => (cdb.prepare('SELECT status FROM orders WHERE id=?').get(order.id) as any).status === 'cancelled');
   });
   await test('legacy cancel points synced orders to the new flow; a request for an already-cancelled copy is answered at once', async () => {
@@ -369,7 +372,9 @@ try {
       const longName = '超长文件名'.repeat(60) + '.pdf';
       const form = new FormData(); form.append('file', new Blob([Buffer.from('%PDF-1.4 long')], { type: 'application/pdf' }), longName);
       assert.equal((await client('POST', `/api/orders/${taxOrder.id}/documents`, form)).status, 200);
-      await until('长名字资料送到内部', () => docsOf(internalTax).some(d => d.name.startsWith('超长文件名超长文件名') && d.uploaded_by.startsWith('客户站：很长的客户名')));
+      const doc = await until('长名字资料送到内部', () => docsOf(internalTax).find(d => d.name.startsWith('超长文件名超长文件名') && d.uploaded_by.startsWith('客户站：很长的客户名')));
+      assert(doc.name.endsWith('.pdf'), 'extension kept when the name is shortened'); assert.equal(doc.file_type, 'pdf');
+      assert.match(doc.file_url, /\.pdf$/);
     } finally { cdb.prepare("UPDATE users SET name=? WHERE id='buyer'").run(before); }
   });
   await test('a requirement of another order is refused and the uploaded file is not left behind', async () => {
@@ -403,10 +408,10 @@ try {
       await new Promise(r => setTimeout(r, 1100)); // submitted_at 精确到秒
     }
     await until('两份都已送出', () => ids.every(id => (cdb.prepare("SELECT status FROM sync_doc_outbox WHERE submission_id=? AND kind='submit'").get(id) as any)?.status === 'sent'));
-    const post = (submission_id: string, status: string) => fetch(`http://127.0.0.1:${clientPort}/api/sync/documents/review`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${SECRET}` },
-      body: JSON.stringify({ submission_id, seq: 50, status, note: status === 'rejected' ? '新护照过期' : '' }) });
-    assert.equal((await post(ids[1], 'rejected')).status, 200);
-    assert.equal((await post(ids[0], 'approved')).status, 200, 'older one arrives late');
+    const post = (submission_id: string, status: string, decided_at: string) => fetch(`http://127.0.0.1:${clientPort}/api/sync/documents/review`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${SECRET}` },
+      body: JSON.stringify({ submission_id, seq: 50, status, note: status === 'rejected' ? '新护照过期' : '', decided_at }) });
+    assert.equal((await post(ids[1], 'rejected', '2026-10-03 09:00:00')).status, 200);
+    assert.equal((await post(ids[0], 'approved', '2026-10-03 08:00:00')).status, 200, 'decided earlier, arrives late');
     assert.equal((cdb.prepare("SELECT status FROM doc_requirements WHERE id='req-two-files'").get() as any).status, 'pending', 'newer rejection stands');
     assert.equal((cdb.prepare('SELECT status FROM doc_submissions WHERE id=?').get(ids[0]) as any).status, 'approved', 'the older file itself still shows its own result');
   });
@@ -417,6 +422,46 @@ try {
     assert.equal(r.status, 200, await r.clone().text());
     const item = (await client('GET', `/api/orders/${taxOrder.id}/deliveries`)).body.find((d: any) => d.delivery_id === 'cert-777777');
     assert.equal(item?.meta?.issue_date, '2026-01-01'); assert.equal(item?.meta?.expiry_date, '2031-01-01');
+  });
+  await test('the newest file never gets a result (deleted or not reviewed in internal): approving the older one still completes the requirement', async () => {
+    cdb.prepare("INSERT INTO doc_requirements (id,order_id,doc_name,doc_desc,required) VALUES ('req-newest-gone',?,'营业执照','',1)").run(taxOrder.id);
+    const ids: string[] = [];
+    for (const name of ['执照-清晰.pdf', '执照-传错.pdf']) {
+      const form = new FormData(); form.append('file', new Blob([Buffer.from('%PDF-1.4 ' + name)], { type: 'application/pdf' }), name); form.append('requirementId', 'req-newest-gone');
+      const up = await client('POST', `/api/orders/${taxOrder.id}/documents`, form);
+      assert.equal(up.status, 200); ids.push(up.body.id);
+      await new Promise(r => setTimeout(r, 1100));
+    }
+    await until('两份都已送出', () => ids.every(id => (cdb.prepare("SELECT status FROM sync_doc_outbox WHERE submission_id=? AND kind='submit'").get(id) as any)?.status === 'sent'));
+    const doc = docsOf(internalTax).find(d => d.name.endsWith('执照-清晰.pdf'));
+    await review(internalTax, doc.id, '已审核');
+    await until('需求变已通过', () => (cdb.prepare("SELECT status FROM doc_requirements WHERE id='req-newest-gone'").get() as any).status === 'approved');
+  });
+  await test('a customer file named like a payment slip is still a normal document and reaches internal', async () => {
+    const form = new FormData(); form.append('file', new Blob([Buffer.from('%PDF-1.4 contract')], { type: 'application/pdf' }), '水单-合同.pdf');
+    const up = await client('POST', `/api/orders/${taxOrder.id}/documents`, form);
+    assert.equal(up.status, 200, JSON.stringify(up.body));
+    assert.equal((cdb.prepare('SELECT file_name FROM doc_submissions WHERE id=?').get(up.body.id) as any).file_name, '资料-水单-合同.pdf');
+    await until('送到内部', () => docsOf(internalTax).some(d => d.name === '资料-水单-合同.pdf'));
+    const receipt = new FormData(); receipt.append('file', new Blob([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7])], { type: 'image/png' }), 'pay.png');
+    const r = await client('POST', `/api/orders/${taxOrder.id}/receipt`, receipt);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.match((cdb.prepare('SELECT file_name FROM doc_submissions WHERE id=?').get(r.body.id) as any).file_name, /^水单-/, 'real payment slips keep their prefix');
+  });
+  await test('a rejected document no longer counts as 被驳回 once the customer has sent a new one for it', async () => {
+    cdb.prepare("INSERT INTO doc_requirements (id,order_id,doc_name,doc_desc,required) VALUES ('req-todo-redo',?,'租赁合同','',1)").run(taxOrder.id);
+    const upload = async (name: string) => { const form = new FormData(); form.append('file', new Blob([Buffer.from('%PDF-1.4 ' + name)], { type: 'application/pdf' }), name); form.append('requirementId', 'req-todo-redo');
+      const up = await client('POST', `/api/orders/${taxOrder.id}/documents`, form); assert.equal(up.status, 200); return up.body.id as string; };
+    const first = await upload('合同-旧.pdf');
+    await until('第一份已送出', () => (cdb.prepare("SELECT status FROM sync_doc_outbox WHERE submission_id=? AND kind='submit'").get(first) as any)?.status === 'sent');
+    const doc = await until('到内部', () => docsOf(internalTax).find(d => d.name.endsWith('合同-旧.pdf')));
+    await review(internalTax, doc.id, '已退回', '缺盖章页');
+    const todoOf = async () => ((await client('GET', '/api/customer/doc-todos')).body.todos as any[]).find(t => t.id === taxOrder.id);
+    await until('驳回回到客户站', async () => (await todoOf())?.rejectedSubmissions?.some((s: any) => s.id === first));
+    await new Promise(r => setTimeout(r, 1100));
+    await upload('合同-新.pdf');
+    const todo = await todoOf();
+    assert(!todo || !todo.rejectedSubmissions.some((s: any) => s.id === first), 'resubmitted, no longer counted as rejected');
   });
 } finally {
   child.kill('SIGTERM');

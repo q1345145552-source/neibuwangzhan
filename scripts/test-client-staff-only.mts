@@ -1,5 +1,5 @@
 /**
- * 员工专用接口挡住客户账号（2026-10-03）：聊天、问题跟踪、待办下面每个接口的每个操作，
+ * 员工专用接口挡住客户账号（2026-10-03）：聊天、问题跟踪、待办、工资单、考勤汇总、项目进展下面每个接口的每个操作，
  * 客户账号（role=client）一律 403；员工照常能用。临时库，不连任何外部地址。
  * Run: NODE_ENV=test DB_PATH=/tmp/xt-staffonly-<新目录>/x.db node --import <tsx loader> scripts/test-client-staff-only.mts
  */
@@ -25,7 +25,9 @@ const staffToken = await signToken({ id: staff.id, name: staff.name, role: staff
 
 const root = path.resolve(import.meta.dirname, '../src/app/api');
 const files = ['chat', 'problems', 'todos'].flatMap(dir =>
-  (fs.readdirSync(path.join(root, dir), { recursive: true }) as string[]).filter(f => f.endsWith('route.ts')).map(f => path.join(root, dir, f)));
+  (fs.readdirSync(path.join(root, dir), { recursive: true }) as string[]).filter(f => f.endsWith('route.ts')).map(f => path.join(root, dir, f)))
+  // 按姓名认人的员工功能（同名客户账号会被当成员工）：工资单、考勤汇总、项目进展（2026-10-03 第二轮）
+  .concat(['payslips', 'payslips/flow', 'attendance/summaries', 'projects/[id]', 'projects/[id]/progress', 'projects/[id]/summaries'].map(d => path.join(root, d, 'route.ts')));
 const call = (handler: Function, token: string, method: string, url: string) => {
   const req = new NextRequest(`http://127.0.0.1${url}`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: method === 'GET' || method === 'DELETE' ? undefined : '{}' });
   return handler(req, { params: Promise.resolve({ id: '1', stepId: '1' }) }) as Promise<Response>;
