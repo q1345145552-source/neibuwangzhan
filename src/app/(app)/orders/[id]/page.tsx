@@ -655,11 +655,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div key={r.id} className="mt-2 text-sm">
                 <p className="text-[var(--foreground)] break-words">原因：{r.reason}</p>
                 <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">第 {r.line_no} 项服务第 {r.copy_no} 份 · 申请于 {toThaiTime(r.created_at)} · 处理前照常办理，不自动退款</p>
+                {order.status === "已完成" && <p className="mt-1 text-xs font-medium text-[var(--destructive)]">注意：这张单已经办理完成，同意取消会把「已完成」改成「客户取消」。</p>}
                 {user?.role === "admin" ? (
                   cancelReqAction?.id === r.id ? (
                     <div className="mt-2 space-y-2">
                       {cancelReqAction.mode === "approve"
-                        ? <p className="text-xs text-[var(--foreground)]">同意后这张单变为「客户取消」，步骤原样保留，结果自动告知客户；退款另行处理。</p>
+                        ? <p className="text-xs text-[var(--foreground)]">同意后这张单{order.status === "已完成" ? "由「已完成」" : ""}变为「客户取消」，步骤原样保留，结果自动告知客户；退款另行处理。</p>
                         : <input autoFocus placeholder="不同意的原因（客户能看到）" value={cancelReqNote} onChange={(e) => { setCancelReqNote(e.target.value); setCancelReqError(""); }} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />}
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" onClick={handleDecideCancelRequest} disabled={decidingCancelReq} className={cancelReqAction.mode === "approve" ? "bg-[var(--warning)] text-[var(--warning-foreground)]" : ""}>{decidingCancelReq ? "处理中…" : cancelReqAction.mode === "approve" ? "确认同意取消" : "确认不同意"}</Button>
