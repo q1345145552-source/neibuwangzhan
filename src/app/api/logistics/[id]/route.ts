@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb, logOperation } from "@/lib/db";
-import { existsSync, unlinkSync } from "fs";
-import path from "path";
-import os from "os";
 
 // GET /api/logistics/[id]
 export async function GET(
@@ -12,6 +9,7 @@ export async function GET(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -48,6 +46,7 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const { id } = await params;
@@ -61,26 +60,7 @@ export async function DELETE(
     return NextResponse.json({ error: "没有权限删除别人的柜号订单" }, { status: 403 });
   }
 
-  // 收集文件 URL（独立文件表 + 备注表），删除磁盘上的实际文件
-  const uploadDirs = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
-  const safeNames = new Set<string>();
-  // 1) 独立文件表里的订单级文件
-  const orderFiles = db.prepare("SELECT url FROM shipping_order_files WHERE order_id = ?").all(id) as { url: string }[];
-  for (const f of orderFiles) {
-    const m = (f.url || "").match(/\/api\/files\/([A-Za-z0-9._-]+)/);
-    if (m) safeNames.add(m[1]);
-  }
-  // 2) 备注里的步骤级文件（沿用原正则，兼容 [标签] /api/files/xxx 等格式）
-  const allNotes = db.prepare(
-    "SELECT content FROM shipping_step_notes WHERE order_id = ?"
-  ).all(id) as { content: string }[];
-  for (const n of allNotes) {
-    const matches = (n.content || "").matchAll(/\/api\/files\/([A-Za-z0-9._-]+)/g);
-    for (const m of matches) {
-      safeNames.add(m[1]);
-    }
-  }
-
+  // Only remove database references; shared physical files await verified garbage collection.
   // 事务删除：文件表 → 备注 → 步骤 → 订单
   db.transaction(() => {
     db.prepare("DELETE FROM shipping_order_files WHERE order_id = ?").run(id);
@@ -89,17 +69,6 @@ export async function DELETE(
     db.prepare("DELETE FROM shipping_orders WHERE id = ?").run(id);
   })();
 
-  // 删除磁盘文件（放在事务成功后，避免文件先删数据库失败）
-  for (const safeName of safeNames) {
-    const base = path.basename(safeName);
-    for (const dir of uploadDirs) {
-      const fp = path.join(dir, base);
-      if (existsSync(fp)) {
-        try { unlinkSync(fp); } catch (e) { console.error("[物流删除] 删除文件失败", fp, e); }
-      }
-    }
-  }
-
-  logOperation(auth.name, "删除柜号", "logistics", String(id), order.cabinet_number || "");
-  return NextResponse.json({ success: true, deletedFiles: safeNames.size });
+  logOperation(auth.name, "删除柜号", "logistics", String(id), (order as { cabinet_number?: string }).cabinet_number || "");
+  return NextResponse.json({ success: true, deletedFiles: 0, filesRetained: true });
 }

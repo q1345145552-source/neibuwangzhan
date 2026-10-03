@@ -1,3 +1,4 @@
+import { publicOrder } from "@/lib/client-view";
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
@@ -45,5 +46,5 @@ export async function GET(req: NextRequest) {
   sql += " ORDER BY o.created_at DESC";
 
   const rows = db.prepare(sql).all(...params);
-  return corsResponse(rows, 200, origin);
+  return corsResponse(rows.map(publicOrder), 200, origin);
 }

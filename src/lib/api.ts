@@ -1,6 +1,9 @@
+import type { CommerceOrderPurchase } from "./commerce-types";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 
 export interface Order {
+  commerce_purchase?: CommerceOrderPurchase | null;
+  source_system?: string;
   id: string;
   customer_name: string;
   business_type_id: number;
@@ -56,6 +59,7 @@ export interface Employee {
 }
 
 export interface Document {
+  publication_verified?: number;
   id: number;
   order_id: string;
   name: string;
@@ -68,6 +72,7 @@ export interface Document {
 }
 
 export interface Finance {
+  commerce_refund?: boolean;
   id: number;
   order_id: string;
   type: string;
@@ -226,7 +231,7 @@ export async function createEmployee(data: { name: string; email: string; role?:
   return res.json();
 }
 
-export async function updateStep(orderId: string, stepId: number, data: { status: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number }) {
+export async function updateStep(orderId: string, stepId: number, data: { status?: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number }) {
   const res = await fetch(`/api/orders/${orderId}/steps`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

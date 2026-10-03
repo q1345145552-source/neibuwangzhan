@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 
@@ -9,9 +9,11 @@ export async function GET(
 ) {
   const auth = await verifyAuth(_req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM influencer_steps WHERE id = ? AND influencer_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   const rows = db.prepare(
     "SELECT * FROM influencer_step_notes WHERE influencer_id = ? AND step_id = ? ORDER BY created_at DESC"
   ).all(id, stepId);
@@ -26,9 +28,11 @@ export async function POST(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM influencer_steps WHERE id = ? AND influencer_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
   const body = await readJson(req);
   const { content, created_by } = body;
   if (!content) return NextResponse.json({ error: "请输入备注内容" }, { status: 400 });
@@ -47,9 +51,11 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
-  const { id } = await params;
+  const { id, stepId } = await params;
   const db = getDb();
+  if (!db.prepare("SELECT 1 FROM influencer_steps WHERE id = ? AND influencer_id = ?").get(stepId, id)) return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
 
   // 支持两种传参方式：query ?id=xxx 或 body { note_id: xxx }
   let note_id: string | null = null;
@@ -65,9 +71,9 @@ export async function DELETE(
   if (!note_id) return NextResponse.json({ error: "缺少 note_id" }, { status: 400 });
 
   const numId = Number(note_id);
-  const existing = db.prepare("SELECT * FROM influencer_step_notes WHERE id = ? AND influencer_id = ?").get(numId, id);
+  const existing = db.prepare("SELECT * FROM influencer_step_notes WHERE id = ? AND influencer_id = ? AND step_id = ?").get(numId, id, stepId);
   if (!existing) return NextResponse.json({ error: "备注不存在" }, { status: 404 });
 
-  db.prepare("DELETE FROM influencer_step_notes WHERE id = ?").run(numId);
+  db.prepare("DELETE FROM influencer_step_notes WHERE id = ? AND influencer_id = ? AND step_id = ?").run(numId, id, stepId);
   return NextResponse.json({ success: true });
 }

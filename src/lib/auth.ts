@@ -91,3 +91,8 @@ export async function verifyAuth(request: NextRequest, options: VerifyOptions = 
   const token = authHeader.slice(7);
   return verifyToken(token, options);
 }
+
+/** Employee capability is distinct from a valid customer session. */
+export function isStaff(auth: Pick<TokenPayload, "role">): boolean {
+  return auth.role === "admin" || auth.role === "employee";
+}

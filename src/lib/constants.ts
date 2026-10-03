@@ -277,6 +277,7 @@ export const mallSubServices = [
   { key: "shopee", label: "Shopee Mall", businessTypeId: 8 },
   { key: "tiktok", label: "TikTok Mall", businessTypeId: 8 },
   { key: "lazada", label: "Lazada Mall", businessTypeId: 8 },
+  { key: "enterprise", label: "企业店", businessTypeId: 8 },
 ];
 export const addressDocs: Record<number, string[]> = {
   1: ["地契", "租赁合同"],
@@ -329,6 +330,10 @@ export const dldSubServices = [
 
 /* ── 通用查询函数 ── */
 export function getStepDocs(businessTypeId: number, subServiceType?: string): Record<number, string[]> {
+  // change/enterprise 为笼统三步模板（2026-09-22 裁决），无对应专属资料清单；
+  // 返回空映射，避免把全套注册的资料清单错挂到精简流程上
+  if (businessTypeId === 1 && subServiceType === "change") return {};
+  if (businessTypeId === 8 && subServiceType === "enterprise") return {};
   if (businessTypeId === 1) return companyRegDocs;
   if (businessTypeId === 2) {
     if (subServiceType === "international") return internationalTrademarkDocs;
