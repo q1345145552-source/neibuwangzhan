@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, generateProblemNumber, logOperation, sendNotification } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { validateEnums } from "@/lib/enums";
 
@@ -9,6 +9,7 @@ import { validateEnums } from "@/lib/enums";
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const db = getDb();
   const { searchParams } = new URL(req.url);
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const db = getDb();
   const body = await readJson(req);

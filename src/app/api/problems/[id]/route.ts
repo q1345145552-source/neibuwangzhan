@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation, sendNotification } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { validateEnums } from "@/lib/enums";
 import { existsSync, unlinkSync } from "fs";
@@ -29,6 +29,7 @@ export async function GET(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -56,6 +57,7 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();
@@ -211,6 +213,7 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const { id } = await params;
   const db = getDb();

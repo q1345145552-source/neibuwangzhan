@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
 // 会话置顶：每个用户各自维护自己的置顶列表（scope_key 形如 direct:姓名 / group:群id）
@@ -9,6 +9,7 @@ import { readJson } from "@/lib/req";
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const db = getDb();
   const rows = db.prepare(
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const body = await readJson(req);
   const scopeKey = String(body?.scope_key || "").trim();
@@ -37,6 +39,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const body = await readJson(req);
   const scopeKey = String(body?.scope_key || "").trim();

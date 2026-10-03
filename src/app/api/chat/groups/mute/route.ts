@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
 // PATCH /api/chat/groups/mute — 成员设置自己在某群的免打扰（body: { group_id, muted }），各设各的
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const db = getDb();
   const body = await readJson(req);

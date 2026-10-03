@@ -172,9 +172,9 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, [user?.name]);
 
-  // 我的待办角标：未看过的新增/新跟进待办数量
+  // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
   useEffect(() => {
-    if (!user?.name) return;
+    if (!user?.name || user.role === "client") return;
     const fetchUnseen = () => {
       const token = getStoredAuthToken();
       if (!token) return;
@@ -188,11 +188,11 @@ export function Sidebar() {
     fetchUnseen();
     const interval = setInterval(fetchUnseen, 3000); // poll every 3s
     return () => clearInterval(interval);
-  }, [user?.name]);
+  }, [user?.name, user?.role]);
 
-  // 消息未读数：侧栏「消息」入口的红色角标，每 3 秒轮询，新消息/已读都无需刷新即可更新
+  // 消息未读数：侧栏「消息」入口的红色角标，每 3 秒轮询，新消息/已读都无需刷新即可更新（客户账号不能用聊天，不轮询）
   useEffect(() => {
-    if (!user?.name) return;
+    if (!user?.name || user.role === "client") return;
     const fetchUnread = () => {
       const token = getStoredAuthToken();
       if (!token) return;
@@ -206,7 +206,7 @@ export function Sidebar() {
     fetchUnread();
     const interval = setInterval(fetchUnread, 3000); // poll every 3s
     return () => clearInterval(interval);
-  }, [user?.name]);
+  }, [user?.name, user?.role]);
 
   // 机构业务总开关：关闭时隐藏机构入口
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
 // 打字提示：前端输入时上报「我正在输入」，并轮询「对方正在输入」。
@@ -10,6 +10,7 @@ import { readJson } from "@/lib/req";
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const body = await readJson(req);
   const scopeKey = String(body?.scope_key || "").trim();
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const scopeKey = (new URL(req.url).searchParams.get("scope_key") || "").trim();
   if (!scopeKey) return NextResponse.json({ users: [] });
