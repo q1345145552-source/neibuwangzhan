@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const rows = db.prepare(
-    "SELECT id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, withholding_tax FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC"
+    "SELECT id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, merit_income, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, demerit_deduction, withholding_tax FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC"
   ).all(month) as any[];
 
   // 底薪/勤奋奖/技能津贴从员工档案读；员工被删时回退到工资单快照
@@ -33,15 +33,17 @@ export async function GET(req: NextRequest) {
     const bonus = p.bonus ?? 0;
     const commission = p.commission ?? 0;
     const overtime = p.overtime ?? 0;
+    const merit = p.merit_income ?? 0;
     const social = p.social_security ?? 0;
     const late = p.late_deduction ?? 0;
     const personal = p.personal_leave_deduction ?? 0;
     const sick = p.sick_leave_deduction ?? 0;
     const absence = p.absence_deduction ?? 0;
+    const demerit = p.demerit_deduction ?? 0;
     const wht = p.withholding_tax ?? 0;
 
-    const income = base + diligence + skill + bonus + commission + overtime;
-    const deduct = social + late + personal + sick + absence + wht;
+    const income = base + diligence + skill + bonus + commission + overtime + merit;
+    const deduct = social + late + personal + sick + absence + demerit + wht;
     const net = income - deduct;
 
     const aoa: (string | number)[][] = [
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest) {
       ["奖金", round2(bonus)],
       ["佣金", round2(commission)],
       ["加班费", round2(overtime)],
+      ["功过收入", round2(merit)],
       ["收入合计", round2(income)],
       [],
       ["扣除"],
@@ -64,6 +67,7 @@ export async function GET(req: NextRequest) {
       ["事假扣款", round2(personal)],
       ["病假扣款", round2(sick)],
       ["缺勤扣款", round2(absence)],
+      ["功过扣款", round2(demerit)],
       ["预扣税", round2(wht)],
       ["扣除合计", round2(deduct)],
       [],
