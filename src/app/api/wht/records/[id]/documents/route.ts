@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 function ensureTable(db: ReturnType<typeof getDb>) {
   db.exec(`
@@ -49,6 +49,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO wht_record_documents (record_id, name, file_url, uploaded_by) VALUES (?, ?, ?, ?)"
   ).run(id, name, file_url || "", uploaded_by || "");
+  logOperation(auth.name, "上传WHT文档", "wht_document", String(result.lastInsertRowid), name);
   const doc = db.prepare("SELECT * FROM wht_record_documents WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(doc, { status: 201 });
 }
@@ -68,5 +69,6 @@ export async function DELETE(
   const db = getDb();
   ensureTable(db);
   db.prepare("DELETE FROM wht_record_documents WHERE id = ?").run(docId);
+  logOperation(auth.name, "删除WHT文档", "wht_document", String(docId));
   return NextResponse.json({ success: true });
 }

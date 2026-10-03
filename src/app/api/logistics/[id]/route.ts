@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/logistics/[id]
 export async function GET(
@@ -69,5 +69,6 @@ export async function DELETE(
     db.prepare("DELETE FROM shipping_orders WHERE id = ?").run(id);
   })();
 
+  logOperation(auth.name, "删除柜号", "logistics", String(id), (order as { cabinet_number?: string }).cabinet_number || "");
   return NextResponse.json({ success: true, deletedFiles: 0, filesRetained: true });
 }

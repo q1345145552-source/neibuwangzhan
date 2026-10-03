@@ -2,7 +2,7 @@ import { syncVatReconciliation } from "@/lib/vat-reconciliation";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/vat/records/[id]
 export async function GET(
@@ -64,6 +64,11 @@ export async function PATCH(
   updates.push("updated_at = datetime('now')");
   values.push(id);
   db.prepare(`UPDATE vat_records SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+
+  const changedFields: string[] = [];
+  if (amount !== undefined) changedFields.push("金额");
+  if (assignee !== undefined) changedFields.push("负责人");
+  logOperation(auth.name, "修改VAT记录", "vat_record", String(id), `更新: ${changedFields.join("、")}`);
 
   // 金额改了要同步对账表。之前只在「步骤2 标记完成」那一刻同步一次，
   // 完成之后再改金额，对账表会一直停留在旧值，报表和申报记录对不上。

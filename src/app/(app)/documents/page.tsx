@@ -211,7 +211,7 @@ export default function DocumentsPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm hidden md:table">
           <thead>
             <tr className="border-b border-[var(--border)]">
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">文档名称</th>
@@ -259,6 +259,37 @@ export default function DocumentsPage() {
             ))}
           </tbody>
         </table>
+        {/* 手机端卡片 */}
+        <div className="md:hidden flex flex-col gap-2 p-3">
+          {filtered.map((doc) => (
+            <div key={doc.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                  <span className="truncate font-medium text-[var(--foreground)]">{doc.name}</span>
+                </div>
+                <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[doc.status ?? ""])}>{statusLabel[doc.status ?? ""]}</span>
+              </div>
+              <div className="mt-2 space-y-1.5 text-sm">
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{doc.file_type || doc.type || "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">业务线</span><span>{doc.business_line || "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">上传人</span><span>{doc.uploaded_by || doc.uploadBy || "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{doc.created_at?.slice(0, 10) || doc.uploadDate || "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">大小</span><span className="text-xs">{doc.size || "—"}</span></div>
+              </div>
+              <div className="mt-3 flex justify-end gap-1">
+                <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(fileUrl(doc.file_url), "_blank"); else setUploadError("该文档无可下载文件"); }}>
+                  <Download className="size-3.5" aria-hidden="true" />
+                </Button>
+                {!isClient && (
+                  <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => setDeleteTarget(doc)}>
+                    <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
         {filtered.length === 0 && (
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">没有匹配的文档</div>
         )}

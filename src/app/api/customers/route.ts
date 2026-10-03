@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // Helper: apply status auto-flow rules
 function insertPointsRecord(db: any, employeeName: string, points: number, reason: string, ruleKey: string, refId?: string) {
@@ -374,6 +374,7 @@ export async function POST(req: NextRequest) {
     if (c.claimed_by && c.claimed_by.trim()) return NextResponse.json({ error: "已被认领" }, { status: 409 });
     db.prepare("UPDATE customers SET claimed_by = ?, status = '跟进中', updated_at = datetime('now') WHERE id = ?").run(auth.name, id);
     insertPointsRecord(db, auth.name!, 5, `认领客户「${(c as any).company_name}」`, "customer_claim", String(id));
+    logOperation(auth.name, "认领客户", "customer", String(id), c.company_name);
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }
@@ -413,6 +414,7 @@ export async function POST(req: NextRequest) {
     db.prepare(
       "UPDATE customers SET claimed_by = '', status = '潜在', status_locked = 0, updated_at = datetime('now') WHERE id = ?"
     ).run(id);
+    logOperation(auth.name, "释放客户", "customer", String(id), c.company_name);
     const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
     return NextResponse.json(row);
   }
@@ -456,6 +458,7 @@ export async function POST(req: NextRequest) {
     body.willingness || "", body.demand_tags || "", body.status || "潜在",
     body.total_deal_amount || 0
   );
+  logOperation(auth.name, "录入客户", "customer", String(result.lastInsertRowid), company_name.trim());
   const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(row, { status: 201 });
 }
@@ -520,6 +523,7 @@ export async function PATCH(req: NextRequest) {
   if (body.status !== undefined) sets.push("status_locked=1");
 
   db.prepare(`UPDATE customers SET ${sets.join(",")} WHERE id=?`).run(...vals, id);
+  logOperation(auth.name, "编辑客户", "customer", String(id));
   const row = db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
   return NextResponse.json(row);
 }

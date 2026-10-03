@@ -35,12 +35,21 @@ import {
   Calculator,
   Package,
   Truck,
+  AlertCircle,
+  ListTodo,
+  Activity,
+  FolderKanban,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const navigation = [
   { name: "仪表盘", href: "/", icon: LayoutDashboard },
+  { name: "我的待办", href: "/todos", icon: ListTodo },
+  { name: "我的项目", href: "/projects", icon: FolderKanban },
+  { name: "员工动态", href: "/activity", icon: Activity },
+  { name: "消息", href: "/messages", icon: MessageSquare },
 ];
 
 const businessLines = [
@@ -59,6 +68,7 @@ const businessLines = [
 
 const customerNav = [
   { name: "客户管理", href: "/customers", icon: Building2 },
+  { name: "问题跟踪", href: "/problems", icon: AlertCircle },
 ];
 
 
@@ -141,6 +151,9 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [todoCount, setTodoCount] = useState(0);
+  const [msgUnreadCount, setMsgUnreadCount] = useState(0);
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   useEffect(() => {
     if (!user?.name) return;
@@ -158,6 +171,52 @@ export function Sidebar() {
     const interval = setInterval(fetchUnread, 30000); // poll every 30s
     return () => clearInterval(interval);
   }, [user?.name]);
+
+  // 我的待办角标：未看过的新增/新跟进待办数量
+  useEffect(() => {
+    if (!user?.name) return;
+    const fetchUnseen = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/todos/unseen", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(d => { if (typeof d.count === "number") setTodoCount(d.count); })
+        .catch(() => {});
+    };
+    fetchUnseen();
+    const interval = setInterval(fetchUnseen, 3000); // poll every 3s
+    return () => clearInterval(interval);
+  }, [user?.name]);
+
+  // 消息未读数：侧栏「消息」入口的红色角标，每 3 秒轮询，新消息/已读都无需刷新即可更新
+  useEffect(() => {
+    if (!user?.name) return;
+    const fetchUnread = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/chat/unread-count", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.count === "number") setMsgUnreadCount(d.count); })
+        .catch(() => {});
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 3000); // poll every 3s
+    return () => clearInterval(interval);
+  }, [user?.name]);
+
+  // 机构业务总开关：关闭时隐藏机构入口
+  useEffect(() => {
+    const token = getStoredAuthToken();
+    if (!token) return;
+    fetch("/api/settings", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .catch(() => {});
+  }, []);
 
   // 路由变化时关闭移动端菜单：渲染期间派生状态，避免在 effect 中直接 setState
   const [prevPathname, setPrevPathname] = useState(pathname);
@@ -179,7 +238,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={navigation} pathname={pathname} onClose={close} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
@@ -194,10 +253,14 @@ export function Sidebar() {
         </div>
         <NavSection items={businessLines} pathname={pathname} onClose={close} />
 
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
-        </div>
-        <NavSection items={agencyNav} pathname={pathname} onClose={close} />
+        {agencyEnabled && (
+          <>
+            <div className="mt-4 mb-2 px-3">
+              <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
+            </div>
+            <NavSection items={agencyNav} pathname={pathname} onClose={close} />
+          </>
+        )}
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">物流</span>

@@ -540,7 +540,7 @@ export default function VatPage() {
           )}
 
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead className="bg-[var(--muted)]">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">公司名称</th>
@@ -571,6 +571,28 @@ export default function VatPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {customers.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无客户数据</p>
+              ) : customers.map(c => (
+                <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)] cursor-pointer" onClick={() => setProfileCustomerId(c.id)}>{c.company_name}</span>
+                    <span className={statusBadge(c.status)}>{c.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">税号</span><span className="font-mono text-xs">{c.tax_id || "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">联系方式</span><span>{c.contact || "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span>{c.created_at?.slice(0, 10)}</span></div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-1">
+                    <Button size="icon-xs" variant="ghost" onClick={() => startEditCustomer(c)}><Edit3 className="size-3" /></Button>
+                    <Button size="icon-xs" variant="ghost" onClick={() => handleDeleteCustomer(c.id)} className="text-[var(--destructive)]"><Trash2 className="size-3" /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -620,7 +642,7 @@ export default function VatPage() {
 
 
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead className="bg-[var(--muted)]">
                 <tr>
                   <th className="px-3 py-3 w-10">
@@ -684,6 +706,35 @@ export default function VatPage() {
                 })}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {filteredRecords.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无申报记录</p>
+              ) : filteredRecords.map(r => {
+                const warn = getWarningLevel(r.progress, r.year_month);
+                return (
+                  <div key={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", warningStyles[warn.level])} onClick={() => router.push(`/vat/${r.id}`)}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input type="checkbox" className="size-4 rounded" checked={selectedIds.has(r.id)} onClick={e => e.stopPropagation()} onChange={() => toggleSelect(r.id)} />
+                        <span className="font-medium text-[var(--foreground)] truncate">{r.company_name || "—"}</span>
+                      </div>
+                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", warningBadge[warn.level])}>
+                        {warn.level === "red" && <AlertTriangle className="size-3" />}{warn.label}
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">税号</span><span className="font-mono text-xs">{r.tax_id || "—"}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">进度</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] px-2 py-0.5 text-xs font-medium text-[var(--primary)]">{r.progress}</span>
+                      </div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{r.assignee || "—"}</span></div>
+                      {warn.estimatedFine > 0 && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">罚款</span><span className="text-[var(--destructive)]">¥{warn.estimatedFine.toLocaleString()}</span></div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Pagination */}
@@ -736,7 +787,7 @@ export default function VatPage() {
               className="rounded border px-3 py-2 text-sm" />
           </div>
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead className="bg-[var(--muted)]">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">公司名称</th>
@@ -762,6 +813,25 @@ export default function VatPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {reconciliations.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无对账数据</p>
+              ) : reconciliations.map(r => (
+                <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{r.company_name || "—"}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{r.year_month}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">应付税金</span><span className="font-mono text-xs">¥{(r.tax_payable || 0).toLocaleString()}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">已付税金</span><span className="font-mono text-xs text-[var(--success)]">¥{(r.tax_paid || 0).toLocaleString()}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">未付税金</span><span className="font-mono text-xs font-medium text-[var(--destructive)]">¥{(r.tax_unpaid || 0).toLocaleString()}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">备注</span><span>{r.notes || "—"}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -801,7 +871,7 @@ export default function VatPage() {
 
           {/* Results */}
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead className="bg-[var(--muted)]">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">公司名称</th>
@@ -844,6 +914,30 @@ export default function VatPage() {
                 )})}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {!allRecords.length ? (
+                <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无历史记录</p>
+              ) : allRecords.map(r => {
+                const warn = getWarningLevel(r.progress, r.year_month);
+                return (
+                  <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4" onClick={() => router.push(`/vat/${r.id}`)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--primary)]">{r.company_name || "—"}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{r.year_month}</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">进度</span>
+                        <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", r.progress === "归档完成" ? "bg-emerald-100 text-emerald-700" : "bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]")}>{r.progress}</span>
+                      </div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">VAT金额</span><span className="font-mono text-xs">{r.amount > 0 ? `¥${r.amount.toLocaleString()}` : "—"}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">逾期罚款</span><span className={cn("font-mono text-xs", warn.estimatedFine > 0 && "text-[var(--destructive)] font-medium")}>{warn.estimatedFine > 0 ? `¥${warn.estimatedFine.toLocaleString()}` : "—"}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{r.assignee || "—"}</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Pagination */}
@@ -942,7 +1036,7 @@ export default function VatPage() {
 
               {/* Customer table */}
               <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm hidden md:table">
                   <thead className="bg-[var(--muted)]">
                     <tr>
                       <th className="px-3 py-3 text-left font-medium">公司名称</th>
@@ -982,6 +1076,27 @@ export default function VatPage() {
                     </tr>
                   </tbody>
                 </table>
+                {/* 手机端卡片 */}
+                <div className="md:hidden flex flex-col gap-2 p-3">
+                  {summaryData.customers.map(cust => (
+                    <div key={cust.customerId} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4" onClick={() => setProfileCustomerId(cust.customerId)}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-[var(--primary)]">{cust.companyName}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">共 {cust.totalRecords} 笔</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium text-emerald-600">{cust.archivedRecords}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">已归档</p></div>
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium text-red-500">{cust.overdueRecords}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">未完成</p></div>
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium">¥{(cust.totalVat || 0).toLocaleString()}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">VAT总额</p></div>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">已付税款</span><span className="font-mono text-xs text-emerald-600">¥{(cust.totalPaid || 0).toLocaleString()}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">未付税款</span><span className="font-mono text-xs text-red-500">¥{(cust.totalUnpaid || 0).toLocaleString()}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">罚款</span><span className="font-mono text-xs text-red-500">{cust.totalFines > 0 ? `¥${(cust.totalFines || 0).toLocaleString()}` : "—"}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}

@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Save, Pencil, Building2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Plus, Save, Pencil, Building2, Camera } from "lucide-react";
+import { cn, fileUrl } from "@/lib/utils";
 import { type Employee, fetchEmployees, createEmployee, updateEmployee, fetchOrderCustomerNames, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, setUser, logout } = useAuth();
   const router = useRouter();
   const isAdmin = user?.role === "admin";
   const [saved, setSaved] = useState(false);
@@ -44,11 +44,159 @@ export default function SettingsPage() {
   const [confirmPwd, setConfirmPwd] = useState("");
   const [pwdSaving, setPwdSaving] = useState(false);
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // 机构业务总开关
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
+  const [agencySaving, setAgencySaving] = useState(false);
+
+  // AI 模型配置（仅管理员可见）
+  const [aiProvider, setAiProvider] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiApiBase, setAiApiBase] = useState("");
+  const [aiApiKey, setAiApiKey] = useState(""); // 输入框内容（新填的 Key 才覆盖）
+  const [aiKeyMasked, setAiKeyMasked] = useState(""); // 已保存 Key 的打码显示
+  const [aiHasKey, setAiHasKey] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMsg, setAiMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // 个人头像
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // 员工管理需要看到离职员工（以便恢复在职），所以拉全部，前端按开关过滤显示
     fetchEmployees({ include_left: true }).then(setEmployees).catch(() => {});
   }, []);
+
+  // 读取机构业务总开关 + AI 配置
+  useEffect(() => {
+    fetchWithAuth("/api/settings", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => {
+        if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled);
+        if (d.ai) {
+          setAiProvider(d.ai.provider || "");
+          setAiModel(d.ai.model || "");
+          setAiApiBase(d.ai.api_base || "");
+          setAiKeyMasked(d.ai.api_key_masked || "");
+          setAiHasKey(!!d.ai.has_key);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleAgency = async () => {
+    setAgencySaving(true);
+    try {
+      const res = await fetchWithAuth("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agency_enabled: !agencyEnabled }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setAgencyEnabled(d.agency_enabled);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "保存失败");
+      }
+    } catch { alert("保存失败"); }
+    finally { setAgencySaving(false); }
+  };
+
+  // 保存 AI 模型配置（Key 留空 = 不覆盖已保存的）
+  const handleSaveAiConfig = async () => {
+    setAiSaving(true);
+    setAiMsg(null);
+    try {
+      const res = await fetchWithAuth("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ai: { provider: aiProvider, model: aiModel, api_base: aiApiBase, api_key: aiApiKey },
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setAiMsg({ ok: true, text: "已保存，立即生效" });
+        // 填了新 Key 才更新打码显示；否则维持原样
+        if (aiApiKey.trim()) {
+          const k = aiApiKey.trim();
+          setAiKeyMasked(k.length > 4 ? "****" + k.slice(-4) : "****");
+          setAiHasKey(true);
+        }
+        setAiApiKey("");
+      } else {
+        setAiMsg({ ok: false, text: d.error || "保存失败" });
+      }
+    } catch {
+      setAiMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  // 选头像 → 上传 → 保存到自己的档案
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setAvatarMsg({ ok: false, text: "只能上传图片文件" }); return; }
+    if (file.size > 10 * 1024 * 1024) { setAvatarMsg({ ok: false, text: "图片不能超过 10MB" }); return; }
+
+    setAvatarUploading(true);
+    setAvatarMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (!up.ok || !upData.url) {
+        setAvatarMsg({ ok: false, text: upData.error || "头像上传失败" });
+        return;
+      }
+      const res = await fetchWithAuth("/api/employees/avatar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: upData.url }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAvatarMsg({ ok: false, text: d.error || "头像保存失败" });
+        return;
+      }
+      if (user) setUser({ ...user, avatar: d.avatar });
+      setAvatarMsg({ ok: true, text: "头像已更新" });
+    } catch {
+      setAvatarMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // 移除头像，回退到默认首字头像
+  const removeAvatar = async () => {
+    setAvatarUploading(true);
+    setAvatarMsg(null);
+    try {
+      const res = await fetchWithAuth("/api/employees/avatar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: "" }),
+      });
+      if (res.ok) {
+        if (user) setUser({ ...user, avatar: "" });
+        setAvatarMsg({ ok: true, text: "已移除头像" });
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setAvatarMsg({ ok: false, text: d.error || "移除失败" });
+      }
+    } catch {
+      setAvatarMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -217,7 +365,7 @@ export default function SettingsPage() {
           )}
 
           <div className="overflow-x-auto -mx-6 px-6">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead>
                 <tr className="border-b border-[var(--border)]">
                   <th className="py-2.5 pr-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">姓名</th>
@@ -308,6 +456,78 @@ export default function SettingsPage() {
                 ))}
               </tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 mt-3">
+              {employees.filter((emp) => showLeft || emp.status !== "离职").map((emp) => (
+                <div key={emp.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  {editingId === emp.id ? (
+                    <div className="space-y-2">
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm" />
+                      <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="h-8 text-sm" />
+                      <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs">
+                        <option value="employee">员工</option>
+                        <option value="admin">管理员</option>
+                        <option value="client">客户</option>
+                      </select>
+                      <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} type="password" placeholder="新密码（留空则不修改）" className="h-8 text-sm" />
+                      <div className="flex gap-2 pt-1">
+                        <Button variant="ghost" size="icon-xs" onClick={handleSaveEdit}><Save className="size-3" /></Button>
+                        <Button variant="ghost" size="icon-xs" onClick={() => setEditingId(null)}>✕</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">{emp.name.slice(0, 1)}</div>
+                          <span className="text-sm font-medium text-[var(--foreground)]">
+                            {emp.name}
+                            {emp.status === "离职" && (
+                              <span className="ml-2 inline-flex rounded-full bg-[color-mix(in_oklch,var(--muted-foreground),var(--background)_85%)] px-1.5 py-0.5 text-[10px] text-[var(--muted-foreground)]">已离职</span>
+                            )}
+                          </span>
+                        </div>
+                        <span className={cn(
+                          "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                          emp.role === "admin" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] text-[var(--destructive)]" :
+                          emp.role === "client" ? "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[var(--info)]" :
+                          "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]"
+                        )}>
+                          {emp.role === "admin" ? "管理员" : emp.role === "client" ? "客户" : "员工"}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">{emp.email}</div>
+                      {emp.role === "client" && (
+                        <div className="mt-1 text-xs">
+                          {(emp.customer_names?.length ?? 0) > 0 ? (
+                            <span className="text-[var(--muted-foreground)]">可见 {emp.customer_names!.length} 家：{emp.customer_names!.slice(0, 2).join("、")}{emp.customer_names!.length > 2 ? " 等" : ""}</span>
+                          ) : (
+                            <span className="text-[var(--warning)]">未配置可见公司</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        {!isAdmin ? (
+                          <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                        ) : (
+                          <>
+                            {emp.role === "client" && (
+                              <Button variant="ghost" size="icon-xs" onClick={() => openScope(emp)} title="配置可见公司" aria-label="配置可见公司"><Building2 className="size-3" /></Button>
+                            )}
+                            <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(emp)} title="编辑"><Pencil className="size-3" /></Button>
+                            {emp.status === "离职" ? (
+                              <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--success)] hover:text-[var(--success)]" onClick={() => handleRestore(emp.id)}>恢复在职</Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--destructive)] hover:text-[var(--destructive)]" onClick={() => handleMarkLeft(emp.id, emp.name)}>标记离职</Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -391,6 +611,48 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* 个人资料 / 头像 */}
+        <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">个人资料</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              上传或更换你的头像，会显示在聊天列表和聊天窗口里。没上传时显示名字的第一个字。
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            {user?.avatar ? (
+              <img src={fileUrl(user.avatar)} alt="头像" className="size-16 shrink-0 rounded-full object-cover border border-[var(--border)]" />
+            ) : (
+              <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_80%)] text-2xl font-medium text-[var(--primary)]">
+                {user?.name?.charAt(0) || "?"}
+              </div>
+            )}
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="truncate text-sm font-medium text-[var(--foreground)]">{user?.name}</p>
+              <p className="truncate text-xs text-[var(--muted-foreground)]">{user?.email}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>
+                  <Camera className="size-3.5" />
+                  {avatarUploading ? "上传中…" : user?.avatar ? "更换头像" : "上传头像"}
+                </Button>
+                {user?.avatar && (
+                  <Button size="sm" variant="ghost" onClick={removeAvatar} disabled={avatarUploading}>移除头像</Button>
+                )}
+                <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarPick} className="hidden" />
+              </div>
+            </div>
+          </div>
+          {avatarMsg && (
+            <p className={`rounded-md px-3 py-2 text-xs ${
+              avatarMsg.ok
+                ? "bg-[color-mix(in_oklch,var(--success),var(--background)_88%)] text-[var(--success)]"
+                : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[var(--destructive)]"
+            }`}>
+              {avatarMsg.text}
+            </p>
+          )}
+        </div>
+
         {/* 修改自己的密码 */}
         <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
           <div>
@@ -432,6 +694,87 @@ export default function SettingsPage() {
             </Button>
           </form>
         </div>
+
+        {/* 机构业务总开关 */}
+        <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">机构业务</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              控制达人发现、签约跟进、品牌孵化等机构功能的显示。关闭后相关入口和统计会隐藏，数据不会删除。
+            </p>
+          </div>
+          {isAdmin ? (
+            <label className="flex cursor-pointer items-center justify-between gap-4">
+              <span className="text-sm text-[var(--foreground)]">{agencySaving ? "保存中..." : agencyEnabled ? "已开启" : "已关闭"}</span>
+              <button
+                type="button"
+                onClick={handleToggleAgency}
+                disabled={agencySaving}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
+                  agencyEnabled ? "bg-[var(--primary)]" : "bg-[var(--muted)]"
+                )}
+              >
+                <span className={cn(
+                  "absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform",
+                  agencyEnabled && "translate-x-5"
+                )} />
+              </button>
+            </label>
+          ) : (
+            <p className="text-xs text-[var(--muted-foreground)]">仅管理员可配置</p>
+          )}
+        </div>
+
+        {/* AI 模型配置（仅管理员可见） */}
+        {isAdmin && (
+          <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+            <div>
+              <h3 className="text-sm font-medium text-[var(--foreground)]">AI 模型配置</h3>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                聊天 AI 总结等功能从这里读取模型配置。填好 API Key 后立即生效，无需重启。
+              </p>
+            </div>
+            <div className="flex max-w-sm flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">模型供应商</Label>
+                <Input value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} placeholder="例如 DeepSeek" className="h-9" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">API Key</Label>
+                <Input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(e) => setAiApiKey(e.target.value)}
+                  placeholder={aiHasKey ? `已保存：${aiKeyMasked}（输入新 Key 覆盖）` : "填写 API Key"}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">模型名称</Label>
+                <Input value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="例如 deepseek-chat" className="h-9" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-medium">接口地址</Label>
+                <Input value={aiApiBase} onChange={(e) => setAiApiBase(e.target.value)} placeholder="留空使用默认（DeepSeek 官方接口）" className="h-9" />
+              </div>
+              {aiMsg && (
+                <p className={cn(
+                  "rounded-md px-3 py-2 text-xs",
+                  aiMsg.ok
+                    ? "bg-[color-mix(in_oklch,var(--success),var(--background)_88%)] text-[var(--success)]"
+                    : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[var(--destructive)]"
+                )}>
+                  {aiMsg.text}
+                </p>
+              )}
+              <Button size="sm" className="self-start" onClick={handleSaveAiConfig} disabled={aiSaving}>
+                <Save className="size-3.5" />
+                {aiSaving ? "保存中..." : "保存"}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Basic settings form */}
         <div className="flex flex-col gap-6 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">

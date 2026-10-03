@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
 import { StepTimerStatic } from "@/components/step-timer";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2, Play } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, UserCheck, Users, Calendar, FileEdit, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, Image, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Trash2, Play, Wallet } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
@@ -58,8 +59,11 @@ interface MonthlySummary {
 
 export default function InternalPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [staffNames, setStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
+  // 机构业务总开关：关闭时工作量里隐藏达人相关列
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
   const [issues, setIssues] = useState<IssueTicket[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -238,6 +242,7 @@ export default function InternalPage() {
     issue: { label: "工单", color: "blue" },
     leave: { label: "请假 & 考勤", color: "purple" },
     vat:   { label: "VAT 申报", color: "green" },
+    chat:  { label: "聊天消息", color: "sky" },
     other: { label: "其他", color: "gray" },
   } as const;
 
@@ -246,6 +251,7 @@ export default function InternalPage() {
     if (rt === "issue") return "issue";
     if (rt === "leave" || rt === "attendance_request") return "leave";
     if (rt === "vat_notify") return "vat";
+    if (rt === "chat_direct" || rt === "chat_group") return "chat";
     return "other";
   };
 
@@ -283,6 +289,14 @@ export default function InternalPage() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
+  }, []);
+
+  // 读取机构业务总开关
+  useEffect(() => {
+    fetchWithAuth("/api/settings", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .catch(() => {});
   }, []);
 
   // 加载员工列表（供工单指派人下拉框使用）
@@ -753,6 +767,15 @@ export default function InternalPage() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
   };
 
+  // 点击聊天通知 → 跳到消息页并打开对应会话
+  const openNotifChat = (n: Notification) => {
+    if (n.related_type === "chat_direct") {
+      router.push(`/messages?open=direct:${encodeURIComponent(n.related_id)}`);
+    } else if (n.related_type === "chat_group") {
+      router.push(`/messages?open=group:${n.related_id}`);
+    }
+  };
+
   const markAllNotifRead = async () => {
     await fetchWithAuth("/api/notifications", {
       method: "PATCH",
@@ -765,7 +788,103 @@ export default function InternalPage() {
   const isAdmin = user?.role === "admin";
   // 考勤导出选中的月份（默认当前曼谷月，切换后明细/汇总导出都按这个月导出）
   const [attendanceMonth, setAttendanceMonth] = useState(bangkokMonthKey());
-  const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","other-today","other-week"]));
+  const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","chat-today","chat-week","other-today","other-week"]));
+
+  // ── 工资设置（管理员）──
+  const [salaryRows, setSalaryRows] = useState<any[]>([]);
+  const [salaryLoading, setSalaryLoading] = useState(false);
+  const [salarySavingId, setSalarySavingId] = useState<number | null>(null);
+  const [salarySavedId, setSalarySavedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setSalaryLoading(true);
+    fetchWithAuth("/api/employees", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d)) setSalaryRows(d.filter((e: any) => e.role !== "client")); })
+      .catch(() => {})
+      .finally(() => setSalaryLoading(false));
+  }, [isAdmin]);
+
+  const updateSalaryRow = (id: number, field: string, value: string) => {
+    setSalaryRows((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const saveSalary = async (id: number) => {
+    const row = salaryRows.find((e) => e.id === id);
+    if (!row) return;
+    setSalarySavingId(id);
+    try {
+      const r = await fetchWithAuth("/api/employees", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          base_salary: row.base_salary === "" || row.base_salary === null || row.base_salary === undefined ? 0 : Number(row.base_salary),
+          diligence_bonus: row.diligence_bonus === "" || row.diligence_bonus === null || row.diligence_bonus === undefined ? null : Number(row.diligence_bonus),
+          skill_allowance: row.skill_allowance === "" || row.skill_allowance === null || row.skill_allowance === undefined ? 0 : Number(row.skill_allowance),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setSalaryRows((prev) => prev.map((e) => (e.id === id ? { ...e, base_salary: d.base_salary ?? 0, diligence_bonus: d.diligence_bonus ?? null, skill_allowance: d.skill_allowance ?? 0 } : e)));
+        setSalarySavedId(id);
+        setTimeout(() => setSalarySavedId((cur) => (cur === id ? null : cur)), 1500);
+      } else {
+        alert(d?.error || "保存失败");
+      }
+    } catch {
+      alert("保存失败");
+    } finally {
+      setSalarySavingId(null);
+    }
+  };
+
+  // ── 我的工资单（员工）──
+  const [myPayslips, setMyPayslips] = useState<any[]>([]);
+  const [myPayslipsLoading, setMyPayslipsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    setMyPayslipsLoading(true);
+    fetchWithAuth("/api/payslips", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setMyPayslips(Array.isArray(d) ? d : []))
+      .catch(() => setMyPayslips([]))
+      .finally(() => setMyPayslipsLoading(false));
+  }, [isAdmin]);
+
+  const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0);
+  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.withholding_tax) || 0);
+
+  const payslipAction = async (id: number, action: string, reason?: string) => {
+    try {
+      const r = await fetchWithAuth("/api/payslips/flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action, reason }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.id) {
+        setMyPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p)));
+      } else {
+        alert(d?.error || "操作失败");
+      }
+    } catch {
+      alert("操作失败");
+    }
+  };
+
+  const confirmPayslip = (id: number) => {
+    if (confirm("确认这份工资单无误？")) payslipAction(id, "confirm");
+  };
+  const rejectPayslip = (id: number) => {
+    const reason = prompt("请填写修改意见");
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) { alert("请填写修改意见"); return; }
+    payslipAction(id, "reject", trimmed);
+  };
 
 
   return (
@@ -776,9 +895,141 @@ export default function InternalPage() {
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">内部管理</h1>
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">问题工单 · 工作量 · 考勤打卡</p>
           </div>
-          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/payslips"}>工资单</Button>
+            )}
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.location.href = "/internal/weekly-report"}>周报</Button>
+          </div>
         </div>
       </div>
+
+      {/* ── 工资设置（管理员） ── */}
+      {isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+            <h2 className="text-sm font-medium flex items-center gap-2"><Wallet className="size-4" />工资设置</h2>
+          </div>
+          <div className="p-5">
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">给每个员工设置底薪、勤奋奖、技能津贴，保存后写入员工档案。</p>
+            {salaryLoading ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : salaryRows.length === 0 ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无员工</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)]">
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">底薪</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">勤奋奖（可空）</th>
+                      <th className="py-2 px-3 text-left text-xs font-medium text-[var(--muted-foreground)]">技能津贴</th>
+                      <th className="py-2 px-3 text-right text-xs font-medium text-[var(--muted-foreground)]">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salaryRows.map((e) => (
+                      <tr key={e.id} className="border-b border-[var(--border)] last:border-0">
+                        <td className="py-2 px-3 whitespace-nowrap text-[var(--foreground)]">{e.name}</td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={e.base_salary ?? ""}
+                            onChange={(ev) => updateSalaryRow(e.id, "base_salary", ev.target.value)}
+                            placeholder="0"
+                            className="h-8 w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={e.diligence_bonus ?? ""}
+                            onChange={(ev) => updateSalaryRow(e.id, "diligence_bonus", ev.target.value)}
+                            placeholder="可空"
+                            className="h-8 w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={e.skill_allowance ?? ""}
+                            onChange={(ev) => updateSalaryRow(e.id, "skill_allowance", ev.target.value)}
+                            placeholder="0"
+                            className="h-8 w-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                          />
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <Button size="sm" onClick={() => saveSalary(e.id)} disabled={salarySavingId === e.id} className="h-7 text-xs">
+                            {salarySavingId === e.id ? "保存中…" : salarySavedId === e.id ? "已保存" : "保存"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 我的工资单（员工） ── */}
+      {!isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--border)]">
+            <h2 className="text-sm font-medium flex items-center gap-2"><Wallet className="size-4" />我的工资单</h2>
+          </div>
+          <div className="p-5">
+            {myPayslipsLoading ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : myPayslips.length === 0 ? (
+              <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无工资单</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
+                      <th className="py-3 px-4 text-left text-xs font-medium">月份</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">收入</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">扣除</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
+                      <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
+                      <th className="py-3 px-3 text-right text-xs font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myPayslips.map((p) => (
+                      <tr key={p.id} className="border-b border-[var(--border)] last:border-0">
+                        <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.month}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums">{payslipTotal(p).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{payslipDeduct(p).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(payslipTotal(p) - payslipDeduct(p)).toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", p.status === "打回" ? "bg-red-500/15 text-red-600" : p.status === "已发放" ? "bg-emerald-500/15 text-emerald-600" : p.status === "已确认" ? "bg-green-500/15 text-green-600" : p.status === "待确认" ? "bg-blue-500/15 text-blue-600" : "bg-slate-500/15 text-slate-600")}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {p.status === "待确认" && (
+                            <>
+                              <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
+                            </>
+                          )}
+                          {p.status === "打回" && p.reject_reason && (
+                            <span className="text-xs text-red-500">意见：{p.reject_reason}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── 今日考勤打卡 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
@@ -992,7 +1243,7 @@ export default function InternalPage() {
             className="h-8 rounded border border-[var(--border)] px-2 text-xs" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
@@ -1024,6 +1275,25 @@ export default function InternalPage() {
               )}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {(Array.isArray(monthlySummaries) ? monthlySummaries : []).map(m => (
+              <div key={m.name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-[var(--foreground)]">{m.name}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">工时 {m.totalHours}h</span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center text-sm">
+                  <div><p className="tabular-nums text-green-600">{m.normalDays}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">正常</p></div>
+                  <div onClick={() => m.supplementDays > 0 && handleAnomalyClick("supplement", "补签明细", m.name)}><p className="tabular-nums text-amber-600">{m.supplementDays}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">补签</p></div>
+                  <div onClick={() => m.leaveCount > 0 && handleAnomalyClick("leave", "请假明细", m.name)}><p className="tabular-nums text-blue-600">{m.leaveCount}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">请假</p></div>
+                  <div onClick={() => m.lateCount > 0 && handleAnomalyClick("late", "迟到明细", m.name)}><p className="tabular-nums text-orange-600">{m.lateCount}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">迟到</p></div>
+                  <div onClick={() => m.absentCount > 0 && handleAnomalyClick("absent", "缺勤明细", m.name)}><p className={cn("tabular-nums", m.absentCount > 0 && "text-red-600 font-semibold")}>{m.absentCount}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">缺勤</p></div>
+                  <div><p className="tabular-nums text-[var(--muted-foreground)]">{m.workDays}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">工作日</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1330,7 +1600,7 @@ export default function InternalPage() {
             <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无待审批的补卡申请</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm hidden md:table">
                 <thead>
                   <tr className="border-b border-[var(--border)]">
                     <th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>
@@ -1362,6 +1632,25 @@ export default function InternalPage() {
                   ))}
                 </tbody>
               </table>
+              {/* 手机端卡片 */}
+              <div className="md:hidden flex flex-col gap-2 p-3">
+                {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status === "待审批").map(r => (
+                  <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--foreground)]">{r.employee_name}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{r.date} {r.time}</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">原因</span><span>{r.reason || "—"}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">照片</span>{r.photo ? <a href={r.photo} target="_blank" className="text-blue-500 underline text-xs">查看</a> : <span>—</span>}</div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
+                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批").length > 0 && (
@@ -1433,11 +1722,12 @@ export default function InternalPage() {
           <div className="max-h-[480px] overflow-y-auto">
             {(() => {
               // 分组：category → timeGroup → notifications
-              const cats = ["issue","leave","vat","other"] as const;
+              const cats = ["issue","leave","vat","chat","other"] as const;
               const colorMap: Record<string, { border: string; bg: string; dot: string }> = {
                 blue:   { border: "border-l-blue-500",  bg: "bg-blue-50/60 dark:bg-blue-950/10",  dot: "bg-blue-500" },
                 purple: { border: "border-l-purple-500", bg: "bg-purple-50/60 dark:bg-purple-950/10", dot: "bg-purple-500" },
                 green:  { border: "border-l-emerald-500", bg: "bg-emerald-50/60 dark:bg-emerald-950/10", dot: "bg-emerald-500" },
+                sky:    { border: "border-l-sky-500",  bg: "bg-sky-50/60 dark:bg-sky-950/10",  dot: "bg-sky-500" },
                 gray:   { border: "border-l-gray-400",  bg: "bg-gray-50/60 dark:bg-gray-900/10",  dot: "bg-gray-400" },
               };
               const grouped: Record<string, Record<string, Notification[]>> = {};
@@ -1496,7 +1786,10 @@ export default function InternalPage() {
                               {items.map(n => (
                                 <div
                                   key={n.id}
-                                  onClick={() => { if (n.is_read === 0) markNotifRead(n.id); }}
+                                  onClick={() => {
+                                    if (n.is_read === 0) markNotifRead(n.id);
+                                    if (n.related_type === "chat_direct" || n.related_type === "chat_group") openNotifChat(n);
+                                  }}
                                   className={cn(
                                     "px-5 py-2.5 cursor-pointer transition-colors hover:bg-[var(--muted)]/30",
                                     n.is_read === 0
@@ -1535,13 +1828,13 @@ export default function InternalPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm hidden md:table">
             <thead>
               <tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
                 <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">订单笔数</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">达人个数</th>
-                <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">签约跟进</th>
+                {agencyEnabled && <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">达人个数</th>}
+                {agencyEnabled && <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">签约跟进</th>}
                 <th className="py-2.5 px-4 text-center text-xs font-medium text-[var(--muted-foreground)]">合计</th>
               </tr>
             </thead>
@@ -1564,20 +1857,24 @@ export default function InternalPage() {
                       </button>
                     ) : "0"}
                   </td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">
-                    {e.influencerSteps > 0 ? (
-                      <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
-                        {e.influencerSteps}<ExternalLink className="size-2.5 opacity-60" />
-                      </button>
-                    ) : "0"}
-                  </td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">
-                    {e.contractInfs > 0 ? (
-                      <button onClick={() => handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
-                        {e.contractInfs}<ExternalLink className="size-2.5 opacity-60" />
-                      </button>
-                    ) : "0"}
-                  </td>
+                  {agencyEnabled && (
+                    <td className="py-2.5 px-4 text-center tabular-nums">
+                      {e.influencerSteps > 0 ? (
+                        <button onClick={() => handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                          {e.influencerSteps}<ExternalLink className="size-2.5 opacity-60" />
+                        </button>
+                      ) : "0"}
+                    </td>
+                  )}
+                  {agencyEnabled && (
+                    <td className="py-2.5 px-4 text-center tabular-nums">
+                      {e.contractInfs > 0 ? (
+                        <button onClick={() => handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)} className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer">
+                          {e.contractInfs}<ExternalLink className="size-2.5 opacity-60" />
+                        </button>
+                      ) : "0"}
+                    </td>
+                  )}
                   <td className={cn(
                     "py-2.5 px-4 text-center tabular-nums font-semibold",
                     e.level === "critical" && "text-red-600",
@@ -1586,10 +1883,32 @@ export default function InternalPage() {
                 </tr>
               ))}
               {(!wl || wl.employees.length === 0) && (
-                <tr><td colSpan={5} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
+                <tr><td colSpan={agencyEnabled ? 5 : 3} className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无数据</td></tr>
               )}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {(wl?.employees || []).map((e: Workload) => (
+              <div key={e.name} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4",
+                e.level === "critical" && "bg-red-50/60 dark:bg-red-950/20",
+                e.level === "warn" && "bg-amber-50/60 dark:bg-amber-950/20"
+              )}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 font-medium text-[var(--foreground)]">{e.name}
+                    {e.level === "critical" && <AlertTriangle className="size-3 text-red-500" />}
+                    {e.level === "warn" && <AlertTriangle className="size-3 text-amber-500" />}
+                  </span>
+                  <span className={cn("font-semibold tabular-nums", e.level === "critical" && "text-red-600", e.level === "warn" && "text-amber-600")}>{e.total}</span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center text-sm">
+                  <div onClick={() => e.orderSteps > 0 && handleWlDetail(e.name, "order_steps", `${e.name} 的订单`)}><p className="tabular-nums text-blue-600">{e.orderSteps}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">订单</p></div>
+                  {agencyEnabled && <div onClick={() => e.influencerSteps > 0 && handleWlDetail(e.name, "influencer_steps", `${e.name} 的达人`)}><p className="tabular-nums text-blue-600">{e.influencerSteps}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">达人</p></div>}
+                  {agencyEnabled && <div onClick={() => e.contractInfs > 0 && handleWlDetail(e.name, "contract_infs", `${e.name} 的签约跟进`)}><p className="tabular-nums text-blue-600">{e.contractInfs}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">签约</p></div>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1835,7 +2154,8 @@ export default function InternalPage() {
           );
           // Shared render function for both active and resolved tables
           const renderTable = (list: IssueTicket[]) => (
-            <table className="w-full text-sm">
+            <>
+            <table className="w-full text-sm hidden md:table">
               <thead><tr className="border-b border-[var(--border)]">
                 <th className="py-2.5 px-4 text-left text-xs font-medium">编号</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">关联</th>
@@ -1906,6 +2226,40 @@ export default function InternalPage() {
                 </tr>
               ))}</tbody>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {list.map(t => (
+                <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs">{t.ticket_number || `#${t.id}`}</span>
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                      t.status==="已解决"&&"bg-green-100 text-green-700",
+                      t.status==="处理中"&&"bg-blue-100 text-blue-700",
+                      "bg-gray-100 text-gray-700")}>{t.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">关联</span><span className="text-xs">{t.ref_id ? `${t.ref_type==="influencer"?"达人:":"订单:"}${t.ref_id}` : "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">问题</span><span className="text-right">{t.description}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">指定人</span><span className="text-xs">{t.assignee ? t.assignee.split(",").map(s => s.trim()).filter(Boolean).join("、") : "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建人</span><span>{t.created_by}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
+                    {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleStartIssue(t)}><Play className="size-3 mr-1" />开始处理</Button>
+                    )}
+                    {t.status!=="已解决" ? (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}><CheckCircle2 className="size-3 mr-1" />解决</Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleWithdrawIssue(t)}><AlertTriangle className="size-3 mr-1" />撤回</Button>
+                    )}
+                    <button onClick={()=>handleDeleteIssue(t.id)} className="ml-1.5 text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="删除工单"><Trash2 className="size-3.5" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           );
           return (
             <div>
@@ -2283,7 +2637,8 @@ export default function InternalPage() {
           });
           if(pending.length===0&&history.length===0)return(<div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>);
           const renderLeaveTable=(list: any[])=>(
-            <table className="w-full text-sm"><thead><tr className="border-b border-[var(--border)]">
+            <>
+            <table className="w-full text-sm hidden md:table"><thead><tr className="border-b border-[var(--border)]">
               {isAdmin&&<th className="py-2.5 px-4 text-left text-xs font-medium">申请人</th>}
               <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
               <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
@@ -2358,6 +2713,36 @@ export default function InternalPage() {
                 </td>
               </tr>
             ))}</tbody></table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {list.map(l=>(
+                <div key={l.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{l.employee_name}</span>
+                    <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium "+(l.status==="已通过"?"bg-green-100 text-green-700":l.status==="已驳回"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700")}>{l.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{l.leave_type}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">目的地</span><span>{l.destination||"—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">原因</span><span className="text-right">{l.reason||"—"}</span></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5 items-center">
+                    {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
+                      <a href={fileUrl((imgs[0] as string).startsWith("/api/files/") ? imgs[0] : "/api/files/" + imgs[0])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:underline text-xs">{imgs.length} 张附件</a>
+                    ):null;})()}
+                    <button onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}} disabled={supplementUploading} className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]">补传附件</button>
+                    {l.status==="待审批"&&isAdmin&&(
+                      <>
+                        <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
+                        <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={()=>handleApproveLeave(l.id,"已驳回")}>驳回</Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           );
           return(
             <div>

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
+import { ChatNotifier } from "@/components/chat-notifier";
 import { AuthProvider, getAuthToken, useAuth } from "@/components/auth-provider";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             跳过导航，直达内容
           </a>
           <Sidebar />
+          <ChatNotifier />
           <main id="main-content" className="flex-1 md:pl-16 lg:pl-60">
             <div className="mx-auto max-w-7xl px-4 pt-16 pb-8 sm:px-6 md:px-6 lg:px-8 lg:pt-8">
               {children}

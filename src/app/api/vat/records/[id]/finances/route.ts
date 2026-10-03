@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/vat/records/[id]/finances
 export async function GET(
@@ -44,6 +44,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO vat_record_finances (record_id, type, amount, description, payment_method, slip_number, slip_file, status, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(id, type || "income", Number(amount), description, payment_method || "", slip_number || "", slip_file || "", status || "paid", currency || "CNY");
+  logOperation(auth.name, "记VAT费用", "vat_finance", String(result.lastInsertRowid), description);
   const finance = db.prepare("SELECT * FROM vat_record_finances WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(finance, { status: 201 });
 }
@@ -83,5 +84,6 @@ export async function DELETE(
   if (!financeId) return NextResponse.json({ error: "缺少 id" }, { status: 400 });
   const db = getDb();
   db.prepare("DELETE FROM vat_record_finances WHERE id = ?").run(financeId);
+  logOperation(auth.name, "删除VAT费用", "vat_finance", String(financeId));
   return NextResponse.json({ success: true });
 }

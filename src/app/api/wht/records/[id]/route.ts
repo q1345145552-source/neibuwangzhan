@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,
@@ -83,6 +83,13 @@ export async function PATCH(
     syncWhtReconciliation(db, rec.customer_id, rec.year_month);
   }
 
+  const changed: string[] = [];
+  if (body.amount !== undefined) changed.push("金额");
+  if (body.income_amount !== undefined) changed.push("收入额");
+  if (body.tax_rate !== undefined) changed.push("税率");
+  if (body.assignee !== undefined) changed.push("负责人");
+  logOperation(auth.name, "修改WHT记录", "wht_record", String(id), `更新: ${changed.join("、")}`);
+
   const updated = db.prepare(`
     SELECT r.*, c.company_name, c.tax_id FROM wht_records r
     JOIN wht_customers c ON r.customer_id = c.id WHERE r.id = ?
@@ -154,5 +161,6 @@ export async function DELETE(
     syncWhtReconciliation(db, record.customer_id, record.year_month);
   }
 
+  logOperation(auth.name, "删除WHT记录", "wht_record", String(id));
   return NextResponse.json({ success: true, deletedFiles: 0, filesRetained: true });
 }

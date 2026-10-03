@@ -32,6 +32,15 @@ export default function WeeklyReportPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [data, setData] = useState<EmployeeReport[]>([]);
   const [loading, setLoading] = useState(true);
+  // 机构业务总开关：关闭时周报里隐藏达人评估、签订合同
+  const [agencyEnabled, setAgencyEnabled] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth("/api/settings", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { if (typeof d.agency_enabled === "boolean") setAgencyEnabled(d.agency_enabled); })
+      .catch(() => {});
+  }, []);
 
   const { from, to, label } = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
 
@@ -89,13 +98,13 @@ export default function WeeklyReportPage() {
       ) : (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm hidden md:table">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                   <th className="py-3 px-5 text-left text-xs font-medium">员工</th>
                   <th className="py-3 px-4 text-center text-xs font-medium">完成订单步骤</th>
-                  <th className="py-3 px-4 text-center text-xs font-medium">达人评估</th>
-                  <th className="py-3 px-4 text-center text-xs font-medium">签订合同</th>
+                  {agencyEnabled && <th className="py-3 px-4 text-center text-xs font-medium">达人评估</th>}
+                  {agencyEnabled && <th className="py-3 px-4 text-center text-xs font-medium">签订合同</th>}
                   <th className="py-3 px-4 text-center text-xs font-medium">解决工单</th>
                   <th className="py-3 px-4 text-center text-xs font-medium">合计</th>
                 </tr>
@@ -105,8 +114,8 @@ export default function WeeklyReportPage() {
                   <tr key={e.name} className="border-b border-[var(--border)] hover:bg-[var(--muted)]/20">
                     <td className="py-2.5 px-5 font-medium">{e.name}</td>
                     <td className="py-2.5 px-4 text-center tabular-nums">{e.orderSteps}</td>
-                    <td className="py-2.5 px-4 text-center tabular-nums">{e.evaluations}</td>
-                    <td className="py-2.5 px-4 text-center tabular-nums">{e.contracts}</td>
+                    {agencyEnabled && <td className="py-2.5 px-4 text-center tabular-nums">{e.evaluations}</td>}
+                    {agencyEnabled && <td className="py-2.5 px-4 text-center tabular-nums">{e.contracts}</td>}
                     <td className="py-2.5 px-4 text-center tabular-nums">{e.issuesResolved}</td>
                     <td className="py-2.5 px-4 text-center tabular-nums font-semibold">
                       {e.orderSteps + e.evaluations + e.contracts + e.issuesResolved}
@@ -118,8 +127,8 @@ export default function WeeklyReportPage() {
                 <tr className="border-t-2 border-[var(--border)] bg-[var(--muted)]/20 font-semibold">
                   <td className="py-2.5 px-5">合计</td>
                   <td className="py-2.5 px-4 text-center tabular-nums">{totals.orderSteps}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">{totals.evaluations}</td>
-                  <td className="py-2.5 px-4 text-center tabular-nums">{totals.contracts}</td>
+                  {agencyEnabled && <td className="py-2.5 px-4 text-center tabular-nums">{totals.evaluations}</td>}
+                  {agencyEnabled && <td className="py-2.5 px-4 text-center tabular-nums">{totals.contracts}</td>}
                   <td className="py-2.5 px-4 text-center tabular-nums">{totals.issuesResolved}</td>
                   <td className="py-2.5 px-4 text-center tabular-nums">
                     {totals.orderSteps + totals.evaluations + totals.contracts + totals.issuesResolved}
@@ -127,6 +136,23 @@ export default function WeeklyReportPage() {
                 </tr>
               </tfoot>
             </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {data.map(e => (
+                <div key={e.name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{e.name}</span>
+                    <span className="font-semibold tabular-nums">{e.orderSteps + e.evaluations + e.contracts + e.issuesResolved}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">完成订单步骤</span><span className="tabular-nums">{e.orderSteps}</span></div>
+                    {agencyEnabled && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">达人评估</span><span className="tabular-nums">{e.evaluations}</span></div>}
+                    {agencyEnabled && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">签订合同</span><span className="tabular-nums">{e.contracts}</span></div>}
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">解决工单</span><span className="tabular-nums">{e.issuesResolved}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

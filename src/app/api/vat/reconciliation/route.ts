@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/vat/reconciliation?month=YYYY-MM
 export async function GET(req: NextRequest) {
@@ -64,5 +64,6 @@ export async function POST(req: NextRequest) {
   });
   txn();
 
+  logOperation(auth.name, "补建VAT对账记录", "vat_reconciliation", "batch", `补建 ${missing.length} 条`);
   return NextResponse.json({ created: missing.length, message: `已为 ${missing.length} 条记录补建对账数据` });
 }

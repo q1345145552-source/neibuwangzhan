@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // POST /api/logistics/[id]/steps/[stepId]/notes
 export async function POST(
@@ -23,6 +23,8 @@ export async function POST(
   db.prepare(
     "INSERT INTO shipping_step_notes (order_id, step_id, content, created_by) VALUES (?, ?, ?, ?)"
   ).run(id, stepId, content.trim(), created_by || auth.name || "");
+
+  logOperation(auth.name, "添加物流步骤备注", "logistics_note", String(id), content.trim());
 
   const notes = db.prepare(
     "SELECT * FROM shipping_step_notes WHERE step_id = ? ORDER BY created_at"

@@ -3,7 +3,7 @@ import { isClientOrderVisible } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb } from "@/lib/db";
+import { getDb, logOperation } from "@/lib/db";
 
 // GET /api/orders/:id/steps/:stepId/notes
 export async function GET(
@@ -44,6 +44,7 @@ export async function POST(
   const result = db.prepare(
     "INSERT INTO step_notes (step_id, order_id, content, created_by, client_author_id) VALUES (?, ?, ?, ?, ?)"
   ).run(stepId, id, content, auth.name, auth.role === "client" ? auth.id : null);
+  logOperation(auth.name, "添加订单步骤备注", "step_note", String(result.lastInsertRowid), content);
   const note = db.prepare("SELECT * FROM step_notes WHERE id = ?").get(result.lastInsertRowid);
   return NextResponse.json(auth.role === "client" ? publicClientNote(note) : note, { status: 201 });
 }

@@ -151,7 +151,7 @@ export default function LeaveDashboardPage() {
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
             <p className="text-xs text-[var(--muted-foreground)] mb-3">当月统计（{dashboard.monthStats.length} 人请假）</p>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm hidden md:table">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
                     <th className="py-2 px-3 text-left font-medium">姓名</th>
@@ -175,6 +175,23 @@ export default function LeaveDashboardPage() {
                   ))}
                 </tbody>
               </table>
+              {/* 手机端卡片 */}
+              <div className="md:hidden flex flex-col gap-2 p-3">
+                {dashboard.monthStats.map((s: any) => (
+                  <div key={s.employee_name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 cursor-pointer" onClick={() => loadDetail(s.employee_name, currentMonth)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-blue-600">{s.employee_name}</span>
+                      <span className="font-medium">{s.totalDays}天</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-4 gap-2 text-center text-sm">
+                      <div><p className="tabular-nums">{s.sick || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">病假</p></div>
+                      <div><p className="tabular-nums">{s.personal || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">事假</p></div>
+                      <div><p className="tabular-nums">{s.annual || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">年假</p></div>
+                      <div><p className="tabular-nums">{s.other || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">其他</p></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
@@ -289,7 +306,8 @@ export default function LeaveDashboardPage() {
             ) : detailRecords.length === 0 ? (
               <p className="text-sm text-[var(--muted-foreground)] text-center py-8">{detailModal.month} 无请假记录</p>
             ) : (
-              <table className="w-full text-sm">
+              <>
+              <table className="w-full text-sm hidden md:table">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
                     <th className="py-2 px-3 text-left text-xs font-medium">类型</th>
@@ -316,6 +334,27 @@ export default function LeaveDashboardPage() {
                   })}
                 </tbody>
               </table>
+              {/* 手机端卡片 */}
+              <div className="md:hidden flex flex-col gap-2 p-3">
+                {detailRecords.map((r: any, i: number) => {
+                  const s = new Date(r.start_date);
+                  const e = new Date(r.end_date);
+                  const days = Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
+                  return (
+                    <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-[var(--foreground)]">{r.leave_type}</span>
+                        <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
+                        <span className="text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</span>
+                        <span className="tabular-nums">{days}天</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              </>
             )}
           </div>
         </div>

@@ -627,7 +627,8 @@ export default function CustomersPage() {
             {search || statusFilter !== "全部" ? "无匹配结果" : "暂无客户，点击右上角「录入客户」开始"}
           </div>
         ) : (
-          <table className="w-full table-fixed text-sm">
+          <>
+          <table className="w-full table-fixed text-sm hidden md:table">
             <thead className="bg-[var(--muted)]">
               <tr>
                 <th className="px-3 py-3 w-10">
@@ -707,6 +708,38 @@ export default function CustomersPage() {
               ))}
             </tbody>
           </table>
+          {/* 手机端卡片 */}
+          <div className="md:hidden flex flex-col gap-2 p-3">
+            {customers.map(c => (
+              <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4" onClick={() => router.push(`/customers/${c.id}`)}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Building2 className="size-3.5 text-[var(--muted-foreground)] shrink-0" />
+                    <span className="font-medium text-[var(--foreground)] truncate">{c.company_name}</span>
+                  </span>
+                  <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap", statusColor[c.status] || "")}>{c.status}</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">行业</span><span>{c.industry || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">认领人</span><span>{c.claimed_by || c.handler_name || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">来源</span><span>{c.source_channel || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">成交金额</span><span className="font-mono text-xs">{c.total_deal_amount > 0 ? c.total_deal_amount.toLocaleString() : "—"}</span></div>
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
+                  {c.status === "潜在" && !c.claimed_by && (
+                    <button onClick={() => handleClaim(c.id)} className="inline-flex items-center gap-0.5 px-2 py-1 text-xs rounded border border-[var(--primary)] text-[var(--primary)] font-medium">认领</button>
+                  )}
+                  {c.status === "沉睡" && (
+                    <button onClick={() => handleActivate(c.id)} className="inline-flex items-center gap-0.5 px-2 py-1 text-xs rounded border border-amber-500 text-amber-600 font-medium">激活</button>
+                  )}
+                  {user?.role === "admin" && (
+                    <button onClick={() => handleDelete(c.id, c.company_name)} className="p-1 text-[var(--muted-foreground)] hover:text-[var(--destructive)]" title="删除"><Trash2 className="size-3.5" /></button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
 

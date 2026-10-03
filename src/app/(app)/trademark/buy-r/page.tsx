@@ -50,7 +50,7 @@ export default function BuyRTrademarkPage() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm hidden md:table">
           <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">商标名称</th>
           <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
           <tbody>
@@ -65,6 +65,22 @@ export default function BuyRTrademarkPage() {
             ))}
           </tbody>
         </table>
+        {/* 手机端卡片 */}
+        <div className="md:hidden flex flex-col gap-2 p-3">
+          {orders.map(o => (
+            <div key={o.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link>
+                <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span>
+              </div>
+              <div className="mt-2 space-y-1.5 text-sm">
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">商标名称</span><span>{o.trademark_name || "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">客户</span><span>{o.customer_name || "—"}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">金额</span><span className="font-mono text-xs">{formatCurrency(o.total_amount, o.currency)}</span></div>
+              </div>
+            </div>
+          ))}
+        </div>
         {orders.length === 0 && <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无购买R标订单</div>}
       </div>
 

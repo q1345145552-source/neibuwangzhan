@@ -4,6 +4,8 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { refreshPayslipAutoFields } from "@/lib/payslips";
+import { bangkokMonthKey } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -14,10 +16,10 @@ export async function GET(req: NextRequest) {
   // 默认只返回在职员工（供选人下拉框用，避免给离职员工派活）；?include_left=1 时返回全部（含离职）。
   const includeLeft = new URL(req.url).searchParams.get("include_left") === "1";
   const sql = includeLeft
-    ? "SELECT id, name, email, role, status FROM employees"
-    : "SELECT id, name, email, role, status FROM employees WHERE status != '离职'";
+    ? "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance FROM employees"
+    : "SELECT id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance FROM employees WHERE status != '离职'";
   const rows = db.prepare(sql).all() as
-    { id: number; name: string; email: string; role: string; status: string }[];
+    { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null }[];
 
   // 客户账号带上它能看到哪些公司的订单（外部客户端口的可见范围）
   const scoped = rows.map((r) => {
@@ -66,7 +68,7 @@ export async function PATCH(req: NextRequest) {
   const db = getDb();
 
   const body = await readJson(req);
-  const { id, name, email, role, password, status, customer_names } = body;
+  const { id, name, email, role, password, status, customer_names, base_salary, diligence_bonus, skill_allowance } = body;
   if (!id) return NextResponse.json({ error: "请提供员工ID" }, { status: 400 });
 
   const enumErr = validateEnums({ "employees.role": role, "employees.status": status });
@@ -74,6 +76,11 @@ export async function PATCH(req: NextRequest) {
 
   const currentEmployee = db.prepare("SELECT role FROM employees WHERE id = ?").get(id) as { role: string } | undefined;
   if (!currentEmployee) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
+  // 改名时记录旧名字，用于同步考勤/补签/请假三张表里的历史记录
+  const oldName = name
+    ? (db.prepare("SELECT name FROM employees WHERE id = ?").get(id) as { name: string } | undefined)?.name
+    : undefined;
+
   const sets: string[] = [];
   const params: unknown[] = [];
   if (name) { sets.push("name = ?"); params.push(name); }
@@ -101,10 +108,37 @@ export async function PATCH(req: NextRequest) {
     sets.push("must_change_password = 0");
   }
 
+  // 工资字段：底薪/技能津贴为数字（>=0），勤奋奖可空（不是人人都有）
+  let salaryChanged = false;
+  if (base_salary !== undefined && base_salary !== "") {
+    const v = Number(base_salary);
+    if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "底薪格式不正确" }, { status: 400 });
+    sets.push("base_salary = ?"); params.push(v);
+    salaryChanged = true;
+  }
+  if (diligence_bonus !== undefined) {
+    if (diligence_bonus === "" || diligence_bonus === null) {
+      sets.push("diligence_bonus = NULL");
+    } else {
+      const v = Number(diligence_bonus);
+      if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "勤奋奖格式不正确" }, { status: 400 });
+      sets.push("diligence_bonus = ?"); params.push(v);
+    }
+    salaryChanged = true;
+  }
+  if (skill_allowance !== undefined && skill_allowance !== "") {
+    const v = Number(skill_allowance);
+    if (!Number.isFinite(v) || v < 0) return NextResponse.json({ error: "技能津贴格式不正确" }, { status: 400 });
+    sets.push("skill_allowance = ?"); params.push(v);
+    salaryChanged = true;
+  }
+
   // customer_names：客户账号能在外部端口看到哪些公司的订单（整表替换）
   const updatingScope = Array.isArray(customer_names);
   if (sets.length === 0 && !updatingScope) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
 
+  const refreshMonth = bangkokMonthKey();
+  let refreshedDraft = false;
   db.transaction(() => {
     // A newly converted customer is not a legacy customer account. Keep explicit existing mappings,
     // but do not manufacture new access by falling back to their old employee display name.
@@ -113,6 +147,12 @@ export async function PATCH(req: NextRequest) {
     }
     if (sets.length > 0) {
       db.prepare(`UPDATE employees SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
+    }
+    // 改名同步：考勤表、补签表、请假表里的 employee_name 一起改成新名字
+    if (name && oldName && name !== oldName) {
+      db.prepare("UPDATE attendance SET employee_name = ? WHERE employee_name = ?").run(name, oldName);
+      db.prepare("UPDATE attendance_requests SET employee_name = ? WHERE employee_name = ?").run(name, oldName);
+      db.prepare("UPDATE leave_requests SET employee_name = ? WHERE employee_name = ?").run(name, oldName);
     }
     if (updatingScope) {
       db.prepare("INSERT INTO client_scope_settings (employee_id, mode) VALUES (?, 'explicit') ON CONFLICT(employee_id) DO UPDATE SET mode='explicit', updated_at=datetime('now')").run(id);
@@ -123,15 +163,24 @@ export async function PATCH(req: NextRequest) {
         if (cn) ins.run(id, cn);
       }
     }
+    // 工资档案变了 → 自动重算当月「草稿/打回」状态的工资单自动项（底薪/勤奋奖/技能津贴 + 社保/迟到/请假）。
+    // 待确认/已确认/已发放的工资单一律不动。
+    if (salaryChanged) {
+      refreshedDraft = refreshPayslipAutoFields(db, Number(id), refreshMonth);
+    }
   })();
+
+  if (refreshedDraft) {
+    logOperation(auth.name, "自动刷新草稿工资单", "payslip", `${id}/${refreshMonth}`, "工资档案变更，自动重算自动项");
+  }
 
   if (updatingScope) {
     logOperation(auth.name, "配置客户可见范围", "employee", String(id),
       `可见公司: ${(customer_names as unknown[]).join("、") || "（清空）"}`);
   }
 
-  const emp = db.prepare("SELECT id, name, email, role, status FROM employees WHERE id = ?").get(id) as
-    { id: number; role: string; status: string } | undefined;
+  const emp = db.prepare("SELECT id, name, email, role, status, base_salary, diligence_bonus, skill_allowance FROM employees WHERE id = ?").get(id) as
+    { id: number; role: string; status: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null } | undefined;
   const scope = db.prepare(
     "SELECT customer_name FROM client_account_customers WHERE employee_id = ? ORDER BY customer_name"
   ).all(id) as { customer_name: string }[];
