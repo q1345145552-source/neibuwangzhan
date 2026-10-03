@@ -66,6 +66,28 @@ export interface Employee {
   address?: string;
   /** 身份证号或护照号 */
   id_number?: string;
+  /** 部门 */
+  department?: string;
+  /** 职位 */
+  position?: string;
+  /** 合同期限 */
+  contract_term?: string;
+  /** 开户银行 */
+  bank_name?: string;
+  /** 银行账号 */
+  bank_account?: string;
+  /** 紧急联系人姓名 */
+  emergency_name?: string;
+  /** 紧急联系人电话 */
+  emergency_phone?: string;
+  /** 紧急联系人关系 */
+  emergency_relation?: string;
+  /** 学历 */
+  education?: string;
+  /** 技能 */
+  skills?: string;
+  /** 备注 */
+  notes?: string;
   /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
   customer_names?: string[];
 }
@@ -522,7 +544,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",

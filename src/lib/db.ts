@@ -472,6 +472,17 @@ function initTables(database: Database.Database) {
       phone TEXT DEFAULT '',
       address TEXT DEFAULT '',
       id_number TEXT DEFAULT '',
+      department TEXT DEFAULT '',
+      position TEXT DEFAULT '',
+      contract_term TEXT DEFAULT '',
+      bank_name TEXT DEFAULT '',
+      bank_account TEXT DEFAULT '',
+      emergency_name TEXT DEFAULT '',
+      emergency_phone TEXT DEFAULT '',
+      emergency_relation TEXT DEFAULT '',
+      education TEXT DEFAULT '',
+      skills TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -1240,6 +1251,17 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN phone TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN address TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN id_number TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN department TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN position TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN contract_term TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN bank_name TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN bank_account TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_name TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_phone TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_relation TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN education TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN skills TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN notes TEXT DEFAULT ''"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。
