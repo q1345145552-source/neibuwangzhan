@@ -6,8 +6,9 @@ import { validateEnums } from "@/lib/enums";
 import { existsSync, unlinkSync } from "fs";
 import path from "path";
 import os from "os";
+import { uploadsDir } from "@/lib/uploads";
 
-const UPLOAD_DIRS = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")];
+const UPLOAD_DIRS = [uploadsDir, path.join(os.tmpdir(), "xiangtai-uploads")];
 
 /** 从 /api/files/xxx 地址解析出文件名并删除磁盘文件 */
 function deleteDiskFile(url: string): void {

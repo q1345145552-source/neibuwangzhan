@@ -5,8 +5,9 @@ import path from "path";
 import os from "os";
 import { existsSync } from "fs";
 import { verifyToken } from "@/lib/auth";
+import { uploadsDir } from "@/lib/uploads";
 
-const PROJECT_UPLOADS = path.join(process.cwd(), "uploads");
+const PROJECT_UPLOADS = uploadsDir;
 const TMP_UPLOADS = path.join(os.tmpdir(), "xiangtai-uploads");
 
 function findFile(safeName: string): string | null {

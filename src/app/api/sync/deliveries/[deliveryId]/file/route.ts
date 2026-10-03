@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { isSyncRequest, syncRateLimited, recordSyncAuthFailure } from "@/lib/sync-auth";
 import { isPublishedDocument, sourceOrderOf } from "@/lib/delivery-sync";
+import { uploadsDir } from "@/lib/uploads";
 
 /**
  * 交付文件回传（2026-10-03，规则 13）：客户站用服务密钥回拉交付文件原件。
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deli
   if (match[1] === "doc" && !isPublishedDocument(row as unknown as Parameters<typeof isPublishedDocument>[0])) return notFound();
   const safeName = /\/api\/files\/([A-Za-z0-9._-]+)/.exec(row.file_url)?.[1];
   if (!safeName) return notFound();
-  const filePath = [path.join(process.cwd(), "uploads"), path.join(os.tmpdir(), "xiangtai-uploads")]
+  const filePath = [uploadsDir, path.join(os.tmpdir(), "xiangtai-uploads")]
     .map(dir => path.join(dir, path.basename(safeName))).find(p => existsSync(p));
   if (!filePath) return notFound();
   const buffer = await readFile(filePath);
