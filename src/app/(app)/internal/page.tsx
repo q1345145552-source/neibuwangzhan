@@ -873,13 +873,15 @@ export default function InternalPage() {
   // ── 我的工资单（员工）──
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
   const [myPayslipsLoading, setMyPayslipsLoading] = useState(false);
+  // 员工端只显示这三种状态的工资单；草稿/打回不显示
+  const visiblePayslipStatuses = ["待确认", "已确认", "已发放"];
 
   useEffect(() => {
     if (isAdmin) return;
     setMyPayslipsLoading(true);
     fetchWithAuth("/api/payslips", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setMyPayslips(Array.isArray(d) ? d : []))
+      .then((d) => setMyPayslips(Array.isArray(d) ? d.filter((p: any) => visiblePayslipStatuses.includes(p.status)) : []))
       .catch(() => setMyPayslips([]))
       .finally(() => setMyPayslipsLoading(false));
   }, [isAdmin]);
@@ -904,7 +906,10 @@ export default function InternalPage() {
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d?.id) {
-        setMyPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p)));
+        // 打回后从员工端消失；其余状态更新后再过滤一遍（只留待确认/已确认/已发放）
+        setMyPayslips((prev) => prev
+          .map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p))
+          .filter((p) => visiblePayslipStatuses.includes(p.status)));
       } else {
         alert(d?.error || "操作失败");
       }
