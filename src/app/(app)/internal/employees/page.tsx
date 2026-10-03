@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, type EmployeeRecord } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn } from "@/lib/utils";
+import { cn, toThaiTime } from "@/lib/utils";
 import { ArrowLeft, IdCard } from "lucide-react";
 
 interface ProfileEmployee {
@@ -37,6 +37,14 @@ export default function EmployeeProfilesPage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  // 记过/记优点
+  const [records, setRecords] = useState<EmployeeRecord[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordType, setRecordType] = useState<"demerit" | "merit">("merit");
+  const [recordPoints, setRecordPoints] = useState("");
+  const [recordContent, setRecordContent] = useState("");
+  const [recordSaving, setRecordSaving] = useState(false);
+  const [recordErr, setRecordErr] = useState("");
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -54,6 +62,35 @@ export default function EmployeeProfilesPage() {
     for (const k of FORM_FIELDS) f[k] = (e as any)[k] ?? "";
     setForm(f);
     setSavedMsg("");
+    // 加载该员工的记过/记优点记录
+    setRecords([]);
+    setRecordsLoading(true);
+    setRecordErr("");
+    setRecordPoints("");
+    setRecordContent("");
+    fetchEmployeeRecords(e.id)
+      .then((r) => setRecords(Array.isArray(r) ? r : []))
+      .catch(() => setRecords([]))
+      .finally(() => setRecordsLoading(false));
+  };
+
+  const addRecord = async () => {
+    if (!selected) return;
+    const points = Number(recordPoints);
+    if (!Number.isInteger(points) || points <= 0) { setRecordErr("分值需为正整数"); return; }
+    if (!recordContent.trim()) { setRecordErr("请填写内容"); return; }
+    setRecordSaving(true);
+    setRecordErr("");
+    try {
+      const rec = await createEmployeeRecord({ employee_id: selected.id, type: recordType, points, content: recordContent.trim() });
+      setRecords((prev) => [rec, ...prev]);
+      setRecordPoints("");
+      setRecordContent("");
+    } catch (err) {
+      setRecordErr(err instanceof Error ? err.message : "记录失败");
+    } finally {
+      setRecordSaving(false);
+    }
   };
 
   const setField = (k: string, v: string) => setForm((prev) => ({ ...prev, [k]: v }));
@@ -219,6 +256,48 @@ export default function EmployeeProfilesPage() {
                   <Button size="sm" onClick={save} disabled={saving}>{saving ? "保存中…" : "保存"}</Button>
                   {savedMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{savedMsg}</span>}
                 </div>
+
+                {/* 记过 / 记优点 */}
+                <section className="border-t border-[var(--border)] pt-4">
+                  <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">记过 / 记优点</h3>
+
+                  <div className="mb-4 rounded-md border border-[var(--border)] p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select value={recordType} onChange={(e) => setRecordType(e.target.value as "demerit" | "merit")} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                        <option value="merit">记优点（加分）</option>
+                        <option value="demerit">记过（扣分）</option>
+                      </select>
+                      <Input type="number" min="1" step="1" value={recordPoints} onChange={(e) => setRecordPoints(e.target.value)} placeholder="分值" className="h-9 w-24" />
+                      <Input value={recordContent} onChange={(e) => setRecordContent(e.target.value)} placeholder="内容（做了什么 / 犯了什么错）" className="h-9 min-w-[160px] flex-1" />
+                      <Button size="sm" onClick={addRecord} disabled={recordSaving} className="h-9">{recordSaving ? "记录中…" : "记录"}</Button>
+                    </div>
+                    {recordErr && <p className="mt-1.5 text-xs text-red-500">{recordErr}</p>}
+                    <p className="mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">一分 = 十泰铢</p>
+                  </div>
+
+                  {recordsLoading ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                  ) : records.length === 0 ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">暂无记录</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {records.map((r) => (
+                        <li key={r.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", r.type === "demerit" ? "bg-red-500/15 text-red-600" : "bg-emerald-500/15 text-emerald-600")}>
+                              {r.type === "demerit" ? "记过" : "记优点"}
+                            </span>
+                            <span className={cn("text-sm font-semibold tabular-nums", r.type === "demerit" ? "text-red-600" : "text-emerald-600")}>
+                              {r.type === "demerit" ? "-" : "+"}{r.points} 分
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-[var(--foreground)]">{r.content}</p>
+                          <p className="mt-1 text-[0.65rem] text-[var(--muted-foreground)]">{r.created_by} · {toThaiTime(r.created_at)}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
               </div>
             )}
           </div>

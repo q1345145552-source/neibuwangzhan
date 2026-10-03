@@ -486,6 +486,18 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    // 员工记过/记优点记录：type=demerit 记过(扣分)，type=merit 记优点(加分)，points 为正数分值
+    CREATE TABLE IF NOT EXISTS employee_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'merit' CHECK(type IN ('demerit','merit')),
+      points INTEGER NOT NULL DEFAULT 0,
+      content TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_records_employee ON employee_records(employee_id);
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

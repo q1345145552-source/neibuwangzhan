@@ -92,6 +92,19 @@ export interface Employee {
   customer_names?: string[];
 }
 
+/** 员工记过/记优点记录 */
+export interface EmployeeRecord {
+  id: number;
+  employee_id: number;
+  /** demerit=记过(扣分)，merit=记优点(加分) */
+  type: "demerit" | "merit";
+  /** 分值（正数，一分=十泰铢） */
+  points: number;
+  content: string;
+  created_by: string;
+  created_at: string;
+}
+
 export interface Document {
   publication_verified?: number;
   id: number;
@@ -554,6 +567,25 @@ export async function updateEmployee(
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "更新员工失败");
   return result as Employee;
+}
+
+/** 某员工的记过/记优点记录（按时间倒序） */
+export async function fetchEmployeeRecords(employeeId: number): Promise<EmployeeRecord[]> {
+  const res = await fetch(`/api/employees/records?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取记录失败");
+  return res.json();
+}
+
+/** 给员工记过/记优点 */
+export async function createEmployeeRecord(data: { employee_id: number; type: "demerit" | "merit"; points: number; content: string }): Promise<EmployeeRecord> {
+  const res = await fetch("/api/employees/records", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "记录失败");
+  return result as EmployeeRecord;
 }
 
 /** 订单里出现过的全部客户公司名，供配置客户账号可见范围时选择 */
