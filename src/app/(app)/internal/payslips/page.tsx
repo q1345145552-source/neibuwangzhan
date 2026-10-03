@@ -58,7 +58,7 @@ function parseJson<T>(s: string, fallback: T): T {
 export default function PayslipsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const [tab, setTab] = useState<"payslips" | "attendance">("payslips");
+  const [tab, setTab] = useState<"payslips" | "attendance" | "history">("payslips");
   const [month, setMonth] = useState(currentMonthKey());
 
   // ── 工资单 ──
@@ -76,6 +76,11 @@ export default function PayslipsPage() {
   const [attGenerating, setAttGenerating] = useState(false);
   const [attErr, setAttErr] = useState("");
   const [attDetail, setAttDetail] = useState<AttendanceSummary | null>(null);
+
+  // ── 历史记录（所有月份工资单）──
+  const [historyPayslips, setHistoryPayslips] = useState<Payslip[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState("全部");
 
   // 医院证明大图（工资单详情和考勤汇总详情共用）
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -102,6 +107,16 @@ export default function PayslipsPage() {
       .catch(() => setSummaries([]))
       .finally(() => setAttLoading(false));
   }, [month, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "history") return;
+    setHistoryLoading(true);
+    fetchWithAuth("/api/payslips?month=all", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setHistoryPayslips(Array.isArray(d) ? d : []))
+      .catch(() => setHistoryPayslips([]))
+      .finally(() => setHistoryLoading(false));
+  }, [tab, isAdmin]);
 
   const shiftMonth = (offset: number) => {
     const [y, m] = month.split("-").map(Number);
@@ -296,7 +311,7 @@ export default function PayslipsPage() {
         </Link>
       </div>
 
-      {/* 标签页：工资单 / 考勤汇总 */}
+      {/* 标签页：工资单 / 考勤汇总 / 历史记录 */}
       <div className="flex items-center gap-4 border-b border-[var(--border)]">
         <button
           onClick={() => setTab("payslips")}
@@ -309,6 +324,12 @@ export default function PayslipsPage() {
           className={cn("pb-2 text-sm font-medium transition-colors border-b-2 -mb-px", tab === "attendance" ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}
         >
           考勤汇总
+        </button>
+        <button
+          onClick={() => setTab("history")}
+          className={cn("pb-2 text-sm font-medium transition-colors border-b-2 -mb-px", tab === "history" ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}
+        >
+          历史记录
         </button>
       </div>
 
@@ -532,7 +553,7 @@ export default function PayslipsPage() {
             })()}
           </>
         )
-      ) : (
+      ) : tab === "attendance" ? (
         <>
           {isAdmin && (
             <div className="flex flex-wrap items-center gap-3">
@@ -703,6 +724,69 @@ export default function PayslipsPage() {
               </div>
             </div>
           )}
+        </>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            {["全部", "草稿", "待确认", "已确认", "打回", "已发放"].map((s) => (
+              <button
+                key={s}
+                onClick={() => setHistoryFilter(s)}
+                className={cn("h-8 px-3 rounded-full text-xs border transition-colors", historyFilter === s ? "bg-[var(--primary)] text-white border-transparent" : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]")}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {historyLoading ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
+          ) : (() => {
+            const filtered = historyFilter === "全部" ? historyPayslips : historyPayslips.filter((p) => p.status === historyFilter);
+            if (filtered.length === 0) {
+              return <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-10 text-center text-sm text-[var(--muted-foreground)]">暂无工资单记录</div>;
+            }
+            return (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
+                        <th className="py-3 px-4 text-left text-xs font-medium">月份</th>
+                        <th className="py-3 px-4 text-left text-xs font-medium">员工</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">收入</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">扣除</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
+                        <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
+                        <th className="py-3 px-4 text-left text-xs font-medium">打回意见</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((p) => (
+                        <tr key={p.id} className={cn("border-b border-[var(--border)] last:border-0", p.status === "打回" && "bg-red-500/[0.06]")}>
+                          <td className="py-2.5 px-4 whitespace-nowrap tabular-nums text-[var(--foreground)]">{p.month}</td>
+                          <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.employee_name}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums">{totalOf(p).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{deductionOf(p).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(totalOf(p) - deductionOf(p)).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", statusClass[p.status] || "bg-slate-500/15 text-slate-600")}>{p.status}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-left">
+                            {p.status === "打回" ? (
+                              <span className="text-xs text-red-500">{p.reject_reason || "—"}</span>
+                            ) : (
+                              <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 

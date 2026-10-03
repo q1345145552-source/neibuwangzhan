@@ -9,7 +9,7 @@ const MONTH_RE = /^\d{4}-\d{2}$/;
 
 const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, withholding_tax, status, reject_reason, summary";
 
-// GET /api/payslips?month=YYYY-MM — 管理员看某月全部工资单；员工看自己的工资单
+// GET /api/payslips?month=YYYY-MM — 管理员看某月全部工资单；?month=all 看全部历史月份；员工看自己的工资单
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -18,6 +18,10 @@ export async function GET(req: NextRequest) {
   const month = new URL(req.url).searchParams.get("month") || "";
 
   if (auth.role === "admin") {
+    if (month === "all") {
+      const rows = db.prepare(`SELECT ${FIELDS} FROM payslips ORDER BY month DESC, employee_name ASC, id ASC`).all();
+      return NextResponse.json(rows);
+    }
     if (!MONTH_RE.test(month)) return NextResponse.json({ error: "月份格式不正确" }, { status: 400 });
     const rows = db.prepare(`SELECT ${FIELDS} FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC`).all(month);
     return NextResponse.json(rows);
