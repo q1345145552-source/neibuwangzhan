@@ -720,6 +720,14 @@ function initTables(database: Database.Database) {
       work_pressure TEXT DEFAULT '',
       work_mentality TEXT DEFAULT '',
       work_adaptation TEXT DEFAULT '',
+      family_factors TEXT DEFAULT '',
+      relationship_factors TEXT DEFAULT '',
+      health_factors TEXT DEFAULT '',
+      other_factors TEXT DEFAULT '',
+      family_factor_remark TEXT DEFAULT '',
+      relationship_factor_remark TEXT DEFAULT '',
+      health_factor_remark TEXT DEFAULT '',
+      other_factor_remark TEXT DEFAULT '',
       updated_by TEXT DEFAULT '',
       updated_at TEXT DEFAULT ''
     );
@@ -741,6 +749,14 @@ function initTables(database: Database.Database) {
       judgment TEXT DEFAULT '',
       reason TEXT DEFAULT '',
       detail TEXT DEFAULT '',
+      analyzed_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 员工 AI 状态评估缓存：同一员工不重复分析
+    CREATE TABLE IF NOT EXISTS employee_status_assessments (
+      employee_id INTEGER PRIMARY KEY,
+      level TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
       analyzed_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -1531,6 +1547,14 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_date TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE leave_ai_analyses ADD COLUMN detail TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN family_factors TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN relationship_factors TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN health_factors TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN other_factors TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN family_factor_remark TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN relationship_factor_remark TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN health_factor_remark TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN other_factor_remark TEXT DEFAULT ''"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。

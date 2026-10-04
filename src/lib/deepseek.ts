@@ -20,6 +20,12 @@ export interface LeaveAnalysis {
   detail: string;
 }
 
+/** 员工状态评估结果 */
+export interface EmployeeStatusAssessment {
+  level: "稳定" | "需关注" | "高风险";
+  reason: string;
+}
+
 const SYSTEM_PROMPT = `你是湘泰内部管理系统的聊天记录总结助手。请把下面这段聊天记录总结成四块内容，并且只输出一个 JSON 对象，字段固定为：
 - topics：聊了什么话题
 - conclusions：有什么结论（达成的共识或决定）
@@ -209,5 +215,84 @@ export async function analyzeLeaveRequest(input: {
     judgment,
     reason: toString(obj.reason) || (judgment === "正常" ? "正常" : "疑似异常"),
     detail: toString(obj.detail) || toString(obj.reason) || "（无详细说明）",
+  };
+}
+
+const STATUS_ASSESSMENT_PROMPT = `你是湘泰内部管理系统的员工状态评估助手。请根据员工的家庭情况、感情情况、健康情况、工作情况以及请假记录，评估这个员工当前的状态，输出分级和评估理由。
+
+分级标准：
+- 稳定：各方面正常，没有明显风险因素。
+- 需关注：存在需要关注的因素（如感情不稳定、伴侣无业、家庭经济困难、近期请假偏多等）。
+- 高风险：存在较严重的风险因素（如多重负面因素叠加、健康问题严重、频繁请假、情绪/家庭危机等）。
+
+要求：
+1. 只输出一个 JSON 对象，字段固定为：
+   - level：只能是「稳定」或「需关注」或「高风险」
+   - reason：评估理由（中文，说明判断依据并给出建议，例如「该员工感情不稳定、伴侣无业、近期请假偏多，建议多关心沟通」）
+2. 不要输出任何其它文字，也不要包在 markdown 代码块里。`;
+
+/** 评估员工状态：稳定 / 需关注 / 高风险（输入家庭/感情/健康/工作/请假） */
+export async function assessEmployeeStatus(input: {
+  employeeName: string;
+  family: string;
+  relationship: string;
+  health: string;
+  work: string;
+  leave: string;
+}): Promise<EmployeeStatusAssessment> {
+  const { apiKey, apiBase, model } = getAiConfig();
+
+  const userContent = [
+    `员工：${input.employeeName}`,
+    ``,
+    `家庭情况：${input.family || "无"}`,
+    `感情情况：${input.relationship || "无"}`,
+    `健康情况：${input.health || "无"}`,
+    `工作情况：${input.work || "无"}`,
+    ``,
+    `请假记录：${input.leave || "无"}`,
+  ].join("\n");
+
+  const res = await fetch(apiBase, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: STATUS_ASSESSMENT_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DeepSeek 调用失败（${res.status}）：${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json().catch(() => null);
+  const raw: unknown = data?.choices?.[0]?.message?.content;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const cleaned = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+    parsed = JSON.parse(cleaned);
+  }
+
+  const obj = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+  const levelRaw = toString(obj.level);
+  const level: "稳定" | "需关注" | "高风险" = levelRaw.includes("高风险") ? "高风险" : levelRaw.includes("关注") ? "需关注" : "稳定";
+  return {
+    level,
+    reason: toString(obj.reason) || (level === "稳定" ? "各方面正常" : level === "需关注" ? "存在需要关注的因素" : "存在高风险因素"),
   };
 }

@@ -9,6 +9,8 @@ const FIELDS = [
   "relationship_status", "relationship_stability", "relationship_affect",
   "parents_alive", "parents_health", "parents_care",
   "work_status", "work_pressure", "work_mentality", "work_adaptation",
+  "family_factors", "relationship_factors", "health_factors", "other_factors",
+  "family_factor_remark", "relationship_factor_remark", "health_factor_remark", "other_factor_remark",
 ] as const;
 
 const EMPTY: Record<string, string> = Object.fromEntries(FIELDS.map((f) => [f, ""]));

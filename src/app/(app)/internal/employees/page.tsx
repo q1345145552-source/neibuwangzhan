@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, fetchPersonalStatus, fetchStatusAssessment, assessStatus, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup, type StatusAssessment } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate, bangkokDateStr } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -29,6 +29,14 @@ const FORM_FIELDS = [
 ] as const;
 
 const EDUCATION_LEVELS = ["高中", "中专", "大专", "本科", "硕士", "博士", "其他"] as const;
+
+// 个人情况影响因素（四个方面，可多选 + 备注）
+const FACTOR_OPTIONS: { key: string; label: string; items: string[] }[] = [
+  { key: "family", label: "家庭", items: ["家里有生意要帮忙", "要照顾父母", "要带孩子", "家庭经济困难", "怀孕"] },
+  { key: "relationship", label: "感情", items: ["伴侣没有工作", "感情危机经常吵架", "出轨", "分手", "单身但有感情纠葛", "要结婚"] },
+  { key: "health", label: "健康", items: ["自己身体不好", "家人生病", "有慢性病"] },
+  { key: "other", label: "其他", items: ["有负债", "有副业兼职"] },
+];
 
 export default function EmployeeProfilesPage() {
   const { user } = useAuth();
@@ -112,6 +120,15 @@ export default function EmployeeProfilesPage() {
   const [personalSaving, setPersonalSaving] = useState(false);
   const [personalErr, setPersonalErr] = useState("");
   const [personalMsg, setPersonalMsg] = useState("");
+  // 影响因素勾选（家庭/感情/健康/其他 + 备注）
+  const [factorSelections, setFactorSelections] = useState<Record<string, string[]>>({ family: [], relationship: [], health: [], other: [] });
+  const [factorRemarks, setFactorRemarks] = useState<Record<string, string>>({ family: "", relationship: "", health: "", other: "" });
+  // 个人情况最近更新状态（employee_id -> updated_at）
+  const [personalStatus, setPersonalStatus] = useState<Map<number, string>>(new Map());
+  // AI 状态评估
+  const [statusAssessment, setStatusAssessment] = useState<StatusAssessment | null>(null);
+  const [assessing, setAssessing] = useState(false);
+  const [assessErr, setAssessErr] = useState("");
   // 个人情况跟进记录
   const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
@@ -190,14 +207,39 @@ export default function EmployeeProfilesPage() {
     setPersonal({});
     setPersonalErr("");
     setPersonalMsg("");
+    // 重置影响因素勾选
+    setFactorSelections({ family: [], relationship: [], health: [], other: [] });
+    setFactorRemarks({ family: "", relationship: "", health: "", other: "" });
     // 重置跟进记录表单 + 列表
     setFollowups([]);
     setFollowupForm({ date: bangkokDateStr(), content: "" });
     setFollowupErr("");
+    // 重置 AI 状态评估
+    setStatusAssessment(null);
+    setAssessErr("");
     if (isAdmin) {
+      fetchStatusAssessment(e.id)
+        .then((r) => setStatusAssessment(r && r.level ? r : null))
+        .catch(() => setStatusAssessment(null));
       setPersonalLoading(true);
       fetchPersonalNotes(e.id)
-        .then((r) => setPersonal((r && typeof r === "object") ? (r as unknown as Record<string, string>) : {}))
+        .then((r) => {
+          const obj = (r && typeof r === "object") ? (r as unknown as Record<string, string>) : {};
+          setPersonal(obj);
+          const parseArr = (v: string) => { try { const a = JSON.parse(v || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } };
+          setFactorSelections({
+            family: parseArr(obj.family_factors),
+            relationship: parseArr(obj.relationship_factors),
+            health: parseArr(obj.health_factors),
+            other: parseArr(obj.other_factors),
+          });
+          setFactorRemarks({
+            family: obj.family_factor_remark || "",
+            relationship: obj.relationship_factor_remark || "",
+            health: obj.health_factor_remark || "",
+            other: obj.other_factor_remark || "",
+          });
+        })
         .catch(() => setPersonal({}))
         .finally(() => setPersonalLoading(false));
       setFollowupsLoading(true);
@@ -322,6 +364,16 @@ export default function EmployeeProfilesPage() {
       .catch(() => setEmployees([]))
       .finally(() => setLoading(false));
     loadInfoChanges();
+    // 个人情况最近更新状态（仅管理员，用于列表标黄提醒）
+    if (isAdmin) {
+      fetchPersonalStatus()
+        .then((items) => {
+          const m = new Map<number, string>();
+          for (const it of items) m.set(it.id, it.updated_at || "");
+          setPersonalStatus(m);
+        })
+        .catch(() => setPersonalStatus(new Map()));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
@@ -464,20 +516,69 @@ export default function EmployeeProfilesPage() {
 
   // 个人情况：设置字段 / 保存
   const setPersonalField = (k: string, v: string) => setPersonal((prev) => ({ ...prev, [k]: v }));
+  // 影响因素：勾选/取消
+  const toggleFactor = (aspect: string, factor: string) => {
+    setFactorSelections((prev) => {
+      const cur = prev[aspect] || [];
+      const next = cur.includes(factor) ? cur.filter((f) => f !== factor) : [...cur, factor];
+      return { ...prev, [aspect]: next };
+    });
+  };
+  const setFactorRemark = (aspect: string, v: string) => setFactorRemarks((prev) => ({ ...prev, [aspect]: v }));
   const savePersonal = async () => {
     if (!selected) return;
     setPersonalSaving(true);
     setPersonalErr("");
     setPersonalMsg("");
     try {
-      const row = await savePersonalNotes(selected.id, personal as Partial<EmployeePersonalNotes>);
+      const payload = {
+        ...personal,
+        family_factors: JSON.stringify(factorSelections.family),
+        relationship_factors: JSON.stringify(factorSelections.relationship),
+        health_factors: JSON.stringify(factorSelections.health),
+        other_factors: JSON.stringify(factorSelections.other),
+        family_factor_remark: factorRemarks.family,
+        relationship_factor_remark: factorRemarks.relationship,
+        health_factor_remark: factorRemarks.health,
+        other_factor_remark: factorRemarks.other,
+      };
+      const row = await savePersonalNotes(selected.id, payload as Partial<EmployeePersonalNotes>);
       setPersonal(row as unknown as Record<string, string>);
       setPersonalMsg("已保存");
       setTimeout(() => setPersonalMsg((m) => (m === "已保存" ? "" : m)), 1500);
+      // 更新列表的最近更新状态（标黄提醒）
+      setPersonalStatus((prev) => {
+        const next = new Map(prev);
+        next.set(selected.id, (row as any).updated_at || "");
+        return next;
+      });
     } catch (err) {
       setPersonalErr(err instanceof Error ? err.message : "保存失败");
     } finally {
       setPersonalSaving(false);
+    }
+  };
+
+  // 个人情况是否超过30天未更新（含从未更新）
+  const isPersonalStale = (employeeId: number) => {
+    const ua = personalStatus.get(employeeId);
+    if (ua === undefined || !ua) return true;
+    const d = new Date(ua.replace(" ", "T") + "Z").getTime();
+    return isNaN(d) || Date.now() - d > 30 * 86400000;
+  };
+
+  // AI 状态评估：管理员手动点分析
+  const runStatusAssessment = async () => {
+    if (!selected) return;
+    setAssessing(true);
+    setAssessErr("");
+    try {
+      const r = await assessStatus(selected.id);
+      setStatusAssessment(r);
+    } catch (err) {
+      setAssessErr(err instanceof Error ? err.message : "评估失败");
+    } finally {
+      setAssessing(false);
     }
   };
 
@@ -804,7 +905,7 @@ export default function EmployeeProfilesPage() {
                 <ul className="divide-y divide-[var(--border)]">
                   {visibleEmployees.map((e) => (
                     <li key={e.id}>
-                      <div className={cn("flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40", selected?.id === e.id && "bg-[var(--muted)]/40")}>
+                      <div className={cn("flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40", selected?.id === e.id && "bg-[var(--muted)]/40", isPersonalStale(e.id) && "bg-yellow-50/70 dark:bg-yellow-950/10")}>
                         <input
                           type="checkbox"
                           checked={selectedIds.has(e.id)}
@@ -825,6 +926,9 @@ export default function EmployeeProfilesPage() {
                                   e.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
                                   e.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
                                   "bg-purple-500/15 text-purple-600")}>{e.status}</span>
+                              )}
+                              {isPersonalStale(e.id) && (
+                                <span className="rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">个人情况待更新</span>
                               )}
                             </span>
                           </span>
@@ -1104,7 +1208,9 @@ export default function EmployeeProfilesPage() {
 
                   {/* 个人情况记录（仅管理员可见） */}
                   <section className="border-t border-[var(--border)] pt-4">
-                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">个人情况记录</h3>
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">个人情况记录
+                      {personal.updated_at && <span className="ml-2 font-normal text-[0.65rem] text-[var(--muted-foreground)]">最近更新：{personal.updated_at}{personal.updated_by ? `（${personal.updated_by}）` : ""}</span>}
+                    </h3>
                     {personalLoading ? (
                       <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
                     ) : (
@@ -1163,6 +1269,53 @@ export default function EmployeeProfilesPage() {
                             <textarea value={personal.work_mentality ?? ""} onChange={(e) => setPersonalField("work_mentality", e.target.value)} placeholder="心态" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
                             <textarea value={personal.work_adaptation ?? ""} onChange={(e) => setPersonalField("work_adaptation", e.target.value)} placeholder="适应度" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
                           </div>
+                        </div>
+
+                        {/* 影响因素勾选 */}
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">影响因素（可多选 + 备注）</h4>
+                          <div className="space-y-3">
+                            {FACTOR_OPTIONS.map((g) => (
+                              <div key={g.key} className="rounded-md border border-[var(--border)] p-2.5">
+                                <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">{g.label}</p>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                                  {g.items.map((item) => {
+                                    const checked = (factorSelections[g.key] || []).includes(item);
+                                    return (
+                                      <label key={item} className="flex items-center gap-1.5 text-xs text-[var(--foreground)] cursor-pointer">
+                                        <input type="checkbox" checked={checked} onChange={() => toggleFactor(g.key, item)} className="size-3.5 accent-[var(--primary)]" />
+                                        {item}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <textarea value={factorRemarks[g.key] ?? ""} onChange={(e) => setFactorRemark(g.key, e.target.value)} placeholder={`${g.label}备注（具体细节，如：男朋友出轨、最近闹离婚）`} className="mt-2 h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* AI 状态评估 */}
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <h4 className="text-xs font-medium text-[var(--foreground)]">AI 状态评估</h4>
+                            <Button size="sm" variant="outline" onClick={runStatusAssessment} disabled={assessing}>{assessing ? "评估中…" : statusAssessment ? "重新评估" : "分析"}</Button>
+                          </div>
+                          {assessErr && <p className="mb-2 text-xs text-red-500">{assessErr}</p>}
+                          {statusAssessment ? (
+                            <div className="rounded-md border border-[var(--border)] p-3">
+                              <div className="flex items-center gap-2">
+                                <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium",
+                                  statusAssessment.level === "高风险" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" :
+                                  statusAssessment.level === "需关注" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300")}>{statusAssessment.level}</span>
+                                {statusAssessment.analyzed_at && <span className="text-[0.65rem] text-[var(--muted-foreground)]">{statusAssessment.analyzed_at}</span>}
+                              </div>
+                              <p className="mt-1.5 text-sm text-[var(--foreground)]">{statusAssessment.reason}</p>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-[var(--muted-foreground)]">点击「分析」由 AI 结合家庭/感情/健康/工作与请假记录评估员工状态</p>
+                          )}
                         </div>
 
                         {/* 跟进记录 */}
