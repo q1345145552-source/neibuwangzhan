@@ -80,9 +80,21 @@ export default function EmployeeProfilesPage() {
   const [rejectModal, setRejectModal] = useState<{ id: number; employee: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  // 标签页：基本信息 / 考勤 / 请假 / 工资历史
+  const [activeTab, setActiveTab] = useState<"info" | "attendance" | "leave" | "payslip">("info");
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [leaveRecords, setLeaveRecords] = useState<any[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [payslipRecords, setPayslipRecords] = useState<any[]>([]);
+  const [payslipLoading, setPayslipLoading] = useState(false);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
+    setActiveTab("info");
+    setAttendanceRecords([]);
+    setLeaveRecords([]);
+    setPayslipRecords([]);
     const f: Record<string, string> = {};
     for (const k of FORM_FIELDS) f[k] = (e as any)[k] ?? "";
     setForm(f);
@@ -369,6 +381,46 @@ export default function EmployeeProfilesPage() {
     }
   };
 
+  // 标签页数据加载
+  const loadAttendance = async () => {
+    if (!selected) return;
+    setAttendanceLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/attendance?employee=${encodeURIComponent(selected.name)}`, { cache: "no-store" });
+      const data = await res.json();
+      setAttendanceRecords(Array.isArray(data) ? data : []);
+    } catch { setAttendanceRecords([]); } finally { setAttendanceLoading(false); }
+  };
+  const loadLeave = async () => {
+    if (!selected) return;
+    setLeaveLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/leave?employee=${encodeURIComponent(selected.name)}`, { cache: "no-store" });
+      const data = await res.json();
+      setLeaveRecords(Array.isArray(data) ? data : []);
+    } catch { setLeaveRecords([]); } finally { setLeaveLoading(false); }
+  };
+  const loadPayslips = async () => {
+    if (!selected) return;
+    setPayslipLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/payslips?month=all", { cache: "no-store" });
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+      setPayslipRecords(isAdmin ? list.filter((p: any) => p.employee_id === selected.id) : list);
+    } catch { setPayslipRecords([]); } finally { setPayslipLoading(false); }
+  };
+  const switchTab = (tab: "info" | "attendance" | "leave" | "payslip") => {
+    setActiveTab(tab);
+    if (!selected) return;
+    if (tab === "attendance" && attendanceRecords.length === 0) loadAttendance();
+    if (tab === "leave" && leaveRecords.length === 0) loadLeave();
+    if (tab === "payslip" && payslipRecords.length === 0) loadPayslips();
+  };
+
+  const payslipIncome = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0) + (Number(p.merit_income) || 0);
+  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.demerit_deduction) || 0) + (Number(p.withholding_tax) || 0);
+
   const textField = (label: string, key: string, placeholder?: string, type = "text") => (
     <div className="space-y-1">
       <Label className="text-xs text-[var(--muted-foreground)]">{label}</Label>
@@ -535,11 +587,35 @@ export default function EmployeeProfilesPage() {
               {!selected ? (
                 <p className="text-sm text-[var(--muted-foreground)]">请从左侧选择一个员工查看档案</p>
               ) : (
-                <div className="space-y-6">
-                  <div>
-                    <Label className="text-xs text-[var(--muted-foreground)]">员工</Label>
-                    <p className="mt-1 text-base font-medium text-[var(--foreground)]">{selected.name}</p>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs text-[var(--muted-foreground)]">员工</Label>
+                      <p className="mt-1 text-base font-medium text-[var(--foreground)]">{selected.name}</p>
+                    </div>
+                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium",
+                      selected.status === "离职" ? "bg-red-500/15 text-red-600" :
+                      selected.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
+                      selected.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
+                      selected.status === "停薪留职" ? "bg-purple-500/15 text-purple-600" :
+                      "bg-emerald-500/15 text-emerald-600")}>
+                      {selected.status || "在职"}
+                    </span>
                   </div>
+
+                  {/* 标签页：基本信息 / 考勤 / 请假 / 工资历史 */}
+                  <div className="flex gap-1 border-b border-[var(--border)]">
+                    {([["info", "基本信息"], ["attendance", "考勤"], ["leave", "请假"], ["payslip", "工资历史"]] as const).map(([key, label]) => (
+                      <button key={key} onClick={() => switchTab(key)}
+                        className={cn("px-3 py-2 text-sm border-b-2 -mb-px transition-colors",
+                          activeTab === key ? "border-[var(--primary)] text-[var(--foreground)] font-medium" : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {activeTab === "info" && (
+                  <div className="space-y-6">
 
                   {/* 员工状态 + 离职流程 */}
                   <section className="border-t border-[var(--border)] pt-4">
@@ -778,6 +854,117 @@ export default function EmployeeProfilesPage() {
                       </ul>
                     )}
                   </section>
+                  </div>
+                  )}
+
+                  {activeTab === "attendance" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-semibold text-[var(--muted-foreground)]">考勤记录</h3>
+                        <span className="text-[0.65rem] text-[var(--muted-foreground)]">{attendanceRecords.length} 条</span>
+                      </div>
+                      {attendanceLoading ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                      ) : attendanceRecords.length === 0 ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">暂无考勤记录</p>
+                      ) : (
+                        <div className="overflow-x-auto rounded-md border border-[var(--border)]">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
+                                <th className="px-3 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">日期</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">签到</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">签退</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">工时</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">类型</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {attendanceRecords.map((a: any) => (
+                                <tr key={a.id} className="border-b border-[var(--border)] last:border-0">
+                                  <td className="px-3 py-2 text-[var(--foreground)]">{a.date}</td>
+                                  <td className="px-3 py-2 text-[var(--foreground)]">{a.check_in ? toThaiTime(a.check_in).slice(11, 16) : "—"}</td>
+                                  <td className="px-3 py-2 text-[var(--foreground)]">{a.check_out ? toThaiTime(a.check_out).slice(11, 16) : "—"}</td>
+                                  <td className="px-3 py-2 tabular-nums text-[var(--foreground)]">{a.work_hours != null ? `${a.work_hours}h` : "—"}</td>
+                                  <td className="px-3 py-2">
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
+                                      a.type === "请假" ? "bg-orange-500/15 text-orange-600" :
+                                      a.type === "补签" ? "bg-blue-500/15 text-blue-600" :
+                                      "bg-emerald-500/15 text-emerald-600")}>{a.type || "正常"}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === "leave" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-semibold text-[var(--muted-foreground)]">请假记录</h3>
+                        <span className="text-[0.65rem] text-[var(--muted-foreground)]">{leaveRecords.length} 条</span>
+                      </div>
+                      {leaveLoading ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                      ) : leaveRecords.length === 0 ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">暂无请假记录</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {leaveRecords.map((l: any) => (
+                            <li key={l.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-[var(--foreground)]">{l.leave_type}</span>
+                                <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
+                                  l.status === "已通过" ? "bg-emerald-500/15 text-emerald-600" :
+                                  l.status === "已驳回" ? "bg-red-500/15 text-red-600" :
+                                  "bg-orange-500/15 text-orange-600")}>{l.status}</span>
+                              </div>
+                              <p className="mt-1 text-sm text-[var(--foreground)]">{l.start_date} ~ {l.end_date}</p>
+                              {l.reason && <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{l.reason}</p>}
+                              <p className="mt-1 text-[0.65rem] text-[var(--muted-foreground)]">{l.approved_by ? `审批人：${l.approved_by} · ` : ""}提交于 {toThaiTime(l.created_at)}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === "payslip" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-semibold text-[var(--muted-foreground)]">工资单历史</h3>
+                        <span className="text-[0.65rem] text-[var(--muted-foreground)]">{payslipRecords.length} 条</span>
+                      </div>
+                      {payslipLoading ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                      ) : payslipRecords.length === 0 ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">暂无工资单</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {payslipRecords.map((p: any) => (
+                            <li key={p.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-[var(--foreground)]">{p.month}</span>
+                                <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
+                                  p.status === "已发放" ? "bg-emerald-500/15 text-emerald-600" :
+                                  p.status === "打回" ? "bg-red-500/15 text-red-600" :
+                                  p.status === "已确认" ? "bg-blue-500/15 text-blue-600" :
+                                  "bg-orange-500/15 text-orange-600")}>{p.status || "草稿"}</span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-x-6 gap-y-0.5 text-xs">
+                                <span className="text-[var(--muted-foreground)]">应发：<span className="text-emerald-600 tabular-nums">{payslipIncome(p).toFixed(2)}</span></span>
+                                <span className="text-[var(--muted-foreground)]">扣款：<span className="text-red-500 tabular-nums">{payslipDeduct(p).toFixed(2)}</span></span>
+                                <span className="text-[var(--muted-foreground)]">实发：<span className="font-medium text-[var(--foreground)] tabular-nums">{(payslipIncome(p) - payslipDeduct(p)).toFixed(2)}</span></span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
