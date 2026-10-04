@@ -827,6 +827,17 @@ export default function InternalPage() {
   const [salarySavingId, setSalarySavingId] = useState<number | null>(null);
   const [salarySavedId, setSalarySavedId] = useState<number | null>(null);
 
+  // ── 工作证/签证到期提醒（管理员）──
+  const [expiryAlerts, setExpiryAlerts] = useState<{ employee_name: string; label: string; date: string; days_left: number; expired: boolean }[]>([]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetchWithAuth("/api/internal/expiry-alerts", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setExpiryAlerts(Array.isArray(d) ? d : []))
+      .catch(() => setExpiryAlerts([]));
+  }, [isAdmin]);
+
   useEffect(() => {
     if (!isAdmin) return;
     setSalaryLoading(true);
@@ -947,6 +958,29 @@ export default function InternalPage() {
           </div>
         </div>
       </div>
+
+      {/* ── 工作证 / 签证到期提醒（管理员） ── */}
+      {isAdmin && expiryAlerts.length > 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle className="size-4 text-amber-600" />
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">证照到期提醒</h2>
+          </div>
+          <ul className="space-y-1">
+            {expiryAlerts.map((a, i) => (
+              <li key={i} className="text-sm text-[var(--foreground)]">
+                <span className="font-medium">{a.employee_name}</span> 的 <span className="font-medium">{a.label}</span>
+                {a.expired ? (
+                  <span className="ml-1 font-medium text-red-600">已过期 {a.days_left} 天</span>
+                ) : (
+                  <span className="ml-1 font-medium text-amber-600">{a.days_left === 0 ? "今天到期" : `${a.days_left} 天后到期`}</span>
+                )}
+                <span className="ml-1 text-[var(--muted-foreground)]">（{a.date}）</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ── 工资设置（管理员） ── */}
       {isAdmin && (
