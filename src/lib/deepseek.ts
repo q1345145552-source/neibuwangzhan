@@ -14,7 +14,10 @@ export interface ChatSummary {
 /** 请假 AI 分析结果 */
 export interface LeaveAnalysis {
   judgment: "正常" | "疑似异常";
+  /** 简短理由（一句话，用于列表标签） */
   reason: string;
+  /** 详细分析（为什么这么判断、结合了哪些情况） */
+  detail: string;
 }
 
 const SYSTEM_PROMPT = `你是湘泰内部管理系统的聊天记录总结助手。请把下面这段聊天记录总结成四块内容，并且只输出一个 JSON 对象，字段固定为：
@@ -137,7 +140,8 @@ const LEAVE_ANALYSIS_PROMPT = `你是湘泰内部管理系统的请假风险分�
 要求：
 1. 只输出一个 JSON 对象，字段固定为：
    - judgment：判断结果，只能是「正常」或「疑似异常」
-   - reason：简短理由（中文，一两句话）
+   - reason：简短理由（中文，一句话，用于列表标签）
+   - detail：详细分析（中文，2-4 句话，说明为什么这么判断、结合了哪些情况，比如历史请假频率、个人情况、请假日期等）
 2. 不要输出任何其它文字，也不要包在 markdown 代码块里。`;
 
 /** 分析一次请假：正常还是疑似异常（输入含请假理由/日期/历史/个人情况） */
@@ -204,5 +208,6 @@ export async function analyzeLeaveRequest(input: {
   return {
     judgment,
     reason: toString(obj.reason) || (judgment === "正常" ? "正常" : "疑似异常"),
+    detail: toString(obj.detail) || toString(obj.reason) || "（无详细说明）",
   };
 }
