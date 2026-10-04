@@ -34,7 +34,9 @@ const [orders, documents, docsRoute, { getDb }, { signToken }, certificates, req
   import('../src/app/api/sync/cancel-requests/route'), import('../src/app/api/orders/[id]/cancel-requests/route'), import('../src/app/api/orders/[id]/route'),
 ]);
 let dropDocsAck = 0; // >0：内部照常收下这批资料，但回给客户站的回执「丢了」（模拟网络断在回程）
-const internalDir = path.join(dir, 'internal-cwd'); fs.mkdirSync(internalDir); process.chdir(internalDir); // 内部上传目录 = cwd/uploads
+const internalDir = path.join(dir, 'internal-cwd'); fs.mkdirSync(internalDir); process.chdir(internalDir);
+// 内部上传目录 = 数据库所在目录下的 uploads（刘雄 10-03 起统一存挂载数据目录，见 src/lib/uploads.ts）
+const internalUploads = path.join(path.dirname(process.env.DB_PATH!), 'uploads');
 const idb = getDb();
 const shim = http.createServer(async (req, res) => {
   const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
@@ -118,9 +120,9 @@ try {
       assert.equal(docs.length, 2, JSON.stringify(docs));
       const file = docs.find(d => d.name.includes('license.pdf'));
       assert.equal(file.name, '营业执照 · license.pdf'); assert.equal(file.status, '待审核'); assert.equal(file.uploaded_by, '客户站：演练客户');
-      assert.deepEqual(fs.readFileSync(path.join(internalDir, 'uploads', path.basename(file.file_url))), pdf, 'file bytes identical');
+      assert.deepEqual(fs.readFileSync(path.join(internalUploads, path.basename(file.file_url))), pdf, 'file bytes identical');
       const txt = docs.find(d => d.file_type === 'text');
-      assert.equal(fs.readFileSync(path.join(internalDir, 'uploads', path.basename(txt.file_url)), 'utf8'), '公司英文名：Synthetic Co., Ltd.');
+      assert.equal(fs.readFileSync(path.join(internalUploads, path.basename(txt.file_url)), 'utf8'), '公司英文名：Synthetic Co., Ltd.');
       assert(!docs.some(d => d.name.includes('水单')));
     }
     const links = idb.prepare('SELECT COUNT(*) n FROM sync_documents WHERE source_order_no=?').get(order.order_no) as { n: number };
@@ -206,8 +208,8 @@ try {
   });
   await test('published document is delivered: customer sees and downloads it, others cannot; unpublish hides it', async () => {
     const bytes = Buffer.from('%PDF-1.4 company certificate ' + 'y'.repeat(500));
-    fs.mkdirSync(path.join(internalDir, 'uploads'), { recursive: true });
-    fs.writeFileSync(path.join(internalDir, 'uploads', 'deliv-cert.pdf'), bytes);
+    fs.mkdirSync(internalUploads, { recursive: true });
+    fs.writeFileSync(path.join(internalUploads, 'deliv-cert.pdf'), bytes);
     const added = await staffCall(documents.POST, internalOrders[0], 'POST', { name: '公司注册证书', direction: 'client_to_us', file_url: '/api/files/deliv-cert.pdf' });
     assert.equal(added.status, 201);
     assert.equal((await staffCall(documents.PATCH, internalOrders[0], 'PATCH', { document_id: added.body.id, status: '已审核', direction: 'us_to_client' })).status, 200);
@@ -224,7 +226,7 @@ try {
     assert.equal((await fetch(`http://127.0.0.1:${clientPort}/api/orders/${order.id}/deliveries/${item.id}/download`, { headers: { authorization: `Bearer ${clientToken('buyer', 'customer')}` } })).status, 404);
   });
   await test('certificate is delivered with its dates and file; deleting it withdraws it', async () => {
-    fs.writeFileSync(path.join(internalDir, 'uploads', 'fda-cert.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]));
+    fs.writeFileSync(path.join(internalUploads, 'fda-cert.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]));
     const cert = await staffCall(certificates.POST, internalOrders[1], 'POST', { certificate_number: 'FDA-123', product_name: '面霜', issue_date: '2026-10-01', expiry_date: '2031-10-01', file_url: '/api/files/fda-cert.png' });
     assert.equal(cert.status, 201);
     const list = await until('证书交付到客户站', async () => { const r = await client('GET', `/api/orders/${order.id}/deliveries`); return r.body.find((d: any) => d.kind === 'certificate'); });
