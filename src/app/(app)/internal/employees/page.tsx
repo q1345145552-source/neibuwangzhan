@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, type EmployeeRecord, type EmployeeFile, type Demerit } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -61,6 +61,15 @@ export default function EmployeeProfilesPage() {
   const [demeritSaving, setDemeritSaving] = useState(false);
   const [demeritErr, setDemeritErr] = useState("");
   const demeritFileInputRef = useRef<HTMLInputElement>(null);
+  // 离职交接清单 + 员工状态
+  const [handover, setHandover] = useState<HandoverItem[]>([]);
+  const [handoverLoading, setHandoverLoading] = useState(false);
+  const [showResignForm, setShowResignForm] = useState(false);
+  const [resignDate, setResignDate] = useState("");
+  const [resignReason, setResignReason] = useState("");
+  const [resignSaving, setResignSaving] = useState(false);
+  const [resignErr, setResignErr] = useState("");
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -96,6 +105,18 @@ export default function EmployeeProfilesPage() {
       .then((r) => { setDemerits(Array.isArray(r.records) ? r.records : []); setDemeritCount(Number(r.count) || 0); })
       .catch(() => { setDemerits([]); setDemeritCount(0); })
       .finally(() => setDemeritsLoading(false));
+    // 加载离职交接清单
+    setHandover([]);
+    setHandoverLoading(true);
+    fetchHandover(e.id)
+      .then((r) => setHandover(Array.isArray(r) ? r : []))
+      .catch(() => setHandover([]))
+      .finally(() => setHandoverLoading(false));
+    // 重置离职表单
+    setShowResignForm(false);
+    setResignDate("");
+    setResignReason("");
+    setResignErr("");
   };
 
   const uploadFile = async () => {
@@ -146,7 +167,7 @@ export default function EmployeeProfilesPage() {
 
   useEffect(() => {
     setLoading(true);
-    const url = isAdmin ? "/api/employees" : "/api/employees?self=1";
+    const url = isAdmin ? "/api/employees?include_left=1" : "/api/employees?self=1";
     fetchWithAuth(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -216,15 +237,53 @@ export default function EmployeeProfilesPage() {
     }
   };
 
-  const markResigned = async () => {
+  // 切换状态（试用期 / 待离职 / 停薪留职 / 恢复在职）
+  const changeStatus = async (status: string) => {
     if (!selected) return;
-    if (!confirm(`确定将 ${selected.name} 标记为离职？此操作需手动判决，标记后可在员工列表恢复在职。`)) return;
+    setStatusUpdating(true);
     try {
-      const emp = await updateEmployee(selected.id, { status: "离职" });
-      setSelected({ ...selected, status: emp.status });
-      setEmployees((prev) => prev.map((x) => (x.id === emp.id ? { ...x, status: emp.status } : x)));
+      const emp = await updateEmployee(selected.id, { status });
+      setSelected({ ...selected, ...emp });
+      setEmployees((prev) => prev.map((x) => (x.id === emp.id ? { ...x, ...emp } : x)));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "标记离职失败");
+      alert(err instanceof Error ? err.message : "状态更新失败");
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  // 提交离职：离职日期 + 离职原因两个都必填
+  const submitResign = async () => {
+    if (!selected) return;
+    if (!resignDate.trim()) { setResignErr("请填写离职日期"); return; }
+    if (!resignReason.trim()) { setResignErr("请填写离职原因"); return; }
+    setResignSaving(true);
+    setResignErr("");
+    try {
+      const emp = await updateEmployee(selected.id, { status: "离职", resignation_date: resignDate.trim(), resignation_reason: resignReason.trim() });
+      setSelected({ ...selected, ...emp });
+      setEmployees((prev) => prev.map((x) => (x.id === emp.id ? { ...x, ...emp } : x)));
+      setShowResignForm(false);
+      setResignDate("");
+      setResignReason("");
+      // 标记离职后服务器会补全默认交接事项，重新拉取
+      fetchHandover(selected.id)
+        .then((r) => setHandover(Array.isArray(r) ? r : []))
+        .catch(() => {});
+    } catch (err) {
+      setResignErr(err instanceof Error ? err.message : "标记离职失败");
+    } finally {
+      setResignSaving(false);
+    }
+  };
+
+  // 交接清单逐项打勾 / 取消
+  const toggleHandover = async (item: HandoverItem) => {
+    try {
+      const updated = await toggleHandoverItem(item.id, item.done !== 1);
+      setHandover((prev) => prev.map((h) => (h.id === updated.id ? updated : h)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "更新失败");
     }
   };
 
@@ -330,7 +389,16 @@ export default function EmployeeProfilesPage() {
                         </span>
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-[var(--foreground)]">{e.name}</span>
-                          <span className="block truncate text-xs text-[var(--muted-foreground)]">{e.role === "admin" ? "管理员" : "员工"}</span>
+                          <span className="flex items-center gap-1.5 truncate text-xs text-[var(--muted-foreground)]">
+                            {e.role === "admin" ? "管理员" : "员工"}
+                            {e.status && e.status !== "在职" && (
+                              <span className={cn("rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium",
+                                e.status === "离职" ? "bg-red-500/15 text-red-600" :
+                                e.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
+                                e.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
+                                "bg-purple-500/15 text-purple-600")}>{e.status}</span>
+                            )}
+                          </span>
                         </span>
                       </button>
                     </li>
@@ -354,6 +422,82 @@ export default function EmployeeProfilesPage() {
                     <Label className="text-xs text-[var(--muted-foreground)]">员工</Label>
                     <p className="mt-1 text-base font-medium text-[var(--foreground)]">{selected.name}</p>
                   </div>
+
+                  {/* 员工状态 + 离职流程 */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">员工状态</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium",
+                        selected.status === "离职" ? "bg-red-500/15 text-red-600" :
+                        selected.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
+                        selected.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
+                        selected.status === "停薪留职" ? "bg-purple-500/15 text-purple-600" :
+                        "bg-emerald-500/15 text-emerald-600")}>
+                        当前状态：{selected.status || "在职"}
+                      </span>
+                      {selected.status !== "在职" && selected.status !== "离职" && (
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => changeStatus("在职")} disabled={statusUpdating}>恢复在职</Button>
+                      )}
+                      <span className="mx-1 text-[var(--border)]">|</span>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => changeStatus("试用期")} disabled={statusUpdating || selected.status === "试用期"}>标记试用期</Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => changeStatus("待离职")} disabled={statusUpdating || selected.status === "待离职"}>标记待离职</Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => changeStatus("停薪留职")} disabled={statusUpdating || selected.status === "停薪留职"}>标记停薪留职</Button>
+                      <Button size="sm" className="h-8 text-xs" onClick={() => setShowResignForm(true)} disabled={selected.status === "离职"}>标记离职</Button>
+                    </div>
+
+                    {showResignForm && selected.status !== "离职" && (
+                      <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 dark:bg-red-950/20">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-xs">离职日期 <span className="text-red-500">*</span></Label>
+                            <Input type="date" value={resignDate} onChange={(e) => setResignDate(e.target.value)} className="mt-1 h-9" />
+                          </div>
+                          <div>
+                            <Label className="text-xs">离职原因 <span className="text-red-500">*</span></Label>
+                            <Input value={resignReason} onChange={(e) => setResignReason(e.target.value)} placeholder="必填，说明离职原因" className="mt-1 h-9" />
+                          </div>
+                        </div>
+                        {resignErr && <p className="mt-1.5 text-xs text-red-500">{resignErr}</p>}
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button size="sm" onClick={submitResign} disabled={resignSaving}>{resignSaving ? "提交中…" : "确认离职"}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setShowResignForm(false)}>取消</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {selected.status === "离职" && (
+                      <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-2 text-sm">
+                        <p className="text-[var(--muted-foreground)]">离职日期：{selected.resignation_date || "—"}　|　离职原因：{selected.resignation_reason || "—"}</p>
+                      </div>
+                    )}
+                  </section>
+
+                  {/* 离职交接清单 */}
+                  {(selected.status === "离职" || selected.status === "待离职") && (
+                    <section className="border-t border-[var(--border)] pt-4">
+                      <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">离职交接清单</h3>
+                      {handoverLoading ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                      ) : handover.length === 0 ? (
+                        <p className="text-xs text-[var(--muted-foreground)]">暂无交接事项</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {handover.map((h) => (
+                            <li key={h.id} className="flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={h.done === 1}
+                                onChange={() => toggleHandover(h)}
+                                className="size-4 shrink-0 accent-emerald-600"
+                              />
+                              <span className={cn("text-sm", h.done === 1 ? "text-[var(--muted-foreground)] line-through" : "text-[var(--foreground)]")}>{h.item}</span>
+                              {h.done === 1 && <span className="ml-auto text-[0.65rem] text-emerald-600">已办完{h.updated_by ? ` · ${h.updated_by}` : ""}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  )}
 
                   <section>
                     <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">基本信息</h3>
@@ -461,7 +605,7 @@ export default function EmployeeProfilesPage() {
                     {demeritCount >= 2 && selected.status !== "离职" && (
                       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 dark:bg-red-950/20">
                         <p className="text-xs text-red-700 dark:text-red-400">该员工已累计记过 {demeritCount} 次，可标记离职（需手动判决，系统不会自动离职）。</p>
-                        <Button size="sm" variant="outline" className="h-7 text-xs text-red-600" onClick={markResigned}>标记离职</Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs text-red-600" onClick={() => setShowResignForm(true)}>标记离职</Button>
                       </div>
                     )}
                     <div className="mb-4 rounded-md border border-[var(--border)] p-3">

@@ -50,8 +50,12 @@ export interface Employee {
   name: string;
   email?: string;
   role?: string;
-  /** 在职/离职，默认在职 */
+  /** 在职/离职/试用期/待离职/停薪留职，默认在职 */
   status?: string;
+  /** 离职日期 YYYY-MM-DD，空表示未离职 */
+  resignation_date?: string;
+  /** 离职原因 */
+  resignation_reason?: string;
   /** 头像地址（/api/files/...），空表示未上传 */
   avatar?: string;
   /** 入职日期 YYYY-MM-DD，空表示未填写 */
@@ -118,6 +122,17 @@ export interface EmployeeRecord {
   points: number;
   content: string;
   created_by: string;
+  created_at: string;
+}
+
+/** 离职交接清单事项 */
+export interface HandoverItem {
+  id: number;
+  employee_id: number;
+  item: string;
+  done: number;
+  updated_by: string;
+  updated_at: string;
   created_at: string;
 }
 
@@ -603,7 +618,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; passport_number?: string; social_security_number?: string; tax_number?: string; work_permit_number?: string; work_permit_expiry?: string; visa_expiry?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; resignation_date?: string; resignation_reason?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; passport_number?: string; social_security_number?: string; tax_number?: string; work_permit_number?: string; work_permit_expiry?: string; visa_expiry?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",
@@ -651,6 +666,26 @@ export async function createDemerit(employeeId: number, content: string, file: F
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "记过失败");
   return result as Demerit;
+}
+
+/** 离职交接清单 */
+export async function fetchHandover(employeeId: number): Promise<HandoverItem[]> {
+  const res = await fetch(`/api/employees/handover?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取交接清单失败");
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+/** 交接清单逐项打勾/取消（done=true 表示已办完） */
+export async function toggleHandoverItem(id: number, done: boolean): Promise<HandoverItem> {
+  const res = await fetch("/api/employees/handover", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, done }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "更新失败");
+  return result as HandoverItem;
 }
 
 /** 员工档案文件列表 */

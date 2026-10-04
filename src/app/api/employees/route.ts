@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
-import { getDb, logOperation } from "@/lib/db";
+import { getDb, logOperation, RESIGNATION_HANDOVER_ITEMS } from "@/lib/db";
 import { refreshPayslipAutoFields } from "@/lib/payslips";
 import { bangkokMonthKey } from "@/lib/time";
 
@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const db = getDb();
-  const COLS = "id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes, bazi, fortune, passport_number, social_security_number, tax_number, work_permit_number, work_permit_expiry, visa_expiry";
-  type EmpRow = { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string; bazi: string; fortune: string; passport_number: string; social_security_number: string; tax_number: string; work_permit_number: string; work_permit_expiry: string; visa_expiry: string };
+  const COLS = "id, name, email, role, status, avatar, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes, bazi, fortune, passport_number, social_security_number, tax_number, work_permit_number, work_permit_expiry, visa_expiry, resignation_date, resignation_reason";
+  type EmpRow = { id: number; name: string; email: string; role: string; status: string; avatar: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string; bazi: string; fortune: string; passport_number: string; social_security_number: string; tax_number: string; work_permit_number: string; work_permit_expiry: string; visa_expiry: string; resignation_date: string; resignation_reason: string };
 
   const url = new URL(req.url);
   // 员工档案权限：?self=1 只返回当前登录员工自己的档案（普通员工只能看自己）
@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest) {
   const db = getDb();
 
   const body = await readJson(req);
-  const { id, name, email, role, password, status, customer_names, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number } = body;
+  const { id, name, email, role, password, status, customer_names, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, resignation_date, resignation_reason } = body;
   if (!id) return NextResponse.json({ error: "请提供员工ID" }, { status: 400 });
 
   const enumErr = validateEnums({ "employees.role": role, "employees.status": status });
@@ -93,7 +93,7 @@ export async function PATCH(req: NextRequest) {
   if (name) { sets.push("name = ?"); params.push(name); }
   if (email) { sets.push("email = ?"); params.push(email); }
   if (role) { sets.push("role = ?"); params.push(role); }
-  // 标记离职 / 恢复在职
+  // 标记离职 / 恢复在职 / 试用期 / 待离职 / 停薪留职
   if (status) {
     if (status === "离职") {
       if (Number(id) === auth.id) return NextResponse.json({ error: "不能标记自己离职" }, { status: 400 });
@@ -103,6 +103,9 @@ export async function PATCH(req: NextRequest) {
         const adminCount = (db.prepare("SELECT COUNT(*) as c FROM employees WHERE role = 'admin' AND status = '在职'").get() as { c: number }).c;
         if (adminCount <= 1) return NextResponse.json({ error: "不能标记最后一个在职管理员离职" }, { status: 400 });
       }
+      // 离职日期和离职原因两个都必填
+      if (!resignation_date || !String(resignation_date).trim()) return NextResponse.json({ error: "标记离职必须填写离职日期" }, { status: 400 });
+      if (!resignation_reason || !String(resignation_reason).trim()) return NextResponse.json({ error: "标记离职必须填写离职原因" }, { status: 400 });
     }
     sets.push("status = ?"); params.push(status);
   }
@@ -143,6 +146,13 @@ export async function PATCH(req: NextRequest) {
   if (hire_date !== undefined) {
     sets.push("hire_date = ?"); params.push(hire_date === null ? "" : String(hire_date));
   }
+  // 离职日期 / 离职原因
+  if (resignation_date !== undefined) {
+    sets.push("resignation_date = ?"); params.push(resignation_date === null ? "" : String(resignation_date));
+  }
+  if (resignation_reason !== undefined) {
+    sets.push("resignation_reason = ?"); params.push(resignation_reason === null ? "" : String(resignation_reason));
+  }
   // 员工档案字段：基本信息 + 工作信息 + 银行信息 + 紧急联系人 + 其他（均可空）
   for (const key of ["gender", "birth_date", "phone", "address", "id_number", "department", "position", "contract_term", "bank_name", "bank_account", "emergency_name", "emergency_phone", "emergency_relation", "education", "skills", "notes", "bazi", "fortune", "passport_number", "social_security_number", "tax_number", "work_permit_number", "work_permit_expiry", "visa_expiry"] as const) {
     const v = body?.[key];
@@ -165,6 +175,11 @@ export async function PATCH(req: NextRequest) {
     }
     if (sets.length > 0) {
       db.prepare(`UPDATE employees SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
+    }
+    // 待离职 / 离职：补全离职交接清单默认事项（已存在则不重复插入）
+    if (status === "离职" || status === "待离职") {
+      const insHandover = db.prepare("INSERT OR IGNORE INTO resignation_handover (employee_id, item) VALUES (?, ?)");
+      for (const item of RESIGNATION_HANDOVER_ITEMS) insHandover.run(id, item);
     }
     // 改名同步：考勤表、补签表、请假表里的 employee_name 一起改成新名字
     if (name && oldName && name !== oldName) {
@@ -197,8 +212,8 @@ export async function PATCH(req: NextRequest) {
       `可见公司: ${(customer_names as unknown[]).join("、") || "（清空）"}`);
   }
 
-  const emp = db.prepare("SELECT id, name, email, role, status, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes, bazi, fortune, passport_number, social_security_number, tax_number, work_permit_number, work_permit_expiry, visa_expiry FROM employees WHERE id = ?").get(id) as
-    { id: number; role: string; status: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string; bazi: string; fortune: string; passport_number: string; social_security_number: string; tax_number: string; work_permit_number: string; work_permit_expiry: string; visa_expiry: string } | undefined;
+  const emp = db.prepare("SELECT id, name, email, role, status, base_salary, diligence_bonus, skill_allowance, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes, bazi, fortune, passport_number, social_security_number, tax_number, work_permit_number, work_permit_expiry, visa_expiry, resignation_date, resignation_reason FROM employees WHERE id = ?").get(id) as
+    { id: number; role: string; status: string; base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null; hire_date: string; gender: string; birth_date: string; phone: string; address: string; id_number: string; department: string; position: string; contract_term: string; bank_name: string; bank_account: string; emergency_name: string; emergency_phone: string; emergency_relation: string; education: string; skills: string; notes: string; bazi: string; fortune: string; passport_number: string; social_security_number: string; tax_number: string; work_permit_number: string; work_permit_expiry: string; visa_expiry: string; resignation_date: string; resignation_reason: string } | undefined;
   const scope = db.prepare(
     "SELECT customer_name FROM client_account_customers WHERE employee_id = ? ORDER BY customer_name"
   ).all(id) as { customer_name: string }[];
