@@ -172,6 +172,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 补件要求（2026-10-03）：只有客户网站同步过来的单才有
   const [supplementRequests, setSupplementRequests] = useState<{ id: string; name: string; description: string; created_by: string; created_at: string; submitted_at: string | null }[]>([]);
   const [reqName, setReqName] = useState("");
+  // 客户站内申请取消（2026-10-03，规则 19/20）
+  const [cancelRequests, setCancelRequests] = useState<{ id: string; line_no: number; copy_no: number; reason: string; status: "pending" | "approved" | "rejected"; decision_note: string; decided_by: string | null; decided_at: string | null; created_at: string }[]>([]);
+  const [cancelReqAction, setCancelReqAction] = useState<{ id: string; mode: "approve" | "reject" } | null>(null);
+  const [cancelReqNote, setCancelReqNote] = useState("");
+  const [cancelReqError, setCancelReqError] = useState("");
+  const [decidingCancelReq, setDecidingCancelReq] = useState(false);
   const [reqDesc, setReqDesc] = useState("");
   const [reqError, setReqError] = useState("");
   const [sendingReq, setSendingReq] = useState(false);
@@ -251,6 +257,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           try {
             const r = await fetchWithAuth(`/api/orders/${id}/supplement-requests`, { cache: "no-store" });
             if (r.ok && !ignore) setSupplementRequests(await r.json());
+          } catch { /* 拿不到不影响主体展示 */ }
+          try {
+            const r = await fetchWithAuth(`/api/orders/${id}/cancel-requests`, { cache: "no-store" });
+            if (r.ok && !ignore) setCancelRequests(await r.json());
           } catch { /* 拿不到不影响主体展示 */ }
         }
       } catch {
@@ -417,6 +427,24 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       reload();
     } catch (error) { setReqError(error instanceof Error ? error.message : "发送失败"); }
     finally { setSendingReq(false); }
+  };
+
+  // 处理客户站内的取消申请（仅管理员）：同意 = 这张单变「客户取消」；不同意要写原因，客户能看到
+  const handleDecideCancelRequest = async () => {
+    if (!cancelReqAction) return;
+    if (cancelReqAction.mode === "reject" && !cancelReqNote.trim()) { setCancelReqError("请填写不同意的原因（客户能看到）"); return; }
+    setDecidingCancelReq(true); setCancelReqError("");
+    try {
+      const response = await fetchWithAuth(`/api/orders/${id}/cancel-requests`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request_id: cancelReqAction.id, decision: cancelReqAction.mode, note: cancelReqNote.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "处理失败");
+      setCancelReqAction(null); setCancelReqNote("");
+      reload();
+    } catch (error) { setCancelReqError(error instanceof Error ? error.message : "处理失败"); }
+    finally { setDecidingCancelReq(false); }
   };
 
   // 文档删除
@@ -616,6 +644,51 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {error && <div role="alert" className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
+
+      {!isClient && cancelRequests.length > 0 && (() => {
+        const pending = cancelRequests.filter(r => r.status === "pending");
+        const decided = cancelRequests.filter(r => r.status !== "pending");
+        return (
+          <section aria-label="客户取消申请" className={cn("rounded-xl border p-4", pending.length ? "border-[var(--warning)]/40 bg-[color-mix(in_oklch,var(--warning),var(--background)_92%)]" : "border-[var(--border)] bg-[var(--card)]")}>
+            <h3 className="text-sm font-medium text-[var(--foreground)]">{pending.length ? "客户在客户网站申请取消这项服务" : "客户取消申请记录"}</h3>
+            {pending.map(r => (
+              <div key={r.id} className="mt-2 text-sm">
+                <p className="text-[var(--foreground)] break-words">原因：{r.reason}</p>
+                <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">第 {r.line_no} 项服务第 {r.copy_no} 份 · 申请于 {toThaiTime(r.created_at)} · 处理前照常办理，不自动退款</p>
+                {order.status === "已完成" && <p className="mt-1 text-xs font-medium text-[var(--destructive)]">注意：这张单已经办理完成，同意取消会把「已完成」改成「客户取消」。</p>}
+                {user?.role === "admin" ? (
+                  cancelReqAction?.id === r.id ? (
+                    <div className="mt-2 space-y-2">
+                      {cancelReqAction.mode === "approve"
+                        ? <p className="text-xs text-[var(--foreground)]">同意后这张单{order.status === "已完成" ? "由「已完成」" : ""}变为「客户取消」，步骤原样保留，结果自动告知客户；退款另行处理。</p>
+                        : <input autoFocus placeholder="不同意的原因（客户能看到）" value={cancelReqNote} onChange={(e) => { setCancelReqNote(e.target.value); setCancelReqError(""); }} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />}
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={handleDecideCancelRequest} disabled={decidingCancelReq} className={cancelReqAction.mode === "approve" ? "bg-[var(--warning)] text-[var(--warning-foreground)]" : ""}>{decidingCancelReq ? "处理中…" : cancelReqAction.mode === "approve" ? "确认同意取消" : "确认不同意"}</Button>
+                        <Button variant="outline" size="sm" onClick={() => { setCancelReqAction(null); setCancelReqNote(""); setCancelReqError(""); }} disabled={decidingCancelReq}>返回</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { setCancelReqAction({ id: r.id, mode: "approve" }); setCancelReqNote(""); setCancelReqError(""); }} className="text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10">同意取消</Button>
+                      <Button size="sm" variant="outline" onClick={() => { setCancelReqAction({ id: r.id, mode: "reject" }); setCancelReqNote(""); setCancelReqError(""); }}>不同意</Button>
+                    </div>
+                  )
+                ) : <p className="mt-1 text-xs text-[var(--warning)]">等管理员处理</p>}
+              </div>
+            ))}
+            {cancelReqError && <p className="mt-2 text-xs text-[var(--destructive)]">{cancelReqError}</p>}
+            {decided.length > 0 && (
+              <ul className={cn("flex flex-col gap-1 text-xs text-[var(--muted-foreground)]", pending.length ? "mt-3 border-t border-[var(--border)] pt-2" : "mt-2")}>
+                {decided.map(r => (
+                  <li key={r.id} className="break-words">
+                    {toThaiTime(r.created_at)} 申请（{r.reason}）→ <span className={r.status === "approved" ? "text-[var(--foreground)]" : ""}>{r.status === "approved" ? "已同意取消" : "未同意"}</span>{r.decision_note && `：${r.decision_note}`}{r.decided_by && ` · ${r.decided_by}`}{r.decided_at && ` ${toThaiTime(r.decided_at)}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })()}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-6">

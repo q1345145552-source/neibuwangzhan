@@ -47,3 +47,21 @@ export function notifyNewSyncedOrder(
 ): void {
   notifyAllStaff(db, "客户站新订单", detail, sourceOrderNo);
 }
+
+/**
+ * 客户站内申请取消的提醒（2026-10-03，规则 19/20）：批准取消仅管理员可操作（规则 4），
+ * 所以只发在职管理员，每人一条；related_id 用办理单号，便于按单查。
+ */
+export function notifyCancelRequest(
+  db: Database.Database,
+  internalOrderId: string,
+  detail: string,
+): void {
+  const admins = db.prepare(
+    "SELECT DISTINCT name FROM employees WHERE role = 'admin' AND status = '在职' AND name <> ''"
+  ).all() as { name: string }[];
+  const insert = db.prepare(
+    "INSERT INTO notifications (type,title,body,recipient,related_id,related_type) VALUES ('',?,?,?,?,'order')"
+  );
+  for (const { name } of admins) insert.run("客户申请取消", detail, name, internalOrderId);
+}

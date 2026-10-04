@@ -136,7 +136,10 @@ export function queueDocumentReview(db: Database.Database, submissionId: string,
   const seq = ((db.prepare("SELECT MAX(review_seq) AS n FROM sync_documents WHERE submission_id = ?").get(submissionId) as { n: number | null }).n ?? 0) + 1;
   db.prepare("UPDATE sync_documents SET review_seq = ? WHERE submission_id = ?").run(seq, submissionId);
   db.prepare("INSERT INTO sync_document_outbox (id, submission_id, payload) VALUES (?, ?, ?)").run(`DRV-${randomUUID()}`, submissionId,
-    JSON.stringify({ submission_id: submissionId, seq, status: result, note: result === "rejected" ? note.slice(0, 500) : "" }));
+    // decided_at：内部做决定的时刻（UTC，与 SQLite datetime('now') 同格式）。客户站按它判断同一需求多份资料谁的结果更新，
+    // 不按到达先后——回传失败重试会让旧结果晚到（2026-10-03）
+    JSON.stringify({ submission_id: submissionId, seq, status: result, note: result === "rejected" ? note.slice(0, 500) : "",
+      decided_at: new Date().toISOString().replace("T", " ").slice(0, 19) }));
   return true;
 }
 
@@ -155,10 +158,11 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
     let sent = 0, failed = 0;
     for (const row of rows) {
       try {
-        // 同一个发件箱三类事件：资料审核结果（旧行无 event）、补件要求、交付文件（2026-10-03）
+        // 同一个发件箱四类事件：资料审核结果（旧行无 event）、补件要求、交付文件、取消申请结果（2026-10-03）
         const event = JSON.parse(row.payload);
-        const kind = event.event === "request" ? "request" : event.event === "delivery" ? "delivery" : "review";
-        const resp = await fetch(`${url.replace(/\/$/, "")}/api/sync/documents/${kind}`, {
+        const kind = event.event === "request" ? "request" : event.event === "delivery" ? "delivery" : event.event === "cancel" ? "cancel" : "review";
+        const path = kind === "cancel" ? "/api/sync/cancel-requests/result" : `/api/sync/documents/${kind}`;
+        const resp = await fetch(`${url.replace(/\/$/, "")}${path}`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
           body: row.payload,
@@ -168,7 +172,7 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const ack = await resp.json() as Record<string, unknown>;
         const confirmed = ack.ok === true && (
-          kind === "request" ? ack.request_id === event.request_id
+          kind === "request" || kind === "cancel" ? ack.request_id === event.request_id
           : kind === "delivery" ? ack.delivery_id === event.delivery_id && Number.isSafeInteger(ack.seq) && Number(ack.seq) >= event.seq
           : ack.submission_id === event.submission_id && Number.isSafeInteger(ack.seq) && Number(ack.seq) >= event.seq);
         if (!confirmed) throw new Error(`客户站未确认（${kind}）`);
@@ -180,7 +184,7 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
         const delay = Math.min(2 ** Math.min(attempts, 16) * 5, 600);
         db.prepare("UPDATE sync_document_outbox SET attempts=?,next_attempt_at=datetime('now','+' || ? || ' seconds'),last_error=? WHERE id=?")
           .run(attempts, delay, String(error).slice(0, 500), row.id);
-        console.error("[documents] 资料审核/补件/交付回传失败，退避后重试:", error);
+        console.error("[documents] 资料审核/补件/交付/取消结果回传失败，退避后重试:", error);
       }
     }
     return { sent, failed, skipped: false };

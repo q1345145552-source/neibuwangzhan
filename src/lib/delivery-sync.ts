@@ -66,8 +66,8 @@ export function syncCertificateDelivery(db: Database.Database, internalOrderId: 
   });
 }
 
-/** 客户站资料清单带回的 requirement_id 若是本站发出的补件要求（sreq-<id>），标记客户已交。 */
-export function markRequestSubmitted(db: Database.Database, requirementId: unknown): void {
+/** 客户站资料清单带回的 requirement_id 若是本站发出的补件要求（sreq-<id>），标记客户已交；只认同一张客户单发出的要求。 */
+export function markRequestSubmitted(db: Database.Database, requirementId: unknown, sourceOrderNo: string): void {
   if (typeof requirementId !== "string" || !requirementId.startsWith("sreq-")) return;
-  db.prepare("UPDATE sync_document_requests SET submitted_at = COALESCE(submitted_at, datetime('now')) WHERE id = ?").run(requirementId.slice(5));
+  db.prepare("UPDATE sync_document_requests SET submitted_at = COALESCE(submitted_at, datetime('now')) WHERE id = ? AND source_order_no = ?").run(requirementId.slice(5), sourceOrderNo);
 }

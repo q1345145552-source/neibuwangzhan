@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
           insertLink.run(sourceOrderNo, s.item.submission_id, orderId, Number(doc.lastInsertRowid));
         }
         names.push(displayName(s.item));
-        markRequestSubmitted(db, s.item.requirement_id); // 客户按本站发的补件要求交的：标记「客户已交」
+        markRequestSubmitted(db, s.item.requirement_id, sourceOrderNo); // 客户按本站发的补件要求交的：标记「客户已交」
         results.push({ submission_id: s.item.submission_id, kind: 'submit', status: 'created' });
       }
       for (const item of items.filter(i => i.kind === 'withdraw')) {

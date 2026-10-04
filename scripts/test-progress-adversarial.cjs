@@ -76,6 +76,7 @@ function harness(db) {
       if (id === './commerce-fulfillment') return { publicStepNames: names => names.map(() => '办理事项') };
       if (id === './commerce-schema') return { isCommerceBuyer: () => false }; // 夹具未开商城试点，真实实现同为 false
       if (id === '@/lib/constants') return { subServices: {} }; // 仅待分类改派用，夹具订单不是待分类单
+      if (id === '@/lib/cancel-sync') return { approvePending: () => 0 }; // 夹具单没有客户站取消申请，真实实现同样回 0；真实流程由 test-sync-documents.mts 端到端覆盖
       if (id === '@/lib/db' || id === './db') return { getDb: () => getDbImpl(), getOrderStepsWithDocs: () => [], logOperation: (...args) => metrics.audits.push(args) };
       if (id === '@/lib/progress-sync' || id === './lib/progress-sync') return load('progress');
       if (id === '@/lib/client-scope') return load('scope');

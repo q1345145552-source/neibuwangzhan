@@ -35,6 +35,7 @@ function playMessageSound(): void {
 export function ChatNotifier() {
   const { user } = useAuth();
   const me = user?.name || "";
+  const isClientAccount = user?.role === "client";
   const router = useRouter();
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -134,7 +135,7 @@ export function ChatNotifier() {
 
   // 轮询联系人 + 群：检测新消息并弹提醒
   useEffect(() => {
-    if (!me) return;
+    if (!me || isClientAccount) return; // 客户账号不能用聊天（接口只给员工），不轮询、不要通知权限
     ensurePermission();
     let active = true;
 
@@ -195,7 +196,7 @@ export function ChatNotifier() {
       active = false;
       clearInterval(id);
     };
-  }, [me, ensurePermission, pushToast, fireSystemNotification]);
+  }, [me, isClientAccount, ensurePermission, pushToast, fireSystemNotification]);
 
   if (toasts.length === 0) return null;
 
