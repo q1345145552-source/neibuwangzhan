@@ -93,6 +93,22 @@ export default function LeaveDashboardPage() {
     return Object.entries(groups).map(([type, reasons]) => `${type}：${reasons.join("、")}`).join("｜");
   };
 
+  // 硬规则异常标记：红 = 异常（频率/病假/日期），黄 = 可疑（理由重复）
+  const flagColor = (rule: string) => (rule === "理由重复" ? "yellow" : "red");
+  const flagBadgeClass = (rule: string) =>
+    rule === "理由重复"
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+      : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
+  const empFlagRules = (s: any) => {
+    const seen: string[] = [];
+    for (const l of (s.leaves || [])) {
+      for (const f of (l.flags || [])) {
+        if (!seen.includes(f.rule)) seen.push(f.rule);
+      }
+    }
+    return seen;
+  };
+
   // 结合日历：某月 + 请假记录 → 标记请假日期的月历格子
   const calendarCells = (month: string, leaves: any[]) => {
     const [y, m] = month.split("-").map(Number);
@@ -190,6 +206,7 @@ export default function LeaveDashboardPage() {
                     <th className="py-2 px-3 text-center font-medium">年假</th>
                     <th className="py-2 px-3 text-center font-medium">其他</th>
                     <th className="py-2 px-3 text-right font-medium">总天数</th>
+                    <th className="py-2 px-3 text-left font-medium">异常</th>
                     <th className="py-2 px-3 text-left font-medium">请假理由</th>
                   </tr>
                 </thead>
@@ -202,6 +219,17 @@ export default function LeaveDashboardPage() {
                       <td className="py-2 px-3 text-center">{s.annual || 0}</td>
                       <td className="py-2 px-3 text-center">{s.other || 0}</td>
                       <td className="py-2 px-3 text-right font-medium">{s.totalDays}天</td>
+                      <td className="py-2 px-3">
+                        {empFlagRules(s).length === 0 ? (
+                          <span className="text-xs text-[var(--muted-foreground)]/50">—</span>
+                        ) : (
+                          <span className="flex flex-wrap gap-1">
+                            {empFlagRules(s).map((rule) => (
+                              <span key={rule} className={"inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-medium " + flagBadgeClass(rule)}>{rule}</span>
+                            ))}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-xs text-[var(--muted-foreground)] max-w-xs">{reasonSummary(s) || "—"}</td>
                     </tr>
                   ))}
@@ -221,6 +249,13 @@ export default function LeaveDashboardPage() {
                       <div><p className="tabular-nums">{s.annual || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">年假</p></div>
                       <div><p className="tabular-nums">{s.other || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">其他</p></div>
                     </div>
+                    {empFlagRules(s).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {empFlagRules(s).map((rule) => (
+                          <span key={rule} className={"inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-medium " + flagBadgeClass(rule)}>{rule}</span>
+                        ))}
+                      </div>
+                    )}
                     {reasonSummary(s) && <p className="mt-2 text-xs text-[var(--muted-foreground)]">{reasonSummary(s)}</p>}
                   </div>
                 ))}
@@ -361,6 +396,7 @@ export default function LeaveDashboardPage() {
                     <th className="py-2 px-3 text-left text-xs font-medium">日期</th>
                     <th className="py-2 px-3 text-right text-xs font-medium">天数</th>
                     <th className="py-2 px-3 text-left text-xs font-medium">理由</th>
+                    <th className="py-2 px-3 text-left text-xs font-medium">异常</th>
                     <th className="py-2 px-3 text-center text-xs font-medium">状态</th>
                   </tr>
                 </thead>
@@ -370,11 +406,22 @@ export default function LeaveDashboardPage() {
                     const e = new Date(r.end_date);
                     const days = Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
                     return (
-                      <tr key={i} className="border-b border-[var(--border)] last:border-0">
+                      <tr key={i} className={cn("border-b border-[var(--border)] last:border-0", (r.flags || []).length > 0 && "bg-red-50/50 dark:bg-red-950/10")}>
                         <td className="py-2 px-3">{r.leave_type}</td>
                         <td className="py-2 px-3 text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</td>
                         <td className="py-2 px-3 text-right">{days}天</td>
                         <td className="py-2 px-3 text-xs text-[var(--muted-foreground)] max-w-xs">{r.reason || "—"}</td>
+                        <td className="py-2 px-3">
+                          {(r.flags || []).length === 0 ? (
+                            <span className="text-xs text-[var(--muted-foreground)]/50">—</span>
+                          ) : (
+                            <span className="flex flex-col gap-1">
+                              {(r.flags || []).map((f: any) => (
+                                <span key={f.rule} title={f.detail} className={"inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-medium " + flagBadgeClass(f.rule)}>{f.rule}：{f.detail}</span>
+                              ))}
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2 px-3 text-center">
                           <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
                         </td>
@@ -400,6 +447,13 @@ export default function LeaveDashboardPage() {
                         <span className="tabular-nums">{days}天</span>
                       </div>
                       {r.reason && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{r.reason}</p>}
+                      {(r.flags || []).length > 0 && (
+                        <div className="mt-1.5 flex flex-col gap-1">
+                          {(r.flags || []).map((f: any) => (
+                            <span key={f.rule} className={"inline-flex w-fit rounded-full px-2 py-0.5 text-[0.65rem] font-medium " + flagBadgeClass(f.rule)}>{f.rule}：{f.detail}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
