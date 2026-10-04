@@ -30,6 +30,14 @@ const FORM_FIELDS = [
 
 const EDUCATION_LEVELS = ["高中", "中专", "大专", "本科", "硕士", "博士", "其他"] as const;
 
+// 个人情况影响因素（四个方面，可多选 + 备注）
+const FACTOR_OPTIONS: { key: string; label: string; items: string[] }[] = [
+  { key: "family", label: "家庭", items: ["家里有生意要帮忙", "要照顾父母", "要带孩子", "家庭经济困难", "怀孕"] },
+  { key: "relationship", label: "感情", items: ["伴侣没有工作", "感情危机经常吵架", "出轨", "分手", "单身但有感情纠葛", "要结婚"] },
+  { key: "health", label: "健康", items: ["自己身体不好", "家人生病", "有慢性病"] },
+  { key: "other", label: "其他", items: ["有负债", "有副业兼职"] },
+];
+
 export default function EmployeeProfilesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -112,6 +120,9 @@ export default function EmployeeProfilesPage() {
   const [personalSaving, setPersonalSaving] = useState(false);
   const [personalErr, setPersonalErr] = useState("");
   const [personalMsg, setPersonalMsg] = useState("");
+  // 影响因素勾选（家庭/感情/健康/其他 + 备注）
+  const [factorSelections, setFactorSelections] = useState<Record<string, string[]>>({ family: [], relationship: [], health: [], other: [] });
+  const [factorRemarks, setFactorRemarks] = useState<Record<string, string>>({ family: "", relationship: "", health: "", other: "" });
   // 个人情况跟进记录
   const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
@@ -190,6 +201,9 @@ export default function EmployeeProfilesPage() {
     setPersonal({});
     setPersonalErr("");
     setPersonalMsg("");
+    // 重置影响因素勾选
+    setFactorSelections({ family: [], relationship: [], health: [], other: [] });
+    setFactorRemarks({ family: "", relationship: "", health: "", other: "" });
     // 重置跟进记录表单 + 列表
     setFollowups([]);
     setFollowupForm({ date: bangkokDateStr(), content: "" });
@@ -197,7 +211,23 @@ export default function EmployeeProfilesPage() {
     if (isAdmin) {
       setPersonalLoading(true);
       fetchPersonalNotes(e.id)
-        .then((r) => setPersonal((r && typeof r === "object") ? (r as unknown as Record<string, string>) : {}))
+        .then((r) => {
+          const obj = (r && typeof r === "object") ? (r as unknown as Record<string, string>) : {};
+          setPersonal(obj);
+          const parseArr = (v: string) => { try { const a = JSON.parse(v || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } };
+          setFactorSelections({
+            family: parseArr(obj.family_factors),
+            relationship: parseArr(obj.relationship_factors),
+            health: parseArr(obj.health_factors),
+            other: parseArr(obj.other_factors),
+          });
+          setFactorRemarks({
+            family: obj.family_factor_remark || "",
+            relationship: obj.relationship_factor_remark || "",
+            health: obj.health_factor_remark || "",
+            other: obj.other_factor_remark || "",
+          });
+        })
         .catch(() => setPersonal({}))
         .finally(() => setPersonalLoading(false));
       setFollowupsLoading(true);
@@ -464,13 +494,33 @@ export default function EmployeeProfilesPage() {
 
   // 个人情况：设置字段 / 保存
   const setPersonalField = (k: string, v: string) => setPersonal((prev) => ({ ...prev, [k]: v }));
+  // 影响因素：勾选/取消
+  const toggleFactor = (aspect: string, factor: string) => {
+    setFactorSelections((prev) => {
+      const cur = prev[aspect] || [];
+      const next = cur.includes(factor) ? cur.filter((f) => f !== factor) : [...cur, factor];
+      return { ...prev, [aspect]: next };
+    });
+  };
+  const setFactorRemark = (aspect: string, v: string) => setFactorRemarks((prev) => ({ ...prev, [aspect]: v }));
   const savePersonal = async () => {
     if (!selected) return;
     setPersonalSaving(true);
     setPersonalErr("");
     setPersonalMsg("");
     try {
-      const row = await savePersonalNotes(selected.id, personal as Partial<EmployeePersonalNotes>);
+      const payload = {
+        ...personal,
+        family_factors: JSON.stringify(factorSelections.family),
+        relationship_factors: JSON.stringify(factorSelections.relationship),
+        health_factors: JSON.stringify(factorSelections.health),
+        other_factors: JSON.stringify(factorSelections.other),
+        family_factor_remark: factorRemarks.family,
+        relationship_factor_remark: factorRemarks.relationship,
+        health_factor_remark: factorRemarks.health,
+        other_factor_remark: factorRemarks.other,
+      };
+      const row = await savePersonalNotes(selected.id, payload as Partial<EmployeePersonalNotes>);
       setPersonal(row as unknown as Record<string, string>);
       setPersonalMsg("已保存");
       setTimeout(() => setPersonalMsg((m) => (m === "已保存" ? "" : m)), 1500);
@@ -1162,6 +1212,30 @@ export default function EmployeeProfilesPage() {
                             <textarea value={personal.work_pressure ?? ""} onChange={(e) => setPersonalField("work_pressure", e.target.value)} placeholder="压力" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
                             <textarea value={personal.work_mentality ?? ""} onChange={(e) => setPersonalField("work_mentality", e.target.value)} placeholder="心态" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
                             <textarea value={personal.work_adaptation ?? ""} onChange={(e) => setPersonalField("work_adaptation", e.target.value)} placeholder="适应度" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                          </div>
+                        </div>
+
+                        {/* 影响因素勾选 */}
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">影响因素（可多选 + 备注）</h4>
+                          <div className="space-y-3">
+                            {FACTOR_OPTIONS.map((g) => (
+                              <div key={g.key} className="rounded-md border border-[var(--border)] p-2.5">
+                                <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">{g.label}</p>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                                  {g.items.map((item) => {
+                                    const checked = (factorSelections[g.key] || []).includes(item);
+                                    return (
+                                      <label key={item} className="flex items-center gap-1.5 text-xs text-[var(--foreground)] cursor-pointer">
+                                        <input type="checkbox" checked={checked} onChange={() => toggleFactor(g.key, item)} className="size-3.5 accent-[var(--primary)]" />
+                                        {item}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <textarea value={factorRemarks[g.key] ?? ""} onChange={(e) => setFactorRemark(g.key, e.target.value)} placeholder={`${g.label}备注（具体细节，如：男朋友出轨、最近闹离婚）`} className="mt-2 h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                              </div>
+                            ))}
                           </div>
                         </div>
 

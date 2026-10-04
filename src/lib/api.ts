@@ -170,6 +170,14 @@ export interface EmployeePersonalNotes {
   work_pressure: string;
   work_mentality: string;
   work_adaptation: string;
+  family_factors: string;
+  relationship_factors: string;
+  health_factors: string;
+  other_factors: string;
+  family_factor_remark: string;
+  relationship_factor_remark: string;
+  health_factor_remark: string;
+  other_factor_remark: string;
   updated_by: string;
   updated_at: string;
 }
