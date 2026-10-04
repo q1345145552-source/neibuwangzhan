@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, fetchPersonalStatus, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate, bangkokDateStr } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -123,6 +123,8 @@ export default function EmployeeProfilesPage() {
   // 影响因素勾选（家庭/感情/健康/其他 + 备注）
   const [factorSelections, setFactorSelections] = useState<Record<string, string[]>>({ family: [], relationship: [], health: [], other: [] });
   const [factorRemarks, setFactorRemarks] = useState<Record<string, string>>({ family: "", relationship: "", health: "", other: "" });
+  // 个人情况最近更新状态（employee_id -> updated_at）
+  const [personalStatus, setPersonalStatus] = useState<Map<number, string>>(new Map());
   // 个人情况跟进记录
   const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
@@ -352,6 +354,16 @@ export default function EmployeeProfilesPage() {
       .catch(() => setEmployees([]))
       .finally(() => setLoading(false));
     loadInfoChanges();
+    // 个人情况最近更新状态（仅管理员，用于列表标黄提醒）
+    if (isAdmin) {
+      fetchPersonalStatus()
+        .then((items) => {
+          const m = new Map<number, string>();
+          for (const it of items) m.set(it.id, it.updated_at || "");
+          setPersonalStatus(m);
+        })
+        .catch(() => setPersonalStatus(new Map()));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
@@ -524,11 +536,25 @@ export default function EmployeeProfilesPage() {
       setPersonal(row as unknown as Record<string, string>);
       setPersonalMsg("已保存");
       setTimeout(() => setPersonalMsg((m) => (m === "已保存" ? "" : m)), 1500);
+      // 更新列表的最近更新状态（标黄提醒）
+      setPersonalStatus((prev) => {
+        const next = new Map(prev);
+        next.set(selected.id, (row as any).updated_at || "");
+        return next;
+      });
     } catch (err) {
       setPersonalErr(err instanceof Error ? err.message : "保存失败");
     } finally {
       setPersonalSaving(false);
     }
+  };
+
+  // 个人情况是否超过30天未更新（含从未更新）
+  const isPersonalStale = (employeeId: number) => {
+    const ua = personalStatus.get(employeeId);
+    if (ua === undefined || !ua) return true;
+    const d = new Date(ua.replace(" ", "T") + "Z").getTime();
+    return isNaN(d) || Date.now() - d > 30 * 86400000;
   };
 
   // 个人情况跟进记录：新增 / 删除
@@ -854,7 +880,7 @@ export default function EmployeeProfilesPage() {
                 <ul className="divide-y divide-[var(--border)]">
                   {visibleEmployees.map((e) => (
                     <li key={e.id}>
-                      <div className={cn("flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40", selected?.id === e.id && "bg-[var(--muted)]/40")}>
+                      <div className={cn("flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40", selected?.id === e.id && "bg-[var(--muted)]/40", isPersonalStale(e.id) && "bg-yellow-50/70 dark:bg-yellow-950/10")}>
                         <input
                           type="checkbox"
                           checked={selectedIds.has(e.id)}
@@ -875,6 +901,9 @@ export default function EmployeeProfilesPage() {
                                   e.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
                                   e.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
                                   "bg-purple-500/15 text-purple-600")}>{e.status}</span>
+                              )}
+                              {isPersonalStale(e.id) && (
+                                <span className="rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">个人情况待更新</span>
                               )}
                             </span>
                           </span>
@@ -1154,7 +1183,9 @@ export default function EmployeeProfilesPage() {
 
                   {/* 个人情况记录（仅管理员可见） */}
                   <section className="border-t border-[var(--border)] pt-4">
-                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">个人情况记录</h3>
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">个人情况记录
+                      {personal.updated_at && <span className="ml-2 font-normal text-[0.65rem] text-[var(--muted-foreground)]">最近更新：{personal.updated_at}{personal.updated_by ? `（${personal.updated_by}）` : ""}</span>}
+                    </h3>
                     {personalLoading ? (
                       <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
                     ) : (

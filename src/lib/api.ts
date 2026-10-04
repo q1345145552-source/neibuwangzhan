@@ -746,6 +746,21 @@ export async function createDemerit(employeeId: number, content: string, file: F
   return result as Demerit;
 }
 
+/** 个人情况最近更新状态（仅管理员） */
+export interface PersonalUpdateStatus {
+  id: number;
+  name: string;
+  updated_at: string;
+}
+
+/** 所有员工个人情况最近更新日期（仅管理员） */
+export async function fetchPersonalStatus(): Promise<PersonalUpdateStatus[]> {
+  const res = await fetch("/api/employees/personal/status", { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取更新状态失败");
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+}
+
 /** 个人情况记录（仅管理员） */
 export async function fetchPersonalNotes(employeeId: number): Promise<EmployeePersonalNotes> {
   const res = await fetch(`/api/employees/personal?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
