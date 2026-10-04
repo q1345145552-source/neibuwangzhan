@@ -127,6 +127,9 @@ const EMPLOYEE_STATUS_LIST = "'在职','离职','试用期','待离职','停薪�
 // 离职交接清单默认事项（标记离职时逐项打勾）
 export const RESIGNATION_HANDOVER_ITEMS = ["归还工牌", "交接客户", "工作内容交接", "结清工资"] as const;
 
+// 入职资料清单默认事项
+export const ONBOARDING_DOC_ITEMS = ["身份证复印件", "学历证书", "银行卡复印件", "体检报告"] as const;
+
 // 员工表迁移时按名字逐列搬运（不依赖物理列顺序），新列 resignation_date/reason 也在此列
 const EMPLOYEE_COLUMNS = [
   "id", "name", "email", "role", "password", "must_change_password", "auth_version",
@@ -687,6 +690,19 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_employee_educations_employee ON employee_educations(employee_id);
+
+    -- 员工入职资料清单：逐项勾选已收集/未收集
+    CREATE TABLE IF NOT EXISTS employee_onboarding_docs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      item TEXT NOT NULL,
+      collected INTEGER NOT NULL DEFAULT 0,
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, item)
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_onboarding_employee ON employee_onboarding_docs(employee_id);
 
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -101,6 +101,9 @@ export default function EmployeeProfilesPage() {
   const [editingEduId, setEditingEduId] = useState<number | null>(null);
   const [eduSaving, setEduSaving] = useState(false);
   const [eduErr, setEduErr] = useState("");
+  // 入职资料清单
+  const [onboardingDocs, setOnboardingDocs] = useState<OnboardingDoc[]>([]);
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -162,6 +165,13 @@ export default function EmployeeProfilesPage() {
       .then((r) => setEducations(Array.isArray(r) ? r : []))
       .catch(() => setEducations([]))
       .finally(() => setEducationsLoading(false));
+    // 加载入职资料清单
+    setOnboardingDocs([]);
+    setOnboardingLoading(true);
+    fetchOnboardingDocs(e.id)
+      .then((r) => setOnboardingDocs(Array.isArray(r) ? r : []))
+      .catch(() => setOnboardingDocs([]))
+      .finally(() => setOnboardingLoading(false));
   };
 
   const uploadFile = async () => {
@@ -401,6 +411,16 @@ export default function EmployeeProfilesPage() {
     try {
       const updated = await toggleHandoverItem(item.id, item.done !== 1);
       setHandover((prev) => prev.map((h) => (h.id === updated.id ? updated : h)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "更新失败");
+    }
+  };
+
+  // 入职资料清单逐项勾选已收集/未收集
+  const toggleOnboarding = async (item: OnboardingDoc) => {
+    try {
+      const updated = await toggleOnboardingDoc(item.id, item.collected !== 1);
+      setOnboardingDocs((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
     } catch (err) {
       alert(err instanceof Error ? err.message : "更新失败");
     }
@@ -864,6 +884,35 @@ export default function EmployeeProfilesPage() {
                         {textField("住址", "address", "居住地址")}
                       </div>
                     </div>
+                  </section>
+
+                  {/* 入职资料清单 */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">入职资料清单
+                      <span className="ml-2 rounded-full bg-blue-500/15 px-2 py-0.5 text-[0.65rem] text-blue-600">已收集 {onboardingDocs.filter((o) => o.collected === 1).length}/{onboardingDocs.length}</span>
+                    </h3>
+                    {onboardingLoading ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                    ) : onboardingDocs.length === 0 ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">暂无清单</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {onboardingDocs.map((o) => (
+                          <li key={o.id} className={cn("flex items-center gap-3 rounded-md border px-3 py-2", o.collected === 1 ? "border-emerald-300/60 bg-emerald-50/50 dark:bg-emerald-950/10" : "border-[var(--border)]")}>
+                            <input
+                              type="checkbox"
+                              checked={o.collected === 1}
+                              onChange={() => toggleOnboarding(o)}
+                              className="size-4 shrink-0 accent-emerald-600"
+                            />
+                            <span className={cn("text-sm", o.collected === 1 ? "text-[var(--muted-foreground)]" : "font-medium text-[var(--foreground)]")}>{o.item}</span>
+                            <span className={cn("ml-auto rounded-full px-2 py-0.5 text-[0.65rem] font-medium", o.collected === 1 ? "bg-emerald-500/15 text-emerald-600" : "bg-orange-500/15 text-orange-600")}>
+                              {o.collected === 1 ? "已收集" : "未收集"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </section>
 
                   <section>

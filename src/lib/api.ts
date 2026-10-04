@@ -154,6 +154,17 @@ export interface EmployeeEducation {
   created_at: string;
 }
 
+/** 入职资料清单事项 */
+export interface OnboardingDoc {
+  id: number;
+  employee_id: number;
+  item: string;
+  collected: number;
+  updated_by: string;
+  updated_at: string;
+  created_at: string;
+}
+
 /** 离职交接清单事项 */
 export interface HandoverItem {
   id: number;
@@ -695,6 +706,26 @@ export async function createDemerit(employeeId: number, content: string, file: F
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "记过失败");
   return result as Demerit;
+}
+
+/** 入职资料清单 */
+export async function fetchOnboardingDocs(employeeId: number): Promise<OnboardingDoc[]> {
+  const res = await fetch(`/api/employees/onboarding?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取入职清单失败");
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+/** 入职清单逐项勾选已收集/未收集 */
+export async function toggleOnboardingDoc(id: number, collected: boolean): Promise<OnboardingDoc> {
+  const res = await fetch("/api/employees/onboarding", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, collected }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "更新失败");
+  return result as OnboardingDoc;
 }
 
 /** 离职交接清单 */
