@@ -760,6 +760,21 @@ function initTables(database: Database.Database) {
       analyzed_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- 员工体检记录（转正前一次）：敏感信息，仅管理员可见
+    CREATE TABLE IF NOT EXISTS employee_medical_exams (
+      employee_id INTEGER PRIMARY KEY,
+      exam_date TEXT DEFAULT '',
+      result TEXT DEFAULT '',
+      file_name TEXT DEFAULT '',
+      original_name TEXT DEFAULT '',
+      size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, fetchPersonalStatus, fetchStatusAssessment, assessStatus, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup, type StatusAssessment } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, fetchPersonalStatus, fetchStatusAssessment, assessStatus, fetchMedicalExam, saveMedicalExam, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup, type StatusAssessment, type MedicalExam } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate, bangkokDateStr } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -129,6 +129,14 @@ export default function EmployeeProfilesPage() {
   const [statusAssessment, setStatusAssessment] = useState<StatusAssessment | null>(null);
   const [assessing, setAssessing] = useState(false);
   const [assessErr, setAssessErr] = useState("");
+  // 体检记录
+  const [medical, setMedical] = useState<MedicalExam | null>(null);
+  const [medicalLoading, setMedicalLoading] = useState(false);
+  const [medicalForm, setMedicalForm] = useState({ exam_date: "", result: "合格" });
+  const [medicalSaving, setMedicalSaving] = useState(false);
+  const [medicalErr, setMedicalErr] = useState("");
+  const [medicalMsg, setMedicalMsg] = useState("");
+  const medicalFileRef = useRef<HTMLInputElement>(null);
   // 个人情况跟进记录
   const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
@@ -217,10 +225,23 @@ export default function EmployeeProfilesPage() {
     // 重置 AI 状态评估
     setStatusAssessment(null);
     setAssessErr("");
+    // 重置体检记录
+    setMedical(null);
+    setMedicalForm({ exam_date: "", result: "合格" });
+    setMedicalErr("");
+    setMedicalMsg("");
     if (isAdmin) {
       fetchStatusAssessment(e.id)
         .then((r) => setStatusAssessment(r && r.level ? r : null))
         .catch(() => setStatusAssessment(null));
+      setMedicalLoading(true);
+      fetchMedicalExam(e.id)
+        .then((r) => {
+          setMedical(r && r.exam_date ? r : null);
+          if (r && r.exam_date) setMedicalForm({ exam_date: r.exam_date, result: r.result || "合格" });
+        })
+        .catch(() => setMedical(null))
+        .finally(() => setMedicalLoading(false));
       setPersonalLoading(true);
       fetchPersonalNotes(e.id)
         .then((r) => {
@@ -579,6 +600,27 @@ export default function EmployeeProfilesPage() {
       setAssessErr(err instanceof Error ? err.message : "评估失败");
     } finally {
       setAssessing(false);
+    }
+  };
+
+  // 体检记录：保存
+  const saveMedical = async () => {
+    if (!selected) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(medicalForm.exam_date)) { setMedicalErr("请填写体检日期"); return; }
+    const file = medicalFileRef.current?.files?.[0] || null;
+    setMedicalSaving(true);
+    setMedicalErr("");
+    setMedicalMsg("");
+    try {
+      const r = await saveMedicalExam(selected.id, medicalForm, file);
+      setMedical(r);
+      setMedicalMsg("已保存");
+      if (medicalFileRef.current) medicalFileRef.current.value = "";
+      setTimeout(() => setMedicalMsg((m) => (m === "已保存" ? "" : m)), 1500);
+    } catch (err) {
+      setMedicalErr(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setMedicalSaving(false);
     }
   };
 
@@ -1108,6 +1150,46 @@ export default function EmployeeProfilesPage() {
                           </li>
                         ))}
                       </ul>
+                    )}
+                  </section>
+
+                  {/* 体检记录（敏感，仅管理员） */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">体检记录</h3>
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <input type="date" value={medicalForm.exam_date} onChange={(e) => setMedicalForm((p) => ({ ...p, exam_date: e.target.value }))} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                      <select value={medicalForm.result} onChange={(e) => setMedicalForm((p) => ({ ...p, result: e.target.value }))} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                        <option value="合格">合格</option>
+                        <option value="不合格">不合格</option>
+                        <option value="待复查">待复查</option>
+                      </select>
+                      <input ref={medicalFileRef} type="file" accept="image/*,.pdf" className="h-9 min-w-[160px] flex-1 text-sm text-[var(--foreground)]" />
+                      <Button size="sm" onClick={saveMedical} disabled={medicalSaving}>{medicalSaving ? "保存中…" : "保存"}</Button>
+                    </div>
+                    {medicalErr && <p className="mb-2 text-xs text-red-500">{medicalErr}</p>}
+                    {medicalMsg && <p className="mb-2 text-xs text-emerald-600 dark:text-emerald-400">{medicalMsg}</p>}
+
+                    {medicalLoading ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                    ) : medical ? (
+                      <div className="rounded-md border border-[var(--border)] px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">体检日期：{medical.exam_date}</span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
+                            medical.result === "合格" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                            medical.result === "不合格" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" :
+                            "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300")}>{medical.result}</span>
+                        </div>
+                        {medical.file_url && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <a href={fileUrl(medical.file_url)} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Eye className="size-3" />查看报告</a>
+                            <a href={fileUrl(medical.file_url)} download={medical.original_name || "体检报告"} className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Download className="size-3" />下载</a>
+                            <span className="text-xs text-[var(--muted-foreground)]">{medical.original_name}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[var(--muted-foreground)]">暂无体检记录</p>
                     )}
                   </section>
 

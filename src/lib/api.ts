@@ -182,6 +182,22 @@ export interface EmployeePersonalNotes {
   updated_at: string;
 }
 
+/** 员工体检记录（仅管理员） */
+export interface MedicalExam {
+  employee_id: number;
+  exam_date: string;
+  result: string;
+  file_name: string;
+  original_name: string;
+  size: number;
+  mime_type: string;
+  file_url?: string;
+  created_by: string;
+  updated_by: string;
+  updated_at: string;
+  created_at: string;
+}
+
 /** 员工 AI 状态评估结果 */
 export interface StatusAssessment {
   employee_id: number;
@@ -768,6 +784,26 @@ export async function fetchPersonalStatus(): Promise<PersonalUpdateStatus[]> {
   if (!res.ok) throw new Error("获取更新状态失败");
   const data = await res.json();
   return Array.isArray(data.items) ? data.items : [];
+}
+
+/** 体检记录（仅管理员） */
+export async function fetchMedicalExam(employeeId: number): Promise<MedicalExam | null> {
+  const res = await fetch(`/api/employees/medical?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取体检记录失败");
+  return res.json();
+}
+
+/** 保存体检记录（仅管理员，可上传报告文件） */
+export async function saveMedicalExam(employeeId: number, data: { exam_date: string; result: string }, file: File | null): Promise<MedicalExam> {
+  const fd = new FormData();
+  fd.append("employee_id", String(employeeId));
+  fd.append("exam_date", data.exam_date);
+  fd.append("result", data.result);
+  if (file) fd.append("file", file);
+  const res = await fetch("/api/employees/medical", { method: "PUT", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "保存失败");
+  return result as MedicalExam;
 }
 
 /** 已缓存的员工状态评估（仅管理员） */
