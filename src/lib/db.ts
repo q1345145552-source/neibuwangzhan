@@ -656,6 +656,26 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_resignation_handover_employee ON resignation_handover(employee_id);
 
+    -- 员工自助信息变更申请：电话/地址/紧急联系人，管理员审核通过后才生效
+    CREATE TABLE IF NOT EXISTS employee_info_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL DEFAULT '',
+      phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      emergency_name TEXT DEFAULT '',
+      emergency_phone TEXT DEFAULT '',
+      emergency_relation TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '待审核' CHECK(status IN ('待审核','已通过','已驳回')),
+      reject_reason TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      reviewed_by TEXT DEFAULT '',
+      reviewed_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_eic_employee ON employee_info_changes(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_eic_status ON employee_info_changes(status);
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -980,7 +1000,7 @@ function initTables(database: Database.Database) {
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign"]);
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request"]);
 
   // 模板库
   database.exec(`

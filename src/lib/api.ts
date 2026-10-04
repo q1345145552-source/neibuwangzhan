@@ -125,6 +125,24 @@ export interface EmployeeRecord {
   created_at: string;
 }
 
+/** 员工自助信息变更申请 */
+export interface EmployeeInfoChange {
+  id: number;
+  employee_id: number;
+  employee_name: string;
+  phone: string;
+  address: string;
+  emergency_name: string;
+  emergency_phone: string;
+  emergency_relation: string;
+  status: "待审核" | "已通过" | "已驳回";
+  reject_reason: string;
+  created_by: string;
+  reviewed_by: string;
+  reviewed_at: string;
+  created_at: string;
+}
+
 /** 离职交接清单事项 */
 export interface HandoverItem {
   id: number;
@@ -686,6 +704,38 @@ export async function toggleHandoverItem(id: number, done: boolean): Promise<Han
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "更新失败");
   return result as HandoverItem;
+}
+
+/** 信息变更申请列表（管理员看全部，员工看自己） */
+export async function fetchEmployeeInfoChanges(status?: string): Promise<EmployeeInfoChange[]> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`/api/employee-info-changes${q}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取变更申请失败");
+  return res.json();
+}
+
+/** 员工自助提交信息变更申请 */
+export async function createEmployeeInfoChange(data: { phone: string; address: string; emergency_name: string; emergency_phone: string; emergency_relation: string }): Promise<EmployeeInfoChange> {
+  const res = await fetch("/api/employee-info-changes", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "提交失败");
+  return result as EmployeeInfoChange;
+}
+
+/** 管理员审核信息变更申请（通过/驳回） */
+export async function reviewEmployeeInfoChange(id: number, status: "已通过" | "已驳回", reject_reason?: string): Promise<EmployeeInfoChange> {
+  const res = await fetch("/api/employee-info-changes", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, status, reject_reason }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "审核失败");
+  return result as EmployeeInfoChange;
 }
 
 /** 员工档案文件列表 */

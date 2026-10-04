@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -70,6 +70,16 @@ export default function EmployeeProfilesPage() {
   const [resignSaving, setResignSaving] = useState(false);
   const [resignErr, setResignErr] = useState("");
   const [statusUpdating, setStatusUpdating] = useState(false);
+  // 信息变更申请
+  const [infoChanges, setInfoChanges] = useState<EmployeeInfoChange[]>([]);
+  const [infoChangesLoading, setInfoChangesLoading] = useState(false);
+  const [showChangeForm, setShowChangeForm] = useState(false);
+  const [changeForm, setChangeForm] = useState({ phone: "", address: "", emergency_name: "", emergency_phone: "", emergency_relation: "" });
+  const [changeSaving, setChangeSaving] = useState(false);
+  const [changeErr, setChangeErr] = useState("");
+  const [rejectModal, setRejectModal] = useState<{ id: number; employee: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -165,6 +175,14 @@ export default function EmployeeProfilesPage() {
     }
   };
 
+  const loadInfoChanges = () => {
+    setInfoChangesLoading(true);
+    fetchEmployeeInfoChanges()
+      .then((r) => setInfoChanges(Array.isArray(r) ? r : []))
+      .catch(() => setInfoChanges([]))
+      .finally(() => setInfoChangesLoading(false));
+  };
+
   useEffect(() => {
     setLoading(true);
     const url = isAdmin ? "/api/employees?include_left=1" : "/api/employees?self=1";
@@ -177,6 +195,7 @@ export default function EmployeeProfilesPage() {
       })
       .catch(() => setEmployees([]))
       .finally(() => setLoading(false));
+    loadInfoChanges();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
@@ -287,6 +306,69 @@ export default function EmployeeProfilesPage() {
     }
   };
 
+  // 员工自助提交信息变更申请
+  const submitInfoChange = async () => {
+    if (!selected) return;
+    if (!changeForm.phone.trim() || !changeForm.address.trim() || !changeForm.emergency_name.trim() || !changeForm.emergency_phone.trim()) {
+      setChangeErr("电话、地址、紧急联系人（姓名和电话）都必填");
+      return;
+    }
+    setChangeSaving(true);
+    setChangeErr("");
+    try {
+      const rec = await createEmployeeInfoChange({
+        phone: changeForm.phone.trim(),
+        address: changeForm.address.trim(),
+        emergency_name: changeForm.emergency_name.trim(),
+        emergency_phone: changeForm.emergency_phone.trim(),
+        emergency_relation: changeForm.emergency_relation.trim(),
+      });
+      setInfoChanges((prev) => [rec, ...prev]);
+      setShowChangeForm(false);
+    } catch (err) {
+      setChangeErr(err instanceof Error ? err.message : "提交失败");
+    } finally {
+      setChangeSaving(false);
+    }
+  };
+
+  // 管理员审核：通过（通过后新信息生效）
+  const approveChange = async (id: number) => {
+    try {
+      const updated = await reviewEmployeeInfoChange(id, "已通过");
+      setInfoChanges((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      // 若通过的是当前选中员工的申请，刷新其档案显示（电话/地址/紧急联系人已生效）
+      const req = infoChanges.find((c) => c.id === id);
+      if (selected && req && req.employee_id === selected.id) {
+        const res = await fetchWithAuth("/api/employees?include_left=1", { cache: "no-store" });
+        const data = await res.json();
+        const list = (Array.isArray(data) ? data : []).filter((e: any) => e.role === "employee");
+        setEmployees(list);
+        const me = list.find((e: any) => e.id === selected.id);
+        if (me) setSelected(me);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "审核失败");
+    }
+  };
+
+  // 管理员审核：驳回（需填原因）
+  const confirmReject = async () => {
+    if (!rejectModal) return;
+    if (!rejectReason.trim()) { alert("请填写驳回原因"); return; }
+    setRejecting(true);
+    try {
+      const updated = await reviewEmployeeInfoChange(rejectModal.id, "已驳回", rejectReason.trim());
+      setInfoChanges((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      setRejectModal(null);
+      setRejectReason("");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "驳回失败");
+    } finally {
+      setRejecting(false);
+    }
+  };
+
   const textField = (label: string, key: string, placeholder?: string, type = "text") => (
     <div className="space-y-1">
       <Label className="text-xs text-[var(--muted-foreground)]">{label}</Label>
@@ -349,6 +431,8 @@ export default function EmployeeProfilesPage() {
     );
   };
 
+  const pendingInfoChanges = infoChanges.filter((c) => c.status === "待审核");
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -362,6 +446,40 @@ export default function EmployeeProfilesPage() {
       </div>
 
       {isAdmin ? (
+        <div className="space-y-6">
+          {/* 信息变更申请审核 */}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+              <h2 className="text-sm font-medium">信息变更申请</h2>
+              <span className="text-xs text-[var(--muted-foreground)]">待审核 {pendingInfoChanges.length} 条</span>
+            </div>
+            {infoChangesLoading ? (
+              <p className="p-4 text-xs text-[var(--muted-foreground)]">加载中…</p>
+            ) : pendingInfoChanges.length === 0 ? (
+              <p className="p-4 text-xs text-[var(--muted-foreground)]">暂无待审核的变更申请</p>
+            ) : (
+              <ul className="divide-y divide-[var(--border)]">
+                {pendingInfoChanges.map((c) => (
+                  <li key={c.id} className="px-5 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium text-[var(--foreground)]">{c.employee_name}</span>
+                      <span className="text-[0.65rem] text-[var(--muted-foreground)]">{c.created_at?.slice(0, 16)}</span>
+                    </div>
+                    <div className="mt-1 grid gap-x-6 gap-y-0.5 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
+                      <span>电话：{c.phone}</span>
+                      <span>住址：{c.address}</span>
+                      <span className="sm:col-span-2">紧急联系人：{c.emergency_name}（{c.emergency_phone}）{c.emergency_relation ? ` · ${c.emergency_relation}` : ""}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button size="sm" className="h-7 text-xs" onClick={() => approveChange(c.id)}>通过</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-red-500" onClick={() => { setRejectModal({ id: c.id, employee: c.employee_name }); setRejectReason(""); }}>驳回</Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
         <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
           {/* 员工列表 */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
@@ -665,6 +783,7 @@ export default function EmployeeProfilesPage() {
             </div>
           </div>
         </div>
+        </div>
       ) : (
         /* 员工端：只看自己的档案，只读 */
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
@@ -683,6 +802,85 @@ export default function EmployeeProfilesPage() {
                   <Label className="text-xs text-[var(--muted-foreground)]">员工</Label>
                   <p className="mt-1 text-base font-medium text-[var(--foreground)]">{selected.name}</p>
                 </div>
+
+                {/* 信息变更申请（员工自助） */}
+                <section className="border-t border-[var(--border)] pt-4">
+                  <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">信息变更申请</h3>
+                  {!showChangeForm ? (
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setChangeForm({
+                        phone: selected.phone || "",
+                        address: selected.address || "",
+                        emergency_name: selected.emergency_name || "",
+                        emergency_phone: selected.emergency_phone || "",
+                        emergency_relation: selected.emergency_relation || "",
+                      });
+                      setChangeErr("");
+                      setShowChangeForm(true);
+                    }}>申请信息变更（电话 / 地址 / 紧急联系人）</Button>
+                  ) : (
+                    <div className="rounded-md border border-[var(--border)] p-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label className="text-xs">新电话 <span className="text-red-500">*</span></Label>
+                          <Input value={changeForm.phone} onChange={(e) => setChangeForm((p) => ({ ...p, phone: e.target.value }))} className="mt-1 h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">新住址 <span className="text-red-500">*</span></Label>
+                          <Input value={changeForm.address} onChange={(e) => setChangeForm((p) => ({ ...p, address: e.target.value }))} className="mt-1 h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">紧急联系人姓名 <span className="text-red-500">*</span></Label>
+                          <Input value={changeForm.emergency_name} onChange={(e) => setChangeForm((p) => ({ ...p, emergency_name: e.target.value }))} className="mt-1 h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">紧急联系人电话 <span className="text-red-500">*</span></Label>
+                          <Input value={changeForm.emergency_phone} onChange={(e) => setChangeForm((p) => ({ ...p, emergency_phone: e.target.value }))} className="mt-1 h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">紧急联系人关系</Label>
+                          <Input value={changeForm.emergency_relation} onChange={(e) => setChangeForm((p) => ({ ...p, emergency_relation: e.target.value }))} className="mt-1 h-9" />
+                        </div>
+                      </div>
+                      {changeErr && <p className="mt-1.5 text-xs text-red-500">{changeErr}</p>}
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button size="sm" onClick={submitInfoChange} disabled={changeSaving}>{changeSaving ? "提交中…" : "提交申请"}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowChangeForm(false)}>取消</Button>
+                      </div>
+                      <p className="mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">提交后需管理员审核，通过后新信息才生效；驳回则信息不变。</p>
+                    </div>
+                  )}
+
+                  <div className="mt-3">
+                    {infoChangesLoading ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                    ) : infoChanges.length === 0 ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">暂无申请记录</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {infoChanges.map((c) => (
+                          <li key={c.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
+                                c.status === "已通过" ? "bg-emerald-500/15 text-emerald-600" :
+                                c.status === "已驳回" ? "bg-red-500/15 text-red-600" :
+                                "bg-orange-500/15 text-orange-600")}>{c.status}</span>
+                              <span className="text-[0.65rem] text-[var(--muted-foreground)]">{c.created_at?.slice(0, 16)}</span>
+                            </div>
+                            <div className="mt-1 grid gap-x-4 gap-y-0.5 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
+                              <span>电话：{c.phone}</span>
+                              <span>住址：{c.address}</span>
+                              <span className="sm:col-span-2">紧急联系人：{c.emergency_name}（{c.emergency_phone}）{c.emergency_relation ? ` · ${c.emergency_relation}` : ""}</span>
+                            </div>
+                            {c.status === "已驳回" && c.reject_reason && (
+                              <p className="mt-1 text-xs text-red-500">驳回原因：{c.reject_reason}</p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </section>
 
                 <section>
                   <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">基本信息</h3>
@@ -782,6 +980,24 @@ export default function EmployeeProfilesPage() {
                 </section>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {rejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
+            <h3 className="text-sm font-medium">驳回变更申请 — {rejectModal.employee}</h3>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="请填写驳回原因"
+              className="mt-3 h-24 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setRejectModal(null)}>取消</Button>
+              <Button size="sm" onClick={confirmReject} disabled={rejecting}>{rejecting ? "驳回中…" : "确认驳回"}</Button>
+            </div>
           </div>
         </div>
       )}
