@@ -89,6 +89,9 @@ export default function EmployeeProfilesPage() {
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [payslipRecords, setPayslipRecords] = useState<any[]>([]);
   const [payslipLoading, setPayslipLoading] = useState(false);
+  // 批量导出勾选
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [exporting, setExporting] = useState(false);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -187,6 +190,51 @@ export default function EmployeeProfilesPage() {
       alert("导出失败");
     }
   };
+
+  // 批量导出：勾选/全选/导出
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAllEmployees = () => {
+    setSelectedIds(new Set(employees.map((e) => e.id)));
+  };
+  const clearSelect = () => setSelectedIds(new Set());
+  const allSelected = employees.length > 0 && selectedIds.size === employees.length;
+
+  const downloadZip = async (ids: number[] | "all") => {
+    setExporting(true);
+    try {
+      const res = await fetchWithAuth("/api/employees/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e?.error || "导出失败"); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "员工档案-批量导出.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+  const exportSelected = () => {
+    if (selectedIds.size === 0) { alert("请先勾选要导出的员工"); return; }
+    downloadZip([...selectedIds]);
+  };
+  const exportAll = () => downloadZip("all");
 
   const loadInfoChanges = () => {
     setInfoChangesLoading(true);
@@ -556,8 +604,16 @@ export default function EmployeeProfilesPage() {
         <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
           {/* 员工列表 */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--border)]">
+            <div className="px-4 py-3 border-b border-[var(--border)] space-y-2">
               <h2 className="text-sm font-medium">员工列表</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1 text-xs text-[var(--muted-foreground)] cursor-pointer">
+                  <input type="checkbox" checked={allSelected} onChange={() => (allSelected ? clearSelect() : selectAllEmployees())} className="size-3.5 accent-[var(--primary)]" />
+                  全选
+                </label>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={exportSelected} disabled={exporting || selectedIds.size === 0}>导出选中{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}</Button>
+                <Button size="sm" className="h-7 text-xs" onClick={exportAll} disabled={exporting}>{exporting ? "导出中…" : "一键导出全部"}</Button>
+              </div>
             </div>
             <div className="max-h-[70vh] overflow-y-auto">
               {loading ? (
@@ -568,30 +624,32 @@ export default function EmployeeProfilesPage() {
                 <ul className="divide-y divide-[var(--border)]">
                   {employees.map((e) => (
                     <li key={e.id}>
-                      <button
-                        onClick={() => selectEmp(e)}
-                        className={cn(
-                          "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40",
-                          selected?.id === e.id && "bg-[var(--muted)]/40"
-                        )}
-                      >
-                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">
-                          {e.name.slice(0, 1)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium text-[var(--foreground)]">{e.name}</span>
-                          <span className="flex items-center gap-1.5 truncate text-xs text-[var(--muted-foreground)]">
-                            {e.role === "admin" ? "管理员" : "员工"}
-                            {e.status && e.status !== "在职" && (
-                              <span className={cn("rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium",
-                                e.status === "离职" ? "bg-red-500/15 text-red-600" :
-                                e.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
-                                e.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
-                                "bg-purple-500/15 text-purple-600")}>{e.status}</span>
-                            )}
+                      <div className={cn("flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40", selected?.id === e.id && "bg-[var(--muted)]/40")}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(e.id)}
+                          onChange={() => toggleSelect(e.id)}
+                          className="size-4 shrink-0 accent-[var(--primary)]"
+                        />
+                        <button onClick={() => selectEmp(e)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm">
+                          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">
+                            {e.name.slice(0, 1)}
                           </span>
-                        </span>
-                      </button>
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium text-[var(--foreground)]">{e.name}</span>
+                            <span className="flex items-center gap-1.5 truncate text-xs text-[var(--muted-foreground)]">
+                              {e.role === "admin" ? "管理员" : "员工"}
+                              {e.status && e.status !== "在职" && (
+                                <span className={cn("rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium",
+                                  e.status === "离职" ? "bg-red-500/15 text-red-600" :
+                                  e.status === "试用期" ? "bg-blue-500/15 text-blue-600" :
+                                  e.status === "待离职" ? "bg-orange-500/15 text-orange-600" :
+                                  "bg-purple-500/15 text-purple-600")}>{e.status}</span>
+                              )}
+                            </span>
+                          </span>
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
