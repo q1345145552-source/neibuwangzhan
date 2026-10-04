@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
 
   // ── 当月统计：每人请了多少次 + 各类型次数 + 总天数 ──
   const monthLeaves = db.prepare(
-    "SELECT employee_name, leave_type, start_date, end_date FROM leave_requests WHERE status = '已通过' AND start_date LIKE ? ORDER BY employee_name"
-  ).all(monthPrefix + "%") as { employee_name: string; leave_type: string; start_date: string; end_date: string }[];
+    "SELECT employee_name, leave_type, start_date, end_date, reason FROM leave_requests WHERE status = '已通过' AND start_date LIKE ? ORDER BY employee_name"
+  ).all(monthPrefix + "%") as { employee_name: string; leave_type: string; start_date: string; end_date: string; reason: string }[];
 
   const employeeMonth: Record<string, { sick: number; personal: number; annual: number; other: number; totalDays: number; leaves: any[] }> = {};
   for (const l of monthLeaves) {
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     else if (l.leave_type === "事假") e.personal++;
     else if (l.leave_type === "年假") e.annual++;
     else e.other++;
-    e.leaves.push({ leave_type: l.leave_type, start_date: l.start_date, end_date: l.end_date, days });
+    e.leaves.push({ leave_type: l.leave_type, start_date: l.start_date, end_date: l.end_date, days, reason: l.reason || "" });
   }
 
   const monthStats = Object.entries(employeeMonth)

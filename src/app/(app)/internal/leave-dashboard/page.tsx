@@ -82,6 +82,36 @@ export default function LeaveDashboardPage() {
     setApproving(false);
   };
 
+  // 按员工按理由汇总：事假：原因1、原因2｜病假：原因3
+  const reasonSummary = (s: any) => {
+    const groups: Record<string, string[]> = {};
+    for (const l of (s.leaves || [])) {
+      const key = l.leave_type || "其他";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(l.reason || "无原因");
+    }
+    return Object.entries(groups).map(([type, reasons]) => `${type}：${reasons.join("、")}`).join("｜");
+  };
+
+  // 结合日历：某月 + 请假记录 → 标记请假日期的月历格子
+  const calendarCells = (month: string, leaves: any[]) => {
+    const [y, m] = month.split("-").map(Number);
+    const startDow = new Date(y, m - 1, 1).getDay();
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const leaveDays = new Set<number>();
+    for (const r of leaves) {
+      const s = new Date(r.start_date + "T00:00:00");
+      const e = new Date(r.end_date + "T00:00:00");
+      for (let d = new Date(s); d <= e; d = new Date(d.getTime() + 86400000)) {
+        if (d.getFullYear() === y && d.getMonth() === m - 1) leaveDays.add(d.getDate());
+      }
+    }
+    const cells: { day: number; onLeave: boolean }[] = [];
+    for (let i = 0; i < startDow; i++) cells.push({ day: 0, onLeave: false });
+    for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, onLeave: leaveDays.has(d) });
+    return cells;
+  };
+
   if (loading) return <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">加载中…</div>;
   if (!dashboard) return <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">暂无数据或没有权限</div>;
 
@@ -160,6 +190,7 @@ export default function LeaveDashboardPage() {
                     <th className="py-2 px-3 text-center font-medium">年假</th>
                     <th className="py-2 px-3 text-center font-medium">其他</th>
                     <th className="py-2 px-3 text-right font-medium">总天数</th>
+                    <th className="py-2 px-3 text-left font-medium">请假理由</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,6 +202,7 @@ export default function LeaveDashboardPage() {
                       <td className="py-2 px-3 text-center">{s.annual || 0}</td>
                       <td className="py-2 px-3 text-center">{s.other || 0}</td>
                       <td className="py-2 px-3 text-right font-medium">{s.totalDays}天</td>
+                      <td className="py-2 px-3 text-xs text-[var(--muted-foreground)] max-w-xs">{reasonSummary(s) || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -189,6 +221,7 @@ export default function LeaveDashboardPage() {
                       <div><p className="tabular-nums">{s.annual || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">年假</p></div>
                       <div><p className="tabular-nums">{s.other || 0}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">其他</p></div>
                     </div>
+                    {reasonSummary(s) && <p className="mt-2 text-xs text-[var(--muted-foreground)]">{reasonSummary(s)}</p>}
                   </div>
                 ))}
               </div>
@@ -307,12 +340,27 @@ export default function LeaveDashboardPage() {
               <p className="text-sm text-[var(--muted-foreground)] text-center py-8">{detailModal.month} 无请假记录</p>
             ) : (
               <>
+              {/* 结合日历：本月请假日历 */}
+              <div className="mb-4">
+                <p className="text-xs text-[var(--muted-foreground)] mb-2">{detailModal.month} 请假日历</p>
+                <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                  {["日", "一", "二", "三", "四", "五", "六"].map((w) => <span key={w} className="text-[var(--muted-foreground)] py-1">{w}</span>)}
+                  {calendarCells(detailModal.month, detailRecords).map((c, i) => (
+                    <span key={i} className={cn("py-1 rounded", c.day === 0 ? "" : c.onLeave ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-medium" : "text-[var(--muted-foreground)]")}>
+                      {c.day || ""}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1 text-[0.6rem] text-[var(--muted-foreground)]">红色为请假日期</p>
+              </div>
+
               <table className="w-full text-sm hidden md:table">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
                     <th className="py-2 px-3 text-left text-xs font-medium">类型</th>
                     <th className="py-2 px-3 text-left text-xs font-medium">日期</th>
                     <th className="py-2 px-3 text-right text-xs font-medium">天数</th>
+                    <th className="py-2 px-3 text-left text-xs font-medium">理由</th>
                     <th className="py-2 px-3 text-center text-xs font-medium">状态</th>
                   </tr>
                 </thead>
@@ -326,6 +374,7 @@ export default function LeaveDashboardPage() {
                         <td className="py-2 px-3">{r.leave_type}</td>
                         <td className="py-2 px-3 text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</td>
                         <td className="py-2 px-3 text-right">{days}天</td>
+                        <td className="py-2 px-3 text-xs text-[var(--muted-foreground)] max-w-xs">{r.reason || "—"}</td>
                         <td className="py-2 px-3 text-center">
                           <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
                         </td>
@@ -350,6 +399,7 @@ export default function LeaveDashboardPage() {
                         <span className="text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</span>
                         <span className="tabular-nums">{days}天</span>
                       </div>
+                      {r.reason && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{r.reason}</p>}
                     </div>
                   );
                 })}

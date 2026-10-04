@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const employee = searchParams.get("employee");
   const status = searchParams.get("status");
+  const month = searchParams.get("month");
   let sql = "SELECT * FROM leave_requests WHERE 1=1";
   const params: any[] = [];
   // 员工只能看自己的请假记录，管理员看全部
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
     params.push(employee);
   }
   if (status) { sql += " AND status = ?"; params.push(status); }
+  if (month && /^\d{4}-\d{2}$/.test(month)) { sql += " AND start_date LIKE ?"; params.push(month + "%"); }
   sql += " ORDER BY created_at DESC";
   const rows = db.prepare(sql).all(...params);
 
