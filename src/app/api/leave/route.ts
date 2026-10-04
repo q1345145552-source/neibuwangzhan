@@ -4,6 +4,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { annualLeaveTotal, annualLeaveBalance } from "@/lib/annual-leave";
+import { computeLeaveRules } from "@/lib/leave-rules";
 import { bangkokToday } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const employee = searchParams.get("employee");
   const status = searchParams.get("status");
+  const month = searchParams.get("month");
   let sql = "SELECT * FROM leave_requests WHERE 1=1";
   const params: any[] = [];
   // 员工只能看自己的请假记录，管理员看全部
@@ -25,8 +27,13 @@ export async function GET(req: NextRequest) {
     params.push(employee);
   }
   if (status) { sql += " AND status = ?"; params.push(status); }
+  if (month && /^\d{4}-\d{2}$/.test(month)) { sql += " AND start_date LIKE ?"; params.push(month + "%"); }
   sql += " ORDER BY created_at DESC";
-  const rows = db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params) as any[];
+
+  // 硬规则：给每条请假附上异常标记（频率/病假/日期/理由重复）
+  const ruleFlags = computeLeaveRules(db);
+  const withFlags = rows.map((r) => ({ ...r, flags: ruleFlags.get(r.id) || [] }));
 
   // 审批超时提醒：管理员加载时，检查是否有超过24h未审批的请假，发一次通知
   if (auth.role === "admin") {
@@ -50,7 +57,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json(rows);
+  return NextResponse.json(withFlags);
 }
 
 export async function POST(req: NextRequest) {

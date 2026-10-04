@@ -11,6 +11,15 @@ export interface ChatSummary {
   commitments: string;
 }
 
+/** 请假 AI 分析结果 */
+export interface LeaveAnalysis {
+  judgment: "正常" | "疑似异常";
+  /** 简短理由（一句话，用于列表标签） */
+  reason: string;
+  /** 详细分析（为什么这么判断、结合了哪些情况） */
+  detail: string;
+}
+
 const SYSTEM_PROMPT = `你是湘泰内部管理系统的聊天记录总结助手。请把下面这段聊天记录总结成四块内容，并且只输出一个 JSON 对象，字段固定为：
 - topics：聊了什么话题
 - conclusions：有什么结论（达成的共识或决定）
@@ -117,5 +126,88 @@ export async function summarizeChatTranscript(transcript: string): Promise<ChatS
     conclusions: toString(obj.conclusions) || "无",
     todos: toString(obj.todos) || "无",
     commitments: toString(obj.commitments) || "无",
+  };
+}
+
+const LEAVE_ANALYSIS_PROMPT = `你是湘泰内部管理系统的请假风险分析助手。请根据员工的本次请假理由、请假日期、历史请假记录和个人情况，判断这次请假是「正常」还是「疑似异常」，并给出简短判断理由。
+
+判断参考：
+- 历史请假频率是否异常（如每周五都请事假、频繁周一/周五请假、总是连着节假日请假）。
+- 请假理由是否含糊、前后矛盾或过于笼统。
+- 是否与个人情况吻合（如家庭有事、感情不稳定、父母需照顾、工作压力大等）。
+- 日期是否可疑（如节假日前后、发薪日、周末前后等）。
+
+要求：
+1. 只输出一个 JSON 对象，字段固定为：
+   - judgment：判断结果，只能是「正常」或「疑似异常」
+   - reason：简短理由（中文，一句话，用于列表标签）
+   - detail：详细分析（中文，2-4 句话，说明为什么这么判断、结合了哪些情况，比如历史请假频率、个人情况、请假日期等）
+2. 不要输出任何其它文字，也不要包在 markdown 代码块里。`;
+
+/** 分析一次请假：正常还是疑似异常（输入含请假理由/日期/历史/个人情况） */
+export async function analyzeLeaveRequest(input: {
+  employeeName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  history: string;
+  personal: string;
+}): Promise<LeaveAnalysis> {
+  const { apiKey, apiBase, model } = getAiConfig();
+
+  const userContent = [
+    `员工：${input.employeeName}`,
+    `本次请假：${input.leaveType}，${input.startDate} ~ ${input.endDate}，理由：${input.reason || "无"}`,
+    ``,
+    `历史请假记录：`,
+    input.history || "（无历史记录）",
+    ``,
+    `员工个人情况：`,
+    input.personal || "（无记录）",
+  ].join("\n");
+
+  const res = await fetch(apiBase, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: LEAVE_ANALYSIS_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DeepSeek 调用失败（${res.status}）：${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json().catch(() => null);
+  const raw: unknown = data?.choices?.[0]?.message?.content;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const cleaned = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+    parsed = JSON.parse(cleaned);
+  }
+
+  const obj = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+  const judgmentRaw = toString(obj.judgment);
+  const judgment: "正常" | "疑似异常" = judgmentRaw.includes("异常") ? "疑似异常" : "正常";
+  return {
+    judgment,
+    reason: toString(obj.reason) || (judgment === "正常" ? "正常" : "疑似异常"),
+    detail: toString(obj.detail) || toString(obj.reason) || "（无详细说明）",
   };
 }

@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
+import { cn, toThaiTime, fileUrl, zodiacFromBirthDate, bangkokDateStr } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
 
 interface ProfileEmployee {
@@ -104,6 +104,18 @@ export default function EmployeeProfilesPage() {
   // 入职资料清单
   const [onboardingDocs, setOnboardingDocs] = useState<OnboardingDoc[]>([]);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
+  // 个人情况记录（仅管理员）
+  const [personal, setPersonal] = useState<Record<string, string>>({});
+  const [personalLoading, setPersonalLoading] = useState(false);
+  const [personalSaving, setPersonalSaving] = useState(false);
+  const [personalErr, setPersonalErr] = useState("");
+  const [personalMsg, setPersonalMsg] = useState("");
+  // 个人情况跟进记录
+  const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
+  const [followupsLoading, setFollowupsLoading] = useState(false);
+  const [followupForm, setFollowupForm] = useState({ date: "", content: "" });
+  const [followupSaving, setFollowupSaving] = useState(false);
+  const [followupErr, setFollowupErr] = useState("");
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -172,6 +184,26 @@ export default function EmployeeProfilesPage() {
       .then((r) => setOnboardingDocs(Array.isArray(r) ? r : []))
       .catch(() => setOnboardingDocs([]))
       .finally(() => setOnboardingLoading(false));
+    // 加载个人情况（仅管理员）
+    setPersonal({});
+    setPersonalErr("");
+    setPersonalMsg("");
+    // 重置跟进记录表单 + 列表
+    setFollowups([]);
+    setFollowupForm({ date: bangkokDateStr(), content: "" });
+    setFollowupErr("");
+    if (isAdmin) {
+      setPersonalLoading(true);
+      fetchPersonalNotes(e.id)
+        .then((r) => setPersonal((r && typeof r === "object") ? (r as unknown as Record<string, string>) : {}))
+        .catch(() => setPersonal({}))
+        .finally(() => setPersonalLoading(false));
+      setFollowupsLoading(true);
+      fetchPersonalFollowups(e.id)
+        .then((r) => setFollowups(Array.isArray(r) ? r : []))
+        .catch(() => setFollowups([]))
+        .finally(() => setFollowupsLoading(false));
+    }
   };
 
   const uploadFile = async () => {
@@ -423,6 +455,56 @@ export default function EmployeeProfilesPage() {
       setOnboardingDocs((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
     } catch (err) {
       alert(err instanceof Error ? err.message : "更新失败");
+    }
+  };
+
+  // 个人情况：设置字段 / 保存
+  const setPersonalField = (k: string, v: string) => setPersonal((prev) => ({ ...prev, [k]: v }));
+  const savePersonal = async () => {
+    if (!selected) return;
+    setPersonalSaving(true);
+    setPersonalErr("");
+    setPersonalMsg("");
+    try {
+      const row = await savePersonalNotes(selected.id, personal as Partial<EmployeePersonalNotes>);
+      setPersonal(row as unknown as Record<string, string>);
+      setPersonalMsg("已保存");
+      setTimeout(() => setPersonalMsg((m) => (m === "已保存" ? "" : m)), 1500);
+    } catch (err) {
+      setPersonalErr(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setPersonalSaving(false);
+    }
+  };
+
+  // 个人情况跟进记录：新增 / 删除
+  const addFollowup = async () => {
+    if (!selected) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(followupForm.date)) { setFollowupErr("请填写跟进日期"); return; }
+    if (!followupForm.content.trim()) { setFollowupErr("请填写跟进内容"); return; }
+    setFollowupSaving(true);
+    setFollowupErr("");
+    try {
+      const rec = await createPersonalFollowup({ employee_id: selected.id, follow_date: followupForm.date, content: followupForm.content.trim() });
+      setFollowups((prev) => {
+        const next = [rec, ...prev];
+        next.sort((a, b) => (a.follow_date < b.follow_date ? 1 : a.follow_date > b.follow_date ? -1 : b.id - a.id));
+        return next;
+      });
+      setFollowupForm({ date: followupForm.date, content: "" });
+    } catch (err) {
+      setFollowupErr(err instanceof Error ? err.message : "新增失败");
+    } finally {
+      setFollowupSaving(false);
+    }
+  };
+  const removeFollowup = async (id: number) => {
+    if (!confirm("确定删除这条跟进记录？")) return;
+    try {
+      await deletePersonalFollowup(id);
+      setFollowups((prev) => prev.filter((f) => f.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "删除失败");
     }
   };
 
@@ -1007,6 +1089,110 @@ export default function EmployeeProfilesPage() {
                           </li>
                         ))}
                       </ul>
+                    )}
+                  </section>
+
+                  {/* 个人情况记录（仅管理员可见） */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">个人情况记录</h3>
+                    {personalLoading ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">家庭情况</h4>
+                          <div className="grid gap-2">
+                            <textarea value={personal.family_composition ?? ""} onChange={(e) => setPersonalField("family_composition", e.target.value)} placeholder="家庭组成" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                            <textarea value={personal.family_relationship ?? ""} onChange={(e) => setPersonalField("family_relationship", e.target.value)} placeholder="家庭关系" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                            <textarea value={personal.family_economy ?? ""} onChange={(e) => setPersonalField("family_economy", e.target.value)} placeholder="经济状况" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">感情情况</h4>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <select value={personal.relationship_status ?? ""} onChange={(e) => setPersonalField("relationship_status", e.target.value)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                              <option value="">感情状态（未填写）</option>
+                              <option value="单身">单身</option>
+                              <option value="恋爱">恋爱</option>
+                              <option value="已婚">已婚</option>
+                            </select>
+                            <select value={personal.relationship_stability ?? ""} onChange={(e) => setPersonalField("relationship_stability", e.target.value)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                              <option value="">稳定性（未填写）</option>
+                              <option value="稳定">稳定</option>
+                              <option value="一般">一般</option>
+                              <option value="不稳定">不稳定</option>
+                            </select>
+                            <textarea value={personal.relationship_affect ?? ""} onChange={(e) => setPersonalField("relationship_affect", e.target.value)} placeholder="影响工作的因素（如男朋友经常吵架）" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y sm:col-span-2" />
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">父母情况</h4>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <select value={personal.parents_alive ?? ""} onChange={(e) => setPersonalField("parents_alive", e.target.value)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                              <option value="">是否健在（未填写）</option>
+                              <option value="健在">健在</option>
+                              <option value="一方健在">一方健在</option>
+                              <option value="均不健在">均不健在</option>
+                            </select>
+                            <select value={personal.parents_care ?? ""} onChange={(e) => setPersonalField("parents_care", e.target.value)} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                              <option value="">是否需要照顾（未填写）</option>
+                              <option value="需要">需要</option>
+                              <option value="不需要">不需要</option>
+                            </select>
+                            <textarea value={personal.parents_health ?? ""} onChange={(e) => setPersonalField("parents_health", e.target.value)} placeholder="健康状况" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y sm:col-span-2" />
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">工作情况</h4>
+                          <div className="grid gap-2">
+                            <textarea value={personal.work_status ?? ""} onChange={(e) => setPersonalField("work_status", e.target.value)} placeholder="工作状态" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                            <textarea value={personal.work_pressure ?? ""} onChange={(e) => setPersonalField("work_pressure", e.target.value)} placeholder="压力" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                            <textarea value={personal.work_mentality ?? ""} onChange={(e) => setPersonalField("work_mentality", e.target.value)} placeholder="心态" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                            <textarea value={personal.work_adaptation ?? ""} onChange={(e) => setPersonalField("work_adaptation", e.target.value)} placeholder="适应度" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
+                          </div>
+                        </div>
+
+                        {/* 跟进记录 */}
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">跟进记录</h4>
+                          <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <input type="date" value={followupForm.date} onChange={(e) => setFollowupForm((p) => ({ ...p, date: e.target.value }))} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                            <input value={followupForm.content} onChange={(e) => setFollowupForm((p) => ({ ...p, content: e.target.value }))} placeholder="跟进内容（如：员工说家里有事，状态不好）" className="h-9 min-w-[200px] flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                            <Button size="sm" onClick={addFollowup} disabled={followupSaving}>{followupSaving ? "记录中…" : "记一条"}</Button>
+                          </div>
+                          {followupErr && <p className="mb-2 text-xs text-red-500">{followupErr}</p>}
+
+                          {followupsLoading ? (
+                            <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                          ) : followups.length === 0 ? (
+                            <p className="text-xs text-[var(--muted-foreground)]">暂无跟进记录</p>
+                          ) : (
+                            <ul className="space-y-2">
+                              {followups.map((f) => (
+                                <li key={f.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-[var(--foreground)]">{f.follow_date}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[0.65rem] text-[var(--muted-foreground)]">{f.created_by}</span>
+                                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => removeFollowup(f.id)}>删除</Button>
+                                    </div>
+                                  </div>
+                                  <p className="mt-1 text-sm text-[var(--foreground)]">{f.content}</p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+
+                        {personalErr && <p className="text-xs text-red-500">{personalErr}</p>}
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={savePersonal} disabled={personalSaving}>{personalSaving ? "保存中…" : "保存个人情况"}</Button>
+                          {personalMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{personalMsg}</span>}
+                        </div>
+                      </div>
                     )}
                   </section>
 

@@ -704,6 +704,46 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_employee_onboarding_employee ON employee_onboarding_docs(employee_id);
 
+    -- 员工个人情况记录（仅管理员可见）：家庭/感情/父母/工作四方面
+    CREATE TABLE IF NOT EXISTS employee_personal_notes (
+      employee_id INTEGER PRIMARY KEY,
+      family_composition TEXT DEFAULT '',
+      family_relationship TEXT DEFAULT '',
+      family_economy TEXT DEFAULT '',
+      relationship_status TEXT DEFAULT '',
+      relationship_stability TEXT DEFAULT '',
+      relationship_affect TEXT DEFAULT '',
+      parents_alive TEXT DEFAULT '',
+      parents_health TEXT DEFAULT '',
+      parents_care TEXT DEFAULT '',
+      work_status TEXT DEFAULT '',
+      work_pressure TEXT DEFAULT '',
+      work_mentality TEXT DEFAULT '',
+      work_adaptation TEXT DEFAULT '',
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ''
+    );
+
+    -- 员工个人情况跟进记录（仅管理员）：带日期和内容，按时间排历史
+    CREATE TABLE IF NOT EXISTS employee_personal_followups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      follow_date TEXT DEFAULT '',
+      content TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_personal_followups_employee ON employee_personal_followups(employee_id);
+
+    -- 请假 AI 分析缓存：同一条请假不重复分析
+    CREATE TABLE IF NOT EXISTS leave_ai_analyses (
+      leave_id INTEGER PRIMARY KEY,
+      judgment TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      detail TEXT DEFAULT '',
+      analyzed_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -1490,6 +1530,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN visa_expiry TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_date TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_ai_analyses ADD COLUMN detail TEXT DEFAULT ''"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。
