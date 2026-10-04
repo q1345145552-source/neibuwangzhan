@@ -20,7 +20,7 @@ interface ProfileEmployee {
 }
 
 const FORM_FIELDS = [
-  "gender", "birth_date", "phone", "address", "id_number",
+  "email", "gender", "birth_date", "phone", "address", "id_number",
   "department", "position", "contract_term",
   "bank_name", "bank_account",
   "emergency_name", "emergency_phone", "emergency_relation",
@@ -38,6 +38,7 @@ export default function EmployeeProfilesPage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  const [formErr, setFormErr] = useState("");
   // 记过/记优点
   const [records, setRecords] = useState<EmployeeRecord[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
@@ -213,18 +214,38 @@ export default function EmployeeProfilesPage() {
 
   const setField = (k: string, v: string) => setForm((prev) => ({ ...prev, [k]: v }));
 
+  // 档案格式校验：身份证13位数字 / 电话数字长度 / 银行账号数字 / 邮箱格式+去重
+  const validateForm = (): string | null => {
+    const email = (form.email || "").trim();
+    const phone = (form.phone || "").trim();
+    const idNumber = (form.id_number || "").trim();
+    const bankAccount = (form.bank_account || "").trim();
+
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) return "邮箱格式不正确";
+    if (email && employees.some((e) => e.email && e.id !== selected?.id && e.email.toLowerCase() === email.toLowerCase())) {
+      return "邮箱已存在";
+    }
+    if (phone && !/^\d{9,11}$/.test(phone)) return "电话需为9-11位数字";
+    if (idNumber && !/^\d{13}$/.test(idNumber)) return "身份证号需为13位数字（泰国身份证）";
+    if (bankAccount && !/^\d+$/.test(bankAccount)) return "银行账号只能为数字";
+    return null;
+  };
+
   const save = async () => {
     if (!selected) return;
-    setSaving(true);
+    setFormErr("");
     setSavedMsg("");
+    const err = validateForm();
+    if (err) { setFormErr(err); return; }
+    setSaving(true);
     try {
       const emp = await updateEmployee(selected.id, form);
       setSelected({ ...selected, ...emp });
       setEmployees((prev) => prev.map((x) => (x.id === emp.id ? { ...x, ...emp } : x)));
       setSavedMsg("已保存");
       setTimeout(() => setSavedMsg((m) => (m === "已保存" ? "" : m)), 1500);
-    } catch {
-      alert("保存失败");
+    } catch (e) {
+      setFormErr(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -710,6 +731,7 @@ export default function EmployeeProfilesPage() {
                         <Label className="text-xs text-[var(--muted-foreground)]">星座（自动）</Label>
                         <p className="flex h-9 items-center text-sm text-[var(--foreground)]">{zodiacFromBirthDate(form.birth_date) || "—"}</p>
                       </div>
+                      {textField("邮箱", "email", "邮箱地址")}
                       {textField("电话", "phone", "电话号码")}
                       {textField("身份证号", "id_number", "身份证号码")}
                       <div className="space-y-1 sm:col-span-2">
@@ -774,6 +796,7 @@ export default function EmployeeProfilesPage() {
                     <Button size="sm" variant="outline" onClick={downloadPdf}><Download className="size-3.5" />导出 PDF</Button>
                     {savedMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{savedMsg}</span>}
                   </div>
+                  {formErr && <p className="text-xs text-red-500">{formErr}</p>}
 
                   <section className="border-t border-[var(--border)] pt-4">
                     <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">扣分 / 记优点</h3>

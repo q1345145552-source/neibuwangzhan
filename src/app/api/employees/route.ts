@@ -81,6 +81,24 @@ export async function PATCH(req: NextRequest) {
   const enumErr = validateEnums({ "employees.role": role, "employees.status": status });
   if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
 
+  // 数据格式校验：邮箱格式+去重 / 电话数字长度 / 身份证13位 / 银行账号数字
+  const emailTrimmed = typeof email === "string" ? email.trim() : "";
+  if (emailTrimmed) {
+    if (!/^\S+@\S+\.\S+$/.test(emailTrimmed)) return NextResponse.json({ error: "邮箱格式不正确" }, { status: 400 });
+    const dup = db.prepare("SELECT id FROM employees WHERE email = ? AND id != ? LIMIT 1").get(emailTrimmed, Number(id));
+    if (dup) return NextResponse.json({ error: "邮箱已存在" }, { status: 400 });
+  }
+  if (phone !== undefined && String(phone).trim() && !/^\d{9,11}$/.test(String(phone).trim())) {
+    return NextResponse.json({ error: "电话需为9-11位数字" }, { status: 400 });
+  }
+  if (id_number !== undefined && String(id_number).trim() && !/^\d{13}$/.test(String(id_number).trim())) {
+    return NextResponse.json({ error: "身份证号需为13位数字" }, { status: 400 });
+  }
+  const bankAccountVal = typeof body?.bank_account === "string" ? body.bank_account.trim() : "";
+  if (bankAccountVal && !/^\d+$/.test(bankAccountVal)) {
+    return NextResponse.json({ error: "银行账号只能为数字" }, { status: 400 });
+  }
+
   const currentEmployee = db.prepare("SELECT role FROM employees WHERE id = ?").get(id) as { role: string } | undefined;
   if (!currentEmployee) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
   // 改名时记录旧名字，用于同步考勤/补签/请假三张表里的历史记录
