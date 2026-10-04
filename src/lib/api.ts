@@ -143,6 +143,17 @@ export interface EmployeeInfoChange {
   created_at: string;
 }
 
+/** 员工教育履历（学历记录） */
+export interface EmployeeEducation {
+  id: number;
+  employee_id: number;
+  level: string;
+  school: string;
+  major: string;
+  grad_year: string;
+  created_at: string;
+}
+
 /** 离职交接清单事项 */
 export interface HandoverItem {
   id: number;
@@ -736,6 +747,50 @@ export async function reviewEmployeeInfoChange(id: number, status: "已通过" |
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "审核失败");
   return result as EmployeeInfoChange;
+}
+
+/** 员工教育履历 */
+export async function fetchEducations(employeeId: number): Promise<EmployeeEducation[]> {
+  const res = await fetch(`/api/employees/educations?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取教育履历失败");
+  return res.json();
+}
+
+/** 新增一条学历 */
+export async function createEducation(data: { employee_id: number; level: string; school: string; major: string; grad_year: string }): Promise<EmployeeEducation> {
+  const res = await fetch("/api/employees/educations", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "新增失败");
+  return result as EmployeeEducation;
+}
+
+/** 编辑一条学历 */
+export async function updateEducation(id: number, data: { level: string; school: string; major: string; grad_year: string }): Promise<EmployeeEducation> {
+  const res = await fetch("/api/employees/educations", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...data }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "编辑失败");
+  return result as EmployeeEducation;
+}
+
+/** 删除一条学历 */
+export async function deleteEducation(id: number): Promise<void> {
+  const res = await fetch("/api/employees/educations", {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const result = await res.json().catch(() => ({}));
+    throw new Error(result.error || "删除失败");
+  }
 }
 
 /** 员工档案文件列表 */

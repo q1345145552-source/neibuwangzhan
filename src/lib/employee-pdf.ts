@@ -28,6 +28,10 @@ export async function generateEmployeePdf(employeeId: number): Promise<EmployeeP
     "SELECT id, category, filename, original_name, mime_type, size FROM employee_files WHERE employee_id = ? ORDER BY created_at DESC, id DESC"
   ).all(employeeId) as { category: string; filename: string; original_name: string; mime_type: string; size: number }[];
 
+  const educations = db.prepare(
+    "SELECT level, school, major, grad_year FROM employee_educations WHERE employee_id = ? ORDER BY id DESC"
+  ).all(employeeId) as { level: string; school: string; major: string; grad_year: string }[];
+
   const doc = new PDFDocument({
     size: "A4",
     margins: { top: 50, bottom: 50, left: 50, right: 50 },
@@ -103,9 +107,19 @@ export async function generateEmployeePdf(employeeId: number): Promise<EmployeeP
   field("工作证到期日", emp.work_permit_expiry);
   field("签证到期日", emp.visa_expiry);
 
+  // === 教育履历 ===
+  sectionTitle("教育履历");
+  if (educations.length === 0) {
+    doc.font(FONT_REGULAR).fontSize(10).text("无记录");
+  } else {
+    for (const e of educations) {
+      const line = [e.level, e.school, e.major, e.grad_year ? `${e.grad_year}届` : ""].filter(Boolean).join(" · ");
+      doc.font(labelFont).fontSize(10).text(line);
+    }
+  }
+
   // === 其他 ===
   sectionTitle("其他");
-  field("学历", emp.education);
   field("技能", emp.skills);
   field("生辰八字", emp.bazi);
   field("算命", emp.fortune);

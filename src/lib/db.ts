@@ -676,6 +676,18 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_eic_employee ON employee_info_changes(employee_id);
     CREATE INDEX IF NOT EXISTS idx_eic_status ON employee_info_changes(status);
 
+    -- 员工教育履历：多条学历记录（层次/学校/专业/毕业年份）
+    CREATE TABLE IF NOT EXISTS employee_educations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      level TEXT DEFAULT '',
+      school TEXT DEFAULT '',
+      major TEXT DEFAULT '',
+      grad_year TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_educations_employee ON employee_educations(employee_id);
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

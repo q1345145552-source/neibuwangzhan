@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -24,9 +24,11 @@ const FORM_FIELDS = [
   "department", "position", "contract_term",
   "bank_name", "bank_account",
   "emergency_name", "emergency_phone", "emergency_relation",
-  "education", "skills", "notes", "bazi", "fortune",
+  "skills", "notes", "bazi", "fortune",
   "passport_number", "social_security_number", "tax_number", "work_permit_number", "work_permit_expiry", "visa_expiry",
 ] as const;
+
+const EDUCATION_LEVELS = ["高中", "中专", "大专", "本科", "硕士", "博士", "其他"] as const;
 
 export default function EmployeeProfilesPage() {
   const { user } = useAuth();
@@ -92,6 +94,13 @@ export default function EmployeeProfilesPage() {
   // 批量导出勾选
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [exporting, setExporting] = useState(false);
+  // 教育履历
+  const [educations, setEducations] = useState<EmployeeEducation[]>([]);
+  const [educationsLoading, setEducationsLoading] = useState(false);
+  const [eduForm, setEduForm] = useState({ level: "本科", school: "", major: "", grad_year: "" });
+  const [editingEduId, setEditingEduId] = useState<number | null>(null);
+  const [eduSaving, setEduSaving] = useState(false);
+  const [eduErr, setEduErr] = useState("");
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -143,6 +152,16 @@ export default function EmployeeProfilesPage() {
     setResignDate("");
     setResignReason("");
     setResignErr("");
+    // 加载教育履历
+    setEducations([]);
+    setEducationsLoading(true);
+    setEditingEduId(null);
+    setEduForm({ level: "本科", school: "", major: "", grad_year: "" });
+    setEduErr("");
+    fetchEducations(e.id)
+      .then((r) => setEducations(Array.isArray(r) ? r : []))
+      .catch(() => setEducations([]))
+      .finally(() => setEducationsLoading(false));
   };
 
   const uploadFile = async () => {
@@ -384,6 +403,55 @@ export default function EmployeeProfilesPage() {
       setHandover((prev) => prev.map((h) => (h.id === updated.id ? updated : h)));
     } catch (err) {
       alert(err instanceof Error ? err.message : "更新失败");
+    }
+  };
+
+  // 教育履历：新增 / 编辑 / 删除
+  const saveEducation = async () => {
+    if (!selected) return;
+    if (!eduForm.level.trim() || !eduForm.school.trim()) { setEduErr("学历层次和学校名称必填"); return; }
+    setEduSaving(true);
+    setEduErr("");
+    try {
+      const payload = {
+        level: eduForm.level.trim(),
+        school: eduForm.school.trim(),
+        major: eduForm.major.trim(),
+        grad_year: eduForm.grad_year.trim(),
+      };
+      if (editingEduId != null) {
+        const updated = await updateEducation(editingEduId, payload);
+        setEducations((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+        setEditingEduId(null);
+      } else {
+        const rec = await createEducation({ employee_id: selected.id, ...payload });
+        setEducations((prev) => [rec, ...prev]);
+      }
+      setEduForm({ level: "本科", school: "", major: "", grad_year: "" });
+    } catch (err) {
+      setEduErr(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setEduSaving(false);
+    }
+  };
+  const startEditEducation = (e: EmployeeEducation) => {
+    setEditingEduId(e.id);
+    setEduForm({ level: e.level, school: e.school, major: e.major, grad_year: e.grad_year });
+    setEduErr("");
+  };
+  const cancelEditEducation = () => {
+    setEditingEduId(null);
+    setEduForm({ level: "本科", school: "", major: "", grad_year: "" });
+    setEduErr("");
+  };
+  const removeEducation = async (id: number) => {
+    if (!confirm("确定删除这条学历？")) return;
+    try {
+      await deleteEducation(id);
+      setEducations((prev) => prev.filter((e) => e.id !== id));
+      if (editingEduId === id) cancelEditEducation();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "删除失败");
     }
   };
 
@@ -839,7 +907,6 @@ export default function EmployeeProfilesPage() {
                   <section>
                     <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">其他</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
-                      {textField("学历", "education", "学历")}
                       {textField("技能", "skills", "技能")}
                       {textField("生辰八字", "bazi", "如 1995年6月15日 子时")}
                       {textField("算命", "fortune", "命理分析 / 算命结果")}
@@ -847,6 +914,51 @@ export default function EmployeeProfilesPage() {
                         {textField("备注", "notes", "备注")}
                       </div>
                     </div>
+                  </section>
+
+                  {/* 教育履历 */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">教育履历</h3>
+                    <div className="mb-4 rounded-md border border-[var(--border)] p-3">
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <select value={eduForm.level} onChange={(e) => setEduForm((p) => ({ ...p, level: e.target.value }))} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                          {EDUCATION_LEVELS.map((lv) => <option key={lv} value={lv}>{lv}</option>)}
+                        </select>
+                        <Input value={eduForm.school} onChange={(e) => setEduForm((p) => ({ ...p, school: e.target.value }))} placeholder="学校名称" className="h-9" />
+                        <Input value={eduForm.major} onChange={(e) => setEduForm((p) => ({ ...p, major: e.target.value }))} placeholder="专业" className="h-9" />
+                        <Input value={eduForm.grad_year} onChange={(e) => setEduForm((p) => ({ ...p, grad_year: e.target.value }))} placeholder="毕业年份" className="h-9" />
+                      </div>
+                      {eduErr && <p className="mt-1.5 text-xs text-red-500">{eduErr}</p>}
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button size="sm" onClick={saveEducation} disabled={eduSaving}>{eduSaving ? "保存中…" : editingEduId != null ? "保存修改" : "添加"}</Button>
+                        {editingEduId != null && <Button size="sm" variant="ghost" onClick={cancelEditEducation}>取消</Button>}
+                      </div>
+                    </div>
+
+                    {educationsLoading ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                    ) : educations.length === 0 ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">暂无学历记录</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {educations.map((e) => (
+                          <li key={e.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="text-sm font-medium text-[var(--foreground)]">{e.school}</span>
+                                <span className="ml-2 rounded-full bg-blue-500/15 px-2 py-0.5 text-[0.65rem] font-medium text-blue-600">{e.level}</span>
+                                {e.major && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{e.major}</span>}
+                                {e.grad_year && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{e.grad_year}届</span>}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => startEditEducation(e)}>编辑</Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-red-500" onClick={() => removeEducation(e.id)}>删除</Button>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </section>
 
                   <div className="flex items-center gap-3">
@@ -1203,12 +1315,33 @@ export default function EmployeeProfilesPage() {
                 <section>
                   <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">其他</h3>
                   <div className="rounded-md border border-[var(--border)] px-3">
-                    {readOnlyRow("学历", selected.education)}
                     {readOnlyRow("技能", selected.skills)}
                     {readOnlyRow("生辰八字", selected.bazi)}
                     {readOnlyRow("算命", selected.fortune)}
                     {readOnlyRow("备注", selected.notes)}
                   </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">教育履历</h3>
+                  {educationsLoading ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                  ) : educations.length === 0 ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">暂无学历记录</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {educations.map((e) => (
+                        <li key={e.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium text-[var(--foreground)]">{e.school}</span>
+                            <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[0.65rem] font-medium text-blue-600">{e.level}</span>
+                            {e.major && <span className="text-xs text-[var(--muted-foreground)]">{e.major}</span>}
+                            {e.grad_year && <span className="text-xs text-[var(--muted-foreground)]">{e.grad_year}届</span>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </section>
 
                 <section>
