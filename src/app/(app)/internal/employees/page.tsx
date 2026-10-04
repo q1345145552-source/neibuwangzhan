@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, fetchPersonalStatus, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, fetchPersonalStatus, fetchStatusAssessment, assessStatus, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup, type StatusAssessment } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate, bangkokDateStr } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -125,6 +125,10 @@ export default function EmployeeProfilesPage() {
   const [factorRemarks, setFactorRemarks] = useState<Record<string, string>>({ family: "", relationship: "", health: "", other: "" });
   // 个人情况最近更新状态（employee_id -> updated_at）
   const [personalStatus, setPersonalStatus] = useState<Map<number, string>>(new Map());
+  // AI 状态评估
+  const [statusAssessment, setStatusAssessment] = useState<StatusAssessment | null>(null);
+  const [assessing, setAssessing] = useState(false);
+  const [assessErr, setAssessErr] = useState("");
   // 个人情况跟进记录
   const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
   const [followupsLoading, setFollowupsLoading] = useState(false);
@@ -210,7 +214,13 @@ export default function EmployeeProfilesPage() {
     setFollowups([]);
     setFollowupForm({ date: bangkokDateStr(), content: "" });
     setFollowupErr("");
+    // 重置 AI 状态评估
+    setStatusAssessment(null);
+    setAssessErr("");
     if (isAdmin) {
+      fetchStatusAssessment(e.id)
+        .then((r) => setStatusAssessment(r && r.level ? r : null))
+        .catch(() => setStatusAssessment(null));
       setPersonalLoading(true);
       fetchPersonalNotes(e.id)
         .then((r) => {
@@ -555,6 +565,21 @@ export default function EmployeeProfilesPage() {
     if (ua === undefined || !ua) return true;
     const d = new Date(ua.replace(" ", "T") + "Z").getTime();
     return isNaN(d) || Date.now() - d > 30 * 86400000;
+  };
+
+  // AI 状态评估：管理员手动点分析
+  const runStatusAssessment = async () => {
+    if (!selected) return;
+    setAssessing(true);
+    setAssessErr("");
+    try {
+      const r = await assessStatus(selected.id);
+      setStatusAssessment(r);
+    } catch (err) {
+      setAssessErr(err instanceof Error ? err.message : "评估失败");
+    } finally {
+      setAssessing(false);
+    }
   };
 
   // 个人情况跟进记录：新增 / 删除
@@ -1268,6 +1293,29 @@ export default function EmployeeProfilesPage() {
                               </div>
                             ))}
                           </div>
+                        </div>
+
+                        {/* AI 状态评估 */}
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <h4 className="text-xs font-medium text-[var(--foreground)]">AI 状态评估</h4>
+                            <Button size="sm" variant="outline" onClick={runStatusAssessment} disabled={assessing}>{assessing ? "评估中…" : statusAssessment ? "重新评估" : "分析"}</Button>
+                          </div>
+                          {assessErr && <p className="mb-2 text-xs text-red-500">{assessErr}</p>}
+                          {statusAssessment ? (
+                            <div className="rounded-md border border-[var(--border)] p-3">
+                              <div className="flex items-center gap-2">
+                                <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium",
+                                  statusAssessment.level === "高风险" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" :
+                                  statusAssessment.level === "需关注" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300")}>{statusAssessment.level}</span>
+                                {statusAssessment.analyzed_at && <span className="text-[0.65rem] text-[var(--muted-foreground)]">{statusAssessment.analyzed_at}</span>}
+                              </div>
+                              <p className="mt-1.5 text-sm text-[var(--foreground)]">{statusAssessment.reason}</p>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-[var(--muted-foreground)]">点击「分析」由 AI 结合家庭/感情/健康/工作与请假记录评估员工状态</p>
+                          )}
                         </div>
 
                         {/* 跟进记录 */}

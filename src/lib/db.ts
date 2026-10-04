@@ -752,6 +752,14 @@ function initTables(database: Database.Database) {
       analyzed_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- 员工 AI 状态评估缓存：同一员工不重复分析
+    CREATE TABLE IF NOT EXISTS employee_status_assessments (
+      employee_id INTEGER PRIMARY KEY,
+      level TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      analyzed_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

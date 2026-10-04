@@ -182,6 +182,15 @@ export interface EmployeePersonalNotes {
   updated_at: string;
 }
 
+/** 员工 AI 状态评估结果 */
+export interface StatusAssessment {
+  employee_id: number;
+  level: string;
+  reason: string;
+  analyzed_at?: string;
+  cached?: boolean;
+}
+
 /** 员工个人情况跟进记录（仅管理员） */
 export interface PersonalFollowup {
   id: number;
@@ -759,6 +768,25 @@ export async function fetchPersonalStatus(): Promise<PersonalUpdateStatus[]> {
   if (!res.ok) throw new Error("获取更新状态失败");
   const data = await res.json();
   return Array.isArray(data.items) ? data.items : [];
+}
+
+/** 已缓存的员工状态评估（仅管理员） */
+export async function fetchStatusAssessment(employeeId: number): Promise<StatusAssessment | null> {
+  const res = await fetch(`/api/employees/status-assessment?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取评估失败");
+  return res.json();
+}
+
+/** 评估员工状态（仅管理员，结果缓存） */
+export async function assessStatus(employeeId: number): Promise<StatusAssessment> {
+  const res = await fetch("/api/employees/status-assessment", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ employee_id: employeeId }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "评估失败");
+  return result as StatusAssessment;
 }
 
 /** 个人情况记录（仅管理员） */
