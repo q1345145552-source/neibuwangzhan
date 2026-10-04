@@ -704,6 +704,26 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_employee_onboarding_employee ON employee_onboarding_docs(employee_id);
 
+    -- 员工个人情况记录（仅管理员可见）：家庭/感情/父母/工作四方面
+    CREATE TABLE IF NOT EXISTS employee_personal_notes (
+      employee_id INTEGER PRIMARY KEY,
+      family_composition TEXT DEFAULT '',
+      family_relationship TEXT DEFAULT '',
+      family_economy TEXT DEFAULT '',
+      relationship_status TEXT DEFAULT '',
+      relationship_stability TEXT DEFAULT '',
+      relationship_affect TEXT DEFAULT '',
+      parents_alive TEXT DEFAULT '',
+      parents_health TEXT DEFAULT '',
+      parents_care TEXT DEFAULT '',
+      work_status TEXT DEFAULT '',
+      work_pressure TEXT DEFAULT '',
+      work_mentality TEXT DEFAULT '',
+      work_adaptation TEXT DEFAULT '',
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ''
+    );
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

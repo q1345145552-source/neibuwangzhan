@@ -154,6 +154,26 @@ export interface EmployeeEducation {
   created_at: string;
 }
 
+/** 员工个人情况记录（仅管理员） */
+export interface EmployeePersonalNotes {
+  employee_id: number;
+  family_composition: string;
+  family_relationship: string;
+  family_economy: string;
+  relationship_status: string;
+  relationship_stability: string;
+  relationship_affect: string;
+  parents_alive: string;
+  parents_health: string;
+  parents_care: string;
+  work_status: string;
+  work_pressure: string;
+  work_mentality: string;
+  work_adaptation: string;
+  updated_by: string;
+  updated_at: string;
+}
+
 /** 入职资料清单事项 */
 export interface OnboardingDoc {
   id: number;
@@ -706,6 +726,25 @@ export async function createDemerit(employeeId: number, content: string, file: F
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "记过失败");
   return result as Demerit;
+}
+
+/** 个人情况记录（仅管理员） */
+export async function fetchPersonalNotes(employeeId: number): Promise<EmployeePersonalNotes> {
+  const res = await fetch(`/api/employees/personal?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取个人情况失败");
+  return res.json();
+}
+
+/** 保存个人情况记录（仅管理员） */
+export async function savePersonalNotes(employeeId: number, data: Partial<EmployeePersonalNotes>): Promise<EmployeePersonalNotes> {
+  const res = await fetch("/api/employees/personal", {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ employee_id: employeeId, ...data }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "保存失败");
+  return result as EmployeePersonalNotes;
 }
 
 /** 入职资料清单 */
