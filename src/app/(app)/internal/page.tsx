@@ -134,6 +134,7 @@ export default function InternalPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
+  const [annualBalance, setAnnualBalance] = useState<{ total: number; used: number; remaining: number } | null>(null);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
   const [leaveCustomTo, setLeaveCustomTo] = useState("");
@@ -378,6 +379,15 @@ export default function InternalPage() {
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setHolidays(d); })
       .catch(() => {});
   }, []);
+
+  // 年假额度：本人当前年度总额/已用/剩余
+  useEffect(() => {
+    if (!user?.name) { setAnnualBalance(null); return; }
+    fetchWithAuth(`/api/leave/annual-balance?employee=${encodeURIComponent(user.name)}`, { cache: "no-store" })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => setAnnualBalance(d))
+      .catch(() => { setAnnualBalance(null); });
+  }, [user?.name]);
 
   // ── Photo upload helpers ──
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -734,6 +744,11 @@ export default function InternalPage() {
       setShowLeaveForm(false);
       setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", start_time: "09:00", end_time: "17:00", destination: "", reason: "" });
       setLeaveImages([]);
+      // 年假申请提交后刷新额度（待审批计入占用）
+      if (newRecord.leave_type === "年假" && user?.name) {
+        fetchWithAuth(`/api/leave/annual-balance?employee=${encodeURIComponent(user.name)}`, { cache: "no-store" })
+          .then(r => r.ok ? r.json() : null).then(d => { if (d) setAnnualBalance(d); }).catch(() => {});
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "网络错误";
       if (msg === "NO_TOKEN") setLeaveErr("登录已过期，请刷新页面重新登录");
@@ -2608,6 +2623,18 @@ export default function InternalPage() {
                   <option value="事假">事假</option><option value="病假">病假</option><option value="年假">年假</option><option value="调休">调休</option><option value="法定假日">法定假日</option><option value="其他">其他</option>
                 </select>
               </div>
+              {leaveForm.leave_type === "年假" && (
+                <div className="sm:col-span-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/50 px-3 py-2">
+                  {annualBalance ? (
+                    <p className="text-xs leading-relaxed">
+                      年假额度：<span className="font-medium">总额 {annualBalance.total} 天</span> · 已用 <span className="font-medium">{annualBalance.used} 天</span> · 剩余 <span className={cn("font-semibold", annualBalance.remaining <= 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}>{annualBalance.remaining} 天</span>
+                      {annualBalance.total === 0 && <span className="text-[var(--muted-foreground)]">（工龄满一年后每年 6 天，当年未用不结转）</span>}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[var(--muted-foreground)]">年假额度加载中…</p>
+                  )}
+                </div>
+              )}
               <div><label className="text-xs font-medium">开始日期</label>
                 <input type="date" value={leaveForm.start_date} min={sevenDaysAgo} onChange={e=>setLeaveForm(p=>({...p,start_date:e.target.value}))}
                   className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
