@@ -121,6 +121,21 @@ export interface EmployeeRecord {
   created_at: string;
 }
 
+/** 员工记过（严重处分）记录 */
+export interface Demerit {
+  id: number;
+  employee_id: number;
+  employee_name: string;
+  content: string;
+  file_name: string;
+  original_name: string;
+  size: number;
+  mime_type: string;
+  created_by: string;
+  created_at: string;
+  file_url: string;
+}
+
 /** 员工档案文件 */
 export interface EmployeeFile {
   id: number;
@@ -617,6 +632,25 @@ export async function createEmployeeRecord(data: { employee_id: number; type: "d
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "记录失败");
   return result as EmployeeRecord;
+}
+
+/** 某员工的记过（严重处分）记录 + 记过次数 */
+export async function fetchDemerits(employeeId: number): Promise<{ count: number; records: Demerit[] }> {
+  const res = await fetch(`/api/employees/demerits?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取记过记录失败");
+  return res.json();
+}
+
+/** 给员工记过（严重处分），可附警告函文件 */
+export async function createDemerit(employeeId: number, content: string, file: File | null): Promise<Demerit> {
+  const fd = new FormData();
+  fd.append("employee_id", String(employeeId));
+  fd.append("content", content);
+  if (file) fd.append("file", file);
+  const res = await fetch("/api/employees/demerits", { method: "POST", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "记过失败");
+  return result as Demerit;
 }
 
 /** 员工档案文件列表 */

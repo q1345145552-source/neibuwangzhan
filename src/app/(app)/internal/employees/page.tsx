@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, type EmployeeRecord, type EmployeeFile } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, type EmployeeRecord, type EmployeeFile, type Demerit } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
@@ -53,6 +53,14 @@ export default function EmployeeProfilesPage() {
   const [fileUploading, setFileUploading] = useState(false);
   const [fileErr, setFileErr] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 记过（严重处分）
+  const [demerits, setDemerits] = useState<Demerit[]>([]);
+  const [demeritCount, setDemeritCount] = useState(0);
+  const [demeritsLoading, setDemeritsLoading] = useState(false);
+  const [demeritContent, setDemeritContent] = useState("");
+  const [demeritSaving, setDemeritSaving] = useState(false);
+  const [demeritErr, setDemeritErr] = useState("");
+  const demeritFileInputRef = useRef<HTMLInputElement>(null);
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -78,6 +86,16 @@ export default function EmployeeProfilesPage() {
       .then((r) => setFiles(Array.isArray(r) ? r : []))
       .catch(() => setFiles([]))
       .finally(() => setFilesLoading(false));
+    // 加载该员工的记过（严重处分）记录
+    setDemerits([]);
+    setDemeritCount(0);
+    setDemeritsLoading(true);
+    setDemeritErr("");
+    setDemeritContent("");
+    fetchDemerits(e.id)
+      .then((r) => { setDemerits(Array.isArray(r.records) ? r.records : []); setDemeritCount(Number(r.count) || 0); })
+      .catch(() => { setDemerits([]); setDemeritCount(0); })
+      .finally(() => setDemeritsLoading(false));
   };
 
   const uploadFile = async () => {
@@ -179,6 +197,37 @@ export default function EmployeeProfilesPage() {
     }
   };
 
+  const addDemerit = async () => {
+    if (!selected) return;
+    if (!demeritContent.trim()) { setDemeritErr("请填写记过内容"); return; }
+    const file = demeritFileInputRef.current?.files?.[0] || null;
+    setDemeritSaving(true);
+    setDemeritErr("");
+    try {
+      const rec = await createDemerit(selected.id, demeritContent.trim(), file);
+      setDemerits((prev) => [rec, ...prev]);
+      setDemeritCount((c) => c + 1);
+      setDemeritContent("");
+      if (demeritFileInputRef.current) demeritFileInputRef.current.value = "";
+    } catch (err) {
+      setDemeritErr(err instanceof Error ? err.message : "记过失败");
+    } finally {
+      setDemeritSaving(false);
+    }
+  };
+
+  const markResigned = async () => {
+    if (!selected) return;
+    if (!confirm(`确定将 ${selected.name} 标记为离职？此操作需手动判决，标记后可在员工列表恢复在职。`)) return;
+    try {
+      const emp = await updateEmployee(selected.id, { status: "离职" });
+      setSelected({ ...selected, status: emp.status });
+      setEmployees((prev) => prev.map((x) => (x.id === emp.id ? { ...x, status: emp.status } : x)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "标记离职失败");
+    }
+  };
+
   const textField = (label: string, key: string, placeholder?: string, type = "text") => (
     <div className="space-y-1">
       <Label className="text-xs text-[var(--muted-foreground)]">{label}</Label>
@@ -202,7 +251,7 @@ export default function EmployeeProfilesPage() {
           <li key={r.id} className="rounded-md border border-[var(--border)] px-3 py-2">
             <div className="flex items-center justify-between gap-2">
               <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", r.type === "demerit" ? "bg-red-500/15 text-red-600" : "bg-emerald-500/15 text-emerald-600")}>
-                {r.type === "demerit" ? "记过" : "记优点"}
+                {r.type === "demerit" ? "扣分" : "记优点"}
               </span>
               <span className={cn("text-sm font-semibold tabular-nums", r.type === "demerit" ? "text-red-600" : "text-emerald-600")}>
                 {r.type === "demerit" ? "-" : "+"}{r.points} 分
@@ -216,12 +265,37 @@ export default function EmployeeProfilesPage() {
     );
   };
 
+  const demeritsList = () => {
+    if (demeritsLoading) return <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>;
+    if (demerits.length === 0) return <p className="text-xs text-[var(--muted-foreground)]">暂无记过记录</p>;
+    return (
+      <ul className="space-y-2">
+        {demerits.map((d) => (
+          <li key={d.id} className="rounded-md border border-red-300/60 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-red-500/15 text-red-600">记过（严重处分）</span>
+              <span className="text-[0.65rem] text-[var(--muted-foreground)]">{d.created_by} · {toThaiTime(d.created_at)}</span>
+            </div>
+            <p className="mt-1 text-sm text-[var(--foreground)]">{d.content}</p>
+            {d.file_url && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <a href={fileUrl(d.file_url)} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Eye className="size-3" />警告函</a>
+                <a href={fileUrl(d.file_url)} download={d.original_name || "警告函"} className="inline-flex h-7 items-center gap-1 rounded border border-[var(--border)] px-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]"><Download className="size-3" />下载</a>
+                <span className="text-xs text-[var(--muted-foreground)]">{d.original_name}</span>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">员工档案</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "基本信息 · 工作信息 · 银行信息 · 紧急联系人 · 记过记优点" : "我的档案（只读）"}</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "基本信息 · 工作信息 · 银行信息 · 紧急联系人 · 扣分记优点 · 记过" : "我的档案（只读）"}</p>
         </div>
         <Link href="/internal">
           <Button variant="outline" size="sm" className="h-8 text-xs"><ArrowLeft className="size-3.5" /> 返回内部管理</Button>
@@ -364,21 +438,42 @@ export default function EmployeeProfilesPage() {
                   </div>
 
                   <section className="border-t border-[var(--border)] pt-4">
-                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">记过 / 记优点</h3>
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">扣分 / 记优点</h3>
                     <div className="mb-4 rounded-md border border-[var(--border)] p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <select value={recordType} onChange={(e) => setRecordType(e.target.value as "demerit" | "merit")} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
                           <option value="merit">记优点（加分）</option>
-                          <option value="demerit">记过（扣分）</option>
+                          <option value="demerit">扣分（轻微过失）</option>
                         </select>
                         <Input type="number" min="1" step="1" value={recordPoints} onChange={(e) => setRecordPoints(e.target.value)} placeholder="分值" className="h-9 w-24" />
                         <Input value={recordContent} onChange={(e) => setRecordContent(e.target.value)} placeholder="内容（做了什么 / 犯了什么错）" className="h-9 min-w-[160px] flex-1" />
                         <Button size="sm" onClick={addRecord} disabled={recordSaving} className="h-9">{recordSaving ? "记录中…" : "记录"}</Button>
                       </div>
                       {recordErr && <p className="mt-1.5 text-xs text-red-500">{recordErr}</p>}
-                      <p className="mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">一分 = 十泰铢</p>
+                      <p className="mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">一分 = 十泰铢（轻微过失扣分，与记过处分是两回事）</p>
                     </div>
                     {recordsList()}
+                  </section>
+
+                  {/* 记过（严重处分） */}
+                  <section className="border-t border-[var(--border)] pt-4">
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">记过（严重处分）<span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[0.65rem] text-red-600">已记过 {demeritCount} 次</span></h3>
+                    {demeritCount >= 2 && selected.status !== "离职" && (
+                      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 dark:bg-red-950/20">
+                        <p className="text-xs text-red-700 dark:text-red-400">该员工已累计记过 {demeritCount} 次，可标记离职（需手动判决，系统不会自动离职）。</p>
+                        <Button size="sm" variant="outline" className="h-7 text-xs text-red-600" onClick={markResigned}>标记离职</Button>
+                      </div>
+                    )}
+                    <div className="mb-4 rounded-md border border-[var(--border)] p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input value={demeritContent} onChange={(e) => setDemeritContent(e.target.value)} placeholder="记过内容（犯了什么严重错误）" className="h-9 min-w-[160px] flex-1" />
+                        <input ref={demeritFileInputRef} type="file" className="h-9 min-w-[160px] flex-1 text-sm text-[var(--foreground)]" title="警告函文件" />
+                        <Button size="sm" onClick={addDemerit} disabled={demeritSaving} className="h-9">{demeritSaving ? "记过中…" : "记过"}</Button>
+                      </div>
+                      {demeritErr && <p className="mt-1.5 text-xs text-red-500">{demeritErr}</p>}
+                      <p className="mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">可上传警告函文件；记过两次后提醒管理员手动判决是否标记离职。</p>
+                    </div>
+                    {demeritsList()}
                   </section>
 
                   {/* 档案文件 */}
@@ -507,8 +602,13 @@ export default function EmployeeProfilesPage() {
                 </section>
 
                 <section>
-                  <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">记过 / 记优点</h3>
+                  <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">扣分 / 记优点</h3>
                   {recordsList()}
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">记过（严重处分）<span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[0.65rem] text-red-600">已记过 {demeritCount} 次</span></h3>
+                  {demeritsList()}
                 </section>
 
                 <section>

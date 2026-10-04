@@ -120,14 +120,14 @@ export async function GET(
   field("算命", emp.fortune);
   field("备注", emp.notes);
 
-  // === 记过 / 记优点 ===
-  sectionTitle("记过 / 记优点");
+  // === 扣分 / 记优点 ===
+  sectionTitle("扣分 / 记优点");
   if (records.length === 0) {
     doc.font(FONT_REGULAR).fontSize(10).text("无记录");
   } else {
     for (const r of records) {
       const sign = r.type === "demerit" ? "-" : "+";
-      const badge = r.type === "demerit" ? "记过" : "记优点";
+      const badge = r.type === "demerit" ? "扣分" : "记优点";
       const date = String(r.created_at || "").slice(0, 10);
       doc.font(labelFont).fontSize(10).text(`${badge}  ${sign}${r.points}分`, { continued: true });
       doc.font(FONT_REGULAR).fontSize(10).text(`    ${r.content}    (${date})`);

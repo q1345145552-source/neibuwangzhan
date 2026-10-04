@@ -506,6 +506,21 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_employee_records_employee ON employee_records(employee_id);
 
+    -- 员工记过（严重处分）：内容 + 警告函文件；记过两次提醒管理员可标记离职
+    CREATE TABLE IF NOT EXISTS demerits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      file_name TEXT DEFAULT '',
+      original_name TEXT DEFAULT '',
+      size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_demerits_employee ON demerits(employee_id);
+
     -- 员工档案文件：合同/错误承认书/其他
     CREATE TABLE IF NOT EXISTS employee_files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -844,7 +859,7 @@ function initTables(database: Database.Database) {
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip"]);
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign"]);
 
   // 模板库
   database.exec(`
