@@ -24,7 +24,7 @@ export async function GET(
 
   const db = getDb();
   const emp = db.prepare(
-    "SELECT id, name, email, role, status, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes, bazi, fortune FROM employees WHERE id = ?"
+    "SELECT id, name, email, role, status, hire_date, gender, birth_date, phone, address, id_number, department, position, contract_term, bank_name, bank_account, emergency_name, emergency_phone, emergency_relation, education, skills, notes, bazi, fortune, passport_number, social_security_number, tax_number, work_permit_number, work_permit_expiry, visa_expiry FROM employees WHERE id = ?"
   ).get(employeeId) as Record<string, string | number> | undefined;
   if (!emp) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
 
@@ -102,6 +102,15 @@ export async function GET(
   field("姓名", emp.emergency_name);
   field("电话", emp.emergency_phone);
   field("关系", emp.emergency_relation);
+
+  // === 泰国合规 ===
+  sectionTitle("泰国合规");
+  field("护照号", emp.passport_number);
+  field("社保号", emp.social_security_number);
+  field("税号", emp.tax_number);
+  field("工作证号", emp.work_permit_number);
+  field("工作证到期日", emp.work_permit_expiry);
+  field("签证到期日", emp.visa_expiry);
 
   // === 其他 ===
   sectionTitle("其他");

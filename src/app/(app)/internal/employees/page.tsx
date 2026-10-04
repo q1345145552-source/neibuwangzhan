@@ -25,6 +25,7 @@ const FORM_FIELDS = [
   "bank_name", "bank_account",
   "emergency_name", "emergency_phone", "emergency_relation",
   "education", "skills", "notes", "bazi", "fortune",
+  "passport_number", "social_security_number", "tax_number", "work_permit_number", "work_permit_expiry", "visa_expiry",
 ] as const;
 
 export default function EmployeeProfilesPage() {
@@ -298,7 +299,7 @@ export default function EmployeeProfilesPage() {
                         <p className="flex h-9 items-center text-sm text-[var(--foreground)]">{zodiacFromBirthDate(form.birth_date) || "—"}</p>
                       </div>
                       {textField("电话", "phone", "电话号码")}
-                      {textField("身份证号 / 护照号", "id_number", "证件号码")}
+                      {textField("身份证号", "id_number", "身份证号码")}
                       <div className="space-y-1 sm:col-span-2">
                         {textField("住址", "address", "居住地址")}
                       </div>
@@ -328,6 +329,18 @@ export default function EmployeeProfilesPage() {
                       {textField("姓名", "emergency_name", "紧急联系人姓名")}
                       {textField("电话", "emergency_phone", "紧急联系人电话")}
                       {textField("关系", "emergency_relation", "如 配偶 / 父母")}
+                    </div>
+                  </section>
+
+                  <section>
+                    <h3 className="mb-3 text-xs font-semibold text-[var(--muted-foreground)]">泰国合规</h3>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {textField("护照号", "passport_number", "护照号码")}
+                      {textField("社保号", "social_security_number", "社保号码")}
+                      {textField("税号", "tax_number", "税号")}
+                      {textField("工作证号", "work_permit_number", "工作证号码")}
+                      {textField("工作证到期日", "work_permit_expiry", undefined, "date")}
+                      {textField("签证到期日", "visa_expiry", undefined, "date")}
                     </div>
                   </section>
 
@@ -440,7 +453,7 @@ export default function EmployeeProfilesPage() {
                     {readOnlyRow("星座", zodiacFromBirthDate(selected.birth_date))}
                     {readOnlyRow("电话", selected.phone)}
                     {readOnlyRow("住址", selected.address)}
-                    {readOnlyRow("身份证号 / 护照号", selected.id_number)}
+                    {readOnlyRow("身份证号", selected.id_number)}
                   </div>
                 </section>
 
@@ -467,6 +480,18 @@ export default function EmployeeProfilesPage() {
                     {readOnlyRow("姓名", selected.emergency_name)}
                     {readOnlyRow("电话", selected.emergency_phone)}
                     {readOnlyRow("关系", selected.emergency_relation)}
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold text-[var(--muted-foreground)]">泰国合规</h3>
+                  <div className="rounded-md border border-[var(--border)] px-3">
+                    {readOnlyRow("护照号", selected.passport_number)}
+                    {readOnlyRow("社保号", selected.social_security_number)}
+                    {readOnlyRow("税号", selected.tax_number)}
+                    {readOnlyRow("工作证号", selected.work_permit_number)}
+                    {readOnlyRow("工作证到期日", selected.work_permit_expiry)}
+                    {readOnlyRow("签证到期日", selected.visa_expiry)}
                   </div>
                 </section>
 

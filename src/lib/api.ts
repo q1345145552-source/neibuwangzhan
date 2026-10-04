@@ -92,6 +92,18 @@ export interface Employee {
   bazi?: string;
   /** 算命（命理分析/算命结果） */
   fortune?: string;
+  /** 护照号 */
+  passport_number?: string;
+  /** 社保号 */
+  social_security_number?: string;
+  /** 税号 */
+  tax_number?: string;
+  /** 工作证号 */
+  work_permit_number?: string;
+  /** 工作证到期日 YYYY-MM-DD */
+  work_permit_expiry?: string;
+  /** 签证到期日 YYYY-MM-DD */
+  visa_expiry?: string;
   /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
   customer_names?: string[];
 }
@@ -576,7 +588,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; passport_number?: string; social_security_number?: string; tax_number?: string; work_permit_number?: string; work_permit_expiry?: string; visa_expiry?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",
