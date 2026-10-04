@@ -82,9 +82,9 @@ export async function POST(req: NextRequest) {
   const members = [...memberSet];
   if (members.length === 0) return NextResponse.json({ error: "请至少选择一名成员" }, { status: 400 });
 
-  // 校验所有成员都是在职员工
+  // 校验所有成员都是在职/试用期/待离职员工
   const staffStmt = db.prepare(
-    "SELECT id FROM employees WHERE name = ? AND status = '在职' AND role IN ('admin','employee')"
+    "SELECT id FROM employees WHERE name = ? AND status IN ('在职','试用期','待离职') AND role IN ('admin','employee')"
   );
   for (const m of members) {
     if (!staffStmt.get(m)) return NextResponse.json({ error: `成员「${m}」不存在或已离职` }, { status: 400 });

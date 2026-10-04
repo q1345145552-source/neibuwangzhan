@@ -19,7 +19,7 @@ function getOrCreateConversation(db: Db, me: string, other: string): number {
 
 function findActiveStaff(db: Db, name: string): boolean {
   const row = db.prepare(
-    "SELECT id FROM employees WHERE name = ? AND status = '在职' AND role IN ('admin','employee')"
+    "SELECT id FROM employees WHERE name = ? AND status IN ('在职','试用期','待离职') AND role IN ('admin','employee')"
   ).get(name);
   return !!row;
 }
@@ -111,6 +111,9 @@ export async function POST(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const db = getDb();
+  // 停薪留职/离职员工不能发消息（离职已在登录层拦截，这里拦停薪留职）
+  if (!findActiveStaff(db, auth.name)) return NextResponse.json({ error: "仅在职/试用期/待离职员工可发消息" }, { status: 403 });
+
   const body = await readJson(req);
   const other = String(body?.other || "").trim();
   const content = String(body?.content || "").trim();

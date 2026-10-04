@@ -124,6 +124,12 @@ export async function POST(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const db = getDb();
+  // 停薪留职/离职员工不能发消息（离职已在登录层拦截，这里拦停薪留职）
+  const senderOk = db.prepare(
+    "SELECT id FROM employees WHERE name = ? AND status IN ('在职','试用期','待离职') AND role IN ('admin','employee')"
+  ).get(auth.name);
+  if (!senderOk) return NextResponse.json({ error: "仅在职/试用期/待离职员工可发消息" }, { status: 403 });
+
   const body = await readJson(req);
   const groupId = Number(body?.group_id);
   const content = String(body?.content || "").trim();

@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
   if (group.owner !== auth.name) return NextResponse.json({ error: "只有群主能邀请成员" }, { status: 403 });
   if (members.length === 0) return NextResponse.json({ error: "请选择要邀请的成员" }, { status: 400 });
 
-  // 校验都是在职员工（群主自己已在群内，跳过）
+  // 校验都是在职/试用期/待离职员工（群主自己已在群内，跳过）
   const staffStmt = db.prepare(
-    "SELECT id FROM employees WHERE name = ? AND status = '在职' AND role IN ('admin','employee')"
+    "SELECT id FROM employees WHERE name = ? AND status IN ('在职','试用期','待离职') AND role IN ('admin','employee')"
   );
   const valid: string[] = [];
   for (const m of members) {
