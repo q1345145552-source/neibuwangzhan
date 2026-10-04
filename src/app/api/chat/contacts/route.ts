@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 
-// GET /api/chat/contacts — 可聊天的在职员工（不含自己），带最后一条消息预览和未读数，按最新消息倒序
+// GET /api/chat/contacts — 可聊天的员工（不含离职和客户，不含自己），带最后一条消息预览和未读数，按最新消息倒序
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.receiver = ? AND m.is_read = 0) AS unread
     FROM employees e
     LEFT JOIN conversations c ON (c.user_a = e.name AND c.user_b = ?) OR (c.user_b = e.name AND c.user_a = ?)
-    WHERE e.status = '在职' AND e.role IN ('admin','employee') AND e.name != ?
+    WHERE e.status != '离职' AND e.role IN ('admin','employee') AND e.name != ?
     ORDER BY COALESCE(c.last_message_at, '') DESC, e.name ASC
   `).all(me, me, me, me) as {
     name: string;

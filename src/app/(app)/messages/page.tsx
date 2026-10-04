@@ -534,7 +534,7 @@ export default function MessagesPage() {
   const openedRef = useRef(false);
   const lastTypingPingRef = useRef(0);
 
-  // 联系人列表：在职员工（不含自己），带最后消息和未读
+  // 联系人列表：员工（不含离职和客户，不含自己），带最后消息和未读
   const loadContacts = useCallback(() => {
     fetchWithAuth("/api/chat/contacts", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
