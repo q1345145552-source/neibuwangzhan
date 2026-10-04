@@ -94,6 +94,8 @@ export default function EmployeeProfilesPage() {
   // 批量导出勾选
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [exporting, setExporting] = useState(false);
+  // 是否显示离职员工（默认不显示）
+  const [showResigned, setShowResigned] = useState(false);
   // 教育履历
   const [educations, setEducations] = useState<EmployeeEducation[]>([]);
   const [educationsLoading, setEducationsLoading] = useState(false);
@@ -261,11 +263,13 @@ export default function EmployeeProfilesPage() {
       return next;
     });
   };
+  // 列表可见员工：默认过滤离职，开关打开才显示
+  const visibleEmployees = showResigned ? employees : employees.filter((e) => e.status !== "离职");
   const selectAllEmployees = () => {
-    setSelectedIds(new Set(employees.map((e) => e.id)));
+    setSelectedIds(new Set(visibleEmployees.map((e) => e.id)));
   };
   const clearSelect = () => setSelectedIds(new Set());
-  const allSelected = employees.length > 0 && selectedIds.size === employees.length;
+  const allSelected = visibleEmployees.length > 0 && selectedIds.size === visibleEmployees.length;
 
   const downloadZip = async (ids: number[] | "all") => {
     setExporting(true);
@@ -784,15 +788,21 @@ export default function EmployeeProfilesPage() {
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={exportSelected} disabled={exporting || selectedIds.size === 0}>导出选中{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}</Button>
                 <Button size="sm" className="h-7 text-xs" onClick={exportAll} disabled={exporting}>{exporting ? "导出中…" : "一键导出全部"}</Button>
               </div>
+              <div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
+                <label className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] cursor-pointer">
+                  <input type="checkbox" checked={showResigned} onChange={(e) => setShowResigned(e.target.checked)} className="size-3.5 accent-[var(--primary)]" />
+                  显示离职员工{employees.filter((e) => e.status === "离职").length > 0 ? `（${employees.filter((e) => e.status === "离职").length} 人）` : ""}
+                </label>
+              </div>
             </div>
             <div className="max-h-[70vh] overflow-y-auto">
               {loading ? (
                 <p className="p-4 text-xs text-[var(--muted-foreground)]">加载中…</p>
-              ) : employees.length === 0 ? (
+              ) : visibleEmployees.length === 0 ? (
                 <p className="p-4 text-xs text-[var(--muted-foreground)]">暂无员工</p>
               ) : (
                 <ul className="divide-y divide-[var(--border)]">
-                  {employees.map((e) => (
+                  {visibleEmployees.map((e) => (
                     <li key={e.id}>
                       <div className={cn("flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--muted)]/40", selected?.id === e.id && "bg-[var(--muted)]/40")}>
                         <input
