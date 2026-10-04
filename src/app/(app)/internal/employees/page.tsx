@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes } from "@/lib/api";
+import { fetchWithAuth, updateEmployee, fetchEmployeeRecords, createEmployeeRecord, fetchEmployeeFiles, uploadEmployeeFile, deleteEmployeeFile, fetchDemerits, createDemerit, fetchHandover, toggleHandoverItem, fetchEmployeeInfoChanges, createEmployeeInfoChange, reviewEmployeeInfoChange, fetchEducations, createEducation, updateEducation, deleteEducation, fetchOnboardingDocs, toggleOnboardingDoc, fetchPersonalNotes, savePersonalNotes, fetchPersonalFollowups, createPersonalFollowup, deletePersonalFollowup, type EmployeeRecord, type EmployeeFile, type Demerit, type HandoverItem, type EmployeeInfoChange, type EmployeeEducation, type OnboardingDoc, type EmployeePersonalNotes, type PersonalFollowup } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { cn, toThaiTime, fileUrl, zodiacFromBirthDate } from "@/lib/utils";
+import { cn, toThaiTime, fileUrl, zodiacFromBirthDate, bangkokDateStr } from "@/lib/utils";
 import { ArrowLeft, IdCard, Download, Eye, Trash2 } from "lucide-react";
 
 interface ProfileEmployee {
@@ -110,6 +110,12 @@ export default function EmployeeProfilesPage() {
   const [personalSaving, setPersonalSaving] = useState(false);
   const [personalErr, setPersonalErr] = useState("");
   const [personalMsg, setPersonalMsg] = useState("");
+  // 个人情况跟进记录
+  const [followups, setFollowups] = useState<PersonalFollowup[]>([]);
+  const [followupsLoading, setFollowupsLoading] = useState(false);
+  const [followupForm, setFollowupForm] = useState({ date: "", content: "" });
+  const [followupSaving, setFollowupSaving] = useState(false);
+  const [followupErr, setFollowupErr] = useState("");
 
   const selectEmp = (e: ProfileEmployee) => {
     setSelected(e);
@@ -182,12 +188,21 @@ export default function EmployeeProfilesPage() {
     setPersonal({});
     setPersonalErr("");
     setPersonalMsg("");
+    // 重置跟进记录表单 + 列表
+    setFollowups([]);
+    setFollowupForm({ date: bangkokDateStr(), content: "" });
+    setFollowupErr("");
     if (isAdmin) {
       setPersonalLoading(true);
       fetchPersonalNotes(e.id)
         .then((r) => setPersonal((r && typeof r === "object") ? (r as unknown as Record<string, string>) : {}))
         .catch(() => setPersonal({}))
         .finally(() => setPersonalLoading(false));
+      setFollowupsLoading(true);
+      fetchPersonalFollowups(e.id)
+        .then((r) => setFollowups(Array.isArray(r) ? r : []))
+        .catch(() => setFollowups([]))
+        .finally(() => setFollowupsLoading(false));
     }
   };
 
@@ -459,6 +474,37 @@ export default function EmployeeProfilesPage() {
       setPersonalErr(err instanceof Error ? err.message : "保存失败");
     } finally {
       setPersonalSaving(false);
+    }
+  };
+
+  // 个人情况跟进记录：新增 / 删除
+  const addFollowup = async () => {
+    if (!selected) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(followupForm.date)) { setFollowupErr("请填写跟进日期"); return; }
+    if (!followupForm.content.trim()) { setFollowupErr("请填写跟进内容"); return; }
+    setFollowupSaving(true);
+    setFollowupErr("");
+    try {
+      const rec = await createPersonalFollowup({ employee_id: selected.id, follow_date: followupForm.date, content: followupForm.content.trim() });
+      setFollowups((prev) => {
+        const next = [rec, ...prev];
+        next.sort((a, b) => (a.follow_date < b.follow_date ? 1 : a.follow_date > b.follow_date ? -1 : b.id - a.id));
+        return next;
+      });
+      setFollowupForm({ date: followupForm.date, content: "" });
+    } catch (err) {
+      setFollowupErr(err instanceof Error ? err.message : "新增失败");
+    } finally {
+      setFollowupSaving(false);
+    }
+  };
+  const removeFollowup = async (id: number) => {
+    if (!confirm("确定删除这条跟进记录？")) return;
+    try {
+      await deletePersonalFollowup(id);
+      setFollowups((prev) => prev.filter((f) => f.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "删除失败");
     }
   };
 
@@ -1107,6 +1153,38 @@ export default function EmployeeProfilesPage() {
                             <textarea value={personal.work_mentality ?? ""} onChange={(e) => setPersonalField("work_mentality", e.target.value)} placeholder="心态" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
                             <textarea value={personal.work_adaptation ?? ""} onChange={(e) => setPersonalField("work_adaptation", e.target.value)} placeholder="适应度" className="h-16 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-y" />
                           </div>
+                        </div>
+
+                        {/* 跟进记录 */}
+                        <div className="border-t border-[var(--border)] pt-3">
+                          <h4 className="mb-2 text-xs font-medium text-[var(--foreground)]">跟进记录</h4>
+                          <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <input type="date" value={followupForm.date} onChange={(e) => setFollowupForm((p) => ({ ...p, date: e.target.value }))} className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                            <input value={followupForm.content} onChange={(e) => setFollowupForm((p) => ({ ...p, content: e.target.value }))} placeholder="跟进内容（如：员工说家里有事，状态不好）" className="h-9 min-w-[200px] flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                            <Button size="sm" onClick={addFollowup} disabled={followupSaving}>{followupSaving ? "记录中…" : "记一条"}</Button>
+                          </div>
+                          {followupErr && <p className="mb-2 text-xs text-red-500">{followupErr}</p>}
+
+                          {followupsLoading ? (
+                            <p className="text-xs text-[var(--muted-foreground)]">加载中…</p>
+                          ) : followups.length === 0 ? (
+                            <p className="text-xs text-[var(--muted-foreground)]">暂无跟进记录</p>
+                          ) : (
+                            <ul className="space-y-2">
+                              {followups.map((f) => (
+                                <li key={f.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-[var(--foreground)]">{f.follow_date}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[0.65rem] text-[var(--muted-foreground)]">{f.created_by}</span>
+                                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => removeFollowup(f.id)}>删除</Button>
+                                    </div>
+                                  </div>
+                                  <p className="mt-1 text-sm text-[var(--foreground)]">{f.content}</p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
 
                         {personalErr && <p className="text-xs text-red-500">{personalErr}</p>}

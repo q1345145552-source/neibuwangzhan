@@ -724,6 +724,17 @@ function initTables(database: Database.Database) {
       updated_at TEXT DEFAULT ''
     );
 
+    -- 员工个人情况跟进记录（仅管理员）：带日期和内容，按时间排历史
+    CREATE TABLE IF NOT EXISTS employee_personal_followups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      follow_date TEXT DEFAULT '',
+      content TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_personal_followups_employee ON employee_personal_followups(employee_id);
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

@@ -174,6 +174,16 @@ export interface EmployeePersonalNotes {
   updated_at: string;
 }
 
+/** 员工个人情况跟进记录（仅管理员） */
+export interface PersonalFollowup {
+  id: number;
+  employee_id: number;
+  follow_date: string;
+  content: string;
+  created_by: string;
+  created_at: string;
+}
+
 /** 入职资料清单事项 */
 export interface OnboardingDoc {
   id: number;
@@ -745,6 +755,38 @@ export async function savePersonalNotes(employeeId: number, data: Partial<Employ
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "保存失败");
   return result as EmployeePersonalNotes;
+}
+
+/** 个人情况跟进记录（仅管理员） */
+export async function fetchPersonalFollowups(employeeId: number): Promise<PersonalFollowup[]> {
+  const res = await fetch(`/api/employees/personal/followups?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取跟进记录失败");
+  return res.json();
+}
+
+/** 记一条个人情况跟进 */
+export async function createPersonalFollowup(data: { employee_id: number; follow_date: string; content: string }): Promise<PersonalFollowup> {
+  const res = await fetch("/api/employees/personal/followups", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "新增失败");
+  return result as PersonalFollowup;
+}
+
+/** 删除一条个人情况跟进 */
+export async function deletePersonalFollowup(id: number): Promise<void> {
+  const res = await fetch("/api/employees/personal/followups", {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const result = await res.json().catch(() => ({}));
+    throw new Error(result.error || "删除失败");
+  }
 }
 
 /** 入职资料清单 */
