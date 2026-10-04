@@ -131,7 +131,7 @@ export default function EmployeeProfilesPage() {
     fetchWithAuth(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        const list = Array.isArray(d) ? d.filter((e: any) => e.role !== "client") : [];
+        const list = Array.isArray(d) ? d.filter((e: any) => e.role === "employee") : [];
         setEmployees(list);
         if (!isAdmin && list.length > 0) selectEmp(list[0]);
       })

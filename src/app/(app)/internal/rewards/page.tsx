@@ -77,7 +77,7 @@ export default function RewardsPage() {
     fetchWithAuth("/api/employees", { cache: "no-store" })
       .then(r => r.ok ? r.json() : [])
       .then(data => {
-        const empList = (Array.isArray(data) ? data : []).map((e: any) => ({ id: e.id, name: e.name, role: e.role }));
+        const empList = (Array.isArray(data) ? data : []).filter((e: any) => e.role === "employee").map((e: any) => ({ id: e.id, name: e.name, role: e.role }));
         if (empList.length > 0) setEmployees(empList);
       })
       .catch(() => {});

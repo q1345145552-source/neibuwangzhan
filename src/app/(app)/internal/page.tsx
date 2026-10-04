@@ -309,7 +309,7 @@ export default function InternalPage() {
         const res = await fetchWithAuth("/api/employees", { cache: "no-store" });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
         const data = await res.json();
-        const names: string[] = (Array.isArray(data) ? data : []).map((e: any) => e.name).filter(Boolean);
+        const names: string[] = (Array.isArray(data) ? data : []).filter((e: any) => e.role === "employee").map((e: any) => e.name).filter(Boolean);
         setStaffNames(names);
       } catch (e) { console.error("[内部管理] 加载员工列表失败", e); }
     };
@@ -832,7 +832,7 @@ export default function InternalPage() {
     setSalaryLoading(true);
     fetchWithAuth("/api/employees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (Array.isArray(d)) setSalaryRows(d.filter((e: any) => e.role !== "client")); })
+      .then((d) => { if (Array.isArray(d)) setSalaryRows(d.filter((e: any) => e.role === "employee")); })
       .catch(() => {})
       .finally(() => setSalaryLoading(false));
   }, [isAdmin]);
