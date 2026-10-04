@@ -19,11 +19,13 @@ interface Payslip {
   bonus: number | string;
   commission: number | string;
   overtime: number | string;
+  merit_income: number;
   social_security: number;
   late_deduction: number;
   personal_leave_deduction: number;
   sick_leave_deduction: number;
   absence_deduction: number;
+  demerit_deduction: number;
   withholding_tax: number | string;
   status: string;
   reject_reason: string;
@@ -58,7 +60,7 @@ function parseJson<T>(s: string, fallback: T): T {
 export default function PayslipsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const [tab, setTab] = useState<"payslips" | "attendance">("payslips");
+  const [tab, setTab] = useState<"payslips" | "attendance" | "history">("payslips");
   const [month, setMonth] = useState(currentMonthKey());
 
   // ── 工资单 ──
@@ -76,6 +78,11 @@ export default function PayslipsPage() {
   const [attGenerating, setAttGenerating] = useState(false);
   const [attErr, setAttErr] = useState("");
   const [attDetail, setAttDetail] = useState<AttendanceSummary | null>(null);
+
+  // ── 历史记录（所有月份工资单）──
+  const [historyPayslips, setHistoryPayslips] = useState<Payslip[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState("全部");
 
   // 医院证明大图（工资单详情和考勤汇总详情共用）
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -102,6 +109,16 @@ export default function PayslipsPage() {
       .catch(() => setSummaries([]))
       .finally(() => setAttLoading(false));
   }, [month, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "history") return;
+    setHistoryLoading(true);
+    fetchWithAuth("/api/payslips?month=all", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setHistoryPayslips(Array.isArray(d) ? d : []))
+      .catch(() => setHistoryPayslips([]))
+      .finally(() => setHistoryLoading(false));
+  }, [tab, isAdmin]);
 
   const shiftMonth = (offset: number) => {
     const [y, m] = month.split("-").map(Number);
@@ -171,10 +188,10 @@ export default function PayslipsPage() {
 
   const n = (v: unknown) => (v === "" || v === null || v === undefined ? 0 : Number(v));
   const totalOf = (p: Payslip) => {
-    return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime);
+    return n(p.base_salary) + n(p.diligence_bonus) + n(p.skill_allowance) + n(p.bonus) + n(p.commission) + n(p.overtime) + n(p.merit_income);
   };
   const deductionOf = (p: Payslip) => {
-    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.absence_deduction) + n(p.withholding_tax);
+    return n(p.social_security) + n(p.late_deduction) + n(p.personal_leave_deduction) + n(p.sick_leave_deduction) + n(p.absence_deduction) + n(p.demerit_deduction) + n(p.withholding_tax);
   };
 
   const statusClass: Record<string, string> = {
@@ -201,6 +218,26 @@ export default function PayslipsPage() {
       }
     } catch {
       setErr("操作失败");
+    }
+  };
+
+  const deleteRow = async (id: number) => {
+    if (!confirm("确定删除这份工资单？删除后可重新点「生成工资单」重新计算。")) return;
+    setErr("");
+    try {
+      const r = await fetchWithAuth("/api/payslips", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setPayslips((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        alert(d?.error || "删除失败");
+      }
+    } catch {
+      alert("删除失败");
     }
   };
 
@@ -276,7 +313,7 @@ export default function PayslipsPage() {
         </Link>
       </div>
 
-      {/* 标签页：工资单 / 考勤汇总 */}
+      {/* 标签页：工资单 / 考勤汇总 / 历史记录 */}
       <div className="flex items-center gap-4 border-b border-[var(--border)]">
         <button
           onClick={() => setTab("payslips")}
@@ -289,6 +326,12 @@ export default function PayslipsPage() {
           className={cn("pb-2 text-sm font-medium transition-colors border-b-2 -mb-px", tab === "attendance" ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}
         >
           考勤汇总
+        </button>
+        <button
+          onClick={() => setTab("history")}
+          className={cn("pb-2 text-sm font-medium transition-colors border-b-2 -mb-px", tab === "history" ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}
+        >
+          历史记录
         </button>
       </div>
 
@@ -344,12 +387,14 @@ export default function PayslipsPage() {
                         <th className="py-3 px-3 text-right text-xs font-medium">奖金</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">佣金</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">加班费</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">功过收入</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">收入合计</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">社保</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">迟到</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">事假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">缺勤</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">功过扣款</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">预扣税</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
                         <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
@@ -358,7 +403,7 @@ export default function PayslipsPage() {
                     </thead>
                     <tbody>
                       {payslips.map((p) => (
-                        <tr key={p.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20">
+                        <tr key={p.id} className={cn("border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20", p.status === "打回" && "bg-red-500/[0.06]")}>
                           <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.employee_name}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums">{p.base_salary}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums">{p.diligence_bonus}</td>
@@ -372,12 +417,14 @@ export default function PayslipsPage() {
                           <td className="py-2.5 px-3 text-right">
                             <input type="number" min="0" step="0.01" value={p.overtime ?? ""} onChange={(e) => updateField(p.id, "overtime", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                           </td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-emerald-600">{(p.merit_income || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums font-semibold">{totalOf(p).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.social_security || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.late_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.personal_leave_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.sick_leave_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{(p.absence_deduction || 0).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-red-500">{(p.demerit_deduction || 0).toFixed(2)}</td>
                           <td className="py-2.5 px-3 text-right">
                             <input type="number" min="0" step="0.01" value={p.withholding_tax ?? ""} onChange={(e) => updateField(p.id, "withholding_tax", e.target.value)} className="h-8 w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-base text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                           </td>
@@ -387,7 +434,7 @@ export default function PayslipsPage() {
                               {p.status}
                             </span>
                             {p.status === "打回" && p.reject_reason && (
-                              <p className="mt-1 text-[0.6rem] text-red-500">意见：{p.reject_reason}</p>
+                              <p className="mt-1 text-xs font-medium text-red-500">意见：{p.reject_reason}</p>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right whitespace-nowrap">
@@ -399,10 +446,13 @@ export default function PayslipsPage() {
                               <Button size="sm" variant="outline" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>发送</Button>
                             )}
                             {p.status === "打回" && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>重发</Button>
+                              <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>重发</Button>
                             )}
                             {p.status === "已确认" && (
                               <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "pay")}>发放</Button>
+                            )}
+                            {(p.status === "草稿" || p.status === "打回") && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => deleteRow(p.id)}>删除</Button>
                             )}
                           </td>
                         </tr>
@@ -424,6 +474,42 @@ export default function PayslipsPage() {
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="font-semibold text-[var(--foreground)]">{detail.employee_name} · {detail.month} 工资单</h3>
                       <button onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+                    </div>
+
+                    {/* 工资条：收入 / 扣除 / 净收入 */}
+                    <div className="mb-4 rounded-lg border border-[var(--border)] p-3">
+                      <p className="mb-2 text-center text-sm font-semibold text-[var(--foreground)]">工资条</p>
+
+                      <div className="space-y-1">
+                        {[["底薪", detail.base_salary], ["勤奋奖", detail.diligence_bonus], ["技能津贴", detail.skill_allowance], ["奖金", detail.bonus], ["佣金", detail.commission], ["加班费", detail.overtime], ["功过收入", detail.merit_income]].map(([label, val]) => (
+                          <div key={String(label)} className="flex justify-between text-sm">
+                            <span className="text-[var(--muted-foreground)]">{label}</span>
+                            <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1 flex justify-between border-t border-[var(--border)] pt-1 text-sm font-medium">
+                        <span>收入合计</span>
+                        <span className="tabular-nums">{totalOf(detail).toFixed(2)}</span>
+                      </div>
+
+                      <div className="mt-3 space-y-1">
+                        {[["社保", detail.social_security], ["迟到扣款", detail.late_deduction], ["事假扣款", detail.personal_leave_deduction], ["病假扣款", detail.sick_leave_deduction], ["缺勤扣款", detail.absence_deduction], ["功过扣款", detail.demerit_deduction], ["预扣税", detail.withholding_tax]].map(([label, val]) => (
+                          <div key={String(label)} className="flex justify-between text-sm">
+                            <span className="text-[var(--muted-foreground)]">{label}</span>
+                            <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1 flex justify-between border-t border-[var(--border)] pt-1 text-sm font-medium">
+                        <span>扣除合计</span>
+                        <span className="tabular-nums">{deductionOf(detail).toFixed(2)}</span>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between rounded-md bg-[var(--muted)]/40 px-3 py-2">
+                        <span className="text-sm font-semibold text-[var(--foreground)]">净收入</span>
+                        <span className="text-xl font-bold tabular-nums text-emerald-600">{(totalOf(detail) - deductionOf(detail)).toFixed(2)}</span>
+                      </div>
                     </div>
 
                     <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">考勤汇总</p>
@@ -473,7 +559,7 @@ export default function PayslipsPage() {
             })()}
           </>
         )
-      ) : (
+      ) : tab === "attendance" ? (
         <>
           {isAdmin && (
             <div className="flex flex-wrap items-center gap-3">
@@ -644,6 +730,69 @@ export default function PayslipsPage() {
               </div>
             </div>
           )}
+        </>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            {["全部", "草稿", "待确认", "已确认", "打回", "已发放"].map((s) => (
+              <button
+                key={s}
+                onClick={() => setHistoryFilter(s)}
+                className={cn("h-8 px-3 rounded-full text-xs border transition-colors", historyFilter === s ? "bg-[var(--primary)] text-white border-transparent" : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]")}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {historyLoading ? (
+            <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
+          ) : (() => {
+            const filtered = historyFilter === "全部" ? historyPayslips : historyPayslips.filter((p) => p.status === historyFilter);
+            if (filtered.length === 0) {
+              return <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-10 text-center text-sm text-[var(--muted-foreground)]">暂无工资单记录</div>;
+            }
+            return (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
+                        <th className="py-3 px-4 text-left text-xs font-medium">月份</th>
+                        <th className="py-3 px-4 text-left text-xs font-medium">员工</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">收入</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">扣除</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
+                        <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
+                        <th className="py-3 px-4 text-left text-xs font-medium">打回意见</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((p) => (
+                        <tr key={p.id} className={cn("border-b border-[var(--border)] last:border-0", p.status === "打回" && "bg-red-500/[0.06]")}>
+                          <td className="py-2.5 px-4 whitespace-nowrap tabular-nums text-[var(--foreground)]">{p.month}</td>
+                          <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.employee_name}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums">{totalOf(p).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{deductionOf(p).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(totalOf(p) - deductionOf(p)).toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", statusClass[p.status] || "bg-slate-500/15 text-slate-600")}>{p.status}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-left">
+                            {p.status === "打回" ? (
+                              <span className="text-xs text-red-500">{p.reject_reason || "—"}</span>
+                            ) : (
+                              <span className="text-xs text-[var(--muted-foreground)]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 

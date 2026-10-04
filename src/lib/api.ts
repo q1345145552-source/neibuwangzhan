@@ -54,8 +54,101 @@ export interface Employee {
   status?: string;
   /** 头像地址（/api/files/...），空表示未上传 */
   avatar?: string;
+  /** 入职日期 YYYY-MM-DD，空表示未填写 */
+  hire_date?: string;
+  /** 性别 */
+  gender?: string;
+  /** 出生日期 YYYY-MM-DD */
+  birth_date?: string;
+  /** 电话 */
+  phone?: string;
+  /** 住址 */
+  address?: string;
+  /** 身份证号或护照号 */
+  id_number?: string;
+  /** 部门 */
+  department?: string;
+  /** 职位 */
+  position?: string;
+  /** 合同期限 */
+  contract_term?: string;
+  /** 开户银行 */
+  bank_name?: string;
+  /** 银行账号 */
+  bank_account?: string;
+  /** 紧急联系人姓名 */
+  emergency_name?: string;
+  /** 紧急联系人电话 */
+  emergency_phone?: string;
+  /** 紧急联系人关系 */
+  emergency_relation?: string;
+  /** 学历 */
+  education?: string;
+  /** 技能 */
+  skills?: string;
+  /** 备注 */
+  notes?: string;
+  /** 生辰八字 */
+  bazi?: string;
+  /** 算命（命理分析/算命结果） */
+  fortune?: string;
+  /** 护照号 */
+  passport_number?: string;
+  /** 社保号 */
+  social_security_number?: string;
+  /** 税号 */
+  tax_number?: string;
+  /** 工作证号 */
+  work_permit_number?: string;
+  /** 工作证到期日 YYYY-MM-DD */
+  work_permit_expiry?: string;
+  /** 签证到期日 YYYY-MM-DD */
+  visa_expiry?: string;
   /** 仅 client 角色：该账号在外部客户端口能看到哪些公司的订单 */
   customer_names?: string[];
+}
+
+/** 员工记过/记优点记录 */
+export interface EmployeeRecord {
+  id: number;
+  employee_id: number;
+  /** demerit=记过(扣分)，merit=记优点(加分) */
+  type: "demerit" | "merit";
+  /** 分值（正数，一分=十泰铢） */
+  points: number;
+  content: string;
+  created_by: string;
+  created_at: string;
+}
+
+/** 员工记过（严重处分）记录 */
+export interface Demerit {
+  id: number;
+  employee_id: number;
+  employee_name: string;
+  content: string;
+  file_name: string;
+  original_name: string;
+  size: number;
+  mime_type: string;
+  created_by: string;
+  created_at: string;
+  file_url: string;
+}
+
+/** 员工档案文件 */
+export interface EmployeeFile {
+  id: number;
+  employee_id: number;
+  /** 合同 / 错误承认书 / 其他 */
+  category: string;
+  filename: string;
+  original_name: string;
+  size: number;
+  mime_type: string;
+  created_by: string;
+  created_at: string;
+  url: string;
 }
 
 export interface Document {
@@ -221,7 +314,7 @@ export async function fetchEmployees(params?: { include_left?: boolean }) {
   return res.json() as Promise<Employee[]>;
 }
 
-export async function createEmployee(data: { name: string; email: string; role?: string; password?: string }) {
+export async function createEmployee(data: { name: string; email: string; role?: string; password?: string; hire_date?: string }) {
   const res = await fetch("/api/employees", {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -510,7 +603,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; passport_number?: string; social_security_number?: string; tax_number?: string; work_permit_number?: string; work_permit_expiry?: string; visa_expiry?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",
@@ -520,6 +613,76 @@ export async function updateEmployee(
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "更新员工失败");
   return result as Employee;
+}
+
+/** 某员工的记过/记优点记录（按时间倒序） */
+export async function fetchEmployeeRecords(employeeId: number): Promise<EmployeeRecord[]> {
+  const res = await fetch(`/api/employees/records?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取记录失败");
+  return res.json();
+}
+
+/** 给员工记过/记优点 */
+export async function createEmployeeRecord(data: { employee_id: number; type: "demerit" | "merit"; points: number; content: string }): Promise<EmployeeRecord> {
+  const res = await fetch("/api/employees/records", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "记录失败");
+  return result as EmployeeRecord;
+}
+
+/** 某员工的记过（严重处分）记录 + 记过次数 */
+export async function fetchDemerits(employeeId: number): Promise<{ count: number; records: Demerit[] }> {
+  const res = await fetch(`/api/employees/demerits?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取记过记录失败");
+  return res.json();
+}
+
+/** 给员工记过（严重处分），可附警告函文件 */
+export async function createDemerit(employeeId: number, content: string, file: File | null): Promise<Demerit> {
+  const fd = new FormData();
+  fd.append("employee_id", String(employeeId));
+  fd.append("content", content);
+  if (file) fd.append("file", file);
+  const res = await fetch("/api/employees/demerits", { method: "POST", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "记过失败");
+  return result as Demerit;
+}
+
+/** 员工档案文件列表 */
+export async function fetchEmployeeFiles(employeeId: number): Promise<EmployeeFile[]> {
+  const res = await fetch(`/api/employees/files?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取文件失败");
+  return res.json();
+}
+
+/** 上传员工档案文件（multipart） */
+export async function uploadEmployeeFile(employeeId: number, category: string, file: File): Promise<EmployeeFile> {
+  const fd = new FormData();
+  fd.append("employee_id", String(employeeId));
+  fd.append("category", category);
+  fd.append("file", file);
+  const res = await fetch("/api/employees/files", { method: "POST", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "上传失败");
+  return result as EmployeeFile;
+}
+
+/** 删除员工档案文件 */
+export async function deleteEmployeeFile(id: number): Promise<void> {
+  const res = await fetch("/api/employees/files", {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const result = await res.json().catch(() => ({}));
+    throw new Error(result.error || "删除失败");
+  }
 }
 
 /** 订单里出现过的全部客户公司名，供配置客户账号可见范围时选择 */

@@ -40,6 +40,7 @@ import {
   Activity,
   FolderKanban,
   MessageSquare,
+  IdCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -90,6 +91,7 @@ const logisticsNav = [
 
 const internalNav = [
   { name: "内部管理", href: "/internal", icon: Monitor },
+  { name: "员工档案", href: "/internal/employees", icon: IdCard },
   { name: "请假看板", href: "/internal/leave-dashboard", icon: Monitor },
   { name: "奖惩制度", href: "/internal/rewards", icon: Star },
   { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },

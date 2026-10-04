@@ -39,6 +39,10 @@ export async function POST(req: NextRequest) {
   // 防代打卡：普通员工只能给自己打卡，管理员可代指定员工补录
   const employee_name = auth.role === "admin" && body.employee_name ? body.employee_name : auth.name;
   if (!employee_name) return NextResponse.json({ error: "缺少员工姓名" }, { status: 400 });
+  // 管理员（老板）不算考勤：不能给自己打卡
+  if (auth.role === "admin" && employee_name === auth.name) {
+    return NextResponse.json({ error: "管理员无需打卡" }, { status: 400 });
+  }
   if (action !== "check_in" && action !== "check_out") {
     return NextResponse.json({ error: "无效的 action，应为 check_in 或 check_out" }, { status: 400 });
   }

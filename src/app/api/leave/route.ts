@@ -3,6 +3,8 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
+import { annualLeaveTotal, annualLeaveBalance } from "@/lib/annual-leave";
+import { bangkokToday } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -80,6 +82,28 @@ export async function POST(req: NextRequest) {
     ) + 1;
     if (used + reqDays > 10) {
       return NextResponse.json({ error: `病假额度不足：已用${used}天，本次申请${reqDays}天超出年度上限10天` }, { status: 400 });
+    }
+  }
+
+  // 年假额度检查：工龄超过一年才 6 天，不足一年 0 天；超过剩余额度则拒绝
+  if (leave_type === "年假") {
+    const today = bangkokToday();
+    const year = today.slice(0, 4);
+    const emp = db.prepare("SELECT hire_date FROM employees WHERE name = ?").get(employee_name) as { hire_date: string | null } | undefined;
+    const total = annualLeaveTotal(emp?.hire_date ?? null, today);
+    if (total <= 0) {
+      return NextResponse.json({ error: "工龄未满一年，暂无年假额度" }, { status: 400 });
+    }
+    const balance = annualLeaveBalance(db, employee_name, today);
+    const occupied = db.prepare(
+      "SELECT COALESCE(SUM(julianday(end_date) - julianday(start_date) + 1), 0) as total FROM leave_requests WHERE employee_name = ? AND leave_type = '年假' AND start_date LIKE ? AND status IN ('已通过','待审批')"
+    ).get(employee_name, year + "%") as { total: number };
+    const pending = Math.round(occupied.total || 0);
+    const reqDays = Math.round(
+      (new Date(end_date + "T00:00:00").getTime() - new Date(start_date + "T00:00:00").getTime()) / 86400000
+    ) + 1;
+    if (pending + reqDays > total) {
+      return NextResponse.json({ error: `年假额度不足：总额${total}天，已用${balance.used}天，待审批${pending - balance.used}天，本次申请${reqDays}天` }, { status: 400 });
     }
   }
 

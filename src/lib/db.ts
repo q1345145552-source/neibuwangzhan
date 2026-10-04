@@ -466,8 +466,74 @@ function initTables(database: Database.Database) {
       base_salary REAL DEFAULT 0,
       diligence_bonus REAL,
       skill_allowance REAL DEFAULT 0,
+      hire_date TEXT DEFAULT '',
+      gender TEXT DEFAULT '',
+      birth_date TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      id_number TEXT DEFAULT '',
+      department TEXT DEFAULT '',
+      position TEXT DEFAULT '',
+      contract_term TEXT DEFAULT '',
+      bank_name TEXT DEFAULT '',
+      bank_account TEXT DEFAULT '',
+      emergency_name TEXT DEFAULT '',
+      emergency_phone TEXT DEFAULT '',
+      emergency_relation TEXT DEFAULT '',
+      education TEXT DEFAULT '',
+      skills TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      bazi TEXT DEFAULT '',
+      fortune TEXT DEFAULT '',
+      passport_number TEXT DEFAULT '',
+      social_security_number TEXT DEFAULT '',
+      tax_number TEXT DEFAULT '',
+      work_permit_number TEXT DEFAULT '',
+      work_permit_expiry TEXT DEFAULT '',
+      visa_expiry TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- 员工记过/记优点记录：type=demerit 记过(扣分)，type=merit 记优点(加分)，points 为正数分值
+    CREATE TABLE IF NOT EXISTS employee_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'merit' CHECK(type IN ('demerit','merit')),
+      points INTEGER NOT NULL DEFAULT 0,
+      content TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_records_employee ON employee_records(employee_id);
+
+    -- 员工记过（严重处分）：内容 + 警告函文件；记过两次提醒管理员可标记离职
+    CREATE TABLE IF NOT EXISTS demerits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      file_name TEXT DEFAULT '',
+      original_name TEXT DEFAULT '',
+      size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_demerits_employee ON demerits(employee_id);
+
+    -- 员工档案文件：合同/错误承认书/其他
+    CREATE TABLE IF NOT EXISTS employee_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      category TEXT NOT NULL DEFAULT '其他' CHECK(category IN ('合同','错误承认书','其他')),
+      filename TEXT NOT NULL,
+      original_name TEXT DEFAULT '',
+      size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_files_employee ON employee_files(employee_id);
 
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -793,7 +859,7 @@ function initTables(database: Database.Database) {
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip"]);
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign"]);
 
   // 模板库
   database.exec(`
@@ -1228,6 +1294,31 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN base_salary REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN diligence_bonus REAL"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN skill_allowance REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN hire_date TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN gender TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN birth_date TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN phone TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN address TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN id_number TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN department TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN position TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN contract_term TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN bank_name TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN bank_account TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_name TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_phone TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_relation TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN education TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN skills TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN notes TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN bazi TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN fortune TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN passport_number TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN social_security_number TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN tax_number TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN work_permit_number TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN work_permit_expiry TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN visa_expiry TEXT DEFAULT ''"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。
@@ -1784,11 +1875,13 @@ function initTables(database: Database.Database) {
       bonus REAL DEFAULT 0,
       commission REAL DEFAULT 0,
       overtime REAL DEFAULT 0,
+      merit_income REAL DEFAULT 0,
       social_security REAL DEFAULT 0,
       late_deduction REAL DEFAULT 0,
       personal_leave_deduction REAL DEFAULT 0,
       sick_leave_deduction REAL DEFAULT 0,
       absence_deduction REAL DEFAULT 0,
+      demerit_deduction REAL DEFAULT 0,
       withholding_tax REAL DEFAULT 0,
       status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回')),
       reject_reason TEXT DEFAULT '',
@@ -1804,6 +1897,8 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN sick_leave_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN absence_deduction REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN merit_income REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE payslips ADD COLUMN demerit_deduction REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回'))"); } catch {}
   try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}

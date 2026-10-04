@@ -7,6 +7,7 @@ import { getDb, logOperation } from '@/lib/db';
 import { isSyncRequest, syncRateLimited, recordSyncAuthFailure } from '@/lib/sync-auth';
 import { notifyCustomerDocuments } from '@/lib/order-alerts';
 import { markRequestSubmitted } from '@/lib/delivery-sync';
+import { uploadsDir } from '@/lib/uploads';
 
 /**
  * 资料打通（2026-10-03，规则 12）：接收客户站按单批量送来的资料清单。
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
   const orderIds = (db.prepare(`SELECT internal_order_id FROM sync_inbox WHERE source_order_no=? AND internal_order_id IS NOT NULL
     GROUP BY internal_order_id ORDER BY MIN(line_no), MIN(copy_no)`).all(sourceOrderNo) as { internal_order_id: string }[]).map(r => r.internal_order_id);
   const known = db.prepare('SELECT 1 FROM sync_documents WHERE submission_id=? LIMIT 1');
-  const dir = path.join(process.cwd(), 'uploads');
+  const dir = uploadsDir;
   const results: Result[] = [];
   const staged: { item: Item; safeName: string; size: number; ext: string }[] = [];
   const cleanup = () => Promise.all(staged.map(s => unlink(path.join(dir, s.safeName)).catch(() => {})));

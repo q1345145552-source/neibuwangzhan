@@ -134,6 +134,7 @@ export default function InternalPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
+  const [annualBalance, setAnnualBalance] = useState<{ total: number; used: number; remaining: number } | null>(null);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
   const [leaveCustomTo, setLeaveCustomTo] = useState("");
@@ -309,7 +310,7 @@ export default function InternalPage() {
         const res = await fetchWithAuth("/api/employees", { cache: "no-store" });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
         const data = await res.json();
-        const names: string[] = (Array.isArray(data) ? data : []).map((e: any) => e.name).filter(Boolean);
+        const names: string[] = (Array.isArray(data) ? data : []).filter((e: any) => e.role === "employee").map((e: any) => e.name).filter(Boolean);
         setStaffNames(names);
       } catch (e) { console.error("[内部管理] 加载员工列表失败", e); }
     };
@@ -379,6 +380,15 @@ export default function InternalPage() {
       .catch(() => {});
   }, []);
 
+  // 年假额度：本人当前年度总额/已用/剩余
+  useEffect(() => {
+    if (!user?.name) { setAnnualBalance(null); return; }
+    fetchWithAuth(`/api/leave/annual-balance?employee=${encodeURIComponent(user.name)}`, { cache: "no-store" })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => setAnnualBalance(d))
+      .catch(() => { setAnnualBalance(null); });
+  }, [user?.name]);
+
   // ── Photo upload helpers ──
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -400,6 +410,7 @@ export default function InternalPage() {
   };
 
   const handleClockAction = async (action: "check_in" | "check_out") => {
+    if (isAdmin) { alert("管理员无需打卡"); return; }
     setPhotoModal({ action });
   };
 
@@ -733,6 +744,11 @@ export default function InternalPage() {
       setShowLeaveForm(false);
       setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", start_time: "09:00", end_time: "17:00", destination: "", reason: "" });
       setLeaveImages([]);
+      // 年假申请提交后刷新额度（待审批计入占用）
+      if (newRecord.leave_type === "年假" && user?.name) {
+        fetchWithAuth(`/api/leave/annual-balance?employee=${encodeURIComponent(user.name)}`, { cache: "no-store" })
+          .then(r => r.ok ? r.json() : null).then(d => { if (d) setAnnualBalance(d); }).catch(() => {});
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "网络错误";
       if (msg === "NO_TOKEN") setLeaveErr("登录已过期，请刷新页面重新登录");
@@ -826,12 +842,23 @@ export default function InternalPage() {
   const [salarySavingId, setSalarySavingId] = useState<number | null>(null);
   const [salarySavedId, setSalarySavedId] = useState<number | null>(null);
 
+  // ── 工作证/签证到期提醒（管理员）──
+  const [expiryAlerts, setExpiryAlerts] = useState<{ employee_name: string; label: string; date: string; days_left: number; expired: boolean }[]>([]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetchWithAuth("/api/internal/expiry-alerts", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setExpiryAlerts(Array.isArray(d) ? d : []))
+      .catch(() => setExpiryAlerts([]));
+  }, [isAdmin]);
+
   useEffect(() => {
     if (!isAdmin) return;
     setSalaryLoading(true);
     fetchWithAuth("/api/employees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (Array.isArray(d)) setSalaryRows(d.filter((e: any) => e.role !== "client")); })
+      .then((d) => { if (Array.isArray(d)) setSalaryRows(d.filter((e: any) => e.role === "employee")); })
       .catch(() => {})
       .finally(() => setSalaryLoading(false));
   }, [isAdmin]);
@@ -873,19 +900,29 @@ export default function InternalPage() {
   // ── 我的工资单（员工）──
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
   const [myPayslipsLoading, setMyPayslipsLoading] = useState(false);
+  // 员工端只显示这三种状态的工资单；草稿/打回不显示
+  const visiblePayslipStatuses = ["待确认", "已确认", "已发放"];
 
   useEffect(() => {
     if (isAdmin) return;
     setMyPayslipsLoading(true);
     fetchWithAuth("/api/payslips", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setMyPayslips(Array.isArray(d) ? d : []))
+      .then((d) => setMyPayslips(Array.isArray(d) ? d.filter((p: any) => visiblePayslipStatuses.includes(p.status)) : []))
       .catch(() => setMyPayslips([]))
       .finally(() => setMyPayslipsLoading(false));
   }, [isAdmin]);
 
-  const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0);
-  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.withholding_tax) || 0);
+  const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0) + (Number(p.merit_income) || 0);
+  const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.demerit_deduction) || 0) + (Number(p.withholding_tax) || 0);
+  const payslipStatusClass = (s: string) => (
+    s === "打回" ? "bg-red-500/15 text-red-600" :
+    s === "已发放" ? "bg-emerald-500/15 text-emerald-600" :
+    s === "已确认" ? "bg-green-500/15 text-green-600" :
+    s === "待确认" ? "bg-blue-500/15 text-blue-600" :
+    "bg-slate-500/15 text-slate-600"
+  );
+  const payslipMoney = (v: any) => (Number(v) || 0).toFixed(2);
 
   const payslipAction = async (id: number, action: string, reason?: string) => {
     try {
@@ -896,7 +933,10 @@ export default function InternalPage() {
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d?.id) {
-        setMyPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p)));
+        // 打回后从员工端消失；其余状态更新后再过滤一遍（只留待确认/已确认/已发放）
+        setMyPayslips((prev) => prev
+          .map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p))
+          .filter((p) => visiblePayslipStatuses.includes(p.status)));
       } else {
         alert(d?.error || "操作失败");
       }
@@ -933,6 +973,29 @@ export default function InternalPage() {
           </div>
         </div>
       </div>
+
+      {/* ── 工作证 / 签证到期提醒（管理员） ── */}
+      {isAdmin && expiryAlerts.length > 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle className="size-4 text-amber-600" />
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">证照到期提醒</h2>
+          </div>
+          <ul className="space-y-1">
+            {expiryAlerts.map((a, i) => (
+              <li key={i} className="text-sm text-[var(--foreground)]">
+                <span className="font-medium">{a.employee_name}</span> 的 <span className="font-medium">{a.label}</span>
+                {a.expired ? (
+                  <span className="ml-1 font-medium text-red-600">已过期 {a.days_left} 天</span>
+                ) : (
+                  <span className="ml-1 font-medium text-amber-600">{a.days_left === 0 ? "今天到期" : `${a.days_left} 天后到期`}</span>
+                )}
+                <span className="ml-1 text-[var(--muted-foreground)]">（{a.date}）</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ── 工资设置（管理员） ── */}
       {isAdmin && (
@@ -1016,45 +1079,68 @@ export default function InternalPage() {
             ) : myPayslips.length === 0 ? (
               <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无工资单</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
-                      <th className="py-3 px-4 text-left text-xs font-medium">月份</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">收入</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">扣除</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">净收入</th>
-                      <th className="py-3 px-3 text-center text-xs font-medium">状态</th>
-                      <th className="py-3 px-3 text-right text-xs font-medium">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myPayslips.map((p) => (
-                      <tr key={p.id} className="border-b border-[var(--border)] last:border-0">
-                        <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.month}</td>
-                        <td className="py-2.5 px-3 text-right tabular-nums">{payslipTotal(p).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-[var(--muted-foreground)]">{payslipDeduct(p).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-emerald-600">{(payslipTotal(p) - payslipDeduct(p)).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", p.status === "打回" ? "bg-red-500/15 text-red-600" : p.status === "已发放" ? "bg-emerald-500/15 text-emerald-600" : p.status === "已确认" ? "bg-green-500/15 text-green-600" : p.status === "待确认" ? "bg-blue-500/15 text-blue-600" : "bg-slate-500/15 text-slate-600")}>
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          {p.status === "待确认" && (
-                            <>
-                              <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
-                            </>
-                          )}
-                          {p.status === "打回" && p.reject_reason && (
-                            <span className="text-xs text-red-500">意见：{p.reject_reason}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-col gap-3">
+                {myPayslips.map((p) => {
+                  const income = payslipTotal(p);
+                  const deduct = payslipDeduct(p);
+                  const net = income - deduct;
+                  return (
+                    <div key={p.id} className="rounded-lg border border-[var(--border)] p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="font-medium text-[var(--foreground)]">{p.month} 工资单</span>
+                        <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", payslipStatusClass(p.status))}>{p.status}</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">收入</p>
+                          <div className="space-y-1">
+                            {[["底薪", p.base_salary], ["勤奋奖", p.diligence_bonus], ["技能津贴", p.skill_allowance], ["奖金", p.bonus], ["佣金", p.commission], ["加班费", p.overtime], ["功过收入", p.merit_income]].map(([label, val]) => (
+                              <div key={String(label)} className="flex justify-between text-sm">
+                                <span className="text-[var(--muted-foreground)]">{label}</span>
+                                <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-1.5 flex justify-between border-t border-[var(--border)] pt-1.5 text-sm font-medium">
+                            <span>收入合计</span>
+                            <span className="tabular-nums">{income.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="mb-1.5 text-xs font-semibold text-[var(--muted-foreground)]">扣除</p>
+                          <div className="space-y-1">
+                            {[["社保", p.social_security], ["迟到扣款", p.late_deduction], ["事假扣款", p.personal_leave_deduction], ["病假扣款", p.sick_leave_deduction], ["缺勤扣款", p.absence_deduction], ["功过扣款", p.demerit_deduction], ["预扣税", p.withholding_tax]].map(([label, val]) => (
+                              <div key={String(label)} className="flex justify-between text-sm">
+                                <span className="text-[var(--muted-foreground)]">{label}</span>
+                                <span className="tabular-nums text-[var(--foreground)]">{payslipMoney(val)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-1.5 flex justify-between border-t border-[var(--border)] pt-1.5 text-sm font-medium">
+                            <span>扣除合计</span>
+                            <span className="tabular-nums">{deduct.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between rounded-md bg-[var(--muted)]/40 px-3 py-2">
+                        <span className="text-sm font-medium text-[var(--foreground)]">净收入</span>
+                        <span className="text-lg font-semibold tabular-nums text-emerald-600">{net.toFixed(2)}</span>
+                      </div>
+
+                      {p.status === "打回" && p.reject_reason && (
+                        <p className="mt-2 text-xs text-red-500">修改意见：{p.reject_reason}</p>
+                      )}
+                      {p.status === "待确认" && (
+                        <div className="mt-3 flex gap-2">
+                          <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2537,6 +2623,18 @@ export default function InternalPage() {
                   <option value="事假">事假</option><option value="病假">病假</option><option value="年假">年假</option><option value="调休">调休</option><option value="法定假日">法定假日</option><option value="其他">其他</option>
                 </select>
               </div>
+              {leaveForm.leave_type === "年假" && (
+                <div className="sm:col-span-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/50 px-3 py-2">
+                  {annualBalance ? (
+                    <p className="text-xs leading-relaxed">
+                      年假额度：<span className="font-medium">总额 {annualBalance.total} 天</span> · 已用 <span className="font-medium">{annualBalance.used} 天</span> · 剩余 <span className={cn("font-semibold", annualBalance.remaining <= 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}>{annualBalance.remaining} 天</span>
+                      {annualBalance.total === 0 && <span className="text-[var(--muted-foreground)]">（工龄满一年后每年 6 天，当年未用不结转）</span>}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[var(--muted-foreground)]">年假额度加载中…</p>
+                  )}
+                </div>
+              )}
               <div><label className="text-xs font-medium">开始日期</label>
                 <input type="date" value={leaveForm.start_date} min={sevenDaysAgo} onChange={e=>setLeaveForm(p=>({...p,start_date:e.target.value}))}
                   className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
