@@ -735,6 +735,14 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_employee_personal_followups_employee ON employee_personal_followups(employee_id);
 
+    -- 请假 AI 分析缓存：同一条请假不重复分析
+    CREATE TABLE IF NOT EXISTS leave_ai_analyses (
+      leave_id INTEGER PRIMARY KEY,
+      judgment TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      analyzed_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
