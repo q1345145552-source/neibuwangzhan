@@ -50,8 +50,12 @@ export interface Employee {
   name: string;
   email?: string;
   role?: string;
-  /** 在职/离职，默认在职 */
+  /** 在职/离职/试用期/待离职/停薪留职，默认在职 */
   status?: string;
+  /** 离职日期 YYYY-MM-DD，空表示未离职 */
+  resignation_date?: string;
+  /** 离职原因 */
+  resignation_reason?: string;
   /** 头像地址（/api/files/...），空表示未上传 */
   avatar?: string;
   /** 入职日期 YYYY-MM-DD，空表示未填写 */
@@ -118,6 +122,57 @@ export interface EmployeeRecord {
   points: number;
   content: string;
   created_by: string;
+  created_at: string;
+}
+
+/** 员工自助信息变更申请 */
+export interface EmployeeInfoChange {
+  id: number;
+  employee_id: number;
+  employee_name: string;
+  phone: string;
+  address: string;
+  emergency_name: string;
+  emergency_phone: string;
+  emergency_relation: string;
+  status: "待审核" | "已通过" | "已驳回";
+  reject_reason: string;
+  created_by: string;
+  reviewed_by: string;
+  reviewed_at: string;
+  created_at: string;
+}
+
+/** 员工教育履历（学历记录） */
+export interface EmployeeEducation {
+  id: number;
+  employee_id: number;
+  level: string;
+  school: string;
+  major: string;
+  grad_year: string;
+  created_at: string;
+}
+
+/** 入职资料清单事项 */
+export interface OnboardingDoc {
+  id: number;
+  employee_id: number;
+  item: string;
+  collected: number;
+  updated_by: string;
+  updated_at: string;
+  created_at: string;
+}
+
+/** 离职交接清单事项 */
+export interface HandoverItem {
+  id: number;
+  employee_id: number;
+  item: string;
+  done: number;
+  updated_by: string;
+  updated_at: string;
   created_at: string;
 }
 
@@ -603,7 +658,7 @@ export async function fetchAllFinances(params?: { type?: string; status?: string
 
 export async function updateEmployee(
   id: number,
-  data: { name?: string; email?: string; role?: string; password?: string; status?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; passport_number?: string; social_security_number?: string; tax_number?: string; work_permit_number?: string; work_permit_expiry?: string; visa_expiry?: string; customer_names?: string[] }
+  data: { name?: string; email?: string; role?: string; password?: string; status?: string; resignation_date?: string; resignation_reason?: string; hire_date?: string; gender?: string; birth_date?: string; phone?: string; address?: string; id_number?: string; department?: string; position?: string; contract_term?: string; bank_name?: string; bank_account?: string; emergency_name?: string; emergency_phone?: string; emergency_relation?: string; education?: string; skills?: string; notes?: string; bazi?: string; fortune?: string; passport_number?: string; social_security_number?: string; tax_number?: string; work_permit_number?: string; work_permit_expiry?: string; visa_expiry?: string; customer_names?: string[] }
 ) {
   const res = await fetch("/api/employees", {
     method: "PATCH",
@@ -651,6 +706,122 @@ export async function createDemerit(employeeId: number, content: string, file: F
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "记过失败");
   return result as Demerit;
+}
+
+/** 入职资料清单 */
+export async function fetchOnboardingDocs(employeeId: number): Promise<OnboardingDoc[]> {
+  const res = await fetch(`/api/employees/onboarding?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取入职清单失败");
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+/** 入职清单逐项勾选已收集/未收集 */
+export async function toggleOnboardingDoc(id: number, collected: boolean): Promise<OnboardingDoc> {
+  const res = await fetch("/api/employees/onboarding", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, collected }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "更新失败");
+  return result as OnboardingDoc;
+}
+
+/** 离职交接清单 */
+export async function fetchHandover(employeeId: number): Promise<HandoverItem[]> {
+  const res = await fetch(`/api/employees/handover?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取交接清单失败");
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+/** 交接清单逐项打勾/取消（done=true 表示已办完） */
+export async function toggleHandoverItem(id: number, done: boolean): Promise<HandoverItem> {
+  const res = await fetch("/api/employees/handover", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, done }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "更新失败");
+  return result as HandoverItem;
+}
+
+/** 信息变更申请列表（管理员看全部，员工看自己） */
+export async function fetchEmployeeInfoChanges(status?: string): Promise<EmployeeInfoChange[]> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`/api/employee-info-changes${q}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取变更申请失败");
+  return res.json();
+}
+
+/** 员工自助提交信息变更申请 */
+export async function createEmployeeInfoChange(data: { phone: string; address: string; emergency_name: string; emergency_phone: string; emergency_relation: string }): Promise<EmployeeInfoChange> {
+  const res = await fetch("/api/employee-info-changes", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "提交失败");
+  return result as EmployeeInfoChange;
+}
+
+/** 管理员审核信息变更申请（通过/驳回） */
+export async function reviewEmployeeInfoChange(id: number, status: "已通过" | "已驳回", reject_reason?: string): Promise<EmployeeInfoChange> {
+  const res = await fetch("/api/employee-info-changes", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, status, reject_reason }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "审核失败");
+  return result as EmployeeInfoChange;
+}
+
+/** 员工教育履历 */
+export async function fetchEducations(employeeId: number): Promise<EmployeeEducation[]> {
+  const res = await fetch(`/api/employees/educations?employee_id=${employeeId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取教育履历失败");
+  return res.json();
+}
+
+/** 新增一条学历 */
+export async function createEducation(data: { employee_id: number; level: string; school: string; major: string; grad_year: string }): Promise<EmployeeEducation> {
+  const res = await fetch("/api/employees/educations", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "新增失败");
+  return result as EmployeeEducation;
+}
+
+/** 编辑一条学历 */
+export async function updateEducation(id: number, data: { level: string; school: string; major: string; grad_year: string }): Promise<EmployeeEducation> {
+  const res = await fetch("/api/employees/educations", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...data }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "编辑失败");
+  return result as EmployeeEducation;
+}
+
+/** 删除一条学历 */
+export async function deleteEducation(id: number): Promise<void> {
+  const res = await fetch("/api/employees/educations", {
+    method: "DELETE",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const result = await res.json().catch(() => ({}));
+    throw new Error(result.error || "删除失败");
+  }
 }
 
 /** 员工档案文件列表 */

@@ -22,6 +22,7 @@ export function getDb(): Database.Database {
       initTables(database);
       seedData(database);
       migrateInfluencersCheck(database);
+      migrateEmployeeStatusCheck(database);
       ensureAccessSchema(database);
       if (commercePilotEnabled()) ensureCommerceSchema(database);
     } catch (error) {
@@ -117,6 +118,114 @@ function migrateInfluencersCheck(database: Database.Database) {
     }
   } catch (e) {
     console.error("[DB] influencers 迁移失败:", e);
+  }
+}
+
+// 员工状态白名单（与 enums.ts 保持一致）
+const EMPLOYEE_STATUS_LIST = "'在职','离职','试用期','待离职','停薪留职'";
+
+// 离职交接清单默认事项（标记离职时逐项打勾）
+export const RESIGNATION_HANDOVER_ITEMS = ["归还工牌", "交接客户", "工作内容交接", "结清工资"] as const;
+
+// 入职资料清单默认事项
+export const ONBOARDING_DOC_ITEMS = ["身份证复印件", "学历证书", "银行卡复印件", "体检报告"] as const;
+
+// 员工表迁移时按名字逐列搬运（不依赖物理列顺序），新列 resignation_date/reason 也在此列
+const EMPLOYEE_COLUMNS = [
+  "id", "name", "email", "role", "password", "must_change_password", "auth_version",
+  "failed_login_attempts", "locked_until", "status", "avatar", "chat_background",
+  "base_salary", "diligence_bonus", "skill_allowance", "hire_date", "gender", "birth_date",
+  "phone", "address", "id_number", "department", "position", "contract_term",
+  "bank_name", "bank_account", "emergency_name", "emergency_phone", "emergency_relation",
+  "education", "skills", "notes", "bazi", "fortune", "passport_number",
+  "social_security_number", "tax_number", "work_permit_number", "work_permit_expiry",
+  "visa_expiry", "resignation_date", "resignation_reason", "created_at",
+] as const;
+
+/**
+ * 运行时迁移：让 employees 表的 status CHECK 跟上新状态（试用期/待离职/停薪留职）。
+ * employees 被 commerce / customer-bridge / access-schema 等多张表引用，不能用
+ * expandLegacyCheck（它遇到入向外键会拒绝），这里参照 migrateInfluencersCheck：
+ * foreign_keys=OFF 下整表重建，按显式列名搬运，不依赖列顺序。
+ */
+let employeeStatusMigrated = false;
+function migrateEmployeeStatusCheck(database: Database.Database) {
+  if (employeeStatusMigrated) return;
+  employeeStatusMigrated = true;
+  try {
+    const oldSql = (database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='employees'"
+    ).get() as { sql: string } | undefined)?.sql;
+    if (!oldSql) return;
+
+    const wanted = ["试用期", "待离职", "停薪留职"];
+    const missing = wanted.filter((s) => !oldSql.includes(`'${s}'`));
+    if (missing.length === 0) return;
+
+    const existingCols = (database.prepare("PRAGMA table_info(employees)").all() as { name: string }[])
+      .map((c) => c.name);
+    const sharedCols = EMPLOYEE_COLUMNS.filter((c) => existingCols.includes(c));
+    const colList = sharedCols.join(", ");
+
+    database.pragma("foreign_keys = OFF");
+    try {
+      database.exec(`
+        DROP TABLE IF EXISTS employees_status_new;
+        CREATE TABLE employees_status_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          email TEXT DEFAULT '',
+          role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client')),
+          password TEXT DEFAULT '',
+          must_change_password INTEGER NOT NULL DEFAULT 0,
+          auth_version INTEGER NOT NULL DEFAULT 0,
+          failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+          locked_until INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT '在职' CHECK(status IN (${EMPLOYEE_STATUS_LIST})),
+          avatar TEXT DEFAULT '',
+          chat_background TEXT DEFAULT '',
+          base_salary REAL DEFAULT 0,
+          diligence_bonus REAL,
+          skill_allowance REAL DEFAULT 0,
+          hire_date TEXT DEFAULT '',
+          gender TEXT DEFAULT '',
+          birth_date TEXT DEFAULT '',
+          phone TEXT DEFAULT '',
+          address TEXT DEFAULT '',
+          id_number TEXT DEFAULT '',
+          department TEXT DEFAULT '',
+          position TEXT DEFAULT '',
+          contract_term TEXT DEFAULT '',
+          bank_name TEXT DEFAULT '',
+          bank_account TEXT DEFAULT '',
+          emergency_name TEXT DEFAULT '',
+          emergency_phone TEXT DEFAULT '',
+          emergency_relation TEXT DEFAULT '',
+          education TEXT DEFAULT '',
+          skills TEXT DEFAULT '',
+          notes TEXT DEFAULT '',
+          bazi TEXT DEFAULT '',
+          fortune TEXT DEFAULT '',
+          passport_number TEXT DEFAULT '',
+          social_security_number TEXT DEFAULT '',
+          tax_number TEXT DEFAULT '',
+          work_permit_number TEXT DEFAULT '',
+          work_permit_expiry TEXT DEFAULT '',
+          visa_expiry TEXT DEFAULT '',
+          resignation_date TEXT DEFAULT '',
+          resignation_reason TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO employees_status_new (${colList}) SELECT ${colList} FROM employees;
+        DROP TABLE employees;
+        ALTER TABLE employees_status_new RENAME TO employees;
+      `);
+      console.log(`[DB] employees.status CHECK 已更新（新增状态: ${missing.join("/")}）`);
+    } finally {
+      database.pragma("foreign_keys = ON");
+    }
+  } catch (e) {
+    console.error("[DB] employees.status 迁移失败:", e);
   }
 }
 
@@ -460,7 +569,7 @@ function initTables(database: Database.Database) {
       auth_version INTEGER NOT NULL DEFAULT 0,
       failed_login_attempts INTEGER NOT NULL DEFAULT 0,
       locked_until INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职')),
+      status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职','试用期','待离职','停薪留职')),
       avatar TEXT DEFAULT '',
       chat_background TEXT DEFAULT '',
       base_salary REAL DEFAULT 0,
@@ -491,6 +600,8 @@ function initTables(database: Database.Database) {
       work_permit_number TEXT DEFAULT '',
       work_permit_expiry TEXT DEFAULT '',
       visa_expiry TEXT DEFAULT '',
+      resignation_date TEXT DEFAULT '',
+      resignation_reason TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -534,6 +645,64 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_employee_files_employee ON employee_files(employee_id);
+
+    -- 离职交接清单：员工离职时逐项打勾（归还工牌/交接客户/结清工资等）
+    CREATE TABLE IF NOT EXISTS resignation_handover (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      item TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, item)
+    );
+    CREATE INDEX IF NOT EXISTS idx_resignation_handover_employee ON resignation_handover(employee_id);
+
+    -- 员工自助信息变更申请：电话/地址/紧急联系人，管理员审核通过后才生效
+    CREATE TABLE IF NOT EXISTS employee_info_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL DEFAULT '',
+      phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      emergency_name TEXT DEFAULT '',
+      emergency_phone TEXT DEFAULT '',
+      emergency_relation TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '待审核' CHECK(status IN ('待审核','已通过','已驳回')),
+      reject_reason TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      reviewed_by TEXT DEFAULT '',
+      reviewed_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_eic_employee ON employee_info_changes(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_eic_status ON employee_info_changes(status);
+
+    -- 员工教育履历：多条学历记录（层次/学校/专业/毕业年份）
+    CREATE TABLE IF NOT EXISTS employee_educations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      level TEXT DEFAULT '',
+      school TEXT DEFAULT '',
+      major TEXT DEFAULT '',
+      grad_year TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_educations_employee ON employee_educations(employee_id);
+
+    -- 员工入职资料清单：逐项勾选已收集/未收集
+    CREATE TABLE IF NOT EXISTS employee_onboarding_docs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      item TEXT NOT NULL,
+      collected INTEGER NOT NULL DEFAULT 0,
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, item)
+    );
+    CREATE INDEX IF NOT EXISTS idx_employee_onboarding_employee ON employee_onboarding_docs(employee_id);
 
     CREATE TABLE IF NOT EXISTS business_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -859,7 +1028,7 @@ function initTables(database: Database.Database) {
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign"]);
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request"]);
 
   // 模板库
   database.exec(`
@@ -1288,7 +1457,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"); } catch {}
-  try { database.exec("ALTER TABLE employees ADD COLUMN status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职'))"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职','试用期','待离职','停薪留职'))"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN avatar TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN chat_background TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN base_salary REAL DEFAULT 0"); } catch {}
@@ -1319,6 +1488,8 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN work_permit_number TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN work_permit_expiry TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN visa_expiry TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN resignation_date TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE employees ADD COLUMN resignation_reason TEXT DEFAULT ''"); } catch {}
   // 一次性回填：仅在「列首次新增」时，把还在用 123456 的账号标记为待改密。
   // 之后每次启动都不重跑——否则会覆盖管理员重置/止血对 must_change_password 的修改，
   // 导致「清掉标志 → 重启又变回 1 → 反复掉线」。

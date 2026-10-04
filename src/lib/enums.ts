@@ -21,7 +21,8 @@ export const ENUMS = {
   "discovery_tasks.status": ["active", "completed"],
   "documents.direction": ["client_to_us", "us_to_client"],
   "employees.role": ["admin", "employee", "client"],
-  "employees.status": ["在职", "离职"],
+  "employees.status": ["在职", "离职", "试用期", "待离职", "停薪留职"],
+  "employee_info_changes.status": ["待审核", "已通过", "已驳回"],
   "factories.phase": ["discovery", "completed_discovery", "contract", "completed_contract", "incubation", "completed_incubation"],
   "finances.currency": ["CNY", "THB"],
   "finances.type": ["income", "expense"],
@@ -37,7 +38,7 @@ export const ENUMS = {
   "issue_tickets.status": ["待处理", "处理中", "已解决"],
   "leave_requests.leave_type": ["事假", "病假", "年假", "调休", "法定假日", "其他"],
   "leave_requests.status": ["待审批", "已通过", "已驳回"],
-  "notifications.type": ["", "issue_assigned", "leave_requested", "contract_overdue", "eval_done", "mention", "leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign"],
+  "notifications.type": ["", "issue_assigned", "leave_requested", "contract_overdue", "eval_done", "mention", "leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request"],
   // 员工档案（刘雄 10-03/04 新增表）
   "employee_records.type": ["demerit", "merit"],
   "employee_files.category": ["合同", "错误承认书", "其他"],
