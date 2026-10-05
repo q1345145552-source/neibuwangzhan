@@ -714,16 +714,14 @@ export default function InternalPage() {
     return found;
   })();
   const reasonLen = leaveForm.reason.trim().length;
-  const sickNeedFile = leaveForm.leave_type === "病假" && leaveDays >= 2 && leaveImages.length === 0;
   const reasonTooShort = reasonLen < 10;
   const needDestination = leaveForm.leave_type === "事假" && !leaveForm.destination.trim();
   const canSubmitLeave = !leaveForm.start_date || !leaveForm.end_date
     ? false
-    : !sickNeedFile && !reasonTooShort && !needDestination && !dateTooOld;
+    : !reasonTooShort && !needDestination && !dateTooOld;
 
   const handleCreateLeave = async () => {
     if (!leaveForm.start_date || !leaveForm.end_date) { setLeaveErr("请选择日期"); return; }
-    if (sickNeedFile) { setLeaveErr("病假两天及以上必须上传证明文件"); return; }
     if (reasonTooShort) { setLeaveErr(`事由至少10个字，当前${reasonLen}字`); return; }
     if (needDestination) { setLeaveErr("事假必须填写目的地"); return; }
     if (dateTooOld) { setLeaveErr("不能申请超过七天前的日期"); return; }
@@ -2700,8 +2698,8 @@ export default function InternalPage() {
               </div>
             </div>
             <div className="mt-3">
-              <label className={cn("text-xs font-medium", sickNeedFile ? "text-red-500" : "")}>
-                附件上传 {sickNeedFile ? <span className="text-red-500">*病假两天及以上必须上传证明</span> : ""}
+              <label className="text-xs font-medium">
+                附件上传（选填）
               </label>
               <div className="mt-1 flex flex-wrap gap-2 items-center">
                 {leaveImages.map((img,idx)=>(
@@ -2710,14 +2708,12 @@ export default function InternalPage() {
                     <button onClick={()=>removeLeaveImage(idx)} className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X className="size-3" /></button>
                   </div>
                 ))}
-                <label className={cn("w-16 h-16 rounded border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors shrink-0",
-                  sickNeedFile ? "border-red-400 hover:border-red-500 bg-red-50" : "border-[var(--border)] hover:border-[var(--ring)]"
-                )}>
-                  {leaveUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className={cn("size-5", sickNeedFile ? "text-red-400" : "text-[var(--muted-foreground)]")} />}
+                <label className="w-16 h-16 rounded border-2 border-dashed border-[var(--border)] hover:border-[var(--ring)] flex items-center justify-center cursor-pointer transition-colors shrink-0">
+                  {leaveUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className="size-5 text-[var(--muted-foreground)]" />}
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handleLeaveImageUpload} disabled={leaveUploading} />
                 </label>
               </div>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB</p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB；病假证明可先不传，之后在病假记录里补交</p>
             </div>
             {leaveErr && <p className="mt-2 text-xs text-[var(--destructive)]">{leaveErr}</p>}
             <div className="mt-3 flex gap-2">
@@ -2827,9 +2823,9 @@ export default function InternalPage() {
                         onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}}
                         disabled={supplementUploading}
                         className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"
-                        title="补传附件"
+                        title={l.leave_type === "病假" ? "补交医疗证明" : "补传附件"}
                       >
-                        {supplementUploading&&supplementLeaveId===l.id?<Loader2 className="size-3.5 animate-spin"/>:<Plus className="size-3.5"/>}附件
+                        {supplementUploading&&supplementLeaveId===l.id?<Loader2 className="size-3.5 animate-spin"/>:<Plus className="size-3.5"/>}{l.leave_type === "病假" ? "补交医疗证明" : "附件"}
                       </button>
                     {l.status==="待审批"&&isAdmin&&(
                       <>
@@ -2859,7 +2855,7 @@ export default function InternalPage() {
                     {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
                       <a href={fileUrl((imgs[0] as string).startsWith("/api/files/") ? imgs[0] : "/api/files/" + imgs[0])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:underline text-xs">{imgs.length} 张附件</a>
                     ):null;})()}
-                    <button onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}} disabled={supplementUploading} className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]">补传附件</button>
+                    <button onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}} disabled={supplementUploading} className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]">{l.leave_type === "病假" ? "补交医疗证明" : "补传附件"}</button>
                     {l.status==="待审批"&&isAdmin&&(
                       <>
                         <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
