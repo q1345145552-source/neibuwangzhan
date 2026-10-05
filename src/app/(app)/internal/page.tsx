@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
-import { fetchWithAuth, fetchMedicalProof, saveMedicalProof, type MedicalProof } from "@/lib/api";
+import { fetchWithAuth, fetchMedicalProof, saveMedicalProof, refuseMedicalProof, type MedicalProof } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
@@ -138,6 +138,8 @@ export default function InternalPage() {
   const [medicalProofSaving, setMedicalProofSaving] = useState(false);
   const [medicalProofErr, setMedicalProofErr] = useState("");
   const [medicalProofMsg, setMedicalProofMsg] = useState("");
+  const [medicalNeedAuth, setMedicalNeedAuth] = useState(false);
+  const [medicalAgreed, setMedicalAgreed] = useState(false);
   const medicalPhotoRefs = { photo1: useRef<HTMLInputElement>(null), photo2: useRef<HTMLInputElement>(null), photo3: useRef<HTMLInputElement>(null), photo4: useRef<HTMLInputElement>(null) };
   // 驳回原因弹窗
   const [rejectModal, setRejectModal] = useState<{ id: number; employee: string } | null>(null);
@@ -683,12 +685,17 @@ export default function InternalPage() {
     setMedicalProofForm({ institution: "", doctor: "", cert_number: "", issue_date: "", sick_days: "" });
     setMedicalProofPhotos({});
     setMedicalProofExisting(null);
+    setMedicalNeedAuth(false);
+    setMedicalAgreed(false);
     setMedicalProofLoading(true);
     try {
       const r = await fetchMedicalProof(leaveId);
       if (r) {
-        setMedicalProofExisting(r);
-        setMedicalProofForm({ institution: r.institution, doctor: r.doctor, cert_number: r.cert_number, issue_date: r.issue_date, sick_days: String(r.sick_days || "") });
+        setMedicalNeedAuth(!!r.need_authorization);
+        if (r.institution) {
+          setMedicalProofExisting(r);
+          setMedicalProofForm({ institution: r.institution, doctor: r.doctor, cert_number: r.cert_number, issue_date: r.issue_date, sick_days: String(r.sick_days || "") });
+        }
       }
     } catch { setMedicalProofExisting(null); }
     setMedicalProofLoading(false);
@@ -705,6 +712,7 @@ export default function InternalPage() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.issue_date)) { setMedicalProofErr("请填写开具日期（YYYY-MM-DD）"); return; }
     const days = Number(f.sick_days);
     if (!Number.isInteger(days) || days <= 0) { setMedicalProofErr("请填写病假天数（正整数）"); return; }
+    if (medicalNeedAuth && !medicalAgreed) { setMedicalProofErr("本年度病假已累计 3 次及以上，需先勾选同意授权才能提交"); return; }
     if (!medicalProofPhotos.photo1 || !medicalProofPhotos.photo2 || !medicalProofPhotos.photo3 || !medicalProofPhotos.photo4) {
       setMedicalProofErr("四张照片缺一不可，请上传完整"); return;
     }
@@ -717,6 +725,7 @@ export default function InternalPage() {
         cert_number: f.cert_number.trim(),
         issue_date: f.issue_date.trim(),
         sick_days: days,
+        agreed: medicalAgreed,
       }, {
         photo1: medicalProofPhotos.photo1!,
         photo2: medicalProofPhotos.photo2!,
@@ -730,6 +739,24 @@ export default function InternalPage() {
       loadAll();
     } catch (err) {
       setMedicalProofErr(err instanceof Error ? err.message : "提交失败");
+    } finally {
+      setMedicalProofSaving(false);
+    }
+  };
+
+  // 拒绝授权：记录为「拒绝授权」
+  const refuseMedical = async () => {
+    if (medicalProofModal === null) return;
+    setMedicalProofSaving(true);
+    setMedicalProofErr("");
+    try {
+      const r = await refuseMedicalProof(medicalProofModal);
+      setMedicalProofExisting(r);
+      setMedicalProofMsg("已记录拒绝授权");
+      setTimeout(() => setMedicalProofMsg((m) => (m === "已记录拒绝授权" ? "" : m)), 1500);
+      loadAll();
+    } catch (err) {
+      setMedicalProofErr(err instanceof Error ? err.message : "操作失败");
     } finally {
       setMedicalProofSaving(false);
     }
@@ -3073,10 +3100,27 @@ export default function InternalPage() {
                   })}
                 </div>
 
+                {medicalNeedAuth && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3">
+                    <p className="text-xs font-medium text-[var(--foreground)]">授权书（本年度病假累计 3 次及以上，需签署）</p>
+                    <p className="mt-1 text-xs leading-relaxed text-[var(--muted-foreground)]">
+                      本人同意授权公司就本次病假所提交的医疗证明，联系相关医疗机构核实该证明的真实性。本授权仅限核查本次医疗证明，不查询、不获取本人其他历史病史及就诊记录，符合泰国隐私法（PDPA）相关规定。
+                    </p>
+                    <label className="mt-2 flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" checked={medicalAgreed} onChange={(e) => setMedicalAgreed(e.target.checked)} className="mt-0.5 size-3.5 accent-[var(--primary)]" />
+                      <span className="text-xs text-[var(--foreground)]">我同意授权公司核查我的医疗证明真伪</span>
+                    </label>
+                    {medicalProofExisting?.authorization && (
+                      <p className="mt-1.5 text-xs font-medium text-[var(--foreground)]">授权状态：{medicalProofExisting.authorization}</p>
+                    )}
+                  </div>
+                )}
+
                 {medicalProofErr && <p className="text-xs text-red-500">{medicalProofErr}</p>}
                 {medicalProofMsg && <p className="text-xs text-emerald-600 dark:text-emerald-400">{medicalProofMsg}</p>}
 
                 <div className="flex justify-end gap-2 pt-1">
+                  {medicalNeedAuth && <Button variant="outline" size="sm" className="text-red-500" onClick={refuseMedical} disabled={medicalProofSaving}>拒绝授权</Button>}
                   <Button variant="outline" size="sm" onClick={() => setMedicalProofModal(null)}>关闭</Button>
                   <Button size="sm" onClick={submitMedicalProof} disabled={medicalProofSaving}>{medicalProofSaving ? "提交中…" : "保存"}</Button>
                 </div>

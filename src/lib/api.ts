@@ -214,6 +214,8 @@ export interface MedicalProof {
   photo2_url?: string;
   photo3_url?: string;
   photo4_url?: string;
+  authorization?: string;
+  need_authorization?: boolean;
   created_by: string;
   updated_by: string;
   updated_at: string;
@@ -835,10 +837,10 @@ export async function fetchMedicalProof(leaveId: number): Promise<MedicalProof |
   return res.json();
 }
 
-/** 提交/更新病假四合一就医凭证（四张照片必传） */
+/** 提交/更新病假四合一就医凭证（四张照片必传；本年度病假>=3次需传 agreed=true） */
 export async function saveMedicalProof(
   leaveId: number,
-  data: { institution: string; doctor: string; cert_number: string; issue_date: string; sick_days: number },
+  data: { institution: string; doctor: string; cert_number: string; issue_date: string; sick_days: number; agreed?: boolean },
   photos: { photo1: File; photo2: File; photo3: File; photo4: File }
 ): Promise<MedicalProof> {
   const fd = new FormData();
@@ -848,6 +850,7 @@ export async function saveMedicalProof(
   fd.append("cert_number", data.cert_number);
   fd.append("issue_date", data.issue_date);
   fd.append("sick_days", String(data.sick_days));
+  if (data.agreed) fd.append("agreed", "true");
   fd.append("photo1", photos.photo1);
   fd.append("photo2", photos.photo2);
   fd.append("photo3", photos.photo3);
@@ -855,6 +858,17 @@ export async function saveMedicalProof(
   const res = await fetch("/api/leave/medical-proof", { method: "POST", headers: authHeaders(), body: fd });
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "提交失败");
+  return result as MedicalProof;
+}
+
+/** 记录「拒绝授权」（病假就医授权） */
+export async function refuseMedicalProof(leaveId: number): Promise<MedicalProof> {
+  const fd = new FormData();
+  fd.append("leave_id", String(leaveId));
+  fd.append("refuse", "true");
+  const res = await fetch("/api/leave/medical-proof", { method: "POST", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "操作失败");
   return result as MedicalProof;
 }
 

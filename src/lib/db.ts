@@ -772,6 +772,7 @@ function initTables(database: Database.Database) {
       photo2 TEXT DEFAULT '',
       photo3 TEXT DEFAULT '',
       photo4 TEXT DEFAULT '',
+      authorization TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       updated_by TEXT DEFAULT '',
       updated_at TEXT DEFAULT '',
@@ -1580,6 +1581,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_date TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE leave_ai_analyses ADD COLUMN detail TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN authorization TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN family_factors TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN relationship_factors TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN health_factors TEXT DEFAULT ''"); } catch {}
