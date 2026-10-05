@@ -38,15 +38,6 @@ function daysBetween(start: string, end: string): number {
   return Math.round((e - s) / 86400000) + 1;
 }
 
-function hasImages(imagesJson: string): boolean {
-  try {
-    const arr = JSON.parse(imagesJson || "[]");
-    return Array.isArray(arr) && arr.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 function parseImages(imagesJson: string): string[] {
   try {
     const arr = JSON.parse(imagesJson || "[]");
@@ -110,19 +101,25 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
   // 事假 / 病假（已通过、开始日期在该月）
   let personalLeave = 0;
   let sickLeave = 0;
-  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = [];
+  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; review_status: string; images: string[] }[] = [];
   const leaveRows = db.prepare(
-    "SELECT leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND leave_type IN ('事假','病假') AND start_date LIKE ? ORDER BY start_date"
-  ).all(name, `${month}%`) as { leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string }[];
+    "SELECT id, leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND leave_type IN ('事假','病假') AND start_date LIKE ? ORDER BY start_date"
+  ).all(name, `${month}%`) as { id: number; leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string }[];
   for (const l of leaveRows) {
     const days = daysBetween(l.start_date, l.end_date);
     const hours = days === 1 ? hoursBetween(l.start_time, l.end_time) : days * 8;
     const images = parseImages(l.images);
+    // 病假核查状态：已通过 → 带薪；其余（不通过/拒绝授权/待核查/核查中/未提交）→ 无薪
+    const proof = l.leave_type === "病假"
+      ? (db.prepare("SELECT review_status FROM leave_medical_proofs WHERE leave_id = ?").get(l.id) as { review_status: string } | undefined)
+      : undefined;
+    const reviewStatus = proof?.review_status || "";
     leaveDetails.push({
       type: l.leave_type,
       days,
       hours: Math.round(hours * 10) / 10,
-      has_certificate: l.leave_type === "病假" && images.length > 0,
+      has_certificate: l.leave_type === "病假" && reviewStatus === "已通过",
+      review_status: reviewStatus,
       images,
     });
     if (l.leave_type === "事假") {
@@ -133,8 +130,8 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
         personalLeave += days * (totalSalary / 25);
       }
     } else {
-      // 病假：有医院证明（images 非空）不扣，没证明按天扣
-      if (!hasImages(l.images)) sickLeave += days * (totalSalary / 25);
+      // 病假：核查通过带薪不扣；否则无薪按天扣
+      if (reviewStatus !== "已通过") sickLeave += days * (totalSalary / 25);
     }
   }
   personalLeave = round2(personalLeave);
