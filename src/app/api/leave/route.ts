@@ -33,7 +33,23 @@ export async function GET(req: NextRequest) {
 
   // 硬规则：给每条请假附上异常标记（频率/病假/日期/理由重复）
   const ruleFlags = computeLeaveRules(db);
-  const withFlags = rows.map((r) => ({ ...r, flags: ruleFlags.get(r.id) || [] }));
+  // 病假核查状态：附上每条请假的就医凭证核查状态/原因/授权状态
+  const proofMap = new Map<number, { review_status: string; review_reason: string; authorization: string }>();
+  const leaveIds = rows.map((r) => r.id);
+  if (leaveIds.length > 0) {
+    const placeholders = leaveIds.map(() => "?").join(",");
+    const proofs = db.prepare(
+      `SELECT leave_id, review_status, review_reason, authorization FROM leave_medical_proofs WHERE leave_id IN (${placeholders})`
+    ).all(...leaveIds) as { leave_id: number; review_status: string; review_reason: string; authorization: string }[];
+    for (const p of proofs) proofMap.set(p.leave_id, p);
+  }
+  const withFlags = rows.map((r) => ({
+    ...r,
+    flags: ruleFlags.get(r.id) || [],
+    review_status: proofMap.get(r.id)?.review_status || "",
+    review_reason: proofMap.get(r.id)?.review_reason || "",
+    authorization: proofMap.get(r.id)?.authorization || "",
+  }));
 
   // 审批超时提醒：管理员加载时，检查是否有超过24h未审批的请假，发一次通知
   if (auth.role === "admin") {

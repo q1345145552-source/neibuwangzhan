@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
-import { fetchWithAuth, fetchMedicalProof, saveMedicalProof, refuseMedicalProof, type MedicalProof } from "@/lib/api";
+import { fetchWithAuth, fetchMedicalProof, saveMedicalProof, refuseMedicalProof, reviewMedicalProof, type MedicalProof } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
@@ -140,6 +140,9 @@ export default function InternalPage() {
   const [medicalProofMsg, setMedicalProofMsg] = useState("");
   const [medicalNeedAuth, setMedicalNeedAuth] = useState(false);
   const [medicalAgreed, setMedicalAgreed] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [reviewReason, setReviewReason] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
   const medicalPhotoRefs = { photo1: useRef<HTMLInputElement>(null), photo2: useRef<HTMLInputElement>(null), photo3: useRef<HTMLInputElement>(null), photo4: useRef<HTMLInputElement>(null) };
   // 驳回原因弹窗
   const [rejectModal, setRejectModal] = useState<{ id: number; employee: string } | null>(null);
@@ -687,6 +690,8 @@ export default function InternalPage() {
     setMedicalProofExisting(null);
     setMedicalNeedAuth(false);
     setMedicalAgreed(false);
+    setReviewStatus("");
+    setReviewReason("");
     setMedicalProofLoading(true);
     try {
       const r = await fetchMedicalProof(leaveId);
@@ -695,6 +700,8 @@ export default function InternalPage() {
         if (r.institution) {
           setMedicalProofExisting(r);
           setMedicalProofForm({ institution: r.institution, doctor: r.doctor, cert_number: r.cert_number, issue_date: r.issue_date, sick_days: String(r.sick_days || "") });
+          setReviewStatus(r.review_status || "");
+          setReviewReason(r.review_reason || "");
         }
       }
     } catch { setMedicalProofExisting(null); }
@@ -759,6 +766,28 @@ export default function InternalPage() {
       setMedicalProofErr(err instanceof Error ? err.message : "操作失败");
     } finally {
       setMedicalProofSaving(false);
+    }
+  };
+
+  // 管理员核查：改核查状态
+  const submitReview = async () => {
+    if (medicalProofModal === null) return;
+    if (!reviewStatus) { setMedicalProofErr("请选择核查状态"); return; }
+    if (reviewStatus === "不通过" && !reviewReason) { setMedicalProofErr("请选择不通过原因"); return; }
+    setReviewSaving(true);
+    setMedicalProofErr("");
+    try {
+      const r = await reviewMedicalProof(medicalProofModal, reviewStatus, reviewStatus === "不通过" ? reviewReason : undefined);
+      setMedicalProofExisting(r);
+      setReviewStatus(r.review_status || "");
+      setReviewReason(r.review_reason || "");
+      setMedicalProofMsg("核查已保存");
+      setTimeout(() => setMedicalProofMsg((m) => (m === "核查已保存" ? "" : m)), 1500);
+      loadAll();
+    } catch (err) {
+      setMedicalProofErr(err instanceof Error ? err.message : "核查失败");
+    } finally {
+      setReviewSaving(false);
     }
   };
 
@@ -2883,7 +2912,20 @@ export default function InternalPage() {
                     )}
                   </td>
                 )}
-                <td className="py-2.5 px-4">{l.leave_type}</td>
+                <td className="py-2.5 px-4">
+                  {l.leave_type}
+                  {l.leave_type === "病假" && l.review_status && (
+                    <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium",
+                      l.review_status === "不通过" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" :
+                      l.review_status === "已通过" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                      l.review_status === "核查中" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                      l.review_status === "拒绝授权" ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" :
+                      "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300")}>{l.review_status}</span>
+                  )}
+                  {l.leave_type === "病假" && l.review_reason && (
+                    <span className="ml-1 text-[0.65rem] text-red-600 dark:text-red-400">({l.review_reason})</span>
+                  )}
+                </td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] text-xs">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination||"—"}</td>
                 <td className="py-2.5 px-4 text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason||"—"}</td>
@@ -2943,7 +2985,7 @@ export default function InternalPage() {
                     <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium "+(l.status==="已通过"?"bg-green-100 text-green-700":l.status==="已驳回"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700")}>{l.status}</span>
                   </div>
                   <div className="mt-2 space-y-1.5 text-sm">
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{l.leave_type}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{l.leave_type}{l.leave_type === "病假" && l.review_status && <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium", l.review_status === "不通过" ? "bg-red-100 text-red-700" : l.review_status === "已通过" ? "bg-emerald-100 text-emerald-700" : l.review_status === "核查中" ? "bg-blue-100 text-blue-700" : l.review_status === "拒绝授权" ? "bg-gray-100 text-gray-700" : "bg-amber-100 text-amber-700")}>{l.review_status}</span>}{l.leave_type === "病假" && l.review_reason && <span className="ml-1 text-[0.65rem] text-red-600">({l.review_reason})</span>}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">目的地</span><span>{l.destination||"—"}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">原因</span><span className="text-right">{l.reason||"—"}</span></div>
@@ -3113,6 +3155,39 @@ export default function InternalPage() {
                     {medicalProofExisting?.authorization && (
                       <p className="mt-1.5 text-xs font-medium text-[var(--foreground)]">授权状态：{medicalProofExisting.authorization}</p>
                     )}
+                  </div>
+                )}
+
+                {isAdmin && medicalProofExisting && (
+                  <div className="rounded-md border border-[var(--border)] p-3">
+                    <p className="text-xs font-medium text-[var(--foreground)]">管理员核查</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-[var(--muted-foreground)]">当前状态：</span>
+                      <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
+                        medicalProofExisting.review_status === "不通过" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" :
+                        medicalProofExisting.review_status === "已通过" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                        medicalProofExisting.review_status === "核查中" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                        medicalProofExisting.review_status === "拒绝授权" ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" :
+                        "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300")}>{medicalProofExisting.review_status || "待核查"}</span>
+                      {medicalProofExisting.review_reason && <span className="text-xs text-red-600 dark:text-red-400">原因：{medicalProofExisting.review_reason}</span>}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <select value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)} className="h-8 rounded border border-[var(--border)] px-2 text-xs outline-none focus:border-[var(--ring)]">
+                        <option value="">选择核查状态</option>
+                        <option value="核查中">核查中</option>
+                        <option value="已通过">已通过</option>
+                        <option value="不通过">不通过</option>
+                      </select>
+                      {reviewStatus === "不通过" && (
+                        <select value={reviewReason} onChange={(e) => setReviewReason(e.target.value)} className="h-8 rounded border border-[var(--border)] px-2 text-xs outline-none focus:border-[var(--ring)]">
+                          <option value="">选择不通过原因</option>
+                          <option value="证明信息对不上">证明信息对不上</option>
+                          <option value="伪造假条假证明">伪造假条假证明</option>
+                          <option value="拒绝配合核查">拒绝配合核查</option>
+                        </select>
+                      )}
+                      <Button size="sm" onClick={submitReview} disabled={reviewSaving}>{reviewSaving ? "保存中…" : "保存核查"}</Button>
+                    </div>
                   </div>
                 )}
 

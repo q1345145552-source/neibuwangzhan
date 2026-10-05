@@ -216,6 +216,10 @@ export interface MedicalProof {
   photo4_url?: string;
   authorization?: string;
   need_authorization?: boolean;
+  review_status?: string;
+  review_reason?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
   created_by: string;
   updated_by: string;
   updated_at: string;
@@ -869,6 +873,18 @@ export async function refuseMedicalProof(leaveId: number): Promise<MedicalProof>
   const res = await fetch("/api/leave/medical-proof", { method: "POST", headers: authHeaders(), body: fd });
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "操作失败");
+  return result as MedicalProof;
+}
+
+/** 管理员核查病假就医凭证（核查中/已通过/不通过，不通过需原因） */
+export async function reviewMedicalProof(leaveId: number, review_status: string, review_reason?: string): Promise<MedicalProof> {
+  const res = await fetch("/api/leave/medical-proof", {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ leave_id: leaveId, review_status, review_reason }),
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "核查失败");
   return result as MedicalProof;
 }
 

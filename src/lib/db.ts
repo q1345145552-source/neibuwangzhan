@@ -773,6 +773,10 @@ function initTables(database: Database.Database) {
       photo3 TEXT DEFAULT '',
       photo4 TEXT DEFAULT '',
       authorization TEXT DEFAULT '',
+      review_status TEXT DEFAULT '待核查',
+      review_reason TEXT DEFAULT '',
+      reviewed_by TEXT DEFAULT '',
+      reviewed_at TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       updated_by TEXT DEFAULT '',
       updated_at TEXT DEFAULT '',
@@ -1582,6 +1586,10 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE employees ADD COLUMN resignation_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE leave_ai_analyses ADD COLUMN detail TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN authorization TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN review_status TEXT DEFAULT '待核查'"); } catch {}
+  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN review_reason TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN reviewed_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN reviewed_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN family_factors TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN relationship_factors TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN health_factors TEXT DEFAULT ''"); } catch {}

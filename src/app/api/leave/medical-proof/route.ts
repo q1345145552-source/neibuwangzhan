@@ -11,7 +11,7 @@ import { utcNowStr, bangkokToday } from "@/lib/time";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_SIZE = 10 * 1024 * 1024;
 
-const FIELDS = "leave_id, institution, doctor, cert_number, issue_date, sick_days, photo1, photo2, photo3, photo4, authorization, created_by, updated_by, updated_at, created_at";
+const FIELDS = "leave_id, institution, doctor, cert_number, issue_date, sick_days, photo1, photo2, photo3, photo4, authorization, review_status, review_reason, reviewed_by, reviewed_at, created_by, updated_by, updated_at, created_at";
 
 function canAccess(auth: { role: string; name: string }, leave: { employee_name: string }): boolean {
   return auth.role === "admin" || leave.employee_name === auth.name;
@@ -78,9 +78,9 @@ export async function POST(req: NextRequest) {
     // 拒绝授权：只记录授权状态为「拒绝授权」，不要求填信息和照片
     if (refuse) {
       db.prepare(
-        `INSERT INTO leave_medical_proofs (leave_id, authorization, created_by, updated_by, updated_at)
-         VALUES (?, '拒绝授权', ?, ?, ?)
-         ON CONFLICT(leave_id) DO UPDATE SET authorization = excluded.authorization, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
+        `INSERT INTO leave_medical_proofs (leave_id, authorization, review_status, created_by, updated_by, updated_at)
+         VALUES (?, '拒绝授权', '拒绝授权', ?, ?, ?)
+         ON CONFLICT(leave_id) DO UPDATE SET authorization = excluded.authorization, review_status = excluded.review_status, updated_by = excluded.updated_by, updated_at = excluded.updated_at`
       ).run(leaveId, auth.name, auth.name, utcNowStr());
       logOperation(auth.name, "拒绝病假就医授权", "leave", String(leaveId), "拒绝授权");
       const row = db.prepare(`SELECT ${FIELDS} FROM leave_medical_proofs WHERE leave_id = ?`).get(leaveId) as any;
@@ -160,4 +160,39 @@ export async function POST(req: NextRequest) {
     console.error("[请假] 提交就医凭证失败:", err);
     return NextResponse.json({ error: "提交失败" }, { status: 500 });
   }
+}
+
+const REVIEW_STATUSES = ["核查中", "已通过", "不通过"];
+const REVIEW_REASONS = ["证明信息对不上", "伪造假条假证明", "拒绝配合核查"];
+
+// PATCH /api/leave/medical-proof — 管理员核查：改核查状态（核查中/已通过/不通过），不通过需选原因（仅管理员）
+export async function PATCH(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可核查" }, { status: 403 });
+
+  const db = getDb();
+  const body = await req.json().catch(() => ({}));
+  const leaveId = Number(body?.leave_id);
+  const review_status = String(body?.review_status || "").trim();
+  const review_reason = String(body?.review_reason || "").trim();
+
+  if (!Number.isInteger(leaveId) || leaveId <= 0) return NextResponse.json({ error: "缺少请假ID" }, { status: 400 });
+  const proof = db.prepare(`SELECT ${FIELDS} FROM leave_medical_proofs WHERE leave_id = ?`).get(leaveId) as any;
+  if (!proof) return NextResponse.json({ error: "该请假尚未提交就医凭证" }, { status: 404 });
+
+  if (!REVIEW_STATUSES.includes(review_status)) return NextResponse.json({ error: "核查状态不正确" }, { status: 400 });
+  if (review_status === "不通过") {
+    if (!REVIEW_REASONS.includes(review_reason)) return NextResponse.json({ error: "请选择不通过原因" }, { status: 400 });
+  }
+
+  db.prepare(
+    "UPDATE leave_medical_proofs SET review_status = ?, review_reason = ?, reviewed_by = ?, reviewed_at = ? WHERE leave_id = ?"
+  ).run(review_status, review_status === "不通过" ? review_reason : "", auth.name, utcNowStr(), leaveId);
+
+  logOperation(auth.name, "核查病假就医凭证", "leave", String(leaveId), `${review_status}${review_reason ? `：${review_reason}` : ""}`);
+
+  const row = db.prepare(`SELECT ${FIELDS} FROM leave_medical_proofs WHERE leave_id = ?`).get(leaveId) as any;
+  return NextResponse.json(withUrls(row));
 }
