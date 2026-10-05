@@ -198,6 +198,28 @@ export interface MedicalExam {
   created_at: string;
 }
 
+/** 病假四合一就医凭证 */
+export interface MedicalProof {
+  leave_id: number;
+  institution: string;
+  doctor: string;
+  cert_number: string;
+  issue_date: string;
+  sick_days: number;
+  photo1: string;
+  photo2: string;
+  photo3: string;
+  photo4: string;
+  photo1_url?: string;
+  photo2_url?: string;
+  photo3_url?: string;
+  photo4_url?: string;
+  created_by: string;
+  updated_by: string;
+  updated_at: string;
+  created_at: string;
+}
+
 /** 员工 AI 状态评估结果 */
 export interface StatusAssessment {
   employee_id: number;
@@ -804,6 +826,36 @@ export async function saveMedicalExam(employeeId: number, data: { exam_date: str
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || "保存失败");
   return result as MedicalExam;
+}
+
+/** 病假四合一就医凭证 */
+export async function fetchMedicalProof(leaveId: number): Promise<MedicalProof | null> {
+  const res = await fetch(`/api/leave/medical-proof?leave_id=${leaveId}`, { headers: authHeaders(), cache: "no-store" });
+  if (!res.ok) throw new Error("获取就医凭证失败");
+  return res.json();
+}
+
+/** 提交/更新病假四合一就医凭证（四张照片必传） */
+export async function saveMedicalProof(
+  leaveId: number,
+  data: { institution: string; doctor: string; cert_number: string; issue_date: string; sick_days: number },
+  photos: { photo1: File; photo2: File; photo3: File; photo4: File }
+): Promise<MedicalProof> {
+  const fd = new FormData();
+  fd.append("leave_id", String(leaveId));
+  fd.append("institution", data.institution);
+  fd.append("doctor", data.doctor);
+  fd.append("cert_number", data.cert_number);
+  fd.append("issue_date", data.issue_date);
+  fd.append("sick_days", String(data.sick_days));
+  fd.append("photo1", photos.photo1);
+  fd.append("photo2", photos.photo2);
+  fd.append("photo3", photos.photo3);
+  fd.append("photo4", photos.photo4);
+  const res = await fetch("/api/leave/medical-proof", { method: "POST", headers: authHeaders(), body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "提交失败");
+  return result as MedicalProof;
 }
 
 /** 已缓存的员工状态评估（仅管理员） */

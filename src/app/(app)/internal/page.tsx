@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, fetchMedicalProof, saveMedicalProof, type MedicalProof } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
@@ -129,6 +129,16 @@ export default function InternalPage() {
   const [supplementLeaveId, setSupplementLeaveId] = useState<number | null>(null);
   const [supplementUploading, setSupplementUploading] = useState(false);
   const supplementInputRef = useRef<HTMLInputElement>(null);
+  // 病假四合一就医凭证补交
+  const [medicalProofModal, setMedicalProofModal] = useState<number | null>(null);
+  const [medicalProofForm, setMedicalProofForm] = useState({ institution: "", doctor: "", cert_number: "", issue_date: "", sick_days: "" });
+  const [medicalProofPhotos, setMedicalProofPhotos] = useState<{ photo1?: File; photo2?: File; photo3?: File; photo4?: File }>({});
+  const [medicalProofExisting, setMedicalProofExisting] = useState<MedicalProof | null>(null);
+  const [medicalProofLoading, setMedicalProofLoading] = useState(false);
+  const [medicalProofSaving, setMedicalProofSaving] = useState(false);
+  const [medicalProofErr, setMedicalProofErr] = useState("");
+  const [medicalProofMsg, setMedicalProofMsg] = useState("");
+  const medicalPhotoRefs = { photo1: useRef<HTMLInputElement>(null), photo2: useRef<HTMLInputElement>(null), photo3: useRef<HTMLInputElement>(null), photo4: useRef<HTMLInputElement>(null) };
   // 驳回原因弹窗
   const [rejectModal, setRejectModal] = useState<{ id: number; employee: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -663,6 +673,66 @@ export default function InternalPage() {
     }
     setSupplementUploading(false);
     setSupplementLeaveId(null);
+  };
+
+  // ── 病假四合一就医凭证 ──
+  const openMedicalProof = async (leaveId: number) => {
+    setMedicalProofModal(leaveId);
+    setMedicalProofErr("");
+    setMedicalProofMsg("");
+    setMedicalProofForm({ institution: "", doctor: "", cert_number: "", issue_date: "", sick_days: "" });
+    setMedicalProofPhotos({});
+    setMedicalProofExisting(null);
+    setMedicalProofLoading(true);
+    try {
+      const r = await fetchMedicalProof(leaveId);
+      if (r) {
+        setMedicalProofExisting(r);
+        setMedicalProofForm({ institution: r.institution, doctor: r.doctor, cert_number: r.cert_number, issue_date: r.issue_date, sick_days: String(r.sick_days || "") });
+      }
+    } catch { setMedicalProofExisting(null); }
+    setMedicalProofLoading(false);
+  };
+  const setMedicalPhoto = (key: "photo1" | "photo2" | "photo3" | "photo4", file: File | undefined) => {
+    setMedicalProofPhotos((prev) => ({ ...prev, [key]: file }));
+  };
+  const submitMedicalProof = async () => {
+    if (medicalProofModal === null) return;
+    const f = medicalProofForm;
+    if (!f.institution.trim()) { setMedicalProofErr("请填写医疗机构名称"); return; }
+    if (!f.doctor.trim()) { setMedicalProofErr("请填写医师姓名及执照号"); return; }
+    if (!f.cert_number.trim()) { setMedicalProofErr("请填写医疗证明编号"); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f.issue_date)) { setMedicalProofErr("请填写开具日期（YYYY-MM-DD）"); return; }
+    const days = Number(f.sick_days);
+    if (!Number.isInteger(days) || days <= 0) { setMedicalProofErr("请填写病假天数（正整数）"); return; }
+    if (!medicalProofPhotos.photo1 || !medicalProofPhotos.photo2 || !medicalProofPhotos.photo3 || !medicalProofPhotos.photo4) {
+      setMedicalProofErr("四张照片缺一不可，请上传完整"); return;
+    }
+    setMedicalProofSaving(true);
+    setMedicalProofErr("");
+    try {
+      const r = await saveMedicalProof(medicalProofModal, {
+        institution: f.institution.trim(),
+        doctor: f.doctor.trim(),
+        cert_number: f.cert_number.trim(),
+        issue_date: f.issue_date.trim(),
+        sick_days: days,
+      }, {
+        photo1: medicalProofPhotos.photo1!,
+        photo2: medicalProofPhotos.photo2!,
+        photo3: medicalProofPhotos.photo3!,
+        photo4: medicalProofPhotos.photo4!,
+      });
+      setMedicalProofExisting(r);
+      setMedicalProofMsg("已保存");
+      setMedicalProofPhotos({});
+      setTimeout(() => setMedicalProofMsg((m) => (m === "已保存" ? "" : m)), 1500);
+      loadAll();
+    } catch (err) {
+      setMedicalProofErr(err instanceof Error ? err.message : "提交失败");
+    } finally {
+      setMedicalProofSaving(false);
+    }
   };
 
   // ── 请假表单校验衍生值 ──
@@ -2820,7 +2890,7 @@ export default function InternalPage() {
                 <td className="py-2.5 px-4">
                   <div className="flex gap-1.5 items-center">
                       <button
-                        onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}}
+                        onClick={()=>{ if (l.leave_type === "病假") { openMedicalProof(l.id); } else { setSupplementLeaveId(l.id); setTimeout(()=>supplementInputRef.current?.click(),50); } }}
                         disabled={supplementUploading}
                         className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"
                         title={l.leave_type === "病假" ? "补交医疗证明" : "补传附件"}
@@ -2855,7 +2925,7 @@ export default function InternalPage() {
                     {(()=>{const imgs=safeJsonParseArray(l.images);return imgs.length>0?(
                       <a href={fileUrl((imgs[0] as string).startsWith("/api/files/") ? imgs[0] : "/api/files/" + imgs[0])} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:underline text-xs">{imgs.length} 张附件</a>
                     ):null;})()}
-                    <button onClick={()=>{setSupplementLeaveId(l.id);setTimeout(()=>supplementInputRef.current?.click(),50);}} disabled={supplementUploading} className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]">{l.leave_type === "病假" ? "补交医疗证明" : "补传附件"}</button>
+                    <button onClick={()=>{ if (l.leave_type === "病假") { openMedicalProof(l.id); } else { setSupplementLeaveId(l.id); setTimeout(()=>supplementInputRef.current?.click(),50); } }} disabled={supplementUploading} className="inline-flex items-center gap-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]">{l.leave_type === "病假" ? "补交医疗证明" : "补传附件"}</button>
                     {l.status==="待审批"&&isAdmin&&(
                       <>
                         <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={()=>handleApproveLeave(l.id,"已通过")}>通过</Button>
@@ -2936,6 +3006,82 @@ export default function InternalPage() {
               <Button size="sm" onClick={handleConfirmReject} disabled={!rejectReason.trim() || rejecting}
                 className="bg-red-500 hover:bg-red-600 text-white">{rejecting ? "驳回中…" : "确认驳回"}</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 病假四合一就医凭证弹窗 */}
+      {medicalProofModal !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMedicalProofModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-semibold text-[var(--foreground)]">补交医疗证明（四合一）</p>
+              <button onClick={() => setMedicalProofModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {medicalProofLoading ? (
+              <p className="text-sm text-[var(--muted-foreground)] text-center py-8">加载中…</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs text-[var(--muted-foreground)]">医疗机构名称 <span className="text-red-500">*</span></label>
+                    <input value={medicalProofForm.institution} onChange={(e) => setMedicalProofForm((p) => ({ ...p, institution: e.target.value }))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 曼谷医院" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--muted-foreground)]">医师姓名及执照号 <span className="text-red-500">*</span></label>
+                    <input value={medicalProofForm.doctor} onChange={(e) => setMedicalProofForm((p) => ({ ...p, doctor: e.target.value }))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 张三 医执字第123号" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--muted-foreground)]">医疗证明编号 <span className="text-red-500">*</span></label>
+                    <input value={medicalProofForm.cert_number} onChange={(e) => setMedicalProofForm((p) => ({ ...p, cert_number: e.target.value }))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="证明编号" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--muted-foreground)]">开具日期 <span className="text-red-500">*</span></label>
+                    <input type="date" value={medicalProofForm.issue_date} onChange={(e) => setMedicalProofForm((p) => ({ ...p, issue_date: e.target.value }))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--muted-foreground)]">病假天数 <span className="text-red-500">*</span></label>
+                    <input type="number" min="1" step="1" value={medicalProofForm.sick_days} onChange={(e) => setMedicalProofForm((p) => ({ ...p, sick_days: e.target.value }))} className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" placeholder="如 2" />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {([
+                    ["photo1", "第一张：医疗证明或就诊单", "三天以上要完整假条，一到两天要门诊挂号单"],
+                    ["photo2", "第二张：处方药袋", "药袋上要有员工姓名、就诊日期、药名、医院名"],
+                    ["photo3", "第三张：门诊档案袋或挂号卡", ""],
+                    ["photo4", "第四张：付款收据", "要有金额、收费日期、财务章"],
+                  ] as [string, string, string][]).map(([key, label, hint]) => {
+                    const file = medicalProofPhotos[key as "photo1"];
+                    const existingUrl = medicalProofExisting ? (medicalProofExisting as any)[`${key}_url`] : "";
+                    return (
+                      <div key={key} className="rounded-md border border-[var(--border)] p-2.5">
+                        <p className="text-xs font-medium text-[var(--foreground)]">{label} <span className="text-red-500">*</span></p>
+                        {hint && <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{hint}</p>}
+                        <label className="mt-2 flex h-9 cursor-pointer items-center justify-center rounded border border-dashed border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:border-[var(--ring)]">
+                          {file ? file.name : existingUrl ? "已上传（点击替换）" : "点击上传"}
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; setMedicalPhoto(key as "photo1", f); e.target.value = ""; }} />
+                        </label>
+                        {existingUrl && !file && (
+                          <a href={fileUrl(existingUrl)} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-blue-600 hover:underline">查看已上传</a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {medicalProofErr && <p className="text-xs text-red-500">{medicalProofErr}</p>}
+                {medicalProofMsg && <p className="text-xs text-emerald-600 dark:text-emerald-400">{medicalProofMsg}</p>}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button variant="outline" size="sm" onClick={() => setMedicalProofModal(null)}>关闭</Button>
+                  <Button size="sm" onClick={submitMedicalProof} disabled={medicalProofSaving}>{medicalProofSaving ? "提交中…" : "保存"}</Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

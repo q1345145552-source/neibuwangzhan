@@ -760,6 +760,24 @@ function initTables(database: Database.Database) {
       analyzed_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- 病假补交四合一就医凭证：结构化信息 + 四张照片
+    CREATE TABLE IF NOT EXISTS leave_medical_proofs (
+      leave_id INTEGER PRIMARY KEY,
+      institution TEXT DEFAULT '',
+      doctor TEXT DEFAULT '',
+      cert_number TEXT DEFAULT '',
+      issue_date TEXT DEFAULT '',
+      sick_days INTEGER DEFAULT 0,
+      photo1 TEXT DEFAULT '',
+      photo2 TEXT DEFAULT '',
+      photo3 TEXT DEFAULT '',
+      photo4 TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- 员工体检记录（转正前一次）：敏感信息，仅管理员可见
     CREATE TABLE IF NOT EXISTS employee_medical_exams (
       employee_id INTEGER PRIMARY KEY,
