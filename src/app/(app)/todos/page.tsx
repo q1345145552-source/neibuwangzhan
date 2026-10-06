@@ -5,6 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell } from "lucide-react";
 
 interface Todo {
@@ -68,6 +69,22 @@ export default function TodosPage() {
   const [showInbox, setShowInbox] = useState(false);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [completedRange, setCompletedRange] = useState("all");
+  // 待办看板（仅管理员/老板）：时间范围 + 统计数字
+  const [statsRange, setStatsRange] = useState<"today" | "week" | "month">("today");
+  const [stats, setStats] = useState<{
+    unfinished: number;
+    today: { created: number; completed: number; followups: number };
+    week: { created: number; completed: number; followups: number };
+    month: { created: number; completed: number; followups: number };
+  } | null>(null);
+
+  const loadStats = useCallback(() => {
+    if (!isAdmin) return;
+    fetchWithAuth("/api/todos/stats", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && typeof d.unfinished === "number") setStats(d); })
+      .catch(() => {});
+  }, [isAdmin]);
 
   const load = useCallback(() => {
     fetchWithAuth("/api/todos", { cache: "no-store" })
@@ -75,7 +92,8 @@ export default function TodosPage() {
       .then((d) => setTodos(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+    loadStats();
+  }, [loadStats]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -515,6 +533,28 @@ export default function TodosPage() {
           </Button>
         </div>
       </div>
+
+      {/* 待办看板（仅管理员/老板可见） */}
+      {isAdmin && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+            <h2 className="text-sm font-medium text-[var(--foreground)]">待办看板</h2>
+            <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
+              {([["today","今天"],["week","本周"],["month","本月"]] as [string,string][]).map(([k,l]) => (
+                <button key={k} onClick={() => setStatsRange(k as any)}
+                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${statsRange===k?"bg-[var(--background)] text-[var(--foreground)] shadow-sm":"text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                >{l}</button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
+            <StatCard label="未完成" value={stats?.unfinished ?? 0} />
+            <StatCard label={`${statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月"}新增`} value={stats?.[statsRange]?.created ?? 0} />
+            <StatCard label={`${statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月"}完成`} value={stats?.[statsRange]?.completed ?? 0} />
+            <StatCard label={`${statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月"}跟进`} value={stats?.[statsRange]?.followups ?? 0} />
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
