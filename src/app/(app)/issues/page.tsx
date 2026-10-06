@@ -454,7 +454,7 @@ export default function IssuesPage() {
               ))}</tbody>
             </table>
             {/* 手机端卡片 */}
-            <div className="md:hidden flex flex-col gap-2 p-3">
+            <div className="md:hidden flex flex-col gap-3 p-3">
               {list.map(t => (
                 <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                   <div className="flex items-center justify-between gap-2">
@@ -464,14 +464,17 @@ export default function IssuesPage() {
                       t.status==="处理中"&&"bg-blue-100 text-blue-700",
                       "bg-gray-100 text-gray-700")}>{t.status}</span>
                   </div>
-                  <div className="mt-2 space-y-1.5 text-sm">
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">关联</span><span className="text-xs">{t.ref_id ? `${t.ref_type==="influencer"?"达人:":"订单:"}${t.ref_id}` : "—"}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">问题</span><span className="text-right">{t.description}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">指定人</span><span className="text-xs">{t.assignee ? t.assignee.split(",").map(s => s.trim()).filter(Boolean).join("、") : "—"}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建人</span><span>{t.created_by}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">提交时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
+                  <div className="mt-2 space-y-2 text-sm">
+                    <div className="flex items-start justify-between gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">关联</span><span className="min-w-0 break-words text-right text-xs">{t.ref_id ? `${t.ref_type==="influencer"?"达人:":"订单:"}${t.ref_id}` : "—"}</span></div>
+                    <div>
+                      <div className="text-[var(--muted-foreground)]">问题</div>
+                      <p className="mt-0.5 break-words whitespace-pre-wrap">{t.description}</p>
+                    </div>
+                    <div className="flex items-start justify-between gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">指定人</span><span className="min-w-0 break-words text-right text-xs">{t.assignee ? t.assignee.split(",").map(s => s.trim()).filter(Boolean).join("、") : "—"}</span></div>
+                    <div className="flex items-start justify-between gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">创建人</span><span className="min-w-0 break-words text-right">{t.created_by}</span></div>
+                    <div className="flex items-start justify-between gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">提交时间</span><span className="min-w-0 break-words text-right text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
                     {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
                       <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleStartIssue(t)}><Play className="size-3 mr-1" />开始处理</Button>
