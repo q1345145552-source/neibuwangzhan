@@ -61,6 +61,8 @@ export default function InternalPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [staffNames, setStaffNames] = useState<string[]>([]);
+  // 工单指派人/解决人候选：老板(admin) + 普通员工，仅排除客户
+  const [issueStaffNames, setIssueStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
   // 机构业务总开关：关闭时工作量里隐藏达人相关列
   const [agencyEnabled, setAgencyEnabled] = useState(true);
@@ -325,8 +327,12 @@ export default function InternalPage() {
         const res = await fetchWithAuth("/api/employees", { cache: "no-store" });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
         const data = await res.json();
-        const names: string[] = (Array.isArray(data) ? data : []).filter((e: any) => e.role === "employee").map((e: any) => e.name).filter(Boolean);
+        const rows: any[] = Array.isArray(data) ? data : [];
+        const names: string[] = rows.filter((e: any) => e.role === "employee").map((e: any) => e.name).filter(Boolean);
+        // 工单指派人：老板(admin) + 普通员工，仅排除客户
+        const issueNames: string[] = rows.filter((e: any) => e.role !== "client").map((e: any) => e.name).filter(Boolean);
         setStaffNames(names);
+        setIssueStaffNames(issueNames);
       } catch (e) { console.error("[内部管理] 加载员工列表失败", e); }
     };
     loadStaff();
@@ -2297,7 +2303,7 @@ export default function InternalPage() {
           <span className="text-[var(--border)] mx-1">|</span>
           <select value={issueAssigneeFilter} onChange={e=>setIssueAssigneeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部指派人</option>
-            {staffNames.map(n=><option key={n} value={n}>{n}</option>)}
+            {issueStaffNames.map(n=><option key={n} value={n}>{n}</option>)}
           </select>
           <select value={issueCreatorFilter} onChange={e=>setIssueCreatorFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部创建人</option>
@@ -2321,7 +2327,7 @@ export default function InternalPage() {
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">指定解决人 <span className="text-[var(--destructive)]">*</span>（可多选）</label>
                 <div className="mt-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 rounded border border-[var(--border)] p-3 max-h-40 overflow-y-auto">
-                  {staffNames.map(n => {
+                  {issueStaffNames.map(n => {
                     const checked = issueForm.assignee.includes(n);
                     return (
                       <label key={n} className={cn(
