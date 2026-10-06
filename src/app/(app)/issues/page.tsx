@@ -392,7 +392,7 @@ export default function IssuesPage() {
                 <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">解决截图</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">创建人</th>
-                <th className="py-2.5 px-4 text-left text-xs font-medium">创建时间</th>
+                <th className="py-2.5 px-4 text-left text-xs font-medium">提交时间</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">图片</th>
                 <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
               </tr></thead>
@@ -469,7 +469,7 @@ export default function IssuesPage() {
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">问题</span><span className="text-right">{t.description}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">指定人</span><span className="text-xs">{t.assignee ? t.assignee.split(",").map(s => s.trim()).filter(Boolean).join("、") : "—"}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建人</span><span>{t.created_by}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">提交时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
