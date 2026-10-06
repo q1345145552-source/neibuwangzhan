@@ -41,6 +41,7 @@ import {
   FolderKanban,
   MessageSquare,
   IdCard,
+  Ticket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -48,6 +49,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const navigation = [
   { name: "仪表盘", href: "/", icon: LayoutDashboard },
   { name: "我的待办", href: "/todos", icon: ListTodo },
+  { name: "工单", href: "/issues", icon: Ticket },
   { name: "我的项目", href: "/projects", icon: FolderKanban },
   { name: "员工动态", href: "/activity", icon: Activity },
   { name: "消息", href: "/messages", icon: MessageSquare },
