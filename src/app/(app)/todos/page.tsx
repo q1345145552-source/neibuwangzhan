@@ -6,7 +6,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell } from "lucide-react";
+import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell, AlertCircle } from "lucide-react";
 
 interface Todo {
   id: number;
@@ -34,13 +34,15 @@ interface RangeStats {
   completed: number;
   followups: number;
 }
-// 待办看板整体统计（含员工维度表）
+// 待办看板整体统计（含员工维度表、积压提醒、趋势对比）
 interface TodoStats {
   unfinished: number;
   today: RangeStats;
   week: RangeStats;
   month: RangeStats;
   employees: { name: string; unfinished: number; today: RangeStats; week: RangeStats; month: RangeStats }[];
+  backlog: { id: number; content: string; assignee: string; created_at: string; days: number }[];
+  trend: { created: { this: number; last: number }; completed: { this: number; last: number } };
 }
 
 // 曼谷时区今天 / N 天前（用于已完成待办的时间筛选）
@@ -494,6 +496,21 @@ export default function TodosPage() {
 
   const rangeLabel = statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月";
 
+  // 完成率 = 完成数 / (新增数 + 未完成数)，显示整体推进速度（百分比）
+  const completionRate = (() => {
+    const s = stats?.[statsRange];
+    if (!s) return null;
+    const denom = s.created + (stats?.unfinished ?? 0);
+    if (denom <= 0) return null;
+    return Math.round((s.completed / denom) * 100);
+  })();
+
+  // 活跃排行：按当前时间范围的跟进数降序，取前 5
+  const activityRank = [...(stats?.employees ?? [])]
+    .filter((e) => e[statsRange].followups > 0)
+    .sort((a, b) => b[statsRange].followups - a[statsRange].followups)
+    .slice(0, 5);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -595,6 +612,89 @@ export default function TodosPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* 积压提醒 + 完成率/趋势/排行 */}
+          <div className="grid gap-0 border-t border-[var(--border)] md:grid-cols-2">
+            {/* 左：积压提醒 */}
+            <div className="p-5 md:border-r border-[var(--border)]">
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+                <AlertCircle className="size-4 text-red-500" />积压提醒
+              </h3>
+              {(stats?.backlog ?? []).length === 0 ? (
+                <p className="py-2 text-sm text-[var(--muted-foreground)]">没有积压的待办</p>
+              ) : (
+                <>
+                  <p className="mb-2 text-xs text-[var(--muted-foreground)]">{(stats?.backlog ?? []).length} 个待办超过 3 天未完成，卡住了该催了：</p>
+                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                    {(stats?.backlog ?? []).map((b) => (
+                      <div key={b.id} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/30">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm text-[var(--foreground)]">{b.content}</span>
+                          <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">{b.days} 天</span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-[var(--muted-foreground)]">{b.assignee || "未分配"} · 创建于 {toThaiTime(b.created_at) || "—"}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 右：完成率 + 趋势对比 + 活跃排行 */}
+            <div>
+              <div className="border-b border-[var(--border)] p-5">
+                <h3 className="mb-2 text-sm font-medium text-[var(--foreground)]">完成率（{rangeLabel}）</h3>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-3xl font-semibold tabular-nums text-[var(--foreground)]">{completionRate == null ? "—" : `${completionRate}%`}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">完成 / (新增 + 未完成)</span>
+                </div>
+              </div>
+
+              <div className="border-b border-[var(--border)] p-5">
+                <h3 className="mb-3 text-sm font-medium text-[var(--foreground)]">趋势对比（本周 vs 上周）</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["created","completed"] as const).map((key) => {
+                    const label = key === "created" ? "新增" : "完成";
+                    const t = stats?.trend?.[key]?.this ?? 0;
+                    const l = stats?.trend?.[key]?.last ?? 0;
+                    const diff = t - l;
+                    const up = diff >= 0;
+                    return (
+                      <div key={key} className="rounded-lg border border-[var(--border)] p-3">
+                        <div className="text-xs text-[var(--muted-foreground)]">{label}</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="font-mono text-xl font-semibold tabular-nums">{t}</span>
+                          <span className={cn("text-xs font-medium", diff === 0 ? "text-[var(--muted-foreground)]" : up ? "text-green-600" : "text-red-500")}>
+                            {diff === 0 ? "持平" : up ? `↑ ${diff}` : `↓ ${Math.abs(diff)}`}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-[var(--muted-foreground)]">上周 {l}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-5">
+                <h3 className="mb-3 text-sm font-medium text-[var(--foreground)]">活跃排行（{rangeLabel}跟进）</h3>
+                {activityRank.length === 0 ? (
+                  <p className="py-2 text-sm text-[var(--muted-foreground)]">暂无跟进记录</p>
+                ) : (
+                  <ol className="space-y-1.5">
+                    {activityRank.map((e, i) => (
+                      <li key={e.name} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5">
+                        <span className="flex items-center gap-2.5">
+                          <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-semibold", i === 0 ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : i === 1 ? "bg-slate-400/20 text-slate-500" : i === 2 ? "bg-orange-500/20 text-orange-600 dark:text-orange-400" : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{i + 1}</span>
+                          <span className="text-sm text-[var(--foreground)]">{e.name}</span>
+                        </span>
+                        <span className="font-mono text-sm tabular-nums text-[var(--muted-foreground)]">{e[statsRange].followups} 次</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
             </div>
           </div>
         </div>
