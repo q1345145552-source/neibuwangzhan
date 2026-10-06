@@ -455,12 +455,12 @@ export default function TodosPage() {
       <div className="md:hidden flex flex-col gap-3 p-4">
         {list.map((t) => (
           <div key={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20")}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-[var(--foreground)]">{t.content}</span>
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 flex-1 break-words font-medium text-[var(--foreground)]">{t.content}</span>
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
             </div>
             {t.latest_follow_content && (
-              <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">
+              <div className="mt-1.5 break-words text-xs text-[var(--muted-foreground)]">
                 最新：{t.latest_follow_content}
                 <span className="ml-1 text-[var(--muted-foreground)]/70">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
               </div>
@@ -474,8 +474,8 @@ export default function TodosPage() {
               </div>
             )}
             <div className="mt-3 space-y-2 text-sm">
-              <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{t.assignee || "—"}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">紧急程度</span>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">负责人</span><span className="min-w-0 break-words">{t.assignee || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">紧急程度</span>
                 {t.priority === "紧急" ? <span className="inline-flex rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">紧急</span> : <span className="text-xs text-[var(--muted-foreground)]">普通</span>}
               </div>
               <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
@@ -605,7 +605,7 @@ export default function TodosPage() {
           </div>
           {/* 员工维度表：每个员工一行，四列指标跟着看板时间切换 */}
           <div className="border-t border-[var(--border)]">
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--muted)]/20">
@@ -633,6 +633,34 @@ export default function TodosPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            {/* 手机端卡片式：一屏看完，不横向滑动 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {(stats?.employees ?? []).map((emp) => (
+                <div key={emp.name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-medium text-[var(--foreground)]">{emp.name}</span>
+                    <span className="shrink-0 text-xs text-[var(--muted-foreground)]">未完成 <span className="font-mono tabular-nums text-[var(--foreground)]">{emp.unfinished}</span></span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <div className="rounded-md bg-[var(--muted)]/40 px-1.5 py-1.5 text-center">
+                      <div className="text-[0.65rem] text-[var(--muted-foreground)]">{rangeLabel}新增</div>
+                      <div className="mt-0.5 font-mono text-sm tabular-nums text-[var(--foreground)]">{emp[statsRange].created}</div>
+                    </div>
+                    <div className="rounded-md bg-[var(--muted)]/40 px-1.5 py-1.5 text-center">
+                      <div className="text-[0.65rem] text-[var(--muted-foreground)]">{rangeLabel}完成</div>
+                      <div className="mt-0.5 font-mono text-sm tabular-nums text-[var(--foreground)]">{emp[statsRange].completed}</div>
+                    </div>
+                    <div className="rounded-md bg-[var(--muted)]/40 px-1.5 py-1.5 text-center">
+                      <div className="text-[0.65rem] text-[var(--muted-foreground)]">{rangeLabel}跟进</div>
+                      <div className="mt-0.5 font-mono text-sm tabular-nums text-[var(--foreground)]">{emp[statsRange].followups}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(stats?.employees ?? []).length === 0 && (
+                <div className="py-4 text-center text-sm text-[var(--muted-foreground)]">暂无员工数据</div>
+              )}
             </div>
           </div>
 
@@ -817,8 +845,8 @@ export default function TodosPage() {
               <div className="md:hidden flex flex-col gap-3 p-4">
                 {completedFiltered.map((t) => (
                   <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[var(--muted-foreground)] line-through">{t.content}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0 flex-1 break-words text-[var(--muted-foreground)] line-through">{t.content}</span>
                       <span className="text-xs text-[var(--muted-foreground)] shrink-0">{t.assignee || "—"}</span>
                     </div>
                     <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(t.completed_at) || "—"}</div>
