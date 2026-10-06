@@ -5,7 +5,6 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell, AlertCircle } from "lucide-react";
 
 interface Todo {
@@ -576,11 +575,18 @@ export default function TodosPage() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
-            <StatCard label="未完成" value={stats?.unfinished ?? 0} />
-            <StatCard label={`${rangeLabel}新增`} value={stats?.[statsRange]?.created ?? 0} />
-            <StatCard label={`${rangeLabel}完成`} value={stats?.[statsRange]?.completed ?? 0} />
-            <StatCard label={`${rangeLabel}跟进`} value={stats?.[statsRange]?.followups ?? 0} />
+          <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-4">
+            {[
+              { label: "未完成", value: stats?.unfinished ?? 0 },
+              { label: `${rangeLabel}新增`, value: stats?.[statsRange]?.created ?? 0 },
+              { label: `${rangeLabel}完成`, value: stats?.[statsRange]?.completed ?? 0 },
+              { label: `${rangeLabel}跟进`, value: stats?.[statsRange]?.followups ?? 0 },
+            ].map((s) => (
+              <div key={s.label} className="flex flex-col gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+                <span className="text-[0.7rem] font-medium text-[var(--muted-foreground)]">{s.label}</span>
+                <span className="font-mono text-lg font-semibold tracking-tight tabular-nums text-[var(--foreground)]">{s.value.toLocaleString("zh-CN")}</span>
+              </div>
+            ))}
           </div>
           {/* 员工维度表：每个员工一行，四列指标跟着看板时间切换 */}
           <div className="border-t border-[var(--border)]">
@@ -588,26 +594,26 @@ export default function TodosPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--muted)]/20">
-                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
-                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">未完成数</th>
-                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}新增</th>
-                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}完成</th>
-                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}跟进</th>
+                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
+                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">未完成数</th>
+                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}新增</th>
+                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}完成</th>
+                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}跟进</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(stats?.employees ?? []).map((emp) => (
                     <tr key={emp.name} className="border-b border-[var(--border)] last:border-0">
-                      <td className="px-5 py-2.5 font-medium text-[var(--foreground)]">{emp.name}</td>
-                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp.unfinished}</td>
-                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp[statsRange].created}</td>
-                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp[statsRange].completed}</td>
-                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp[statsRange].followups}</td>
+                      <td className="px-4 py-1.5 font-medium text-[var(--foreground)]">{emp.name}</td>
+                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp.unfinished}</td>
+                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp[statsRange].created}</td>
+                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp[statsRange].completed}</td>
+                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp[statsRange].followups}</td>
                     </tr>
                   ))}
                   {(stats?.employees ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-5 py-6 text-center text-sm text-[var(--muted-foreground)]">暂无员工数据</td>
+                      <td colSpan={5} className="px-4 py-4 text-center text-sm text-[var(--muted-foreground)]">暂无员工数据</td>
                     </tr>
                   )}
                 </tbody>
