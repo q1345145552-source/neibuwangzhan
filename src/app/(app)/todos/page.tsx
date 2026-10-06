@@ -28,6 +28,21 @@ const STATUS_CLASS: Record<string, string> = {
   "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
 };
 
+// 待办看板：每个时间范围的三项统计
+interface RangeStats {
+  created: number;
+  completed: number;
+  followups: number;
+}
+// 待办看板整体统计（含员工维度表）
+interface TodoStats {
+  unfinished: number;
+  today: RangeStats;
+  week: RangeStats;
+  month: RangeStats;
+  employees: { name: string; unfinished: number; today: RangeStats; week: RangeStats; month: RangeStats }[];
+}
+
 // 曼谷时区今天 / N 天前（用于已完成待办的时间筛选）
 function bangkokToday(): string {
   return new Date(Date.now() + 7 * 3600 * 1000).toISOString().split("T")[0];
@@ -71,12 +86,7 @@ export default function TodosPage() {
   const [completedRange, setCompletedRange] = useState("all");
   // 待办看板（仅管理员/老板）：时间范围 + 统计数字
   const [statsRange, setStatsRange] = useState<"today" | "week" | "month">("today");
-  const [stats, setStats] = useState<{
-    unfinished: number;
-    today: { created: number; completed: number; followups: number };
-    week: { created: number; completed: number; followups: number };
-    month: { created: number; completed: number; followups: number };
-  } | null>(null);
+  const [stats, setStats] = useState<TodoStats | null>(null);
 
   const loadStats = useCallback(() => {
     if (!isAdmin) return;
@@ -482,6 +492,8 @@ export default function TodosPage() {
     </div>
   );
 
+  const rangeLabel = statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月";
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -549,9 +561,41 @@ export default function TodosPage() {
           </div>
           <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4">
             <StatCard label="未完成" value={stats?.unfinished ?? 0} />
-            <StatCard label={`${statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月"}新增`} value={stats?.[statsRange]?.created ?? 0} />
-            <StatCard label={`${statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月"}完成`} value={stats?.[statsRange]?.completed ?? 0} />
-            <StatCard label={`${statsRange === "today" ? "今日" : statsRange === "week" ? "本周" : "本月"}跟进`} value={stats?.[statsRange]?.followups ?? 0} />
+            <StatCard label={`${rangeLabel}新增`} value={stats?.[statsRange]?.created ?? 0} />
+            <StatCard label={`${rangeLabel}完成`} value={stats?.[statsRange]?.completed ?? 0} />
+            <StatCard label={`${rangeLabel}跟进`} value={stats?.[statsRange]?.followups ?? 0} />
+          </div>
+          {/* 员工维度表：每个员工一行，四列指标跟着看板时间切换 */}
+          <div className="border-t border-[var(--border)]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] bg-[var(--muted)]/20">
+                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
+                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">未完成数</th>
+                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}新增</th>
+                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}完成</th>
+                    <th className="px-5 py-2.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}跟进</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stats?.employees ?? []).map((emp) => (
+                    <tr key={emp.name} className="border-b border-[var(--border)] last:border-0">
+                      <td className="px-5 py-2.5 font-medium text-[var(--foreground)]">{emp.name}</td>
+                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp.unfinished}</td>
+                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp[statsRange].created}</td>
+                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp[statsRange].completed}</td>
+                      <td className="px-5 py-2.5 font-mono tabular-nums">{emp[statsRange].followups}</td>
+                    </tr>
+                  ))}
+                  {(stats?.employees ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-6 text-center text-sm text-[var(--muted-foreground)]">暂无员工数据</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
