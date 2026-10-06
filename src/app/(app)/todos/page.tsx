@@ -88,6 +88,8 @@ export default function TodosPage() {
   // 待办看板（仅管理员/老板）：时间范围 + 统计数字
   const [statsRange, setStatsRange] = useState<"today" | "week" | "month">("today");
   const [stats, setStats] = useState<TodoStats | null>(null);
+  // 看板折叠状态：默认收起，只留标题
+  const [boardOpen, setBoardOpen] = useState(false);
 
   const loadStats = useCallback(() => {
     if (!isAdmin) return;
@@ -567,14 +569,27 @@ export default function TodosPage() {
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
             <h2 className="text-sm font-medium text-[var(--foreground)]">待办看板</h2>
-            <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
-              {([["today","今天"],["week","本周"],["month","本月"]] as [string,string][]).map(([k,l]) => (
-                <button key={k} onClick={() => setStatsRange(k as any)}
-                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${statsRange===k?"bg-[var(--background)] text-[var(--foreground)] shadow-sm":"text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
-                >{l}</button>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setBoardOpen(o => !o)}
+              aria-expanded={boardOpen}
+              aria-label={boardOpen ? "收起看板" : "展开看板"}
+              className="flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              <ChevronDown className={cn("size-4 transition-transform", boardOpen && "rotate-180")} />
+            </button>
           </div>
+          {boardOpen && (
+            <>
+              <div className="flex items-center justify-end border-b border-[var(--border)] px-5 py-2">
+                <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
+                  {([["today","今天"],["week","本周"],["month","本月"]] as [string,string][]).map(([k,l]) => (
+                    <button key={k} onClick={() => setStatsRange(k as any)}
+                      className={`rounded px-3 py-1 text-xs font-medium transition-colors ${statsRange===k?"bg-[var(--background)] text-[var(--foreground)] shadow-sm":"text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                    >{l}</button>
+                  ))}
+                </div>
+              </div>
           <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:gap-2 md:p-3">
             {[
               { label: "未完成", value: stats?.unfinished ?? 0 },
@@ -703,6 +718,8 @@ export default function TodosPage() {
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       )}
 
