@@ -191,3 +191,13 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 移动端输入框防苹果自动放大：字号低于 16px 时 iOS 聚焦会自动缩放页面，
+   统一把输入框/文本框/下拉框的字号提到 16px，桌面端不受影响 */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
