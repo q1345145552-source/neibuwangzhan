@@ -450,7 +450,7 @@ export default function TodosPage() {
         </tbody>
       </table>
       {/* 手机端卡片 */}
-      <div className="md:hidden flex flex-col gap-2 p-3">
+      <div className="md:hidden flex flex-col gap-3 p-4">
         {list.map((t) => (
           <div key={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20")}>
             <div className="flex items-center justify-between gap-2">
@@ -471,14 +471,14 @@ export default function TodosPage() {
                 </Button>
               </div>
             )}
-            <div className="mt-2 space-y-1.5 text-sm">
+            <div className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{t.assignee || "—"}</span></div>
               <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">紧急程度</span>
                 {t.priority === "紧急" ? <span className="inline-flex rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">紧急</span> : <span className="text-xs text-[var(--muted-foreground)]">普通</span>}
               </div>
               <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => openEdit(t)} className="gap-1"><Pencil className="size-3.5" />编辑</Button>
               {t.latest_follow_content && (
                 <Button size="sm" variant="ghost" onClick={() => openFollowHistory(t)} className="gap-1 text-[var(--muted-foreground)]"><History className="size-3.5" />历史</Button>
@@ -575,7 +575,7 @@ export default function TodosPage() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:gap-2 md:p-3">
             {[
               { label: "未完成", value: stats?.unfinished ?? 0 },
               { label: `${rangeLabel}新增`, value: stats?.[statsRange]?.created ?? 0 },
@@ -594,21 +594,21 @@ export default function TodosPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--muted)]/20">
-                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
-                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">未完成数</th>
-                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}新增</th>
-                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}完成</th>
-                    <th className="px-4 py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}跟进</th>
+                    <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
+                    <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">未完成数</th>
+                    <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}新增</th>
+                    <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}完成</th>
+                    <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}跟进</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(stats?.employees ?? []).map((emp) => (
                     <tr key={emp.name} className="border-b border-[var(--border)] last:border-0">
-                      <td className="px-4 py-1.5 font-medium text-[var(--foreground)]">{emp.name}</td>
-                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp.unfinished}</td>
-                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp[statsRange].created}</td>
-                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp[statsRange].completed}</td>
-                      <td className="px-4 py-1.5 font-mono tabular-nums">{emp[statsRange].followups}</td>
+                      <td className="px-4 py-2 md:py-1.5 font-medium text-[var(--foreground)]">{emp.name}</td>
+                      <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp.unfinished}</td>
+                      <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp[statsRange].created}</td>
+                      <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp[statsRange].completed}</td>
+                      <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp[statsRange].followups}</td>
                     </tr>
                   ))}
                   {(stats?.employees ?? []).length === 0 && (
@@ -732,7 +732,7 @@ export default function TodosPage() {
           {cards.length === 0 ? (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无员工</div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
               {cards.map((c) => (
                 <button
                   key={c.name}
@@ -740,7 +740,7 @@ export default function TodosPage() {
                   className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-left transition-colors hover:border-[var(--primary)]"
                 >
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{c.name}</p>
-                  <p className="mt-2 font-display text-4xl font-light tabular-nums text-[var(--foreground)]">{c.count}</p>
+                  <p className="mt-2 font-display text-3xl font-light tabular-nums text-[var(--foreground)] sm:text-4xl">{c.count}</p>
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">未完成待办</p>
                 </button>
               ))}
@@ -797,7 +797,7 @@ export default function TodosPage() {
                 </tbody>
               </table>
               {/* 手机端卡片 */}
-              <div className="md:hidden flex flex-col gap-2 p-3">
+              <div className="md:hidden flex flex-col gap-3 p-4">
                 {completedFiltered.map((t) => (
                   <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                     <div className="flex items-center justify-between gap-2">
