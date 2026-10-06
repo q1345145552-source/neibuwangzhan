@@ -25,7 +25,16 @@ export async function GET(
   const rows = db.prepare(
     "SELECT * FROM todo_follow_ups WHERE todo_id = ? ORDER BY created_at DESC, id DESC"
   ).all(id);
-  return NextResponse.json(rows);
+  // 图片列以 JSON 数组字符串存储，转回数组方便前端直接展示
+  const result = rows.map((r: any) => {
+    let images: string[] = [];
+    try {
+      const parsed = JSON.parse(r.images || "[]");
+      if (Array.isArray(parsed)) images = parsed.filter((u: unknown) => typeof u === "string");
+    } catch {}
+    return { ...r, images };
+  });
+  return NextResponse.json(result);
 }
 
 // POST /api/todos/:id/follow-ups — 给待办加跟进记录
@@ -49,14 +58,19 @@ export async function POST(
   }
 
   const body = await readJson(req);
-  const { content } = body;
+  const { content, images } = body;
   if (!content?.trim()) {
     return NextResponse.json({ error: "请填写跟进内容" }, { status: 400 });
   }
 
+  // 图片（可选，多张）：url 列表随跟进记录一起保存
+  const imgUrls = Array.isArray(images)
+    ? images.filter((u: unknown) => typeof u === "string" && u.trim()).map((u: string) => u.trim())
+    : [];
+
   const result = db.prepare(
-    "INSERT INTO todo_follow_ups (todo_id, content, created_by) VALUES (?, ?, ?)"
-  ).run(id, content.trim(), auth.name);
+    "INSERT INTO todo_follow_ups (todo_id, content, images, created_by) VALUES (?, ?, ?, ?)"
+  ).run(id, content.trim(), JSON.stringify(imgUrls), auth.name);
 
   // 负责人本人跟进 = 他自己看过；别人（管理员/老板）跟进则负责人那边会显示「新跟进」未读
   if (auth.name === todo.assignee) {

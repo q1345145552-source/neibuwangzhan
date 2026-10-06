@@ -2091,6 +2091,7 @@ function initTables(database: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       todo_id INTEGER NOT NULL REFERENCES todos(id),
       content TEXT NOT NULL,
+      images TEXT DEFAULT '[]',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -2105,6 +2106,9 @@ function initTables(database: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_todo_follow_ups_todo_id ON todo_follow_ups(todo_id);
     CREATE INDEX IF NOT EXISTS idx_todo_images_todo_id ON todo_images(todo_id);
+
+    // todo_follow_ups 迁移：补图片列（跟进记录可选多张图片）
+    try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
 
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

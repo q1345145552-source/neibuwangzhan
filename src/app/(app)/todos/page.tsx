@@ -52,8 +52,10 @@ export default function TodosPage() {
   const [followTarget, setFollowTarget] = useState<Todo | null>(null);
   const [followContent, setFollowContent] = useState("");
   const [following, setFollowing] = useState(false);
+  const [followImages, setFollowImages] = useState<string[]>([]);
+  const [followUploading, setFollowUploading] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<Todo | null>(null);
-  const [historyRecords, setHistoryRecords] = useState<{ id: number; content: string; created_by: string; created_at: string }[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<{ id: number; content: string; images: string[]; created_by: string; created_at: string }[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
   const [editForm, setEditForm] = useState({ content: "", priority: "普通", assignee: "" });
@@ -201,6 +203,7 @@ export default function TodosPage() {
   const openFollow = (todo: Todo) => {
     setFollowTarget(todo);
     setFollowContent("");
+    setFollowImages([]);
     setErr("");
   };
 
@@ -284,10 +287,11 @@ export default function TodosPage() {
       const res = await fetchWithAuth(`/api/todos/${followTarget.id}/follow-ups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: followContent.trim() }),
+        body: JSON.stringify({ content: followContent.trim(), images: followImages }),
       });
       if (res.ok) {
         setFollowTarget(null);
+        setFollowImages([]);
         load();
         loadUnseen();
       } else {
@@ -296,6 +300,36 @@ export default function TodosPage() {
       }
     } catch { setErr("添加跟进失败"); }
     finally { setFollowing(false); }
+  };
+
+  // 跟进图片上传（多张，可选）：先传到 /api/upload 拿 url，随跟进记录一起保存
+  const handleFollowImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setFollowUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) urls.push(data.url);
+        }
+      }
+      if (urls.length > 0) {
+        setFollowImages((p) => [...p, ...urls]);
+      }
+    } catch { setErr("图片上传失败"); }
+    finally {
+      setFollowUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeFollowImage = (url: string) => {
+    setFollowImages((p) => p.filter((u) => u !== url));
   };
 
   const handleComplete = async (todo: Todo) => {
@@ -671,7 +705,7 @@ export default function TodosPage() {
       {/* 加跟进弹窗 */}
       {followTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { if (!following) setFollowTarget(null); }}>
-          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-[var(--foreground)]">加跟进记录</h3>
               <button onClick={() => setFollowTarget(null)} disabled={following} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
@@ -684,6 +718,24 @@ export default function TodosPage() {
               placeholder="写这次更新了什么"
               className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
             />
+            <div className="mt-3">
+              <label className="mb-1 block text-xs text-[var(--muted-foreground)]">图片（可选，可传多张）</label>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/30">
+                <ImagePlus className="size-4" />
+                {followUploading ? "上传中…" : "选择图片"}
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFollowImageUpload} disabled={followUploading} />
+              </label>
+              {followImages.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {followImages.map((url) => (
+                    <div key={url} className="relative">
+                      <img src={fileUrl(url)} alt="" className="h-16 w-16 rounded-md border border-[var(--border)] object-cover" />
+                      <button type="button" onClick={() => removeFollowImage(url)} className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-[var(--destructive)] text-white" title="移除"><X className="size-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {err && <p className="mt-2 text-xs text-[var(--destructive)]">{err}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setFollowTarget(null)} disabled={following}>取消</Button>
@@ -774,6 +826,19 @@ export default function TodosPage() {
                       <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{toThaiTime(h.created_at) || "—"}</span>
                     </div>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--foreground)]">{h.content}</p>
+                    {h.images && h.images.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {h.images.map((url, i) => (
+                          <img
+                            key={i}
+                            src={fileUrl(url)}
+                            alt=""
+                            className="h-14 w-14 cursor-pointer rounded-md border border-[var(--border)] object-cover hover:opacity-80"
+                            onClick={() => openLightbox(h.images, i)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
