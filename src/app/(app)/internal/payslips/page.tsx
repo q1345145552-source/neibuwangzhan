@@ -299,7 +299,7 @@ export default function PayslipsPage() {
     const base = `/internal?att_emp=${encodeURIComponent(attDetail.employee_name)}&att_month=${attDetail.month}`;
     window.location.href = date ? `${base}&att_date=${encodeURIComponent(date)}` : base;
   };
-  const goLeavePage = () => { window.location.href = "/internal/leave-dashboard"; };
+  const goLeavePage = () => { window.location.href = "/internal/leave"; };
 
   return (
     <div className="flex flex-col gap-6">

@@ -20,7 +20,7 @@ interface LeaveRow {
   analyzed_at: string;
 }
 
-export default function LeaveAnalysisPage() {
+export function LeaveAnalysisTab() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -79,13 +79,10 @@ export default function LeaveAnalysisPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">请假 AI 分析</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            结合请假理由、日期、历史记录与个人情况判断是否疑似异常
-            {suspicious > 0 && <span className="ml-2 text-red-600 dark:text-red-400 font-medium">疑似异常 {suspicious} 条</span>}
-          </p>
-        </div>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          结合请假理由、日期、历史记录与个人情况判断是否疑似异常
+          {suspicious > 0 && <span className="ml-2 text-red-600 dark:text-red-400 font-medium">疑似异常 {suspicious} 条</span>}
+        </p>
         <Button size="sm" onClick={batchAnalyze} disabled={analyzing}>
           {analyzing ? "分析中…" : `一键分析${unanalyzed > 0 ? `（未分析 ${unanalyzed} 条）` : ""}`}
         </Button>

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export default function LeaveDashboardPage() {
+export function LeaveDashboardTab() {
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [detailModal, setDetailModal] = useState<{ employee: string; month: string } | null>(null);
@@ -133,10 +133,6 @@ export default function LeaveDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">请假看板</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">实时请假数据一览</p>
-      </div>
 
       {/* ── 五张汇总卡片 ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

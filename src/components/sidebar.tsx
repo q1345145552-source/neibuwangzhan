@@ -94,8 +94,7 @@ const logisticsNav = [
 const internalNav = [
   { name: "内部管理", href: "/internal", icon: Monitor },
   { name: "员工档案", href: "/internal/employees", icon: IdCard },
-  { name: "请假看板", href: "/internal/leave-dashboard", icon: Monitor },
-  { name: "请假分析", href: "/internal/leave-analysis", icon: Activity },
+  { name: "请假", href: "/internal/leave", icon: Monitor },
   { name: "奖惩制度", href: "/internal/rewards", icon: Star },
   { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
   { name: "模板库", href: "/internal/templates", icon: Layers },

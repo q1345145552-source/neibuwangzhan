@@ -52,7 +52,7 @@ function resolveTarget(db: ReturnType<typeof getDb>, tt: string, tid: string): {
   if (tt === "problem") return { href: `/problems/${tid}`, parent_label: "" };
   if (tt === "issue") return { href: "/internal", parent_label: "" };
   if (tt === "attendance" || tt === "attendance_request") return { href: "/internal", parent_label: "" };
-  if (tt === "leave") return { href: "/internal/leave-dashboard", parent_label: "" };
+  if (tt === "leave") return { href: "/internal/leave", parent_label: "" };
   // 客户 / 项目 / 达人
   if (tt === "customer") return { href: `/customers/${tid}`, parent_label: "" };
   if (tt === "project") return { href: `/projects/${tid}`, parent_label: "" };
