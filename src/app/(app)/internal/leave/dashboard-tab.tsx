@@ -17,6 +17,9 @@ export function LeaveDashboardTab() {
   const [pendingDetail, setPendingDetail] = useState<any>(null);
   const [approving, setApproving] = useState(false);
   const [proofLeaveId, setProofLeaveId] = useState<number | null>(null);
+  const [rejectModal, setRejectModal] = useState<{ id: number } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/leave/dashboard")
@@ -65,6 +68,11 @@ export function LeaveDashboardTab() {
   };
 
   const handleApprove = async (id: number, status: string) => {
+    if (status === "已驳回") {
+      setRejectModal({ id });
+      setRejectReason("");
+      return;
+    }
     setApproving(true);
     try {
       const res = await fetchWithAuth("/api/leave", {
@@ -85,6 +93,31 @@ export function LeaveDashboardTab() {
       }
     } catch (e) { alert("网络错误"); }
     setApproving(false);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectModal) return;
+    if (!rejectReason.trim()) return;
+    setRejecting(true);
+    try {
+      const res = await fetchWithAuth("/api/leave", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: rejectModal.id, status: "已驳回", rejection_reason: rejectReason.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "操作失败");
+      } else {
+        setRejectModal(null);
+        setPendingDetail(null);
+        fetchWithAuth("/api/leave/dashboard")
+          .then(r => r.json())
+          .then(d => { if (!d.error) setDashboard(d); })
+          .catch(() => {});
+      }
+    } catch (e) { alert("网络错误"); }
+    setRejecting(false);
   };
 
   // 按员工按理由汇总：事假：原因1、原因2｜病假：原因3
@@ -354,6 +387,27 @@ export function LeaveDashboardTab() {
                 disabled={approving}
                 className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
               >{approving ? "处理中…" : "❌ 驳回"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 驳回原因弹窗 ── */}
+      {rejectModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onClick={() => !rejecting && setRejectModal(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-medium text-[var(--foreground)]">驳回请假申请</p>
+            <p className="text-xs text-[var(--muted-foreground)] mt-1">请填写驳回原因（必填）</p>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="驳回原因..."
+              className="mt-3 w-full h-24 rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none"
+              autoFocus
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={() => { setRejectModal(null); setRejectReason(""); }} disabled={rejecting} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
+              <button onClick={handleConfirmReject} disabled={!rejectReason.trim() || rejecting} className="rounded-md bg-red-500 hover:bg-red-600 px-3 py-1.5 text-sm text-white font-medium disabled:opacity-50">{rejecting ? "驳回中…" : "确认驳回"}</button>
             </div>
           </div>
         </div>
