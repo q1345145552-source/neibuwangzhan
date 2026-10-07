@@ -3,12 +3,7 @@ import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 
 // 员工标识 → 数据库里可能出现的名字（大小写、中英文别名）
-const STAFF_ALIASES: Record<string, string[]> = {
-  ploy: ["Ploy", "ploy"],
-  yuanli: ["Yuanli"],
-  pare: ["Prae", "pare", "Pare"],
-  namcha: ["Namcha", "namcha"],
-};
+const STAFF_ALIASES: Record<string, string[]> = {};
 const STAFF_IDS = Object.keys(STAFF_ALIASES);
 
 function buildNameWhere(prefix: string, name: string): { clause: string; params: string[] } {

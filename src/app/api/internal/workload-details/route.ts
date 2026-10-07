@@ -3,12 +3,7 @@ import { getDb, isAgencyEnabled } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 
 // 员工英文名到步骤中文名/泰文名的对照
-const NAME_ALIASES: Record<string, string[]> = {
-  yuanli: ["Yuanli"],
-  ploy: ["Ploy"],
-  namcha: ["Namcha"],
-  pare: ["Prae"],
-};
+const NAME_ALIASES: Record<string, string[]> = {};
 
 function buildLikeClause(name: string): { clause: string; params: string[] } {
   const lower = name.toLowerCase();

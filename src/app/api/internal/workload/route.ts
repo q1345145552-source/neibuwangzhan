@@ -6,12 +6,7 @@ const DEFAULT_WARN = 5;
 const DEFAULT_CRITICAL = 8;
 
 // 员工英文名到步骤中文名/泰文名的对照（步骤 assignee 字段存的是中文/泰文）
-const NAME_ALIASES: Record<string, string[]> = {
-  yuanli: ["Yuanli"],
-  ploy: ["Ploy"],
-  namcha: ["Namcha"],
-  pare: ["Prae"],
-};
+const NAME_ALIASES: Record<string, string[]> = {};
 
 function buildMatchCondition(name: string): string {
   const lower = name.toLowerCase();

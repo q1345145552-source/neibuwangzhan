@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 
-const STAFF_ALIASES: Record<string, string[]> = {
-  ploy: ["Ploy", "ploy"],
-  yuanli: ["Yuanli"],
-  pare: ["Prae", "pare", "Pare"],
-  namcha: ["Namcha", "namcha"],
-};
+const STAFF_ALIASES: Record<string, string[]> = {};
 
 function buildNameWhere(prefix: string, name: string): { clause: string; params: string[] } {
   const aliases = STAFF_ALIASES[name] || [name];
