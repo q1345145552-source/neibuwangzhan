@@ -417,7 +417,7 @@ export default function TodosPage() {
           {list.map((t) => (
             <tr key={t.id} id={`todo-${t.id}`} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
               <td className="py-3 px-5">
-                <div className="text-[var(--foreground)]">{t.content}</div>
+                <div className="text-base font-semibold text-[var(--foreground)]">{t.content}</div>
                 {t.latest_follow_content && (
                   <div className="mt-1 text-xs text-[var(--muted-foreground)]">
                     最新：{t.latest_follow_content}
@@ -475,7 +475,7 @@ export default function TodosPage() {
         {list.map((t) => (
           <div key={t.id} id={`todo-${t.id}`} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
             <div className="flex items-start justify-between gap-2">
-              <span className="min-w-0 flex-1 break-words font-medium text-[var(--foreground)]">{t.content}</span>
+              <span className="min-w-0 flex-1 break-words text-base font-semibold text-[var(--foreground)]">{t.content}</span>
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
             </div>
             {t.latest_follow_content && (
