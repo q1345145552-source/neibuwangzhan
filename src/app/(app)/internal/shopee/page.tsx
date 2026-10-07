@@ -8,8 +8,10 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { StoreLedgerTab } from "./stores-tab";
 import { SimTab } from "./sim-tab";
+import { EmailTab } from "./email-tab";
+import { DailyCountTab } from "./daily-count-tab";
 
-type ShopeeTab = "stores" | "sim";
+type ShopeeTab = "stores" | "sim" | "email" | "scan" | "register";
 
 export default function ShopeePage() {
   const { user } = useAuth();
@@ -26,6 +28,9 @@ export default function ShopeePage() {
   const tabs: { key: ShopeeTab; label: string }[] = [
     { key: "stores", label: "店铺台账" },
     { key: "sim", label: "SIM卡" },
+    { key: "email", label: "邮箱库存" },
+    { key: "scan", label: "扫描验证" },
+    { key: "register", label: "注册" },
   ];
 
   return (
@@ -34,18 +39,18 @@ export default function ShopeePage() {
         <Link href="/internal"><Button variant="ghost" size="icon-sm"><ArrowLeft className="size-4" /></Button></Link>
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">Shopee店铺管理</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">店铺台账 · SIM卡管理</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">店铺台账 · SIM卡 · 邮箱库存 · 扫描验证 · 注册</p>
         </div>
       </div>
 
       {/* Tab 切换 */}
-      <div className="inline-flex w-fit rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
+      <div className="flex flex-wrap w-full sm:w-fit gap-0.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              "rounded px-4 py-1.5 text-sm font-medium transition-colors",
+              "rounded px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap",
               tab === t.key
                 ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
                 : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -54,7 +59,17 @@ export default function ShopeePage() {
         ))}
       </div>
 
-      {tab === "stores" ? <StoreLedgerTab /> : <SimTab />}
+      {tab === "stores" ? (
+        <StoreLedgerTab />
+      ) : tab === "sim" ? (
+        <SimTab />
+      ) : tab === "email" ? (
+        <EmailTab />
+      ) : tab === "scan" ? (
+        <DailyCountTab apiPath="/api/scan-verifications" countLabel="完成数量" emptyText="暂无扫描验证记录" addTitle="新增扫描验证" />
+      ) : (
+        <DailyCountTab apiPath="/api/registrations" countLabel="注册数量" emptyText="暂无注册记录" addTitle="新增注册" />
+      )}
     </div>
   );
 }

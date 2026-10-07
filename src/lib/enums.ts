@@ -64,6 +64,7 @@ export const ENUMS = {
   "shopee_stores.status": ["可售", "等待扫描", "被封"],
   "shopee_stores.sold": ["已出售", "未出售"],
   "sim_transactions.type": ["入库", "出库"],
+  "email_flows.type": ["增加", "减少"],
   "vat_customers.status": ["启用", "暂停", "已终止"],
   "vat_record_finances.status": ["pending", "paid", "cancelled"],
   "vat_record_finances.type": ["income", "expense"],

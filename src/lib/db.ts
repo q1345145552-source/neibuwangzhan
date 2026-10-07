@@ -960,6 +960,43 @@ function initTables(database: Database.Database) {
   `);
 
   database.exec(`
+    CREATE TABLE IF NOT EXISTS email_stock (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      remaining_qty INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    INSERT OR IGNORE INTO email_stock (id, remaining_qty) VALUES (1, 0);
+
+    CREATE TABLE IF NOT EXISTS email_flows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL DEFAULT '增加' CHECK(type IN ('增加','减少')),
+      qty INTEGER NOT NULL DEFAULT 0,
+      note TEXT DEFAULT '',
+      operator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_flows_created ON email_flows(created_at);
+
+    CREATE TABLE IF NOT EXISTS scan_verifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      qty INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS registrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      qty INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       actor TEXT DEFAULT '',
