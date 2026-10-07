@@ -3,8 +3,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth-provider";
+import { MedicalProofModal } from "./medical-proof-modal";
 
 export function LeaveDashboardTab() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [detailModal, setDetailModal] = useState<{ employee: string; month: string } | null>(null);
@@ -12,6 +16,7 @@ export function LeaveDashboardTab() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [pendingDetail, setPendingDetail] = useState<any>(null);
   const [approving, setApproving] = useState(false);
+  const [proofLeaveId, setProofLeaveId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchWithAuth("/api/leave/dashboard")
@@ -403,7 +408,12 @@ export function LeaveDashboardTab() {
                     const days = Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
                     return (
                       <tr key={i} className={cn("border-b border-[var(--border)] last:border-0", (r.flags || []).length > 0 && "bg-red-50/50 dark:bg-red-950/10")}>
-                        <td className="py-2 px-3">{r.leave_type}</td>
+                        <td className="py-2 px-3">
+                          {r.leave_type}
+                          {isAdmin && r.leave_type === "病假" && (
+                            <button onClick={() => setProofLeaveId(r.id)} className="ml-2 text-xs text-blue-600 hover:underline">核查</button>
+                          )}
+                        </td>
                         <td className="py-2 px-3 text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</td>
                         <td className="py-2 px-3 text-right">{days}天</td>
                         <td className="py-2 px-3 text-xs text-[var(--muted-foreground)] max-w-xs">{r.reason || "—"}</td>
@@ -435,7 +445,12 @@ export function LeaveDashboardTab() {
                   return (
                     <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-[var(--foreground)]">{r.leave_type}</span>
+                        <span className="font-medium text-[var(--foreground)]">
+                          {r.leave_type}
+                          {isAdmin && r.leave_type === "病假" && (
+                            <button onClick={() => setProofLeaveId(r.id)} className="ml-2 text-xs text-blue-600 hover:underline">核查</button>
+                          )}
+                        </span>
                         <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
                       </div>
                       <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
@@ -458,6 +473,10 @@ export function LeaveDashboardTab() {
             )}
           </div>
         </div>
+      )}
+
+      {proofLeaveId != null && (
+        <MedicalProofModal leaveId={proofLeaveId} onClose={() => setProofLeaveId(null)} onSaved={() => loadDetail(detailModal?.employee || "", detailModal?.month || "")} />
       )}
     </div>
   );

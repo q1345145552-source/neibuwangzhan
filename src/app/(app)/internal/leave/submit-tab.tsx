@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus, X, Loader2 } from "lucide-react";
+import { MedicalProofModal } from "./medical-proof-modal";
 
 interface LeaveRecord {
   id: number;
@@ -32,6 +33,7 @@ export function LeaveSubmitTab() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [proofLeaveId, setProofLeaveId] = useState<number | null>(null);
 
   const load = async () => {
     if (!user?.name) return;
@@ -250,7 +252,12 @@ export function LeaveSubmitTab() {
               <tbody>
                 {leaves.map((l) => (
                   <tr key={l.id} className="border-b border-[var(--border)] last:border-0">
-                    <td className="py-2.5 px-4">{l.leave_type}</td>
+                    <td className="py-2.5 px-4">
+                      {l.leave_type}
+                      {l.leave_type === "病假" && (
+                        <button onClick={() => setProofLeaveId(l.id)} className="ml-2 text-xs text-blue-600 hover:underline">补交凭证</button>
+                      )}
+                    </td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination || "—"}</td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason || "—"}</td>
@@ -267,7 +274,12 @@ export function LeaveSubmitTab() {
               {leaves.map((l) => (
                 <div key={l.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{l.leave_type}</span>
+                    <span className="font-medium">
+                      {l.leave_type}
+                      {l.leave_type === "病假" && (
+                        <button onClick={() => setProofLeaveId(l.id)} className="ml-2 text-xs text-blue-600 hover:underline">补交凭证</button>
+                      )}
+                    </span>
                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", l.status === "已通过" ? "bg-green-100 text-green-700" : l.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{l.status}</span>
                   </div>
                   <div className="mt-2 space-y-1.5 text-sm">
@@ -281,6 +293,10 @@ export function LeaveSubmitTab() {
           </div>
         )}
       </div>
+
+      {proofLeaveId != null && (
+        <MedicalProofModal leaveId={proofLeaveId} onClose={() => setProofLeaveId(null)} onSaved={() => load()} />
+      )}
     </div>
   );
 }
