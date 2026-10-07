@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
   const [stepsLoaded, setStepsLoaded] = useState(false);
   const [leaveDashboard, setLeaveDashboard] = useState<{ todayOnLeave: Array<{ employee_name: string; leave_type: string; start_date: string; end_date: string }>; upcomingLeave: Array<{ employee_name: string; leave_type: string; start_date: string; end_date: string }>; pendingCount: number; recent: any[] } | null>(null);
+  const [attendanceAnomaly, setAttendanceAnomaly] = useState<{ late: Array<{ name: string; time: string }>; notClockedIn: string[] } | null>(null);
   const [logisticsStats, setLogisticsStats] = useState<{ total: number; pending: number; inProgress: number; completed: number; thisWeek: number; avgDelay: number; delayCount: number; overdueOrders: number[]; overdueCabinets: string[]; whCounts: Record<string, number> } | null>(null);
 
   useEffect(() => {
@@ -66,6 +67,8 @@ export default function DashboardPage() {
     if (user?.role === "admin") {
       fetchWithAuth("/api/leave/dashboard", { cache: "no-store" })
         .then(r => r.json()).then(setLeaveDashboard).catch(() => {});
+      fetchWithAuth("/api/attendance/anomaly", { cache: "no-store" })
+        .then(r => r.json()).then(setAttendanceAnomaly).catch(() => {});
     }
     // 可爱 + 管理员加载轨迹更新统计（与物流板块共用同一接口，数字一致）
     if (canSeeTracking) {
@@ -160,52 +163,91 @@ export default function DashboardPage() {
         <StatCard label="今日待办" value={stats.today_todos} href="/tasks" />
       </div>
 
-      {leaveDashboard && (leaveDashboard.todayOnLeave.length > 0 || leaveDashboard.upcomingLeave.length > 0 || leaveDashboard.pendingCount > 0) && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-medium text-[var(--foreground)]">请假</h2>
-            <Link href="/internal" className="text-xs text-[var(--primary)] hover:underline">查看全部</Link>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {leaveDashboard && (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-medium text-[var(--foreground)]">请假</h2>
+              <Link href="/internal" className="text-xs text-[var(--primary)] hover:underline">查看全部</Link>
+            </div>
+
+            {/* 今日请假 */}
+            <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">今日请假</p>
+            {leaveDashboard.todayOnLeave.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {leaveDashboard.todayOnLeave.map((l, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-950/30 px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+                    {l.employee_name} · {l.leave_type}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mb-3 text-xs text-[var(--muted-foreground)]">今天无人请假</p>
+            )}
+
+            {/* 未来十四天请假 */}
+            <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">未来十四天请假</p>
+            {leaveDashboard.upcomingLeave.length > 0 ? (
+              <div className="space-y-1.5">
+                {leaveDashboard.upcomingLeave.map((l, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 text-[var(--foreground)]">{l.employee_name} · {l.leave_type}</span>
+                    <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--muted-foreground)]">未来十四天无人请假</p>
+            )}
+
+            {/* 待审批 */}
+            {leaveDashboard.pendingCount > 0 && (
+              <div className="mt-3 flex items-center gap-2 text-xs">
+                <span className="inline-flex size-2 rounded-full bg-amber-500" />
+                <span className="text-[var(--muted-foreground)]">待审批</span>
+                <Link href="/internal" className="font-semibold text-amber-600 hover:underline">{leaveDashboard.pendingCount} 条</Link>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* 今日请假 */}
-          <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">今日请假</p>
-          {leaveDashboard.todayOnLeave.length > 0 ? (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {leaveDashboard.todayOnLeave.map((l, i) => (
-                <span key={i} className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-950/30 px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
-                  {l.employee_name} · {l.leave_type}
-                </span>
-              ))}
+        {attendanceAnomaly && (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-medium text-[var(--foreground)]">考勤异常</h2>
+              <Link href="/internal" className="text-xs text-[var(--primary)] hover:underline">查看全部</Link>
             </div>
-          ) : (
-            <p className="mb-3 text-xs text-[var(--muted-foreground)]">今天无人请假</p>
-          )}
 
-          {/* 未来十四天请假 */}
-          <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">未来十四天请假</p>
-          {leaveDashboard.upcomingLeave.length > 0 ? (
-            <div className="space-y-1.5">
-              {leaveDashboard.upcomingLeave.map((l, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="min-w-0 text-[var(--foreground)]">{l.employee_name} · {l.leave_type}</span>
-                  <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--muted-foreground)]">未来十四天无人请假</p>
-          )}
+            {/* 今天迟到 */}
+            <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">今天迟到</p>
+            {attendanceAnomaly.late.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {attendanceAnomaly.late.map((l, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/30 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    {l.name} · {l.time}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mb-3 text-xs text-[var(--muted-foreground)]">今天没人迟到</p>
+            )}
 
-          {/* 待审批 */}
-          {leaveDashboard.pendingCount > 0 && (
-            <div className="mt-3 flex items-center gap-2 text-xs">
-              <span className="inline-flex size-2 rounded-full bg-amber-500" />
-              <span className="text-[var(--muted-foreground)]">待审批</span>
-              <Link href="/internal" className="font-semibold text-amber-600 hover:underline">{leaveDashboard.pendingCount} 条</Link>
-            </div>
-          )}
-        </div>
-      )}
+            {/* 还没打卡 */}
+            <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">还没打卡</p>
+            {attendanceAnomaly.notClockedIn.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {attendanceAnomaly.notClockedIn.map((name, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-950/30 px-3 py-1 text-xs font-medium text-red-700 dark:text-red-300">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--muted-foreground)]">全员已到岗</p>
+            )}
+          </div>
+        )}
+      </div>
 
       {canSeeTracking && logisticsStats && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-4">
