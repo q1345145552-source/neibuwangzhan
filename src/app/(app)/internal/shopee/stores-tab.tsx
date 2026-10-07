@@ -10,6 +10,12 @@ interface ShopeeStore {
   id: number;
   store_code: string;
   store_name: string;
+  platform: "Shopee" | "TikTok";
+  source: "自营" | "外购";
+  supplier: string;
+  cost: number;
+  purchase_date: string;
+  sell_price: number;
   status: "可售" | "等待扫描" | "被封";
   sold: "已出售" | "未出售";
   ban_reason: string;
@@ -28,11 +34,32 @@ const SOLD_BADGE: Record<ShopeeStore["sold"], string> = {
   未出售: "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
+const PLATFORM_BADGE: Record<ShopeeStore["platform"], string> = {
+  Shopee: "bg-orange-500/15 text-orange-600",
+  TikTok: "bg-slate-500/15 text-slate-600",
+};
+
+const SOURCE_BADGE: Record<ShopeeStore["source"], string> = {
+  自营: "bg-emerald-500/15 text-emerald-600",
+  外购: "bg-purple-500/15 text-purple-600",
+};
+
 export function StoreLedgerTab() {
   const [stores, setStores] = useState<ShopeeStore[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ store_code: "", store_name: "", status: "可售" as ShopeeStore["status"], sold: "未出售" as ShopeeStore["sold"], ban_reason: "" });
+  const [form, setForm] = useState({
+    platform: "Shopee" as ShopeeStore["platform"],
+    store_name: "",
+    source: "自营" as ShopeeStore["source"],
+    supplier: "",
+    cost: "",
+    purchase_date: "",
+    sell_price: "",
+    status: "可售" as ShopeeStore["status"],
+    sold: "未出售" as ShopeeStore["sold"],
+    ban_reason: "",
+  });
   const [err, setErr] = useState("");
 
   const load = async () => {
@@ -47,27 +74,49 @@ export function StoreLedgerTab() {
 
   const openCreate = () => {
     setEditId(null);
-    setForm({ store_code: "", store_name: "", status: "可售", sold: "未出售", ban_reason: "" });
+    setForm({ platform: "Shopee", store_name: "", source: "自营", supplier: "", cost: "", purchase_date: "", sell_price: "", status: "可售", sold: "未出售", ban_reason: "" });
     setErr("");
     setShowForm(true);
   };
 
   const openEdit = (s: ShopeeStore) => {
     setEditId(s.id);
-    setForm({ store_code: s.store_code, store_name: s.store_name, status: s.status, sold: s.sold, ban_reason: s.ban_reason });
+    setForm({
+      platform: s.platform || "Shopee",
+      store_name: s.store_name,
+      source: s.source || "自营",
+      supplier: s.supplier || "",
+      cost: s.cost != null ? String(s.cost) : "",
+      purchase_date: s.purchase_date || "",
+      sell_price: s.sell_price != null ? String(s.sell_price) : "",
+      status: s.status,
+      sold: s.sold,
+      ban_reason: s.ban_reason || "",
+    });
     setErr("");
     setShowForm(true);
   };
 
   const handleSave = async () => {
-    const code = form.store_code.trim();
     const name = form.store_name.trim();
-    if (!code) { setErr("请填写店铺编号"); return; }
     if (!name) { setErr("请填写店铺名称"); return; }
     if (form.status === "被封" && !form.ban_reason.trim()) { setErr("店铺被封时必须填写封禁原因"); return; }
+    if (form.source === "外购") {
+      if (!form.supplier.trim()) { setErr("外购店铺必须填写供应商"); return; }
+      if (!form.purchase_date) { setErr("外购店铺必须填写拿货日期"); return; }
+      const costNum = Number(form.cost);
+      if (form.cost === "" || !Number.isFinite(costNum) || costNum < 0) { setErr("外购店铺必须填写有效的拿货成本"); return; }
+      const priceNum = Number(form.sell_price);
+      if (form.sell_price === "" || !Number.isFinite(priceNum) || priceNum < 0) { setErr("外购店铺必须填写有效的卖价"); return; }
+    }
     const payload = {
-      store_code: code,
+      platform: form.platform,
       store_name: name,
+      source: form.source,
+      supplier: form.source === "外购" ? form.supplier.trim() : "",
+      cost: form.source === "外购" ? Number(form.cost) : 0,
+      purchase_date: form.source === "外购" ? form.purchase_date : "",
+      sell_price: form.source === "外购" ? Number(form.sell_price) : 0,
       status: form.status,
       sold: form.sold,
       ban_reason: form.status === "被封" ? form.ban_reason.trim() : "",
@@ -125,16 +174,26 @@ export function StoreLedgerTab() {
           <h2 className="text-sm font-medium mb-4">{editId ? "编辑店铺" : "新增店铺"}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-xs font-medium">店铺编号</label>
-              <input value={form.store_code} onChange={(e) => setForm((p) => ({ ...p, store_code: e.target.value }))}
-                placeholder="例如：SP-001"
-                className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              <label className="text-xs font-medium">平台</label>
+              <select value={form.platform} onChange={(e) => setForm((p) => ({ ...p, platform: e.target.value as ShopeeStore["platform"] }))}
+                className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
+                <option value="Shopee">Shopee</option>
+                <option value="TikTok">TikTok</option>
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium">店铺名称</label>
               <input value={form.store_name} onChange={(e) => setForm((p) => ({ ...p, store_name: e.target.value }))}
                 placeholder="例如：XX旗舰店"
                 className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+            </div>
+            <div>
+              <label className="text-xs font-medium">来源</label>
+              <select value={form.source} onChange={(e) => setForm((p) => ({ ...p, source: e.target.value as ShopeeStore["source"] }))}
+                className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
+                <option value="自营">自营</option>
+                <option value="外购">外购</option>
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium">店铺状态</label>
@@ -153,6 +212,36 @@ export function StoreLedgerTab() {
                 <option value="已出售">已出售</option>
               </select>
             </div>
+
+            {form.source === "外购" && (
+              <>
+                <div>
+                  <label className="text-xs font-medium">供应商</label>
+                  <input value={form.supplier} onChange={(e) => setForm((p) => ({ ...p, supplier: e.target.value }))}
+                    placeholder="从哪里拿货"
+                    className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">拿货成本</label>
+                  <input value={form.cost} onChange={(e) => setForm((p) => ({ ...p, cost: e.target.value }))}
+                    type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                    className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">拿货日期</label>
+                  <input value={form.purchase_date} onChange={(e) => setForm((p) => ({ ...p, purchase_date: e.target.value }))}
+                    type="date"
+                    className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">卖价</label>
+                  <input value={form.sell_price} onChange={(e) => setForm((p) => ({ ...p, sell_price: e.target.value }))}
+                    type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                    className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+              </>
+            )}
+
             {form.status === "被封" && (
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">封禁原因</label>
@@ -180,6 +269,8 @@ export function StoreLedgerTab() {
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                   <th className="py-2.5 px-5 text-left text-xs font-medium">店铺编号</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">店铺名称</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">平台</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">来源</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">店铺状态</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">是否已售</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">封禁原因</th>
@@ -191,6 +282,17 @@ export function StoreLedgerTab() {
                   <tr key={s.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20">
                     <td className="py-2.5 px-5 font-mono">{s.store_code}</td>
                     <td className="py-2.5 px-4 font-medium">{s.store_name}</td>
+                    <td className="py-2.5 px-4">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${PLATFORM_BADGE[s.platform] || "bg-[var(--muted)]"}`}>{s.platform || "Shopee"}</span>
+                    </td>
+                    <td className="py-2.5 px-4">
+                      <div className="flex flex-col">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_BADGE[s.source] || "bg-[var(--muted)]"} w-fit`}>{s.source || "自营"}</span>
+                        {s.source === "外购" && s.supplier && (
+                          <span className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{s.supplier}</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-2.5 px-4">
                       <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_BADGE[s.status]}`}>{s.status}</span>
                     </td>
@@ -217,9 +319,21 @@ export function StoreLedgerTab() {
                     </div>
                     <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded ${STATUS_BADGE[s.status]}`}>{s.status}</span>
                   </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${PLATFORM_BADGE[s.platform] || "bg-[var(--muted)]"}`}>{s.platform || "Shopee"}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_BADGE[s.source] || "bg-[var(--muted)]"}`}>{s.source || "自营"}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${SOLD_BADGE[s.sold]}`}>{s.sold}</span>
+                  </div>
                   <div className="mt-3 space-y-1.5 text-sm">
-                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">是否已售</span><span className={`text-xs px-1.5 py-0.5 rounded ${SOLD_BADGE[s.sold]}`}>{s.sold}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">封禁原因</span><span className="text-right">{s.ban_reason || "—"}</span></div>
+                    {s.source === "外购" && (
+                      <>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">供应商</span><span className="text-right">{s.supplier || "—"}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">拿货成本</span><span className="tabular-nums">{s.cost != null ? s.cost : "—"}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">拿货日期</span><span>{s.purchase_date || "—"}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">卖价</span><span className="tabular-nums">{s.sell_price != null ? s.sell_price : "—"}</span></div>
+                      </>
+                    )}
                   </div>
                   <div className="mt-3 flex justify-end gap-1">
                     <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => openEdit(s)}><Edit3 className="size-3" /></Button>

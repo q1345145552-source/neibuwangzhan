@@ -922,6 +922,12 @@ function initTables(database: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       store_code TEXT NOT NULL DEFAULT '',
       store_name TEXT NOT NULL DEFAULT '',
+      platform TEXT NOT NULL DEFAULT 'Shopee' CHECK(platform IN ('Shopee','TikTok')),
+      source TEXT NOT NULL DEFAULT '自营' CHECK(source IN ('自营','外购')),
+      supplier TEXT DEFAULT '',
+      cost REAL DEFAULT 0,
+      purchase_date TEXT DEFAULT '',
+      sell_price REAL DEFAULT 0,
       status TEXT NOT NULL DEFAULT '可售' CHECK(status IN ('可售','等待扫描','被封')),
       sold TEXT NOT NULL DEFAULT '未出售' CHECK(sold IN ('已出售','未出售')),
       ban_reason TEXT DEFAULT '',
@@ -931,6 +937,14 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_shopee_stores_status ON shopee_stores(status);
   `);
+
+  // 老库迁移：给 shopee_stores 补平台/来源/外购字段（SQLite ALTER 不支持加 CHECK，由接口白名单兜底）
+  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN platform TEXT NOT NULL DEFAULT 'Shopee'"); } catch {}
+  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN source TEXT NOT NULL DEFAULT '自营'"); } catch {}
+  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN supplier TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN cost REAL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN purchase_date TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN sell_price REAL DEFAULT 0"); } catch {}
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS sim_batches (

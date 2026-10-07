@@ -63,6 +63,8 @@ export const ENUMS = {
   "templates.type": ["contract", "evaluation", "finance"],
   "shopee_stores.status": ["可售", "等待扫描", "被封"],
   "shopee_stores.sold": ["已出售", "未出售"],
+  "shopee_stores.platform": ["Shopee", "TikTok"],
+  "shopee_stores.source": ["自营", "外购"],
   "sim_transactions.type": ["入库", "出库"],
   "email_flows.type": ["增加", "减少"],
   "shopee_orders.status": ["有可售店铺", "等待扫描验证资料", "暂无可售店铺"],
