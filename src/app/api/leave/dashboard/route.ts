@@ -18,7 +18,12 @@ export async function GET(req: NextRequest) {
   ).all(today, today) as { employee_name: string; leave_type: string; start_date: string; end_date: string }[];
 
   // ── 未来十四天请假（已通过，开始日期在今天之后、十四天以内，按日期从近到远）──
-  const futureDate = new Date(new Date(today + "T00:00:00+07:00").getTime() + 14 * 86400000).toISOString().slice(0, 10);
+  // 用曼谷日历做纯日期加法（不转 UTC），避免曼谷比 UTC 快 7 小时导致截止日期少算一天
+  const futureDate = (() => {
+    const [y, m, d] = today.split("-").map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d) + 14 * 86400000);
+    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+  })();
   const upcomingLeave = db.prepare(
     "SELECT employee_name, leave_type, start_date, end_date FROM leave_requests WHERE status = '已通过' AND start_date > ? AND start_date <= ? ORDER BY start_date ASC, employee_name ASC"
   ).all(today, futureDate) as { employee_name: string; leave_type: string; start_date: string; end_date: string }[];
