@@ -85,6 +85,8 @@ export default function TodosPage() {
   const [showInbox, setShowInbox] = useState(false);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [completedRange, setCompletedRange] = useState("all");
+  // 从积压提醒跳转到某条待办时，记录要定位+高亮的待办 id
+  const [highlightTodoId, setHighlightTodoId] = useState<number | null>(null);
   // 待办看板（仅管理员/老板）：时间范围 + 统计数字
   const [statsRange, setStatsRange] = useState<"today" | "week" | "month">("today");
   const [stats, setStats] = useState<TodoStats | null>(null);
@@ -161,6 +163,23 @@ export default function TodosPage() {
   const selectedList = selectedAssignee
     ? unfinished.filter((t) => (t.assignee || "未分配") === selectedAssignee)
     : [];
+
+  // 点积压提醒：进入对应负责人的待办列表，并定位+高亮那条待办
+  const jumpToTodo = (assignee: string, todoId: number) => {
+    setSelectedAssignee(assignee || "未分配");
+    setHighlightTodoId(todoId);
+  };
+
+  // 定位并高亮：等列表渲染后滚动到目标待办，高亮几秒后淡出
+  useEffect(() => {
+    if (highlightTodoId == null) return;
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`todo-${highlightTodoId}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    const clearTimer = setTimeout(() => setHighlightTodoId(null), 3000);
+    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer); };
+  }, [highlightTodoId, selectedAssignee]);
 
   // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
   const completedFiltered = useMemo(() => {
@@ -396,7 +415,7 @@ export default function TodosPage() {
         </thead>
         <tbody>
           {list.map((t) => (
-            <tr key={t.id} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20")}>
+            <tr key={t.id} id={`todo-${t.id}`} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
               <td className="py-3 px-5">
                 <div className="text-[var(--foreground)]">{t.content}</div>
                 {t.latest_follow_content && (
@@ -454,7 +473,7 @@ export default function TodosPage() {
       {/* 手机端卡片 */}
       <div className="md:hidden flex flex-col gap-3 p-4">
         {list.map((t) => (
-          <div key={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20")}>
+          <div key={t.id} id={`todo-${t.id}`} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
             <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 flex-1 break-words font-medium text-[var(--foreground)]">{t.content}</span>
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
@@ -678,7 +697,11 @@ export default function TodosPage() {
                   <p className="mb-2 text-xs text-[var(--muted-foreground)]">{(stats?.backlog ?? []).length} 个待办超过 3 天未完成，卡住了该催了：</p>
                   <div className="max-h-64 space-y-2 overflow-y-auto">
                     {(stats?.backlog ?? []).map((b) => (
-                      <div key={b.id} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/30">
+                      <div
+                        key={b.id}
+                        onClick={() => jumpToTodo(b.assignee, b.id)}
+                        className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-2 transition-colors hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:hover:bg-red-950/60"
+                      >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm text-[var(--foreground)]">{b.content}</span>
                           <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">{b.days} 天</span>
