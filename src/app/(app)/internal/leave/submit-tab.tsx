@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
@@ -34,6 +34,9 @@ export function LeaveSubmitTab() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [proofLeaveId, setProofLeaveId] = useState<number | null>(null);
+  const [supplementLeaveId, setSupplementLeaveId] = useState<number | null>(null);
+  const [supplementUploading, setSupplementUploading] = useState(false);
+  const supplementInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     if (!user?.name) return;
@@ -78,6 +81,37 @@ export function LeaveSubmitTab() {
   };
 
   const removeImage = (idx: number) => setImages((prev) => prev.filter((_, i) => i !== idx));
+
+  // 补传附件：给已提交的请假追加图片
+  const handleSupplementImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || supplementLeaveId === null) return;
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append("file", files[i]);
+    }
+    setSupplementUploading(true);
+    try {
+      const uploadRes = await fetchWithAuth("/api/upload", { method: "POST", body: formData });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const uploadData = await uploadRes.json();
+      const newFilename = (uploadData.url || uploadData.filename || "").replace(/^\/api\/files\//, "");
+      const patchRes = await fetchWithAuth("/api/leave", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: supplementLeaveId, append_images: [newFilename] }),
+      });
+      if (!patchRes.ok) throw new Error("补传失败");
+      load();
+    } catch (err) {
+      console.error("[请假] 补传附件失败", err);
+      alert("补传附件失败");
+    } finally {
+      setSupplementUploading(false);
+      setSupplementLeaveId(null);
+      e.target.value = "";
+    }
+  };
 
   // ── 表单校验衍生值 ──
   const sevenDaysAgo = (() => {
@@ -257,6 +291,13 @@ export function LeaveSubmitTab() {
                       {l.leave_type === "病假" && (
                         <button onClick={() => setProofLeaveId(l.id)} className="ml-2 text-xs text-blue-600 hover:underline">补交凭证</button>
                       )}
+                      <button
+                        onClick={() => { setSupplementLeaveId(l.id); setTimeout(() => supplementInputRef.current?.click(), 50); }}
+                        disabled={supplementUploading}
+                        className="ml-2 inline-flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                      >
+                        {supplementUploading && supplementLeaveId === l.id ? <Loader2 className="size-3 animate-spin" /> : "补传附件"}
+                      </button>
                     </td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[100px] truncate">{l.destination || "—"}</td>
@@ -279,6 +320,13 @@ export function LeaveSubmitTab() {
                       {l.leave_type === "病假" && (
                         <button onClick={() => setProofLeaveId(l.id)} className="ml-2 text-xs text-blue-600 hover:underline">补交凭证</button>
                       )}
+                      <button
+                        onClick={() => { setSupplementLeaveId(l.id); setTimeout(() => supplementInputRef.current?.click(), 50); }}
+                        disabled={supplementUploading}
+                        className="ml-2 inline-flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+                      >
+                        {supplementUploading && supplementLeaveId === l.id ? <Loader2 className="size-3 animate-spin" /> : "补传附件"}
+                      </button>
                     </span>
                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", l.status === "已通过" ? "bg-green-100 text-green-700" : l.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{l.status}</span>
                   </div>
@@ -293,6 +341,9 @@ export function LeaveSubmitTab() {
           </div>
         )}
       </div>
+
+      {/* 补传附件的隐藏文件输入 */}
+      <input ref={supplementInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleSupplementImage} />
 
       {proofLeaveId != null && (
         <MedicalProofModal leaveId={proofLeaveId} onClose={() => setProofLeaveId(null)} onSaved={() => load()} />
