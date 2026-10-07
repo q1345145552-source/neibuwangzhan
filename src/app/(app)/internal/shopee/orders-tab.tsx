@@ -5,7 +5,8 @@ import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { bangkokToday } from "@/lib/time";
-import { Plus, Trash2, Edit3, Search } from "lucide-react";
+import { Plus, Trash2, Edit3, Search, Store } from "lucide-react";
+import { OrderDetailModal } from "./order-detail-modal";
 
 interface ShopeeOrder {
   id: number;
@@ -33,6 +34,7 @@ export function OrdersTab() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ order_date: "", customer_name: "", store_qty: "", status: "有可售店铺" as ShopeeOrder["status"] });
   const [err, setErr] = useState("");
+  const [detailOrder, setDetailOrder] = useState<{ id: number; customer_name: string } | null>(null);
 
   const load = async (status = statusFilter, q = search) => {
     try {
@@ -187,6 +189,7 @@ export function OrdersTab() {
                       </select>
                     </td>
                     <td className="py-2.5 px-4 flex gap-1.5">
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setDetailOrder({ id: o.id, customer_name: o.customer_name })}><Store className="size-3" />明细</Button>
                       <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => openEdit(o)}><Edit3 className="size-3" /></Button>
                       <Button size="sm" variant="ghost" className="h-6 text-xs text-red-500" onClick={() => handleDelete(o.id)}><Trash2 className="size-3" /></Button>
                     </td>
@@ -218,6 +221,7 @@ export function OrdersTab() {
                       {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setDetailOrder({ id: o.id, customer_name: o.customer_name })}><Store className="size-3" />明细</Button>
                       <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => openEdit(o)}><Edit3 className="size-3" /></Button>
                       <Button size="sm" variant="ghost" className="h-6 text-xs text-red-500" onClick={() => handleDelete(o.id)}><Trash2 className="size-3" /></Button>
                     </div>
@@ -228,6 +232,8 @@ export function OrdersTab() {
           </>
         )}
       </div>
+
+      {detailOrder && <OrderDetailModal order={detailOrder} onClose={() => setDetailOrder(null)} />}
     </div>
   );
 }

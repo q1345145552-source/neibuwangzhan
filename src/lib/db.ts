@@ -1006,6 +1006,22 @@ function initTables(database: Database.Database) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_shopee_orders_status ON shopee_orders(status);
+
+    CREATE TABLE IF NOT EXISTS shopee_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES shopee_orders(id),
+      store_id INTEGER NOT NULL REFERENCES shopee_stores(id),
+      store_code TEXT DEFAULT '',
+      store_name TEXT DEFAULT '',
+      process_status TEXT NOT NULL DEFAULT '等待处理' CHECK(process_status IN ('等待处理','正在准备资料','已交付','保修期限')),
+      ban_status TEXT NOT NULL DEFAULT '' CHECK(ban_status IN ('','可以处理','无法处理','已处理','已更换店铺')),
+      ban_reason TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_shopee_order_items_order ON shopee_order_items(order_id);
+    CREATE INDEX IF NOT EXISTS idx_shopee_order_items_store ON shopee_order_items(store_id);
   `);
 
   database.exec(`
