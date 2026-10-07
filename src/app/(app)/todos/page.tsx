@@ -382,6 +382,64 @@ export default function TodosPage() {
     setFollowImages((p) => p.filter((u) => u !== url));
   };
 
+  // 从剪贴板事件里取出图片文件（没有图片返回空数组）
+  const getPastedImages = (e: React.ClipboardEvent): File[] => {
+    const items = e.clipboardData?.items;
+    if (!items) return [];
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    return files;
+  };
+
+  // 创建待办输入框粘贴图片：有图片就自动上传，文字粘贴不受影响
+  const handleFormPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = getPastedImages(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setUploadingImages(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) urls.push(data.url);
+        }
+      }
+      if (urls.length > 0) setForm((p) => ({ ...p, images: [...p.images, ...urls] }));
+    } catch { setErr("图片上传失败"); }
+    finally { setUploadingImages(false); }
+  };
+
+  // 跟进输入框粘贴图片：有图片就自动上传，文字粘贴不受影响
+  const handleFollowPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = getPastedImages(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setFollowUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) urls.push(data.url);
+        }
+      }
+      if (urls.length > 0) setFollowImages((p) => [...p, ...urls]);
+    } catch { setErr("图片上传失败"); }
+    finally { setFollowUploading(false); }
+  };
+
   const handleComplete = async (todo: Todo) => {
     try {
       const res = await fetchWithAuth(`/api/todos/${todo.id}`, {
@@ -897,6 +955,7 @@ export default function TodosPage() {
                 <textarea
                   value={form.content}
                   onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
+                  onPaste={handleFormPaste}
                   rows={3}
                   placeholder="要做什么事"
                   className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
@@ -972,6 +1031,7 @@ export default function TodosPage() {
             <textarea
               value={followContent}
               onChange={(e) => setFollowContent(e.target.value)}
+              onPaste={handleFollowPaste}
               rows={3}
               placeholder="写这次更新了什么"
               className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
