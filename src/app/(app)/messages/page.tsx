@@ -535,7 +535,6 @@ export default function MessagesPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const openedRef = useRef(false);
   const lastTypingPingRef = useRef(0);
 
   // 联系人列表：员工（不含离职和客户，不含自己），带最后消息和未读
@@ -844,29 +843,6 @@ export default function MessagesPage() {
       })
       .catch(() => {});
   }, [mergeIncoming, applyGroupReads, applyRecalledIds]);
-
-  // 从通知中心跳转过来：?open=direct:姓名 或 ?open=group:群id，打开对应会话
-  useEffect(() => {
-    if (openedRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const open = params.get("open");
-    if (!open) return;
-    const idx = open.indexOf(":");
-    if (idx < 0) return;
-    const kind = open.slice(0, idx);
-    const id = open.slice(idx + 1);
-    if (kind === "direct" && id) {
-      openedRef.current = true;
-      openDirect(id);
-    } else if (kind === "group" && id) {
-      // 群跳转需要群名，等群列表加载后按 id 找到再打开
-      const g = groups.find((g) => String(g.id) === id);
-      if (g) {
-        openedRef.current = true;
-        openGroup(g.id, g.name);
-      }
-    }
-  }, [groups, openDirect, openGroup]);
 
   // 消息提醒气泡 / 系统通知点击跳转：打开对应会话
   // （已经在消息页时靠订阅直接切换；从别的页面跳过来时靠挂载时取走暂存目标）
@@ -2246,9 +2222,6 @@ export default function MessagesPage() {
 
           <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2">
             <div className="flex items-center gap-1">
-              <button type="button" title="通知中心" className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600">
-                <Bell className="size-4" />
-              </button>
               <button type="button" title="已归档会话" className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600">
                 <Archive className="size-4" />
               </button>

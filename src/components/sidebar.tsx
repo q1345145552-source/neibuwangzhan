@@ -155,27 +155,9 @@ export function Sidebar() {
   const close = useCallback(() => setOpen(false), []);
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [unreadCount, setUnreadCount] = useState(0);
   const [todoCount, setTodoCount] = useState(0);
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
-
-  useEffect(() => {
-    if (!user?.name) return;
-    const fetchUnread = () => {
-      const token = getStoredAuthToken();
-      if (!token) return;
-      fetch(`/api/notifications?recipient=${encodeURIComponent(user.name)}&unread=1`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(r => r.json())
-        .then(data => setUnreadCount(Array.isArray(data) ? data.length : 0))
-        .catch(() => {});
-    };
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 30000); // poll every 30s
-    return () => clearInterval(interval);
-  }, [user?.name]);
 
   // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
   useEffect(() => {
@@ -275,7 +257,7 @@ export function Sidebar() {
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">内部管理</span>
         </div>
-        <NavSection items={internalNav} pathname={pathname} onClose={close} badgeMap={{ "内部管理": unreadCount }} />
+        <NavSection items={internalNav} pathname={pathname} onClose={close} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">工具</span>

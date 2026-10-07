@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
@@ -11,18 +10,12 @@ import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
 import { StepTimerStatic } from "@/components/step-timer";
-import { AlertTriangle, Bell, CheckCircle2, Clock, Plus, Users, Calendar, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Plus, Users, Calendar, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Wallet } from "lucide-react";
 
 interface Workload {
   name: string; orderSteps: number; influencerSteps: number; contractInfs: number; total: number; level: "ok" | "warn" | "critical";
 }
 interface WorkloadData { employees: Workload[]; thresholds: { warn: number; crit: number }; }
-
-interface Notification {
-  id: number; type: string; title: string; body: string;
-  recipient: string; related_id: string; related_type: string;
-  is_read: number; created_at: string;
-}
 
 interface AttendanceRequest {
   id: number; employee_name: string; date: string; time: string;
@@ -44,12 +37,10 @@ interface MonthlySummary {
 
 export default function InternalPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [staffNames, setStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
   // 机构业务总开关：关闭时工作量里隐藏达人相关列
   const [agencyEnabled, setAgencyEnabled] = useState(true);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [todayRecord, setTodayRecord] = useState<any>(null);
   const [clockAnim, setClockAnim] = useState<"in" | "out" | null>(null);
   const [currentTime, setCurrentTime] = useState("");
@@ -139,8 +130,6 @@ export default function InternalPage() {
 
     safeLoad("/api/internal/workload", "工作量", (d: any) => d && Array.isArray(d?.employees))
       .then(d => { if (d) setWl(d as WorkloadData); });
-    safeLoad(`/api/notifications?recipient=${encodeURIComponent(user?.name || "")}&limit=30`, "通知", (d: any) => Array.isArray(d))
-      .then(d => { if (d) setNotifications(d as Notification[]); });
   };
 
   const isWithinDays = (dateStr: string, days: number) => {
@@ -149,37 +138,6 @@ export default function InternalPage() {
     const now = new Date();
     const diff = now.getTime() - d.getTime();
     return diff <= days * 24 * 60 * 60 * 1000;
-  };
-
-  // ── 通知分组辅助函数 ──
-  const ntfTimeGroup = (dateStr: string): "today" | "week" | "older" => {
-    if (!dateStr) return "older";
-    const d = new Date(dateStr);
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (d >= todayStart) return "today";
-    const dayOfWeek = now.getDay();
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const weekStart = new Date(todayStart); weekStart.setDate(todayStart.getDate() - mondayOffset);
-    if (d >= weekStart) return "week";
-    return "older";
-  };
-
-  const NTF_CATEGORIES = {
-    issue: { label: "工单", color: "blue" },
-    leave: { label: "请假 & 考勤", color: "purple" },
-    vat:   { label: "VAT 申报", color: "green" },
-    chat:  { label: "聊天消息", color: "sky" },
-    other: { label: "其他", color: "gray" },
-  } as const;
-
-  const ntfCatKey = (n: Notification): keyof typeof NTF_CATEGORIES => {
-    const rt = n.related_type || "";
-    if (rt === "issue") return "issue";
-    if (rt === "leave" || rt === "attendance_request") return "leave";
-    if (rt === "vat_notify") return "vat";
-    if (rt === "chat_direct" || rt === "chat_group") return "chat";
-    return "other";
   };
 
   const latestAttendance = useLatestRequest();
@@ -420,37 +378,9 @@ export default function InternalPage() {
     if (ok) loadAttendance();
   };
 
-  const markNotifRead = async (id: number) => {
-    await fetchWithAuth("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
-  };
-
-  // 点击聊天通知 → 跳到消息页并打开对应会话
-  const openNotifChat = (n: Notification) => {
-    if (n.related_type === "chat_direct") {
-      router.push(`/messages?open=direct:${encodeURIComponent(n.related_id)}`);
-    } else if (n.related_type === "chat_group") {
-      router.push(`/messages?open=group:${n.related_id}`);
-    }
-  };
-
-  const markAllNotifRead = async () => {
-    await fetchWithAuth("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ markAll: true, recipient: user?.name }),
-    });
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
-  };
-
   const isAdmin = user?.role === "admin";
   // 考勤导出选中的月份（默认当前曼谷月，切换后明细/汇总导出都按这个月导出）
   const [attendanceMonth, setAttendanceMonth] = useState(bangkokMonthKey());
-  const [ntfOpenSections, setNtfOpenSections] = useState<Set<string>>(new Set(["issue-today","issue-week","leave-today","leave-week","vat-today","vat-week","chat-today","chat-week","other-today","other-week"]));
 
   // ── 工资设置（管理员）──
   const [salaryRows, setSalaryRows] = useState<any[]>([]);
@@ -1391,115 +1321,6 @@ export default function InternalPage() {
         )}
         </div>
       )}
-
-      {/* ── 通知中心（按业务 + 时间分组）── */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
-        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
-          <h2 className="text-sm font-medium flex items-center gap-2"><Bell className="size-4" />通知中心</h2>
-          {(Array.isArray(notifications) ? notifications : []).some(n => n.is_read === 0) && (
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={markAllNotifRead}>全部已读</Button>
-          )}
-        </div>
-        {(Array.isArray(notifications) ? notifications : []).length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无通知</div>
-        ) : (
-          <div className="max-h-[480px] overflow-y-auto">
-            {(() => {
-              // 分组：category → timeGroup → notifications
-              const cats = ["issue","leave","vat","chat","other"] as const;
-              const colorMap: Record<string, { border: string; bg: string; dot: string }> = {
-                blue:   { border: "border-l-blue-500",  bg: "bg-blue-50/60 dark:bg-blue-950/10",  dot: "bg-blue-500" },
-                purple: { border: "border-l-purple-500", bg: "bg-purple-50/60 dark:bg-purple-950/10", dot: "bg-purple-500" },
-                green:  { border: "border-l-emerald-500", bg: "bg-emerald-50/60 dark:bg-emerald-950/10", dot: "bg-emerald-500" },
-                sky:    { border: "border-l-sky-500",  bg: "bg-sky-50/60 dark:bg-sky-950/10",  dot: "bg-sky-500" },
-                gray:   { border: "border-l-gray-400",  bg: "bg-gray-50/60 dark:bg-gray-900/10",  dot: "bg-gray-400" },
-              };
-              const grouped: Record<string, Record<string, Notification[]>> = {};
-              for (const n of notifications) {
-                const cat = ntfCatKey(n);
-                const tg = ntfTimeGroup(n.created_at);
-                if (!grouped[cat]) grouped[cat] = {};
-                if (!grouped[cat][tg]) grouped[cat][tg] = [];
-                grouped[cat][tg].push(n);
-              }
-              const sections: { key: string; label: string; defaultOpen: boolean }[] = [
-                { key: "today", label: "今天", defaultOpen: true },
-                { key: "week", label: "本周", defaultOpen: true },
-                { key: "older", label: "更早", defaultOpen: false },
-              ];
-              return cats.map(cat => {
-                const catData = NTF_CATEGORIES[cat];
-                const cm = colorMap[catData.color] || colorMap.gray;
-                const groups = grouped[cat] || {};
-                const totalCount = Object.values(groups).reduce((s, arr) => s + arr.length, 0);
-                if (totalCount === 0) return null;
-                // State for collapse (per-cat, per-section)
-                return (
-                  <div key={cat} className="border-b border-[var(--border)] last:border-b-0">
-                    {/* 业务分类标题 */}
-                    <div className={cn("px-5 py-2.5 flex items-center gap-2", cm.bg)}>
-                      <span className={cn("size-2 rounded-full shrink-0", cm.dot)} />
-                      <span className="text-xs font-semibold text-[var(--foreground)]">{catData.label}</span>
-                      <span className="ml-auto text-[0.65rem] text-[var(--muted-foreground)] tabular-nums">{totalCount}</span>
-                    </div>
-                    {sections.map(sec => {
-                      const items = groups[sec.key] || [];
-                      if (items.length === 0) return null;
-                      const sectionKey = `${cat}-${sec.key}`;
-                      const open = ntfOpenSections.has(sectionKey);
-                      const toggleOpen = () => {
-                        setNtfOpenSections(prev => {
-                          const next = new Set(prev);
-                          if (next.has(sectionKey)) next.delete(sectionKey);
-                          else next.add(sectionKey);
-                          return next;
-                        });
-                      };
-                      return (
-                        <div key={sec.key}>
-                          <button
-                            onClick={() => toggleOpen()}
-                            className="w-full px-5 py-1.5 flex items-center gap-1.5 text-left text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 transition-colors"
-                          >
-                            <span className={cn("text-[0.6rem] transition-transform", open && "rotate-90")}>▶</span>
-                            <span>{sec.label}</span>
-                            <span className="tabular-nums text-[0.65rem] opacity-60">{items.length}</span>
-                          </button>
-                          {open && (
-                            <div className="divide-y divide-[var(--border)]">
-                              {items.map(n => (
-                                <div
-                                  key={n.id}
-                                  onClick={() => {
-                                    if (n.is_read === 0) markNotifRead(n.id);
-                                    if (n.related_type === "chat_direct" || n.related_type === "chat_group") openNotifChat(n);
-                                  }}
-                                  className={cn(
-                                    "px-5 py-2.5 cursor-pointer transition-colors hover:bg-[var(--muted)]/30",
-                                    n.is_read === 0
-                                      ? `border-l-2 ${cm.border} bg-blue-50/20 dark:bg-blue-950/5`
-                                      : "text-[var(--muted-foreground)] pl-[22px]"
-                                  )}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className={cn("text-sm truncate", n.is_read === 0 ? "font-semibold text-[var(--foreground)]" : "")}>{n.title}</span>
-                                    <span className="text-[0.65rem] text-[var(--muted-foreground)] shrink-0">{n.created_at?.slice(0, 16)}</span>
-                                  </div>
-                                  <p className="mt-0.5 text-xs text-[var(--muted-foreground)] truncate">{n.body}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        )}
-      </div>
 
       {/* ── 工作量预警 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
