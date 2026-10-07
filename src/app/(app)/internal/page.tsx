@@ -57,7 +57,6 @@ export default function InternalPage() {
   const [agencyEnabled, setAgencyEnabled] = useState(true);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [todayRecord, setTodayRecord] = useState<any>(null);
   const [clockAnim, setClockAnim] = useState<"in" | "out" | null>(null);
   const [currentTime, setCurrentTime] = useState("");
@@ -89,11 +88,6 @@ export default function InternalPage() {
   const [lightboxImages, setLightboxImages] = useState<string[] | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState(0);
 
-  // Leave form
-  const [leaveForm, setLeaveForm] = useState({ leave_type: "事假", start_date: "", end_date: "", start_time: "09:00", end_time: "17:00", destination: "", reason: "" });
-  const [leaveErr, setLeaveErr] = useState("");
-  const [leaveImages, setLeaveImages] = useState<string[]>([]);
-  const [leaveUploading, setLeaveUploading] = useState(false);
   const [supplementLeaveId, setSupplementLeaveId] = useState<number | null>(null);
   const [supplementUploading, setSupplementUploading] = useState(false);
   const supplementInputRef = useRef<HTMLInputElement>(null);
@@ -117,7 +111,6 @@ export default function InternalPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
-  const [annualBalance, setAnnualBalance] = useState<{ total: number; used: number; remaining: number } | null>(null);
   const [leaveDateFilter, setLeaveDateFilter] = useState<"all"|"today"|"7"|"30"|"custom">("all");
   const [leaveCustomFrom, setLeaveCustomFrom] = useState("");
   const [leaveCustomTo, setLeaveCustomTo] = useState("");
@@ -362,15 +355,6 @@ export default function InternalPage() {
       .catch(() => {});
   }, []);
 
-  // 年假额度：本人当前年度总额/已用/剩余
-  useEffect(() => {
-    if (!user?.name) { setAnnualBalance(null); return; }
-    fetchWithAuth(`/api/leave/annual-balance?employee=${encodeURIComponent(user.name)}`, { cache: "no-store" })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(d => setAnnualBalance(d))
-      .catch(() => { setAnnualBalance(null); });
-  }, [user?.name]);
-
   // ── Photo upload helpers ──
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -456,25 +440,6 @@ export default function InternalPage() {
       downloadXlsx(blob, `考勤汇总_${attendanceMonth}.xlsx`);
     } catch { alert("导出失败"); }
   };
-
-  const handleLeaveImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setLeaveUploading(true);
-    const uploaded: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const fd = new FormData(); fd.append("file", files[i]);
-      try {
-        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
-        if (!res.ok) throw new Error("上传失败");
-        const json = await res.json(); uploaded.push(json.url);
-      } catch (err) { alert("上传失败: " + (err instanceof Error ? err.message : "网络错误")); break; }
-    }
-    setLeaveImages(prev => [...prev, ...uploaded]);
-    setLeaveUploading(false); e.target.value = "";
-  };
-
-  const removeLeaveImage = (idx: number) => { setLeaveImages(prev => prev.filter((_, i) => i !== idx)); };
 
   // 请假补传附件
   const handleSupplementLeaveImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -617,95 +582,6 @@ export default function InternalPage() {
       setMedicalProofErr(err instanceof Error ? err.message : "核查失败");
     } finally {
       setReviewSaving(false);
-    }
-  };
-
-  // ── 请假表单校验衍生值 ──
-  const leaveDays = (() => {
-    if (!leaveForm.start_date || !leaveForm.end_date) return 0;
-    const s = new Date(leaveForm.start_date + "T00:00:00+07:00");
-    const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
-    return Math.max(0, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
-  })();
-  const sevenDaysAgo = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().split("T")[0];
-  })();
-  const dateTooOld = (() => {
-    if (!leaveForm.start_date && !leaveForm.end_date) return false;
-    const limit = new Date(sevenDaysAgo + "T00:00:00+07:00");
-    if (leaveForm.start_date) {
-      const s = new Date(leaveForm.start_date + "T00:00:00+07:00");
-      if (s < limit) return true;
-    }
-    if (leaveForm.end_date) {
-      const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
-      if (e < limit) return true;
-    }
-    return false;
-  })();
-  const isHoliday = (dateStr: string) => holidays.some(h => h.date === dateStr);
-  // 拼假检测：病假日期范围是否跨/贴了法定假日
-  const bridgeHolidays = (() => {
-    if (leaveForm.leave_type !== "病假") return [] as { date: string; name: string }[];
-    if (!leaveForm.start_date || !leaveForm.end_date) return [] as { date: string; name: string }[];
-    const s = new Date(leaveForm.start_date + "T00:00:00+07:00");
-    const e = new Date(leaveForm.end_date + "T00:00:00+07:00");
-    // 扩展两边各一天检测"贴"假日拼假
-    const extS = new Date(s); extS.setDate(s.getDate() - 1);
-    const extE = new Date(e); extE.setDate(e.getDate() + 1);
-    const found: { date: string; name: string }[] = [];
-    for (const h of holidays) {
-      const hd = new Date(h.date + "T00:00:00+07:00");
-      if (hd >= s && hd <= e) {
-        // 法定假日在请假范围内 — 直接卡连休
-        found.push(h);
-      } else if (hd >= extS && hd <= extE) {
-        // 法定假日在请假范围前后各一天 — 疑似拼假
-        found.push(h);
-      }
-    }
-    return found;
-  })();
-  const reasonLen = leaveForm.reason.trim().length;
-  const reasonTooShort = reasonLen < 10;
-  const needDestination = leaveForm.leave_type === "事假" && !leaveForm.destination.trim();
-  const canSubmitLeave = !leaveForm.start_date || !leaveForm.end_date
-    ? false
-    : !reasonTooShort && !needDestination && !dateTooOld;
-
-  const handleCreateLeave = async () => {
-    if (!leaveForm.start_date || !leaveForm.end_date) { setLeaveErr("请选择日期"); return; }
-    if (reasonTooShort) { setLeaveErr(`事由至少10个字，当前${reasonLen}字`); return; }
-    if (needDestination) { setLeaveErr("事假必须填写目的地"); return; }
-    if (dateTooOld) { setLeaveErr("不能申请超过七天前的日期"); return; }
-    setLeaveErr("");
-    try {
-      const res = await fetchWithAuth("/api/leave", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...leaveForm, employee_name: user?.name, images: leaveImages.map((url) => url.replace("/api/files/", "")) }),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setLeaveErr(errData.error || "提交失败，请重试");
-        return;
-      }
-      const newRecord = await res.json();
-      setLeaves(prev => [newRecord, ...prev]);
-      setShowLeaveForm(false);
-      setLeaveForm({ leave_type: "事假", start_date: "", end_date: "", start_time: "09:00", end_time: "17:00", destination: "", reason: "" });
-      setLeaveImages([]);
-      // 年假申请提交后刷新额度（待审批计入占用）
-      if (newRecord.leave_type === "年假" && user?.name) {
-        fetchWithAuth(`/api/leave/annual-balance?employee=${encodeURIComponent(user.name)}`, { cache: "no-store" })
-          .then(r => r.ok ? r.json() : null).then(d => { if (d) setAnnualBalance(d); }).catch(() => {});
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "网络错误";
-      if (msg === "NO_TOKEN") setLeaveErr("登录已过期，请刷新页面重新登录");
-      else { console.error("[内部管理] 创建请假失败", e); setLeaveErr("提交失败，请检查网络后重试"); }
     }
   };
 
@@ -2082,7 +1958,6 @@ export default function InternalPage() {
               return true;
             }).length;
           })()})</h2>
-          <Button size="sm" className="h-7 text-xs" variant="outline" onClick={()=>setShowLeaveForm(true)}><Plus className="size-3" />申请请假</Button>
           {isAdmin && (
             <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => {
               const m = new Date().toISOString().slice(0, 7);
@@ -2117,117 +1992,6 @@ export default function InternalPage() {
           </select>
         </div>
 
-        {showLeaveForm && (
-          <div className="p-5 border-b border-[var(--border)]">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className="text-xs font-medium">请假类型</label>
-                <select value={leaveForm.leave_type} onChange={e=>setLeaveForm(p=>({...p,leave_type:e.target.value}))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
-                  <option value="事假">事假</option><option value="病假">病假</option><option value="年假">年假</option><option value="调休">调休</option><option value="法定假日">法定假日</option><option value="其他">其他</option>
-                </select>
-              </div>
-              {leaveForm.leave_type === "年假" && (
-                <div className="sm:col-span-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/50 px-3 py-2">
-                  {annualBalance ? (
-                    <p className="text-xs leading-relaxed">
-                      年假额度：<span className="font-medium">总额 {annualBalance.total} 天</span> · 已用 <span className="font-medium">{annualBalance.used} 天</span> · 剩余 <span className={cn("font-semibold", annualBalance.remaining <= 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}>{annualBalance.remaining} 天</span>
-                      {annualBalance.total === 0 && <span className="text-[var(--muted-foreground)]">（工龄满一年后每年 6 天，当年未用不结转）</span>}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-[var(--muted-foreground)]">年假额度加载中…</p>
-                  )}
-                </div>
-              )}
-              <div><label className="text-xs font-medium">开始日期</label>
-                <input type="date" value={leaveForm.start_date} min={sevenDaysAgo} onChange={e=>setLeaveForm(p=>({...p,start_date:e.target.value}))}
-                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
-                    dateTooOld ? "border-red-400 bg-red-50" : "border-[var(--border)]"
-                  )} />
-              </div>
-              <div><label className="text-xs font-medium">结束日期</label>
-                <input type="date" value={leaveForm.end_date} min={sevenDaysAgo} onChange={e=>setLeaveForm(p=>({...p,end_date:e.target.value}))}
-                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
-                    dateTooOld ? "border-red-400 bg-red-50" : "border-[var(--border)]"
-                  )} />
-              </div>
-              <div><label className="text-xs font-medium">开始时间</label>
-                <input type="time" value={leaveForm.start_time} onChange={e=>setLeaveForm(p=>({...p,start_time:e.target.value}))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
-              </div>
-              <div><label className="text-xs font-medium">结束时间</label>
-                <input type="time" value={leaveForm.end_time} onChange={e=>setLeaveForm(p=>({...p,end_time:e.target.value}))}
-                  className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm" />
-              </div>
-              {dateTooOld && (
-                <div className="sm:col-span-3">
-                  <p className="text-xs text-red-500">不能申请超过七天前的日期，最早可申请 {sevenDaysAgo}</p>
-                </div>
-              )}
-              {bridgeHolidays.length > 0 && (
-                <div className="sm:col-span-3 rounded-lg border border-orange-300 bg-orange-50 dark:bg-orange-950/20 px-3 py-2">
-                  <p className="text-xs font-medium text-orange-700 dark:text-orange-400">
-                    ⚠️ 拼假提醒：病假日期{bridgeHolidays.length}个法定假日{bridgeHolidays.every(h => { const hd = new Date(h.date + "T00:00:00+07:00"); const s = new Date(leaveForm.start_date + "T00:00:00+07:00"); const e = new Date(leaveForm.end_date + "T00:00:00+07:00"); return hd >= s && hd <= e; }) ? "在请假范围内" : "与请假日期相邻"}，疑似拼假连休
-                  </p>
-                  <ul className="mt-1 space-y-0.5">
-                    {bridgeHolidays.map(h => (
-                      <li key={h.date} className="text-xs text-orange-600 dark:text-orange-400">{h.date} {h.name}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-medium">目的地 {leaveForm.leave_type === "事假" ? <span className="text-red-500">*必填</span> : <span className="text-[var(--muted-foreground)]">(选填)</span>}</label>
-                <input value={leaveForm.destination} onChange={e=>setLeaveForm(p=>({...p,destination:e.target.value}))}
-                  placeholder={leaveForm.leave_type === "事假" ? "事假必填目的地" : "目的地（选填）"}
-                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
-                    needDestination ? "border-red-400 bg-red-50" : "border-[var(--border)]"
-                  )} />
-                {needDestination && <p className="mt-0.5 text-xs text-red-500">事假必须填写目的地</p>}
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-xs font-medium">
-                  事由 <span className={cn(reasonLen < 10 ? "text-red-500" : "text-[var(--muted-foreground)]")}>
-                    ({reasonLen}/10字{reasonLen < 10 ? `，还差${10 - reasonLen}字` : ""})
-                  </span>
-                </label>
-                <input value={leaveForm.reason} onChange={e=>setLeaveForm(p=>({...p,reason:e.target.value}))}
-                  placeholder="请假原因，至少填写10个字..."
-                  className={cn("mt-1 w-full h-9 rounded border px-3 text-sm outline-none focus:border-[var(--ring)]",
-                    reasonLen > 0 && reasonTooShort ? "border-orange-400" : "border-[var(--border)]"
-                  )} />
-                {reasonTooShort && (
-                  <p className="mt-0.5 text-xs text-orange-500">
-                    事由至少10个字，当前{reasonLen}字，还差{10 - reasonLen}字
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="mt-3">
-              <label className="text-xs font-medium">
-                附件上传（选填）
-              </label>
-              <div className="mt-1 flex flex-wrap gap-2 items-center">
-                {leaveImages.map((img,idx)=>(
-                  <div key={idx} className="relative group w-16 h-16 rounded border border-[var(--border)] overflow-hidden bg-[var(--muted)] shrink-0">
-                    <img src={fileUrl(img)} alt="" className="w-full h-full object-cover" />
-                    <button onClick={()=>removeLeaveImage(idx)} className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X className="size-3" /></button>
-                  </div>
-                ))}
-                <label className="w-16 h-16 rounded border-2 border-dashed border-[var(--border)] hover:border-[var(--ring)] flex items-center justify-center cursor-pointer transition-colors shrink-0">
-                  {leaveUploading?<Loader2 className="size-5 animate-spin text-[var(--muted-foreground)]" />:<Plus className="size-5 text-[var(--muted-foreground)]" />}
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleLeaveImageUpload} disabled={leaveUploading} />
-                </label>
-              </div>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB；病假证明可先不传，之后在病假记录里补交</p>
-            </div>
-            {leaveErr && <p className="mt-2 text-xs text-[var(--destructive)]">{leaveErr}</p>}
-            <div className="mt-3 flex gap-2">
-              <Button size="sm" onClick={handleCreateLeave} disabled={!canSubmitLeave}>提交申请</Button>
-              <Button variant="ghost" size="sm" onClick={()=>setShowLeaveForm(false)}>取消</Button>
-            </div>
-          </div>
-        )}
 
         {(() => {
           const now=Date.now();const today=new Date().toDateString();
