@@ -994,6 +994,18 @@ function initTables(database: Database.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS shopee_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_date TEXT DEFAULT '',
+      customer_name TEXT NOT NULL DEFAULT '',
+      store_qty INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT '有可售店铺' CHECK(status IN ('有可售店铺','等待扫描验证资料','暂无可售店铺')),
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_shopee_orders_status ON shopee_orders(status);
   `);
 
   database.exec(`

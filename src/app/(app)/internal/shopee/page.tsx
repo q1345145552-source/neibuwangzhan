@@ -10,8 +10,9 @@ import { StoreLedgerTab } from "./stores-tab";
 import { SimTab } from "./sim-tab";
 import { EmailTab } from "./email-tab";
 import { DailyCountTab } from "./daily-count-tab";
+import { OrdersTab } from "./orders-tab";
 
-type ShopeeTab = "stores" | "sim" | "email" | "scan" | "register";
+type ShopeeTab = "stores" | "sim" | "email" | "scan" | "register" | "orders";
 
 export default function ShopeePage() {
   const { user } = useAuth();
@@ -31,6 +32,7 @@ export default function ShopeePage() {
     { key: "email", label: "邮箱库存" },
     { key: "scan", label: "扫描验证" },
     { key: "register", label: "注册" },
+    { key: "orders", label: "客户订单" },
   ];
 
   return (
@@ -39,7 +41,7 @@ export default function ShopeePage() {
         <Link href="/internal"><Button variant="ghost" size="icon-sm"><ArrowLeft className="size-4" /></Button></Link>
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">Shopee店铺管理</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">店铺台账 · SIM卡 · 邮箱库存 · 扫描验证 · 注册</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">店铺台账 · SIM卡 · 邮箱库存 · 扫描验证 · 注册 · 客户订单</p>
         </div>
       </div>
 
@@ -67,8 +69,10 @@ export default function ShopeePage() {
         <EmailTab />
       ) : tab === "scan" ? (
         <DailyCountTab apiPath="/api/scan-verifications" countLabel="完成数量" emptyText="暂无扫描验证记录" addTitle="新增扫描验证" />
-      ) : (
+      ) : tab === "register" ? (
         <DailyCountTab apiPath="/api/registrations" countLabel="注册数量" emptyText="暂无注册记录" addTitle="新增注册" />
+      ) : (
+        <OrdersTab />
       )}
     </div>
   );
