@@ -66,6 +66,7 @@ const businessLines = [
   { name: "清关", href: "/customs-clearance", icon: Ship },
   { name: "地址认证", href: "/address-certification", icon: MapPin },
   { name: "Mall开店", href: "/mall-store", icon: Store },
+  { name: "店铺管理", href: "/internal/shopee", icon: Store },
   { name: "NBTC", href: "/nbtc", icon: Radio },
 ];
 
@@ -98,7 +99,6 @@ const internalNav = [
   { name: "奖惩制度", href: "/internal/rewards", icon: Star },
   { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
   { name: "模板库", href: "/internal/templates", icon: Layers },
-  { name: "Shopee店铺管理", href: "/internal/shopee", icon: Store },
 ];
 
 const utilityNav = [
