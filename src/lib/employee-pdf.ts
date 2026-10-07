@@ -2,7 +2,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import PDFDocument from "pdfkit";
 import { getDb } from "@/lib/db";
-import { registerPdfFonts, fontFor, FONT_BOLD, FONT_REGULAR, FONT_CJK } from "@/lib/pdf-fonts";
+import { registerPdfFonts, fontFor, FONT_REGULAR, FONT_CJK } from "@/lib/pdf-fonts";
 import { zodiacFromBirthDate } from "@/lib/utils";
 import { uploadsDir } from "@/lib/uploads";
 
@@ -61,7 +61,8 @@ export async function generateEmployeePdf(employeeId: number): Promise<EmployeeP
 
   function sectionTitle(title: string) {
     doc.moveDown(0.4);
-    doc.font(FONT_BOLD).fontSize(12).text(title, { underline: false });
+    // 区块标题用中文字体渲染（中文用 CJK，非中文用粗体），避免中文标题变方框
+    doc.font(fontFor(title, fonts, true)).fontSize(12).text(title, { underline: false });
     doc.moveDown(0.1);
     doc.font(FONT_REGULAR).fontSize(10);
   }
@@ -135,7 +136,7 @@ export async function generateEmployeePdf(employeeId: number): Promise<EmployeeP
       const badge = r.type === "demerit" ? "扣分" : "记优点";
       const date = String(r.created_at || "").slice(0, 10);
       doc.font(labelFont).fontSize(10).text(`${badge}  ${sign}${r.points}分`, { continued: true });
-      doc.font(FONT_REGULAR).fontSize(10).text(`    ${r.content}    (${date})`);
+      doc.font(fontFor(r.content, fonts)).fontSize(10).text(`    ${r.content}    (${date})`);
     }
   }
 
@@ -146,7 +147,7 @@ export async function generateEmployeePdf(employeeId: number): Promise<EmployeeP
   } else {
     for (const f of files) {
       doc.font(labelFont).fontSize(10).text(`[${f.category}]`, { continued: true });
-      doc.font(FONT_REGULAR).fontSize(10).text(`  ${f.original_name || f.filename}`);
+      doc.font(fontFor(f.original_name || f.filename, fonts)).fontSize(10).text(`  ${f.original_name || f.filename}`);
       if (f.mime_type === "image/jpeg" || f.mime_type === "image/png") {
         const fp = path.join(uploadsDir, path.basename(f.filename));
         if (existsSync(fp)) {
