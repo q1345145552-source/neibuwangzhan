@@ -473,6 +473,10 @@ export default function MessagesPage() {
   const [todoAssignee, setTodoAssignee] = useState("");
   const [convertedTodos, setConvertedTodos] = useState<Set<string>>(new Set());
   const [convertingTodoKey, setConvertingTodoKey] = useState<string | null>(null);
+  // 消息转待办弹窗
+  const [todoModal, setTodoModal] = useState<{ content: string } | null>(null);
+  const [todoForm, setTodoForm] = useState({ content: "", assignee: "", priority: "普通" });
+  const [todoSaving, setTodoSaving] = useState(false);
   // 聊天背景设置
   const [bgOpen, setBgOpen] = useState(false);
   const [bgSaving, setBgSaving] = useState(false);
@@ -1354,10 +1358,39 @@ export default function MessagesPage() {
     }
   };
 
+  // 打开「消息转待办」弹窗
+  const openTodoModal = (content: string) => {
+    setTodoModal({ content });
+    setTodoForm({ content: content || "", assignee: me, priority: "普通" });
+  };
+
+  // 确认把消息转成待办
+  const confirmTodo = async () => {
+    if (!todoForm.content.trim()) { setError("请填写工作内容"); return; }
+    setTodoSaving(true);
+    try {
+      const r = await fetchWithAuth("/api/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: todoForm.content.trim(), assignee: todoForm.assignee || me, priority: todoForm.priority }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setTodoModal(null);
+        alert("创建成功");
+      } else {
+        setError(d?.error || "转待办失败");
+      }
+    } catch {
+      setError("转待办失败");
+    } finally {
+      setTodoSaving(false);
+    }
+  };
+
   // 打开聊天监控看板
   const openMonitor = () => {
-    setMonitorOpen(true);
-    setMonitorDetail(null);
+    setMonitorOpen(true);    setMonitorDetail(null);
     setMonitorError(null);
     setMonitorRange("7d");
     setMonitorEmployee("");
@@ -3670,6 +3703,7 @@ export default function MessagesPage() {
           { label: "翻译", onClick: () => { toggleTranslate(m.id); setMenuState(null); } },
           ...(canRecall ? [{ label: "撤回", onClick: () => { recallMessage(m); setMenuState(null); } }] : []),
           { label: "引用回复", onClick: () => { setReplyTo({ id: m.id, sender: m.sender, preview: quotePreview(m) }); setMenuState(null); } },
+          { label: "转待办", onClick: () => { openTodoModal(m.content || ""); setMenuState(null); } },
           { label: "表情反应", onClick: () => openEmojiPicker(m.id, menuState.x, menuState.y) },
         ];
         return (
@@ -3692,6 +3726,47 @@ export default function MessagesPage() {
           </>
         );
       })()}
+
+      {/* 消息转待办弹窗 */}
+      {todoModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onClick={() => !todoSaving && setTodoModal(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">转待办</h3>
+              <button onClick={() => !todoSaving && setTodoModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">工作内容</label>
+                <textarea value={todoForm.content} onChange={(e) => setTodoForm((p) => ({ ...p, content: e.target.value }))} rows={2} placeholder="工作内容" className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">负责人</label>
+                {isAdmin ? (
+                  <select value={todoForm.assignee} onChange={(e) => setTodoForm((p) => ({ ...p, assignee: e.target.value }))} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                    {contacts.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                ) : (
+                  <div className="mt-1 flex h-9 items-center rounded-md border border-[var(--border)] bg-[var(--muted)]/30 px-3 text-sm text-[var(--foreground)]">{me}（自己）</div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">优先级</label>
+                <select value={todoForm.priority} onChange={(e) => setTodoForm((p) => ({ ...p, priority: e.target.value }))} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                  <option value="普通">普通</option>
+                  <option value="紧急">紧急</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => !todoSaving && setTodoModal(null)} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
+              <button onClick={confirmTodo} disabled={todoSaving || !todoForm.content.trim()} className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50">{todoSaving ? "创建中…" : "确认"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 表情反应选择器 */}
       {emojiPickerState && (
