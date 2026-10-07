@@ -17,6 +17,12 @@ export async function GET(req: NextRequest) {
     "SELECT employee_name, leave_type, start_date, end_date FROM leave_requests WHERE status = '已通过' AND start_date <= ? AND end_date >= ? ORDER BY employee_name"
   ).all(today, today) as { employee_name: string; leave_type: string; start_date: string; end_date: string }[];
 
+  // ── 未来十四天请假（已通过，开始日期在今天之后、十四天以内，按日期从近到远）──
+  const futureDate = new Date(new Date(today + "T00:00:00+07:00").getTime() + 14 * 86400000).toISOString().slice(0, 10);
+  const upcomingLeave = db.prepare(
+    "SELECT employee_name, leave_type, start_date, end_date FROM leave_requests WHERE status = '已通过' AND start_date > ? AND start_date <= ? ORDER BY start_date ASC, employee_name ASC"
+  ).all(today, futureDate) as { employee_name: string; leave_type: string; start_date: string; end_date: string }[];
+
   // ── 待审批 ──
   const pendingCount = (db.prepare("SELECT COUNT(*) as cnt FROM leave_requests WHERE status = '待审批'").get() as any).cnt;
   const pendingList = db.prepare(
@@ -80,6 +86,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     todayOnLeave,
+    upcomingLeave,
     pendingCount,
     pendingList,
     monthStats,
