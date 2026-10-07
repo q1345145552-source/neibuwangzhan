@@ -20,14 +20,41 @@ export function LeaveDashboardTab() {
   const [rejectModal, setRejectModal] = useState<{ id: number } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  // 请假记录筛选
+  const [records, setRecords] = useState<any[]>([]);
+  const [recordsFrom, setRecordsFrom] = useState("");
+  const [recordsTo, setRecordsTo] = useState("");
+  const [recordsEmployee, setRecordsEmployee] = useState("");
+  const [recordsStatus, setRecordsStatus] = useState("");
 
-  useEffect(() => {
-    fetchWithAuth("/api/leave/dashboard")
+  const loadDashboard = () => {
+    fetchWithAuth(`/api/leave/dashboard?month=${selectedMonth}`)
       .then(r => r.json())
       .then(d => { if (!d.error) setDashboard(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  const loadRecords = () => {
+    fetchWithAuth("/api/leave", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setRecords(Array.isArray(d) ? d : []))
+      .catch(() => setRecords([]));
+  };
+
+  useEffect(() => { loadDashboard(); }, [selectedMonth]);
+  useEffect(() => { loadRecords(); }, []);
+
+  const changeMonth = (delta: number) => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
+
+  const exportReport = () => {
+    window.open(`/api/leave/export?month=${selectedMonth}`, "_blank");
+  };
 
   const cards = useMemo(() => {
     if (!dashboard) return [];
@@ -49,8 +76,6 @@ export function LeaveDashboardTab() {
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-
-  const currentMonth = new Date().toISOString().slice(0, 7);
 
   const loadDetail = async (employee: string, month: string) => {
     setDetailModal({ employee, month });
@@ -229,7 +254,17 @@ export function LeaveDashboardTab() {
       <div id="section-month-stats">
         {dashboard.monthStats?.length > 0 ? (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-            <p className="text-xs text-[var(--muted-foreground)] mb-3">当月统计（{dashboard.monthStats.length} 人请假）</p>
+            <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xs text-[var(--muted-foreground)]">{selectedMonth} 统计（{dashboard.monthStats.length} 人请假）</p>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex items-center gap-1">
+                  <button onClick={() => changeMonth(-1)} className="flex size-7 items-center justify-center rounded border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]" aria-label="上个月">◀</button>
+                  <span className="min-w-[72px] text-center text-sm font-medium">{selectedMonth}</span>
+                  <button onClick={() => changeMonth(1)} className="flex size-7 items-center justify-center rounded border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]" aria-label="下个月">▶</button>
+                </div>
+                <button onClick={exportReport} className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--border)] px-3 text-xs text-[var(--foreground)] hover:bg-[var(--muted)]">📥 导出当月报表</button>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm hidden md:table">
                 <thead>
@@ -246,7 +281,7 @@ export function LeaveDashboardTab() {
                 </thead>
                 <tbody>
                   {dashboard.monthStats.map((s: any) => (
-                    <tr key={s.employee_name} className="border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-[var(--muted)]/30 transition-colors" onClick={() => loadDetail(s.employee_name, currentMonth)}>
+                    <tr key={s.employee_name} className="border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-[var(--muted)]/30 transition-colors" onClick={() => loadDetail(s.employee_name, selectedMonth)}>
                       <td className="py-2 px-3 font-medium text-blue-600 hover:underline">{s.employee_name}</td>
                       <td className="py-2 px-3 text-center">{s.sick || 0}</td>
                       <td className="py-2 px-3 text-center">{s.personal || 0}</td>
@@ -272,7 +307,7 @@ export function LeaveDashboardTab() {
               {/* 手机端卡片 */}
               <div className="md:hidden flex flex-col gap-2 p-3">
                 {dashboard.monthStats.map((s: any) => (
-                  <div key={s.employee_name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 cursor-pointer" onClick={() => loadDetail(s.employee_name, currentMonth)}>
+                  <div key={s.employee_name} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 cursor-pointer" onClick={() => loadDetail(s.employee_name, selectedMonth)}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-blue-600">{s.employee_name}</span>
                       <span className="font-medium">{s.totalDays}天</span>
@@ -312,7 +347,7 @@ export function LeaveDashboardTab() {
               <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-3">🔴 病假重点关注</p>
               <div className="space-y-2">
                 {dashboard.sickLeaders.map((s: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => loadDetail(s.employee_name, currentMonth)}>
+                  <div key={i} className="flex items-center justify-between cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => loadDetail(s.employee_name, selectedMonth)}>
                     <span className="font-medium text-blue-600 hover:underline">{s.employee_name}</span>
                     <span className="text-red-600 font-bold">{s.sick}次 ▸</span>
                   </div>
@@ -332,7 +367,7 @@ export function LeaveDashboardTab() {
               <p className="text-sm font-medium text-orange-600 dark:text-orange-400 mb-3">⚠️ 拼假嫌疑（{dashboard.bridgeSuspects.length} 条）</p>
               <div className="space-y-3">
                 {dashboard.bridgeSuspects.map((b: any, i: number) => (
-                  <div key={i} className="text-sm cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => loadDetail(b.employee_name, currentMonth)}>
+                  <div key={i} className="text-sm cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => loadDetail(b.employee_name, selectedMonth)}>
                     <p className="font-medium text-blue-600 hover:underline">{b.employee_name}</p>
                     <p className="text-xs text-[var(--muted-foreground)]">{b.start_date} ~ {b.end_date}</p>
                     <p className="text-xs text-orange-600">卡到：{b.holidays.map((h: any) => h.date + " " + h.name.split(" (")[0]).join("、")}</p>
@@ -348,6 +383,84 @@ export function LeaveDashboardTab() {
           )}
         </div>
       </div>
+
+      {/* ── 请假记录筛选 ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <div className="px-5 py-4 border-b border-[var(--border)]">
+          <h2 className="text-sm font-medium">请假记录</h2>
+        </div>
+        <div className="px-5 py-3 border-b border-[var(--border)] flex flex-wrap items-center gap-2">
+          <input type="date" value={recordsFrom} onChange={e => setRecordsFrom(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+          <span className="text-xs text-[var(--muted-foreground)]">至</span>
+          <input type="date" value={recordsTo} onChange={e => setRecordsTo(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none" />
+          <span className="text-[var(--border)] mx-1">|</span>
+          <select value={recordsEmployee} onChange={e => setRecordsEmployee(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部员工</option>
+            {[...new Set(records.map(r => r.employee_name).filter(Boolean))].sort().map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <select value={recordsStatus} onChange={e => setRecordsStatus(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部状态</option>
+            <option value="待审批">待审批</option><option value="已通过">已通过</option><option value="已驳回">已驳回</option>
+          </select>
+        </div>
+        {(() => {
+          const filtered = records.filter(r => {
+            if (recordsFrom && r.start_date < recordsFrom) return false;
+            if (recordsTo && r.start_date > recordsTo) return false;
+            if (recordsEmployee && r.employee_name !== recordsEmployee) return false;
+            if (recordsStatus && r.status !== recordsStatus) return false;
+            return true;
+          });
+          if (filtered.length === 0) return <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无匹配的请假记录</div>;
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm hidden md:table">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">员工</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">类型</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">日期</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">目的地</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">原因</th>
+                    <th className="py-2.5 px-4 text-left text-xs font-medium">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(r => (
+                    <tr key={r.id} className="border-b border-[var(--border)] last:border-0">
+                      <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>
+                      <td className="py-2.5 px-4">{r.leave_type}</td>
+                      <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{r.start_date || "—"} {r.start_time || "09:00"} ~ {r.end_date || "—"} {r.end_time || "17:00"}</td>
+                      <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[100px] truncate">{r.destination || "—"}</td>
+                      <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{r.reason || "—"}</td>
+                      <td className="py-2.5 px-4">
+                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* 手机端卡片 */}
+              <div className="md:hidden flex flex-col gap-2 p-3">
+                {filtered.map(r => (
+                  <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{r.employee_name}</span>
+                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{r.leave_type}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{r.start_date || "—"} {r.start_time || "09:00"} ~ {r.end_date || "—"} {r.end_time || "17:00"}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">原因</span><span className="min-w-0 break-words text-right">{r.reason || "—"}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       {/* ── 待审批详情弹窗 ── */}
       {pendingDetail && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => !approving && setPendingDetail(null)}>

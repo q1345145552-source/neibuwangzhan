@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const db = getDb();
   const today = bangkokToday();
-  const monthPrefix = today.slice(0, 7);
+  // 支持 ?month=YYYY-MM 查看历史月份统计，默认当月
+  const monthParam = new URL(req.url).searchParams.get("month");
+  const monthPrefix = (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) ? monthParam : today.slice(0, 7);
 
   // ── 今日请假 ──
   const todayOnLeave = db.prepare(
