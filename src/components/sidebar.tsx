@@ -98,6 +98,7 @@ const internalNav = [
   { name: "奖惩制度", href: "/internal/rewards", icon: Star },
   { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
   { name: "模板库", href: "/internal/templates", icon: Layers },
+  { name: "Shopee店铺管理", href: "/internal/shopee", icon: Store },
 ];
 
 const utilityNav = [

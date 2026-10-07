@@ -918,6 +918,21 @@ function initTables(database: Database.Database) {
   `);
 
   database.exec(`
+    CREATE TABLE IF NOT EXISTS shopee_stores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_code TEXT NOT NULL DEFAULT '',
+      store_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '可售' CHECK(status IN ('可售','等待扫描','被封')),
+      sold TEXT NOT NULL DEFAULT '未出售' CHECK(sold IN ('已出售','未出售')),
+      ban_reason TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_shopee_stores_status ON shopee_stores(status);
+  `);
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       actor TEXT DEFAULT '',
