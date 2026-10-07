@@ -933,6 +933,33 @@ function initTables(database: Database.Database) {
   `);
 
   database.exec(`
+    CREATE TABLE IF NOT EXISTS sim_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lot_no TEXT NOT NULL DEFAULT '',
+      total_qty INTEGER NOT NULL DEFAULT 0,
+      remaining_qty INTEGER NOT NULL DEFAULT 0,
+      stock_date TEXT DEFAULT '',
+      remark TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_sim_batches_lot ON sim_batches(lot_no);
+
+    CREATE TABLE IF NOT EXISTS sim_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id INTEGER NOT NULL REFERENCES sim_batches(id),
+      type TEXT NOT NULL DEFAULT '入库' CHECK(type IN ('入库','出库')),
+      qty INTEGER NOT NULL DEFAULT 0,
+      purpose TEXT DEFAULT '',
+      customer TEXT DEFAULT '',
+      operator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_sim_transactions_batch ON sim_transactions(batch_id);
+  `);
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       actor TEXT DEFAULT '',
