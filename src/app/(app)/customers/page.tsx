@@ -720,9 +720,9 @@ export default function CustomersPage() {
                   <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap", statusColor[c.status] || "")}>{c.status}</span>
                 </div>
                 <div className="mt-2 space-y-1.5 text-sm">
-                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">行业</span><span>{c.industry || "—"}</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">认领人</span><span>{c.claimed_by || c.handler_name || "—"}</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">来源</span><span>{c.source_channel || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">行业</span><span className="min-w-0 flex-1 truncate text-right">{c.industry || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">认领人</span><span className="min-w-0 flex-1 truncate text-right">{c.claimed_by || c.handler_name || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">来源</span><span className="min-w-0 flex-1 truncate text-right">{c.source_channel || "—"}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">成交金额</span><span className="font-mono text-xs">{c.total_deal_amount > 0 ? c.total_deal_amount.toLocaleString() : "—"}</span></div>
                 </div>
                 <div className="mt-3 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
