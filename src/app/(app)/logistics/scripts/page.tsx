@@ -105,7 +105,7 @@ export default function LogisticsScriptsPage() {
         ...cat,
         questions: cat.questions.filter((q) => !kw || q.question.toLowerCase().includes(kw)),
       }))
-      .filter((cat) => cat.questions.length > 0);
+      .filter((cat) => !kw || cat.questions.length > 0);
   }, [categories, search, categoryFilter]);
 
   const toggleExpand = (id: number) => {
