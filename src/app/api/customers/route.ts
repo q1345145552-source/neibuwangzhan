@@ -22,12 +22,12 @@ function insertPointsRecord(db: any, employeeName: string, points: number, reaso
  *    现在 status_locked = 1 的记录一律跳过（PATCH 手动改状态时会置位）。
  */
 function applyAutoFlow(db: any) {
-  // 跟进中 + 有成交订单 → 已合作
+  // 跟进中 + 最近 3 个月内有成交订单 → 已合作（太早的旧订单不算，避免激活旧客户被立刻打回）
   db.exec(`
     UPDATE customers SET status = '已合作', updated_at = datetime('now')
     WHERE status = '跟进中'
     AND COALESCE(status_locked, 0) = 0
-    AND company_name IN (SELECT DISTINCT customer_name FROM orders)
+    AND company_name IN (SELECT DISTINCT customer_name FROM orders WHERE created_at >= datetime('now', '-3 months'))
   `);
 
   // 跟进中 + 1个月没写跟进日志 → 沉睡
