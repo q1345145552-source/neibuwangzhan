@@ -2205,8 +2205,17 @@ function initTables(database: Database.Database) {
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
-      seen_at TEXT DEFAULT ''
+      seen_at TEXT DEFAULT '',
+      category_id INTEGER DEFAULT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS todo_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_todo_categories_created_by ON todo_categories(created_by);
 
     CREATE TABLE IF NOT EXISTS todo_follow_ups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2265,6 +2274,8 @@ function initTables(database: Database.Database) {
 
   // todo_follow_ups 迁移：补图片列（跟进记录可选多张图片）
   try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
+  // todos 迁移：补分类列（分类表 todo_categories 建表见上）
+  try { database.exec("ALTER TABLE todos ADD COLUMN category_id INTEGER DEFAULT NULL"); } catch {}
 
   // 工资单：每个员工每月一张
   // 收入 = 底薪 + 勤奋奖 + 技能津贴 + 奖金 + 佣金 + 加班费

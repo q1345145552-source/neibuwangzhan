@@ -43,9 +43,9 @@ export async function PATCH(
   }
 
   const body = await readJson(req);
-  const { status, content, priority, assignee } = body;
+  const { status, content, priority, assignee, category_id } = body;
 
-  // 编辑模式：不带 status 时，编辑工作内容/紧急程度/负责人
+  // 编辑模式：不带 status 时，编辑工作内容/紧急程度/负责人/分类
   if (status === undefined) {
     if (!content?.trim()) {
       return NextResponse.json({ error: "请填写工作内容" }, { status: 400 });
@@ -53,16 +53,25 @@ export async function PATCH(
     // 负责人：员工固定为自己（不能把待办转给别人），管理员可指定
     const finalAssignee = auth.role === "admin" ? (assignee?.trim() || todo.assignee) : todo.assignee;
     const finalPriority = priority === "紧急" ? "紧急" : "普通";
+    // 分类：只能是当前登录人自己创建的分类
+    let categoryId: number | null = null;
+    if (category_id !== undefined && category_id !== null && category_id !== "") {
+      const cid = Number(category_id);
+      if (Number.isInteger(cid) && cid > 0) {
+        const cat = db.prepare("SELECT id FROM todo_categories WHERE id = ? AND created_by = ?").get(cid, auth.name);
+        if (cat) categoryId = cid;
+      }
+    }
 
     if (finalAssignee !== todo.assignee) {
       // 改派给新人：新负责人未看过
       db.prepare(
-        "UPDATE todos SET content = ?, priority = ?, assignee = ?, seen_at = '', updated_at = datetime('now') WHERE id = ?"
-      ).run(content.trim(), finalPriority, finalAssignee, id);
+        "UPDATE todos SET content = ?, priority = ?, assignee = ?, category_id = ?, seen_at = '', updated_at = datetime('now') WHERE id = ?"
+      ).run(content.trim(), finalPriority, finalAssignee, categoryId, id);
     } else {
       db.prepare(
-        "UPDATE todos SET content = ?, priority = ?, updated_at = datetime('now') WHERE id = ?"
-      ).run(content.trim(), finalPriority, id);
+        "UPDATE todos SET content = ?, priority = ?, category_id = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(content.trim(), finalPriority, categoryId, id);
     }
     logOperation(auth.name, "编辑待办", "todo", String(id), content.trim());
     const edited = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);

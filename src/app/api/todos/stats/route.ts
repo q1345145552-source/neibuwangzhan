@@ -61,6 +61,10 @@ export async function GET(req: NextRequest) {
         followups: (db.prepare("SELECT COUNT(*) AS c FROM todo_follow_ups f JOIN todos t ON f.todo_id = t.id WHERE t.assignee = ? AND f.created_at >= ? AND f.created_at < ?").get(name, range.start, range.end) as { c: number }).c,
       };
     }
+    // 每个员工的分类明细：未完成待办按分类统计数量
+    row.categories = db.prepare(
+      "SELECT COALESCE(tc.name, '未分类') AS name, COUNT(*) AS count FROM todos t LEFT JOIN todo_categories tc ON tc.id = t.category_id WHERE t.assignee = ? AND t.status = '未完成' GROUP BY name ORDER BY count DESC, name ASC"
+    ).all(name) as { name: string; count: number }[];
     return row;
   });
 

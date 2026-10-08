@@ -20,6 +20,8 @@ interface Todo {
   latest_follow_by?: string | null;
   latest_follow_at?: string | null;
   images?: string[];
+  category_id?: number | null;
+  category_name?: string | null;
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -39,7 +41,7 @@ interface TodoStats {
   today: RangeStats;
   week: RangeStats;
   month: RangeStats;
-  employees: { name: string; unfinished: number; today: RangeStats; week: RangeStats; month: RangeStats }[];
+  employees: { name: string; unfinished: number; today: RangeStats; week: RangeStats; month: RangeStats; categories: { name: string; count: number }[] }[];
   backlog: { id: number; content: string; assignee: string; created_at: string; days: number }[];
   trend: { created: { this: number; last: number }; completed: { this: number; last: number } };
 }
@@ -59,7 +61,7 @@ export default function TodosPage() {
   const [employees, setEmployees] = useState<{ id: number; name: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ content: "", assignee: "", priority: "普通", images: [] as string[] });
+  const [form, setForm] = useState({ content: "", assignee: "", priority: "普通", images: [] as string[], category_id: "" });
   const [uploadingImages, setUploadingImages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -75,7 +77,7 @@ export default function TodosPage() {
   const [historyRecords, setHistoryRecords] = useState<{ id: number; content: string; images: string[]; created_by: string; created_at: string }[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
-  const [editForm, setEditForm] = useState({ content: "", priority: "普通", assignee: "" });
+  const [editForm, setEditForm] = useState({ content: "", priority: "普通", assignee: "", category_id: "" });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Todo | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -92,6 +94,18 @@ export default function TodosPage() {
   const [stats, setStats] = useState<TodoStats | null>(null);
   // 看板折叠状态：默认收起，只留标题
   const [boardOpen, setBoardOpen] = useState(false);
+  // 待办分类：每个员工自己的一套
+  const [categories, setCategories] = useState<{ id: number; name: string; created_by: string }[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  // 分类管理弹窗
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [catModalErr, setCatModalErr] = useState("");
+  const [editCatId, setEditCatId] = useState<number | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [newCatName, setNewCatName] = useState("");
+  // 新建待办弹窗内联「新建分类」
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [creatingCat, setCreatingCat] = useState(false);
 
   const loadStats = useCallback(() => {
     if (!isAdmin) return;
@@ -127,6 +141,15 @@ export default function TodosPage() {
 
   useEffect(() => { loadUnseen(); }, [loadUnseen]);
 
+  // 分类：只加载当前登录人自己的分类
+  const loadCategories = useCallback(() => {
+    fetchWithAuth("/api/todo-categories", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setCategories(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => { loadCategories(); }, [loadCategories]);
+
   const markSeen = async (id: number) => {
     try { await fetchWithAuth(`/api/todos/${id}/seen`, { method: "POST" }); } catch {}
     loadUnseen();
@@ -159,9 +182,11 @@ export default function TodosPage() {
       }));
   }, [isAdmin, employees, unfinished]);
 
-  // 点卡片后：该员工的未完成待办列表
+  // 点卡片后：该员工的未完成待办列表（可按分类筛选）
   const selectedList = selectedAssignee
-    ? unfinished.filter((t) => (t.assignee || "未分配") === selectedAssignee)
+    ? unfinished
+        .filter((t) => (t.assignee || "未分配") === selectedAssignee)
+        .filter((t) => categoryFilter === "all" || String(t.category_id ?? "") === categoryFilter)
     : [];
 
   // 点积压提醒：进入对应负责人的待办列表，并定位+高亮那条待办
@@ -193,8 +218,11 @@ export default function TodosPage() {
   }, [completed, completedRange]);
 
   const openForm = () => {
-    setForm({ content: "", assignee: user?.name || "", priority: "普通", images: [] });
+    setForm({ content: "", assignee: user?.name || "", priority: "普通", images: [], category_id: "" });
     setErr("");
+    setCatModalErr("");
+    setShowNewCat(false);
+    setNewCatName("");
     setShowForm(true);
   };
 
@@ -250,6 +278,60 @@ export default function TodosPage() {
     finally { setSaving(false); }
   };
 
+  // 新建待办弹窗内联「新建分类」：建好后自动选中
+  const handleCreateCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) { setCatModalErr("请填写分类名"); return; }
+    setCreatingCat(true);
+    setCatModalErr("");
+    try {
+      const res = await fetchWithAuth("/api/todo-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setCategories((prev) => [...prev, data]);
+        // 在新建待办弹窗内联新建时自动选中；在分类管理弹窗里只刷新列表
+        if (showNewCat) setForm((p) => ({ ...p, category_id: String(data.id) }));
+        setNewCatName("");
+        setShowNewCat(false);
+      } else {
+        setCatModalErr(data.error || "新建分类失败");
+      }
+    } catch { setCatModalErr("新建分类失败"); }
+    finally { setCreatingCat(false); }
+  };
+
+  // 分类管理：重命名
+  const handleRenameCategory = async (id: number) => {
+    const name = editCatName.trim();
+    if (!name) { setCatModalErr("请填写分类名"); return; }
+    const res = await fetchWithAuth("/api/todo-categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { loadCategories(); setEditCatId(null); setEditCatName(""); }
+    else setCatModalErr(data.error || "重命名失败");
+  };
+
+  // 分类管理：删除
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm("确定删除该分类？该分类下的待办会变为「未分类」。")) return;
+    const res = await fetchWithAuth(`/api/todo-categories?id=${id}`, { method: "DELETE" });
+    if (res.ok) {
+      if (String(categoryFilter) === String(id)) setCategoryFilter("all");
+      loadCategories();
+      load();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setCatModalErr(d.error || "删除失败");
+    }
+  };
+
   const openFollow = (todo: Todo) => {
     setFollowTarget(todo);
     setFollowContent("");
@@ -285,7 +367,7 @@ export default function TodosPage() {
 
   const openEdit = (todo: Todo) => {
     setEditTarget(todo);
-    setEditForm({ content: todo.content, priority: todo.priority, assignee: todo.assignee || "" });
+    setEditForm({ content: todo.content, priority: todo.priority, assignee: todo.assignee || "", category_id: todo.category_id != null ? String(todo.category_id) : "" });
     setErr("");
   };
 
@@ -465,6 +547,7 @@ export default function TodosPage() {
           <tr className="border-b border-[var(--border)] bg-[var(--secondary)]/50">
             <th className="py-3 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">工作内容</th>
             <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">负责人</th>
+            <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">分类</th>
             <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">紧急程度</th>
             <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
             <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">创建时间</th>
@@ -492,6 +575,13 @@ export default function TodosPage() {
                 )}
               </td>
               <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
+              <td className="py-3 px-4">
+                {t.category_name ? (
+                  <span className="inline-flex rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">{t.category_name}</span>
+                ) : (
+                  <span className="text-xs text-[var(--muted-foreground)]">未分类</span>
+                )}
+              </td>
               <td className="py-3 px-4">
                 {t.priority === "紧急" ? (
                   <span className="inline-flex rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">紧急</span>
@@ -552,6 +642,9 @@ export default function TodosPage() {
             )}
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">负责人</span><span className="min-w-0 break-words">{t.assignee || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">分类</span>
+                {t.category_name ? <span className="inline-flex rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">{t.category_name}</span> : <span className="text-xs text-[var(--muted-foreground)]">未分类</span>}
+              </div>
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">紧急程度</span>
                 {t.priority === "紧急" ? <span className="inline-flex rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">紧急</span> : <span className="text-xs text-[var(--muted-foreground)]">普通</span>}
               </div>
@@ -688,6 +781,7 @@ export default function TodosPage() {
                   <tr className="border-b border-[var(--border)] bg-[var(--muted)]/20">
                     <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">员工</th>
                     <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">未完成数</th>
+                    <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">分类明细</th>
                     <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}新增</th>
                     <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}完成</th>
                     <th className="px-4 py-2 md:py-1.5 text-left text-xs font-medium text-[var(--muted-foreground)]">{rangeLabel}跟进</th>
@@ -698,6 +792,9 @@ export default function TodosPage() {
                     <tr key={emp.name} className="border-b border-[var(--border)] last:border-0">
                       <td className="px-4 py-2 md:py-1.5 font-medium text-[var(--foreground)]">{emp.name}</td>
                       <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp.unfinished}</td>
+                      <td className="px-4 py-2 md:py-1.5 text-xs text-[var(--muted-foreground)]">
+                        {(emp.categories?.length ?? 0) > 0 ? emp.categories.map((c) => `${c.name} ${c.count}`).join(" · ") : "—"}
+                      </td>
                       <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp[statsRange].created}</td>
                       <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp[statsRange].completed}</td>
                       <td className="px-4 py-2 md:py-1.5 font-mono tabular-nums">{emp[statsRange].followups}</td>
@@ -705,7 +802,7 @@ export default function TodosPage() {
                   ))}
                   {(stats?.employees ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-4 py-4 text-center text-sm text-[var(--muted-foreground)]">暂无员工数据</td>
+                      <td colSpan={6} className="px-4 py-4 text-center text-sm text-[var(--muted-foreground)]">暂无员工数据</td>
                     </tr>
                   )}
                 </tbody>
@@ -733,6 +830,11 @@ export default function TodosPage() {
                       <div className="mt-0.5 font-mono text-sm tabular-nums text-[var(--foreground)]">{emp[statsRange].followups}</div>
                     </div>
                   </div>
+                  {(emp.categories?.length ?? 0) > 0 && (
+                    <div className="mt-2 text-xs text-[var(--muted-foreground)]">
+                      分类明细：{emp.categories.map((c) => `${c.name} ${c.count}`).join(" · ")}
+                    </div>
+                  )}
                 </div>
               ))}
               {(stats?.employees ?? []).length === 0 && (
@@ -837,13 +939,26 @@ export default function TodosPage() {
       ) : selectedAssignee ? (
         // 点卡片进入：该员工的未完成待办列表（与之前一致）
         <div className="rounded-xl border border-[var(--border)]">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-3">
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelectedAssignee(null)} className="gap-1 px-2">
                 <ChevronLeft className="size-4" />返回
               </Button>
               <span className="text-sm font-medium text-[var(--foreground)]">{selectedAssignee}</span>
               <span className="text-xs text-[var(--muted-foreground)]">{selectedList.length} 项未完成</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+              >
+                <option value="all">全部分类</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <Button size="sm" variant="ghost" onClick={() => { setCatModalOpen(true); setCatModalErr(""); setEditCatId(null); setEditCatName(""); setNewCatName(""); }} className="gap-1 px-2 text-xs">
+                管理分类
+              </Button>
             </div>
           </div>
           {selectedList.length === 0 ? (
@@ -975,6 +1090,35 @@ export default function TodosPage() {
                 ) : (
                   <p className="text-sm text-[var(--foreground)]">{user?.name || "—"}</p>
                 )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">分类</label>
+                <div className="flex gap-2">
+                  <select
+                    value={form.category_id}
+                    onChange={(e) => setForm((p) => ({ ...p, category_id: e.target.value }))}
+                    className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                  >
+                    <option value="">未分类</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setShowNewCat((o) => !o)} className="shrink-0 rounded-md border border-[var(--border)] px-2.5 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]/30">{showNewCat ? "取消" : "＋ 新建"}</button>
+                </div>
+                {showNewCat && (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      placeholder="分类名"
+                      className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                    />
+                    <button type="button" onClick={handleCreateCategory} disabled={creatingCat} className="shrink-0 rounded-md bg-[var(--primary)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50">
+                      {creatingCat ? "建中…" : "确定"}
+                    </button>
+                  </div>
+                )}
+                {catModalErr && <p className="mt-1 text-xs text-[var(--destructive)]">{catModalErr}</p>}
               </div>
 
               <div>
@@ -1198,6 +1342,18 @@ export default function TodosPage() {
               </div>
 
               <div>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">分类</label>
+                <select
+                  value={editForm.category_id}
+                  onChange={(e) => setEditForm((p) => ({ ...p, category_id: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                >
+                  <option value="">未分类</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div>
                 <label className="mb-1 block text-xs text-[var(--muted-foreground)]">负责人</label>
                 {isAdmin ? (
                   <select
@@ -1237,6 +1393,58 @@ export default function TodosPage() {
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>取消</Button>
               <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting}>{deleting ? "删除中…" : "确认删除"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 分类管理弹窗（新建/重命名/删除，只作用于自己的分类） */}
+      {catModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCatModalOpen(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--foreground)]">分类管理</h3>
+              <button onClick={() => setCatModalOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <input
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="新分类名"
+                className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+              />
+              <Button size="sm" onClick={handleCreateCategory} disabled={creatingCat}>{creatingCat ? "建中…" : "新建"}</Button>
+            </div>
+
+            {catModalErr && <p className="mt-2 text-xs text-[var(--destructive)]">{catModalErr}</p>}
+
+            <div className="mt-4 max-h-72 space-y-1.5 overflow-y-auto">
+              {categories.length === 0 ? (
+                <p className="py-4 text-center text-sm text-[var(--muted-foreground)]">还没有分类</p>
+              ) : (
+                categories.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2">
+                    {editCatId === c.id ? (
+                      <>
+                        <input
+                          value={editCatName}
+                          onChange={(e) => setEditCatName(e.target.value)}
+                          className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+                        />
+                        <Button size="sm" onClick={() => handleRenameCategory(c.id)}>保存</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditCatId(null)}>取消</Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 truncate text-sm text-[var(--foreground)]">{c.name}</span>
+                        <button onClick={() => { setEditCatId(c.id); setEditCatName(c.name); setCatModalErr(""); }} className="shrink-0 text-xs text-blue-600 hover:underline">重命名</button>
+                        <button onClick={() => handleDeleteCategory(c.id)} className="shrink-0 text-xs text-red-500 hover:underline">删除</button>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

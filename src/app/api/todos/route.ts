@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const isAdmin = auth.role === "admin";
   // 每条待办附带最新一条跟进记录（按时间倒序取第一条），列表页直接展示进展
   const select = `SELECT t.*,
+      (SELECT name FROM todo_categories tc WHERE tc.id = t.category_id) AS category_name,
       (SELECT content FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_content,
       (SELECT created_by FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_by,
       (SELECT created_at FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_at
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const body = await readJson(req);
-  const { content, assignee, priority, images } = body;
+  const { content, assignee, priority, images, category_id } = body;
 
   // 工作内容必填
   if (!content?.trim()) {
@@ -49,10 +50,19 @@ export async function POST(req: NextRequest) {
   const finalAssignee = auth.role === "admin" ? (assignee?.trim() || auth.name) : auth.name;
   // 紧急程度：紧急/普通两选，默认普通
   const finalPriority = priority === "紧急" ? "紧急" : "普通";
+  // 分类：只能是当前登录人自己创建的分类（防止伪造别人的分类）
+  let categoryId: number | null = null;
+  if (category_id !== undefined && category_id !== null && category_id !== "") {
+    const cid = Number(category_id);
+    if (Number.isInteger(cid) && cid > 0) {
+      const cat = db.prepare("SELECT id FROM todo_categories WHERE id = ? AND created_by = ?").get(cid, auth.name);
+      if (cat) categoryId = cid;
+    }
+  }
 
   const result = db.prepare(
-    "INSERT INTO todos (content, assignee, priority, status, created_by) VALUES (?, ?, ?, '未完成', ?)"
-  ).run(content.trim(), finalAssignee, finalPriority, auth.name);
+    "INSERT INTO todos (content, assignee, priority, status, created_by, category_id) VALUES (?, ?, ?, '未完成', ?, ?)"
+  ).run(content.trim(), finalAssignee, finalPriority, auth.name, categoryId);
 
   const todoId = Number(result.lastInsertRowid);
 
