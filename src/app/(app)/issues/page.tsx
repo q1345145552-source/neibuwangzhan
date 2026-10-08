@@ -23,7 +23,7 @@ import {
 
 interface IssueTicket {
   id: number; ticket_number: string; ref_id: string; ref_type: string;
-  description: string; priority: string; status: string; assignee: string;
+  description: string; description_zh?: string; priority: string; status: string; assignee: string;
   created_by: string; resolved_by: string; withdrawn_by?: string; withdrawn_at?: string;
   created_at: string; resolved_at?: string;
   images?: string;
@@ -53,6 +53,8 @@ export default function IssuesPage() {
   const [issueImages, setIssueImages] = useState<string[]>([]);
   const [issueUploading, setIssueUploading] = useState(false);
   const [issueDetailModal, setIssueDetailModal] = useState<IssueTicket | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const [translateErr, setTranslateErr] = useState("");
   const [issueErr, setIssueErr] = useState("");
   const [issueSaving, setIssueSaving] = useState(false);
   const [lightboxImages, setLightboxImages] = useState<string[] | null>(null);
@@ -250,6 +252,34 @@ export default function IssuesPage() {
       });
       loadAll();
     } catch (e) { console.error("[工单] 撤回工单失败", e); }
+  };
+
+  // 打开工单详情：重置翻译相关状态
+  const openIssueDetail = (t: IssueTicket) => {
+    setIssueDetailModal(t);
+    setTranslating(false);
+    setTranslateErr("");
+  };
+
+  // 把问题描述翻译成中文，结果缓存，下次直接显示
+  const handleTranslateDescription = async () => {
+    if (!issueDetailModal) return;
+    setTranslating(true);
+    setTranslateErr("");
+    try {
+      const res = await fetchWithAuth("/api/issues/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: issueDetailModal.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setIssueDetailModal(prev => prev ? { ...prev, description_zh: data.description_zh } : prev);
+      } else {
+        setTranslateErr(data.error || "翻译失败");
+      }
+    } catch { setTranslateErr("翻译失败，请重试"); }
+    finally { setTranslating(false); }
   };
 
   const handleDeleteIssue = async (id: number) => {
@@ -469,7 +499,7 @@ export default function IssuesPage() {
                       </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
                   </td>
                   <td className="py-2.5 px-4">
-                    <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情">
+                    <button onClick={() => openIssueDetail(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情">
                       <ExternalLink className="size-3.5" />
                     </button>
                     {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
@@ -515,7 +545,7 @@ export default function IssuesPage() {
                     <div className="flex items-start justify-between gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">提交时间</span><span className="min-w-0 break-words text-right text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button onClick={() => setIssueDetailModal(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
+                    <button onClick={() => openIssueDetail(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
                     {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
                       <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleStartIssue(t)}><Play className="size-3 mr-1" />开始处理</Button>
                     )}
@@ -627,8 +657,20 @@ export default function IssuesPage() {
 
               {/* 完整问题描述 */}
               <div>
-                <h4 className="text-xs font-medium text-[var(--muted-foreground)] mb-1">问题描述</h4>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-xs font-medium text-[var(--muted-foreground)]">问题描述</h4>
+                  <button onClick={handleTranslateDescription} disabled={translating} className="text-xs text-blue-600 hover:underline disabled:opacity-50">
+                    {translating ? "翻译中…" : "翻译"}
+                  </button>
+                </div>
                 <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap leading-relaxed">{issueDetailModal.description}</p>
+                {issueDetailModal.description_zh && (
+                  <div className="mt-2 rounded bg-[var(--muted)]/30 p-2">
+                    <p className="mb-1 text-[0.65rem] text-[var(--muted-foreground)]">中文译文</p>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{issueDetailModal.description_zh}</p>
+                  </div>
+                )}
+                {translateErr && <p className="mt-1 text-xs text-[var(--destructive)]">{translateErr}</p>}
               </div>
 
               {/* 基本信息网格 */}

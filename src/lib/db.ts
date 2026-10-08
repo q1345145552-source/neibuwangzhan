@@ -1175,6 +1175,7 @@ function initTables(database: Database.Database) {
       ref_id TEXT DEFAULT '',
       ref_type TEXT DEFAULT '',
       description TEXT NOT NULL,
+      description_zh TEXT DEFAULT '',
       priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
       status TEXT DEFAULT '待处理' CHECK(status IN ('待处理','处理中','已解决')),
       assignee TEXT DEFAULT '',
@@ -1942,6 +1943,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_by TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE issue_tickets ADD COLUMN description_zh TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE customers ADD COLUMN claimed_by TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE wht_records ADD COLUMN amount REAL DEFAULT 0"); } catch {}
 
