@@ -4,10 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Edit3, Copy, ChevronDown, ChevronRight, Search, X, Check } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit3, Copy, ChevronDown, ChevronRight, Search, X, Check, Pin, PinOff } from "lucide-react";
 
 interface ScriptItem {
   id: number;
@@ -17,6 +16,7 @@ interface ScriptItem {
   sort_order: number;
   created_by: string;
   created_at: string;
+  copy_count?: number;
 }
 interface QuestionItem {
   id: number;
@@ -35,12 +35,19 @@ interface CategoryItem {
   created_at: string;
   questions: QuestionItem[];
 }
+interface ScriptRef {
+  script: ScriptItem;
+  question: string;
+  category_name: string;
+}
 
 export default function LogisticsScriptsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [pinned, setPinned] = useState<ScriptRef[]>([]);
+  const [recent, setRecent] = useState<ScriptRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -48,16 +55,13 @@ export default function LogisticsScriptsPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [err, setErr] = useState("");
 
-  // 分类管理弹窗
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [editCatId, setEditCatId] = useState<number | null>(null);
   const [editCatName, setEditCatName] = useState("");
-  // 问题弹窗
   const [questionModal, setQuestionModal] = useState<{ categoryId: number | null } | null>(null);
   const [questionForm, setQuestionForm] = useState({ question: "", category_id: "" });
   const [editQuestionId, setEditQuestionId] = useState<number | null>(null);
-  // 话术弹窗
   const [scriptModal, setScriptModal] = useState<{ questionId: number } | null>(null);
   const [scriptForm, setScriptForm] = useState({ version_name: "标准版", content: "" });
   const [editScriptId, setEditScriptId] = useState<number | null>(null);
@@ -67,15 +71,20 @@ export default function LogisticsScriptsPage() {
     try {
       const res = await fetchWithAuth("/api/logistics-script/tree", { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) { setErr(data.error || "加载失败"); setCategories([]); }
-      else setCategories(Array.isArray(data.categories) ? data.categories : []);
-    } catch { setCategories([]); }
+      if (!res.ok) { setErr(data.error || "加载失败"); setCategories([]); setPinned([]); setRecent([]); }
+      else {
+        setCategories(Array.isArray(data.categories) ? data.categories : []);
+        setPinned(Array.isArray(data.pinned) ? data.pinned : []);
+        setRecent(Array.isArray(data.recent) ? data.recent : []);
+      }
+    } catch { setCategories([]); setPinned([]); setRecent([]); }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  // 搜索 + 分类筛选（客户端过滤）
+  const pinnedIds = useMemo(() => new Set(pinned.map((p) => p.script.id)), [pinned]);
+
   const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
     return categories
@@ -96,26 +105,45 @@ export default function LogisticsScriptsPage() {
     });
   };
 
-  const copyText = async (text: string, id: number) => {
+  const writeClipboard = async (text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  };
+
+  // 复制：写剪贴板 + 记录一次复制（用于最近使用 + 使用统计）
+  const handleCopy = async (s: ScriptItem) => {
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
-      setCopiedId(id);
+      await writeClipboard(s.content);
+      setCopiedId(s.id);
       setTimeout(() => setCopiedId(null), 1500);
     } catch {
       alert("复制失败，请手动复制");
     }
+    try {
+      await fetchWithAuth("/api/logistics-script/copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script_id: s.id }),
+      });
+      load();
+    } catch { /* 记录失败不影响复制 */ }
+  };
+
+  // 置顶/取消置顶
+  const handlePin = async (scriptId: number) => {
+    await apiCall("/api/logistics-script/pin", { method: "POST", body: { script_id: scriptId } });
+    load();
   };
 
   // ── 分类 CRUD ──
@@ -196,6 +224,45 @@ export default function LogisticsScriptsPage() {
     if (ok) load();
   };
 
+  // 话术卡片（置顶区/最近使用区/问题展开区共用）
+  const scriptCard = (ref: ScriptRef, showContext: boolean) => {
+    const s = ref.script;
+    const isPinned = pinnedIds.has(s.id);
+    return (
+      <div key={s.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+        {showContext && (
+          <div className="mb-1 flex items-center gap-1.5 text-[0.65rem] text-[var(--muted-foreground)]">
+            <span>{ref.category_name}</span>
+            <span>·</span>
+            <span className="truncate">{ref.question}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">{s.version_name}</span>
+            <span className="text-xs text-[var(--muted-foreground)]">已用 {s.copy_count ?? 0} 次</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleCopy(s)}>
+              {copiedId === s.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copiedId === s.id ? "已复制" : "复制"}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handlePin(s.id)} title={isPinned ? "取消置顶" : "置顶"}>
+              {isPinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+            </Button>
+            {isAdmin && (
+              <>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptEdit(s)}><Edit3 className="size-3" /></Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500" onClick={() => deleteScript(s.id)}><Trash2 className="size-3" /></Button>
+              </>
+            )}
+          </div>
+        </div>
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{s.content}</p>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
@@ -236,74 +303,80 @@ export default function LogisticsScriptsPage() {
 
       {loading ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
-      ) : filtered.length === 0 ? (
-        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无话术模板</p>
       ) : (
         <div className="flex flex-col gap-5">
-          {filtered.map((cat) => (
-            <div key={cat.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
-              <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2.5">
-                <span className="text-sm font-semibold text-[var(--foreground)]">{cat.name}</span>
-                {isAdmin && (
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionCreate(cat.id)}>
-                    <Plus className="size-3.5" />新建问题
-                  </Button>
-                )}
+          {/* 我的常用（置顶） */}
+          {pinned.length > 0 && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] bg-amber-50/60 px-4 py-2.5 dark:bg-amber-950/10">
+                <Pin className="size-4 text-amber-600" />
+                <span className="text-sm font-semibold text-[var(--foreground)]">我的常用</span>
               </div>
-              <div className="divide-y divide-[var(--border)]">
-                {cat.questions.map((q) => (
-                  <div key={q.id}>
-                    <button
-                      onClick={() => toggleExpand(q.id)}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/20"
-                    >
-                      <span className="flex-1 min-w-0 break-words text-sm text-[var(--foreground)]">{q.question}</span>
-                      {expanded.has(q.id) ? <ChevronDown className="size-4 shrink-0 text-[var(--muted-foreground)]" /> : <ChevronRight className="size-4 shrink-0 text-[var(--muted-foreground)]" />}
-                    </button>
-                    {expanded.has(q.id) && (
-                      <div className="space-y-2 bg-[var(--muted)]/10 px-4 py-3">
-                        {q.scripts.length === 0 ? (
-                          <p className="text-xs text-[var(--muted-foreground)]">该问题下暂无话术</p>
-                        ) : (
-                          q.scripts.map((s) => (
-                            <div key={s.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">{s.version_name}</span>
-                                <div className="flex items-center gap-1">
-                                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyText(s.content, s.id)}>
-                                    {copiedId === s.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                                    {copiedId === s.id ? "已复制" : "复制"}
-                                  </Button>
-                                  {isAdmin && (
-                                    <>
-                                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptEdit(s)}><Edit3 className="size-3" /></Button>
-                                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500" onClick={() => deleteScript(s.id)}><Trash2 className="size-3" /></Button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{s.content}</p>
-                            </div>
-                          ))
-                        )}
-                        {isAdmin && (
-                          <div className="flex items-center justify-between gap-2 pt-1">
-                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptCreate(q.id)}>
-                              <Plus className="size-3.5" />新建话术
-                            </Button>
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionEdit(q)}><Edit3 className="size-3" /></Button>
-                              <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500" onClick={() => deleteQuestion(q.id)}><Trash2 className="size-3" /></Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <div className="space-y-2 p-3">{pinned.map((p) => scriptCard(p, true))}</div>
             </div>
-          ))}
+          )}
+
+          {/* 最近使用 */}
+          {recent.length > 0 && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] bg-blue-50/60 px-4 py-2.5 dark:bg-blue-950/10">
+                <Copy className="size-4 text-blue-600" />
+                <span className="text-sm font-semibold text-[var(--foreground)]">最近使用</span>
+              </div>
+              <div className="space-y-2 p-3">{recent.map((r) => scriptCard(r, true))}</div>
+            </div>
+          )}
+
+          {/* 分类 → 问题 → 话术 */}
+          {filtered.length === 0 ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无话术模板</p>
+          ) : (
+            filtered.map((cat) => (
+              <div key={cat.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+                <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2.5">
+                  <span className="text-sm font-semibold text-[var(--foreground)]">{cat.name}</span>
+                  {isAdmin && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionCreate(cat.id)}>
+                      <Plus className="size-3.5" />新建问题
+                    </Button>
+                  )}
+                </div>
+                <div className="divide-y divide-[var(--border)]">
+                  {cat.questions.map((q) => (
+                    <div key={q.id}>
+                      <button
+                        onClick={() => toggleExpand(q.id)}
+                        className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/20"
+                      >
+                        <span className="flex-1 min-w-0 break-words text-sm text-[var(--foreground)]">{q.question}</span>
+                        {expanded.has(q.id) ? <ChevronDown className="size-4 shrink-0 text-[var(--muted-foreground)]" /> : <ChevronRight className="size-4 shrink-0 text-[var(--muted-foreground)]" />}
+                      </button>
+                      {expanded.has(q.id) && (
+                        <div className="space-y-2 bg-[var(--muted)]/10 px-4 py-3">
+                          {q.scripts.length === 0 ? (
+                            <p className="text-xs text-[var(--muted-foreground)]">该问题下暂无话术</p>
+                          ) : (
+                            q.scripts.map((s) => scriptCard({ script: s, question: q.question, category_name: cat.name }, false))
+                          )}
+                          {isAdmin && (
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptCreate(q.id)}>
+                                <Plus className="size-3.5" />新建话术
+                              </Button>
+                              <div className="flex gap-1">
+                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionEdit(q)}><Edit3 className="size-3" /></Button>
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500" onClick={() => deleteQuestion(q.id)}><Trash2 className="size-3" /></Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
 

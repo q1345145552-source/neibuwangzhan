@@ -2149,6 +2149,24 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_logistics_script_questions_category ON logistics_script_questions(category_id);
     CREATE INDEX IF NOT EXISTS idx_logistics_scripts_question ON logistics_scripts(question_id);
+
+    CREATE TABLE IF NOT EXISTS logistics_script_pins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      script_id INTEGER NOT NULL REFERENCES logistics_scripts(id),
+      user_name TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(script_id, user_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_logistics_script_pins_user ON logistics_script_pins(user_name);
+
+    CREATE TABLE IF NOT EXISTS logistics_script_copy_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      script_id INTEGER NOT NULL REFERENCES logistics_scripts(id),
+      user_name TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_logistics_script_copy_logs_script ON logistics_script_copy_logs(script_id);
+    CREATE INDEX IF NOT EXISTS idx_logistics_script_copy_logs_user ON logistics_script_copy_logs(user_name);
   `);
 
   // shipping_steps 补充 started_at 列（按实际计时需要）
