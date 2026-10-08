@@ -2126,7 +2126,9 @@ function initTables(database: Database.Database) {
       name TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_by TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS logistics_script_questions (
@@ -2135,7 +2137,9 @@ function initTables(database: Database.Database) {
       category_id INTEGER NOT NULL REFERENCES logistics_script_categories(id),
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_by TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS logistics_scripts (
@@ -2145,7 +2149,9 @@ function initTables(database: Database.Database) {
       content TEXT NOT NULL DEFAULT '',
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_by TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_by TEXT DEFAULT '',
+      updated_at TEXT DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_logistics_script_questions_category ON logistics_script_questions(category_id);
     CREATE INDEX IF NOT EXISTS idx_logistics_scripts_question ON logistics_scripts(question_id);
@@ -2167,7 +2173,25 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_logistics_script_copy_logs_script ON logistics_script_copy_logs(script_id);
     CREATE INDEX IF NOT EXISTS idx_logistics_script_copy_logs_user ON logistics_script_copy_logs(user_name);
+
+    CREATE TABLE IF NOT EXISTS logistics_script_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      script_id INTEGER NOT NULL REFERENCES logistics_scripts(id),
+      user_name TEXT NOT NULL,
+      reason TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(script_id, user_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_logistics_script_feedback_script ON logistics_script_feedback(script_id);
   `);
+
+  // 物流话术模板迁移：补最后更新人/时间字段
+  try { database.exec("ALTER TABLE logistics_script_categories ADD COLUMN updated_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE logistics_script_categories ADD COLUMN updated_at TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE logistics_script_questions ADD COLUMN updated_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE logistics_script_questions ADD COLUMN updated_at TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE logistics_scripts ADD COLUMN updated_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE logistics_scripts ADD COLUMN updated_at TEXT DEFAULT ''"); } catch {}
 
   // shipping_steps 补充 started_at 列（按实际计时需要）
   try { database.exec("ALTER TABLE shipping_steps ADD COLUMN started_at TEXT"); } catch {}

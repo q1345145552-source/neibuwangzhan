@@ -4,9 +4,10 @@ import { useState, useEffect, useMemo } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
+import { toThaiTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Edit3, Copy, ChevronDown, ChevronRight, Search, X, Check, Pin, PinOff } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit3, Copy, ChevronDown, ChevronRight, Search, X, Check, Pin, PinOff, ThumbsDown, ArrowUp, ArrowDown, Eye } from "lucide-react";
 
 interface ScriptItem {
   id: number;
@@ -16,7 +17,10 @@ interface ScriptItem {
   sort_order: number;
   created_by: string;
   created_at: string;
+  updated_by?: string;
+  updated_at?: string;
   copy_count?: number;
+  feedback_count?: number;
 }
 interface QuestionItem {
   id: number;
@@ -25,6 +29,8 @@ interface QuestionItem {
   sort_order: number;
   created_by: string;
   created_at: string;
+  updated_by?: string;
+  updated_at?: string;
   scripts: ScriptItem[];
 }
 interface CategoryItem {
@@ -33,6 +39,8 @@ interface CategoryItem {
   sort_order: number;
   created_by: string;
   created_at: string;
+  updated_by?: string;
+  updated_at?: string;
   questions: QuestionItem[];
 }
 interface ScriptRef {
@@ -65,6 +73,10 @@ export default function LogisticsScriptsPage() {
   const [scriptModal, setScriptModal] = useState<{ questionId: number } | null>(null);
   const [scriptForm, setScriptForm] = useState({ version_name: "标准版", content: "" });
   const [editScriptId, setEditScriptId] = useState<number | null>(null);
+  // 反馈
+  const [feedbackModal, setFeedbackModal] = useState<{ scriptId: number } | null>(null);
+  const [feedbackReason, setFeedbackReason] = useState("");
+  const [feedbackDetail, setFeedbackDetail] = useState<{ scriptId: number; items: { id: number; user_name: string; reason: string; created_at: string }[] } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -105,6 +117,15 @@ export default function LogisticsScriptsPage() {
     });
   };
 
+  // 编辑痕迹：改过显示最后更新人/时间，否则显示创建人/时间
+  const trailText = (r: { updated_by?: string; updated_at?: string; created_by?: string; created_at?: string }) => {
+    const by = r.updated_by || r.created_by || "";
+    const raw = r.updated_at || r.created_at || "";
+    const d = raw ? (toThaiTime(raw) || raw).slice(0, 10) : "";
+    if (!by && !d) return "";
+    return r.updated_by ? `最后更新 ${by} ${d}` : `创建 ${by} ${d}`;
+  };
+
   const writeClipboard = async (text: string) => {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
@@ -121,7 +142,6 @@ export default function LogisticsScriptsPage() {
     }
   };
 
-  // 复制：写剪贴板 + 记录一次复制（用于最近使用 + 使用统计）
   const handleCopy = async (s: ScriptItem) => {
     try {
       await writeClipboard(s.content);
@@ -140,10 +160,28 @@ export default function LogisticsScriptsPage() {
     } catch { /* 记录失败不影响复制 */ }
   };
 
-  // 置顶/取消置顶
   const handlePin = async (scriptId: number) => {
     await apiCall("/api/logistics-script/pin", { method: "POST", body: { script_id: scriptId } });
     load();
+  };
+
+  const handleReorder = async (type: "category" | "question" | "script", id: number, direction: "up" | "down") => {
+    await apiCall("/api/logistics-script/reorder", { method: "POST", body: { type, id, direction } });
+    load();
+  };
+
+  const openFeedback = (scriptId: number) => { setFeedbackModal({ scriptId }); setFeedbackReason(""); setErr(""); };
+  const submitFeedback = async () => {
+    if (!feedbackModal) return;
+    const ok = await apiCall("/api/logistics-script/feedback", { method: "POST", body: { script_id: feedbackModal.scriptId, reason: feedbackReason.trim() }, onError: (m) => setErr(m) });
+    if (ok) { setFeedbackModal(null); setErr(""); load(); }
+  };
+  const openFeedbackDetail = async (scriptId: number) => {
+    try {
+      const res = await fetchWithAuth(`/api/logistics-script/feedback?script_id=${scriptId}`, { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok) setFeedbackDetail({ scriptId, items: Array.isArray(data) ? data : [] });
+    } catch {}
   };
 
   // ── 分类 CRUD ──
@@ -224,8 +262,7 @@ export default function LogisticsScriptsPage() {
     if (ok) load();
   };
 
-  // 话术卡片（置顶区/最近使用区/问题展开区共用）
-  const scriptCard = (ref: ScriptRef, showContext: boolean) => {
+  const scriptCard = (ref: ScriptRef, showContext: boolean, showReorder: boolean) => {
     const s = ref.script;
     const isPinned = pinnedIds.has(s.id);
     return (
@@ -238,9 +275,14 @@ export default function LogisticsScriptsPage() {
           </div>
         )}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">{s.version_name}</span>
             <span className="text-xs text-[var(--muted-foreground)]">已用 {s.copy_count ?? 0} 次</span>
+            {(s.feedback_count ?? 0) > 0 && (
+              <button onClick={() => openFeedbackDetail(s.id)} className="text-xs text-red-500 hover:underline" title="查看反馈详情">
+                {s.feedback_count} 人反馈不好用
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleCopy(s)}>
@@ -250,8 +292,20 @@ export default function LogisticsScriptsPage() {
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handlePin(s.id)} title={isPinned ? "取消置顶" : "置顶"}>
               {isPinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
             </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openFeedback(s.id)} title="反馈不好用">
+              <ThumbsDown className="size-3.5" />
+            </Button>
             {isAdmin && (
               <>
+                {showReorder && (
+                  <>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("script", s.id, "up")} title="上移"><ArrowUp className="size-3.5" /></Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("script", s.id, "down")} title="下移"><ArrowDown className="size-3.5" /></Button>
+                  </>
+                )}
+                {(s.feedback_count ?? 0) > 0 && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openFeedbackDetail(s.id)} title="反馈详情"><Eye className="size-3.5" /></Button>
+                )}
                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptEdit(s)}><Edit3 className="size-3" /></Button>
                 <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500" onClick={() => deleteScript(s.id)}><Trash2 className="size-3" /></Button>
               </>
@@ -259,6 +313,7 @@ export default function LogisticsScriptsPage() {
           </div>
         </div>
         <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{s.content}</p>
+        <p className="mt-1.5 text-[0.65rem] text-[var(--muted-foreground)]">{trailText(s)}</p>
       </div>
     );
   };
@@ -273,7 +328,6 @@ export default function LogisticsScriptsPage() {
         </div>
       </div>
 
-      {/* 搜索 + 分类筛选 + 分类管理 */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -305,58 +359,68 @@ export default function LogisticsScriptsPage() {
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
       ) : (
         <div className="flex flex-col gap-5">
-          {/* 我的常用（置顶） */}
           {pinned.length > 0 && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
               <div className="flex items-center gap-2 border-b border-[var(--border)] bg-amber-50/60 px-4 py-2.5 dark:bg-amber-950/10">
                 <Pin className="size-4 text-amber-600" />
                 <span className="text-sm font-semibold text-[var(--foreground)]">我的常用</span>
               </div>
-              <div className="space-y-2 p-3">{pinned.map((p) => scriptCard(p, true))}</div>
+              <div className="space-y-2 p-3">{pinned.map((p) => scriptCard(p, true, false))}</div>
             </div>
           )}
 
-          {/* 最近使用 */}
           {recent.length > 0 && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
               <div className="flex items-center gap-2 border-b border-[var(--border)] bg-blue-50/60 px-4 py-2.5 dark:bg-blue-950/10">
                 <Copy className="size-4 text-blue-600" />
                 <span className="text-sm font-semibold text-[var(--foreground)]">最近使用</span>
               </div>
-              <div className="space-y-2 p-3">{recent.map((r) => scriptCard(r, true))}</div>
+              <div className="space-y-2 p-3">{recent.map((r) => scriptCard(r, true, false))}</div>
             </div>
           )}
 
-          {/* 分类 → 问题 → 话术 */}
           {filtered.length === 0 ? (
             <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无话术模板</p>
           ) : (
-            filtered.map((cat) => (
+            filtered.map((cat, catIdx) => (
               <div key={cat.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
                 <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2.5">
-                  <span className="text-sm font-semibold text-[var(--foreground)]">{cat.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--foreground)]">{cat.name}</span>
+                    <span className="text-[0.65rem] text-[var(--muted-foreground)]">{trailText(cat)}</span>
+                  </div>
                   {isAdmin && (
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionCreate(cat.id)}>
-                      <Plus className="size-3.5" />新建问题
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("category", cat.id, "up")} title="上移"><ArrowUp className="size-3.5" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("category", cat.id, "down")} title="下移"><ArrowDown className="size-3.5" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionCreate(cat.id)}>
+                        <Plus className="size-3.5" />新建问题
+                      </Button>
+                    </div>
                   )}
                 </div>
                 <div className="divide-y divide-[var(--border)]">
                   {cat.questions.map((q) => (
                     <div key={q.id}>
-                      <button
-                        onClick={() => toggleExpand(q.id)}
-                        className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/20"
-                      >
-                        <span className="flex-1 min-w-0 break-words text-sm text-[var(--foreground)]">{q.question}</span>
-                        {expanded.has(q.id) ? <ChevronDown className="size-4 shrink-0 text-[var(--muted-foreground)]" /> : <ChevronRight className="size-4 shrink-0 text-[var(--muted-foreground)]" />}
-                      </button>
+                      <div className="flex items-center gap-2 px-4 py-3">
+                        <button onClick={() => toggleExpand(q.id)} className="flex flex-1 items-center gap-2 text-left transition-colors">
+                          <span className="flex-1 min-w-0 break-words text-sm text-[var(--foreground)]">{q.question}</span>
+                          {expanded.has(q.id) ? <ChevronDown className="size-4 shrink-0 text-[var(--muted-foreground)]" /> : <ChevronRight className="size-4 shrink-0 text-[var(--muted-foreground)]" />}
+                        </button>
+                        {isAdmin && (
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("question", q.id, "up")} title="上移"><ArrowUp className="size-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("question", q.id, "down")} title="下移"><ArrowDown className="size-3.5" /></Button>
+                          </div>
+                        )}
+                      </div>
                       {expanded.has(q.id) && (
                         <div className="space-y-2 bg-[var(--muted)]/10 px-4 py-3">
+                          <p className="text-[0.65rem] text-[var(--muted-foreground)]">{trailText(q)}</p>
                           {q.scripts.length === 0 ? (
                             <p className="text-xs text-[var(--muted-foreground)]">该问题下暂无话术</p>
                           ) : (
-                            q.scripts.map((s) => scriptCard({ script: s, question: q.question, category_name: cat.name }, false))
+                            q.scripts.map((s) => scriptCard({ script: s, question: q.question, category_name: cat.name }, false, true))
                           )}
                           {isAdmin && (
                             <div className="flex items-center justify-between gap-2 pt-1">
@@ -466,6 +530,49 @@ export default function LogisticsScriptsPage() {
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setScriptModal(null)}>取消</Button>
               <Button size="sm" onClick={saveScript}>保存</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 反馈弹窗 ── */}
+      {feedbackModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setFeedbackModal(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold">反馈不好用</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">这条话术哪里不好用？（选填）</p>
+            <textarea value={feedbackReason} onChange={(e) => setFeedbackReason(e.target.value)} rows={3} placeholder="例如：话术过时了、回复不对…" className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+            {err && <p className="mt-2 text-xs text-[var(--destructive)]">{err}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setFeedbackModal(null)}>取消</Button>
+              <Button size="sm" onClick={submitFeedback}>提交</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 反馈详情弹窗（仅管理员） ── */}
+      {feedbackDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setFeedbackDetail(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">反馈详情</h3>
+              <button onClick={() => setFeedbackDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <div className="mt-3 max-h-72 space-y-1.5 overflow-y-auto">
+              {feedbackDetail.items.length === 0 ? (
+                <p className="py-4 text-center text-sm text-[var(--muted-foreground)]">暂无反馈</p>
+              ) : (
+                feedbackDetail.items.map((f) => (
+                  <div key={f.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-[var(--foreground)]">{f.user_name}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{(toThaiTime(f.created_at) || "").slice(0, 10)}</span>
+                    </div>
+                    {f.reason && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{f.reason}</p>}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

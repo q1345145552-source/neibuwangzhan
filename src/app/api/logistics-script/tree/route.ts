@@ -13,10 +13,13 @@ export async function GET(req: NextRequest) {
   const questions = db.prepare("SELECT * FROM logistics_script_questions ORDER BY sort_order ASC, id ASC").all() as any[];
   const scripts = db.prepare("SELECT * FROM logistics_scripts ORDER BY sort_order ASC, id ASC").all() as any[];
 
-  // 每条话术的复制次数（所有人可见）
+  // 每条话术的复制次数、反馈人数（所有人可见）
   const copyCount = new Map<number, number>();
   (db.prepare("SELECT script_id, COUNT(*) AS c FROM logistics_script_copy_logs GROUP BY script_id").all() as { script_id: number; c: number }[])
     .forEach((r) => copyCount.set(r.script_id, r.c));
+  const feedbackCount = new Map<number, number>();
+  (db.prepare("SELECT script_id, COUNT(*) AS c FROM logistics_script_feedback GROUP BY script_id").all() as { script_id: number; c: number }[])
+    .forEach((r) => feedbackCount.set(r.script_id, r.c));
 
   // 拼 script 引用（脚本 + 所属问题 + 所属分类名）
   const qMap = new Map<number, any>(questions.map((q) => [q.id, q]));
@@ -24,7 +27,7 @@ export async function GET(req: NextRequest) {
   const refOf = (s: any) => {
     const q = qMap.get(s.question_id);
     return {
-      script: { ...s, copy_count: copyCount.get(s.id) || 0 },
+      script: { ...s, copy_count: copyCount.get(s.id) || 0, feedback_count: feedbackCount.get(s.id) || 0 },
       question: q?.question || "",
       category_name: cMap.get(q?.category_id)?.name || "",
     };
@@ -64,7 +67,7 @@ export async function GET(req: NextRequest) {
         ...q,
         scripts: scripts
           .filter((s) => s.question_id === q.id)
-          .map((s) => ({ ...s, copy_count: copyCount.get(s.id) || 0 })),
+          .map((s) => ({ ...s, copy_count: copyCount.get(s.id) || 0, feedback_count: feedbackCount.get(s.id) || 0 })),
       })),
   }));
 

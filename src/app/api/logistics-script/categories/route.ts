@@ -40,6 +40,8 @@ export async function PATCH(req: NextRequest) {
   if (body?.name !== undefined) { sets.push("name = ?"); vals.push(name); }
   if (body?.sort_order !== undefined) { sets.push("sort_order = ?"); vals.push(Number(body.sort_order) || 0); }
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
+  sets.push("updated_by = ?"); vals.push(auth.name);
+  sets.push("updated_at = datetime('now')");
   vals.push(id);
   db.prepare(`UPDATE logistics_script_categories SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
   logOperation(auth.name, "修改物流话术分类", "logistics_script_category", String(id), name);
