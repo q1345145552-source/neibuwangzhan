@@ -2093,7 +2093,7 @@ export default function MessagesPage() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-6rem)] flex-col gap-2 lg:h-[calc(100dvh-4rem)]">
+    <div className="flex h-[100dvh] flex-col gap-2">
       <style>{`
         @keyframes msgSlideIn {
           0% { opacity: 0; transform: translateY(16px) scale(0.95); }
@@ -2241,7 +2241,7 @@ export default function MessagesPage() {
 
         {/* 右侧：聊天窗口 */}
         <div className={cn(
-          "min-h-0 flex-col overflow-hidden rounded-3xl border border-[var(--border)]/60 bg-[var(--card)]/55 backdrop-blur-xl shadow-[0_8px_32px_-8px_rgba(0,0,0,0.22)] dark:border-white/15 dark:bg-[var(--card)]/45 dark:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.6)]",
+          "min-h-0 flex-col overflow-hidden",
           selected ? "flex" : "hidden lg:flex"
         )}>
           {selected ? (
