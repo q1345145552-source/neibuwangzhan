@@ -40,6 +40,7 @@ import {
   Activity,
   FolderKanban,
   MessageSquare,
+  MessageSquareText,
   IdCard,
   Ticket,
 } from "lucide-react";
@@ -90,6 +91,7 @@ const agencyNav = [
 
 const logisticsNav = [
   { name: "轨迹更新", href: "/logistics", icon: Truck },
+  { name: "话术模板", href: "/logistics/scripts", icon: MessageSquareText },
 ];
 
 const internalNav = [
@@ -111,7 +113,7 @@ const utilityNav = [
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/agency") return pathname === "/agency";
-  if (href === "/logistics") return pathname.startsWith("/logistics");
+  if (href === "/logistics") return pathname.startsWith("/logistics") && !pathname.startsWith("/logistics/scripts");
   if (href === "/internal") return pathname === "/internal";
   if (href === "/vat") return pathname.startsWith("/vat");
   if (href === "/customers") return pathname.startsWith("/customers");

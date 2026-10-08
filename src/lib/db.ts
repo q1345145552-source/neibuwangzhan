@@ -2119,6 +2119,38 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 物流话术模板：分类 → 问题 → 话术 三层结构
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS logistics_script_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS logistics_script_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question TEXT NOT NULL,
+      category_id INTEGER NOT NULL REFERENCES logistics_script_categories(id),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS logistics_scripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question_id INTEGER NOT NULL REFERENCES logistics_script_questions(id),
+      version_name TEXT NOT NULL DEFAULT '标准版',
+      content TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_logistics_script_questions_category ON logistics_script_questions(category_id);
+    CREATE INDEX IF NOT EXISTS idx_logistics_scripts_question ON logistics_scripts(question_id);
+  `);
+
   // shipping_steps 补充 started_at 列（按实际计时需要）
   try { database.exec("ALTER TABLE shipping_steps ADD COLUMN started_at TEXT"); } catch {}
 
