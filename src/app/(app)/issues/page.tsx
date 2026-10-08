@@ -99,13 +99,26 @@ export default function IssuesPage() {
 
   useEffect(() => { loadAll(); }, [user?.name]);
 
-  const handleIssueImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // 从剪贴板事件里取出图片文件（没有图片返回空数组）
+  const getPastedImages = (e: React.ClipboardEvent): File[] => {
+    const items = e.clipboardData?.items;
+    if (!items) return [];
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    return files;
+  };
+
+  // 上传一批图片到 /api/upload，成功后就追加到截图栏
+  const uploadIssueImages = async (files: File[]) => {
+    if (files.length === 0) return;
     setIssueUploading(true);
     const uploaded: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
+    for (const f of files) {
       const fd = new FormData();
       fd.append("file", f);
       try {
@@ -120,7 +133,21 @@ export default function IssuesPage() {
     }
     setIssueImages(prev => [...prev, ...uploaded]);
     setIssueUploading(false);
+  };
+
+  const handleIssueImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await uploadIssueImages(Array.from(files));
     e.target.value = "";
+  };
+
+  // 问题描述输入框粘贴截图：有图片就自动上传到截图栏；纯文字粘贴不拦截
+  const handleDescriptionPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = getPastedImages(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    uploadIssueImages(files);
   };
 
   const removeIssueImage = (idx: number) => {
@@ -153,13 +180,26 @@ export default function IssuesPage() {
     setResolveErr("");
   };
 
-  const handleResolveScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // 设置解决截图（文件选择与粘贴共用），单张
+  const setResolveScreenshot = (file: File) => {
     setResolveScreenshotFile(file);
     setResolveScreenshotPreview(URL.createObjectURL(file));
     setResolveErr("");
+  };
+
+  const handleResolveScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResolveScreenshot(file);
     e.target.value = "";
+  };
+
+  // 解决弹窗里粘贴截图：有图片就当作解决截图（单张，取第一张）
+  const handleResolvePaste = (e: React.ClipboardEvent) => {
+    const files = getPastedImages(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setResolveScreenshot(files[0]);
   };
 
   const handleResolveScreenshotRemove = () => {
@@ -335,7 +375,7 @@ export default function IssuesPage() {
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">问题描述</label>
-                <textarea value={issueForm.description} onChange={e=>setIssueForm(p=>({...p,description:e.target.value}))} placeholder="描述遇到的问题..." rows={2} className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                <textarea value={issueForm.description} onChange={e=>setIssueForm(p=>({...p,description:e.target.value}))} onPaste={handleDescriptionPaste} placeholder="描述遇到的问题..." rows={2} className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
             </div>
             <div className="mt-3">
@@ -352,7 +392,7 @@ export default function IssuesPage() {
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handleIssueImageUpload} disabled={issueUploading} />
                 </label>
               </div>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB</p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">支持 jpg/png/webp，每张不超过 10MB · 可直接粘贴 Ctrl+V</p>
             </div>
             {issueErr && <p className="mt-2 text-xs text-[var(--destructive)]">{issueErr}</p>}
             <div className="mt-3 flex gap-2">
@@ -515,7 +555,7 @@ export default function IssuesPage() {
       {/* ── 解决工单截图上传弹窗 ── */}
       {resolveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setResolveModal(null)}>
-          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-xl" onClick={e => e.stopPropagation()} onPaste={handleResolvePaste}>
             <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2">解决工单</h3>
             <p className="text-xs text-[var(--muted-foreground)] mb-4 line-clamp-2">{resolveModal.description}</p>
 
@@ -536,7 +576,7 @@ export default function IssuesPage() {
                 className="mb-3 border-2 border-dashed border-[var(--border)] rounded-lg p-6 text-center cursor-pointer hover:border-[var(--primary)]/50 transition-colors"
               >
                 <Camera className="size-6 mx-auto text-[var(--muted-foreground)] mb-1" />
-                <p className="text-xs text-[var(--muted-foreground)]">点击上传截图</p>
+                <p className="text-xs text-[var(--muted-foreground)]">点击上传截图，或直接粘贴 Ctrl+V</p>
               </div>
             )}
             <input ref={resolveScreenshotInputRef} type="file" accept="image/*" className="hidden" onChange={handleResolveScreenshotSelect} />
