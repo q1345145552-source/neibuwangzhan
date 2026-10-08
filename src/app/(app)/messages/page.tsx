@@ -844,6 +844,13 @@ export default function MessagesPage() {
       .catch(() => {});
   }, [mergeIncoming, applyGroupReads, applyRecalledIds]);
 
+  // 选定联系人/群后自动聚焦输入框，可直接敲键盘输入（电脑端/手机端都生效）
+  useEffect(() => {
+    if (!selected) return;
+    const t = setTimeout(() => textareaRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [selected]);
+
   // 消息提醒气泡 / 系统通知点击跳转：打开对应会话
   // （已经在消息页时靠订阅直接切换；从别的页面跳过来时靠挂载时取走暂存目标）
   useEffect(() => {
@@ -2438,7 +2445,6 @@ export default function MessagesPage() {
                     const canRecall = mine && !recalled && within2Min(m.created_at);
                     const isMentioned = isGroup && !!m.mentioned_members?.includes(me);
                     const isMentionAll = isGroup && m.content.includes("@所有人");
-                    const senderAvatar = avatarOf(m.sender);
                     return (
                       <div
                         key={m.id}
@@ -2449,13 +2455,6 @@ export default function MessagesPage() {
                         onTouchEnd={cancelLongPress}
                         onTouchMove={cancelLongPress}
                       >
-                        {senderAvatar ? (
-                          <img src={imgSrc(senderAvatar)} alt={m.sender} className="size-9 shrink-0 rounded-full object-cover" />
-                        ) : (
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] text-sm font-medium text-[var(--primary)]">
-                            {m.sender.charAt(0)}
-                          </span>
-                        )}
                         <div className={cn("flex max-w-[70%] flex-col", mine ? "items-end" : "items-start")}>
                           {isGroup && !mine && (
                             <p className="mb-1 px-1 text-[0.65rem] text-[var(--muted-foreground)]">{m.sender}</p>

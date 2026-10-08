@@ -25,8 +25,6 @@ import {
   FileText,
   DollarSign,
   Settings,
-  Menu,
-  X,
   LogOut,
   Monitor,
   Star,
@@ -295,16 +293,6 @@ export function Sidebar() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls="sidebar-nav"
-        aria-label={open ? "关闭菜单" : "打开菜单"}
-        className="fixed left-4 top-3 z-40 flex size-11 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--muted)] md:hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:outline-none"
-      >
-        {open ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
-      </button>
-
       {open && (
         <div
           role="button"
