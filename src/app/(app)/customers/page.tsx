@@ -386,7 +386,7 @@ export default function CustomersPage() {
           </div>
         </div>
         {user?.role === "admin" && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
             <FileSpreadsheet className="size-4" />下载模板
           </Button>
@@ -566,7 +566,7 @@ export default function CustomersPage() {
             className="w-full h-9 pl-9 pr-3 rounded-md border border-[var(--border)] bg-[var(--background)] text-sm outline-none focus:border-[var(--ring)]"
           />
         </div>
-        <div className="flex items-center gap-1 bg-[var(--muted)] rounded-md p-0.5">
+        <div className="flex items-center flex-wrap gap-1 bg-[var(--muted)] rounded-md p-0.5">
           {STATUS_OPTIONS.map(s => (
             <button
               key={s}
