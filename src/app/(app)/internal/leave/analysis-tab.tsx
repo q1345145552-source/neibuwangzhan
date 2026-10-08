@@ -20,6 +20,12 @@ interface LeaveRow {
   analyzed_at: string;
 }
 
+const JUDGMENT_BADGE: Record<string, string> = {
+  建议批准: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  谨慎: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  建议不批准: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
+
 export function LeaveAnalysisTab() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,14 +80,16 @@ export function LeaveAnalysisTab() {
   };
 
   const unanalyzed = leaves.filter((l) => !l.judgment).length;
-  const suspicious = leaves.filter((l) => l.judgment === "疑似异常").length;
+  const cautious = leaves.filter((l) => l.judgment === "谨慎").length;
+  const reject = leaves.filter((l) => l.judgment === "建议不批准").length;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--muted-foreground)]">
-          结合请假理由、日期、历史记录与个人情况判断是否疑似异常
-          {suspicious > 0 && <span className="ml-2 text-red-600 dark:text-red-400 font-medium">疑似异常 {suspicious} 条</span>}
+          结合请假理由、日期、历史记录、个人情况与团队人手给出三档审批建议
+          {reject > 0 && <span className="ml-2 text-red-600 dark:text-red-400 font-medium">建议不批准 {reject} 条</span>}
+          {cautious > 0 && <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">谨慎 {cautious} 条</span>}
         </p>
         <Button size="sm" onClick={batchAnalyze} disabled={analyzing}>
           {analyzing ? "分析中…" : `一键分析${unanalyzed > 0 ? `（未分析 ${unanalyzed} 条）` : ""}`}
@@ -110,19 +118,17 @@ export function LeaveAnalysisTab() {
               </thead>
               <tbody>
                 {leaves.map((l) => (
-                  <tr key={l.id} className={cn("border-b border-[var(--border)] last:border-0", l.judgment === "疑似异常" && "bg-red-50/70 dark:bg-red-950/10")}>
+                  <tr key={l.id} className={cn("border-b border-[var(--border)] last:border-0", l.judgment === "建议不批准" && "bg-red-50/70 dark:bg-red-950/10")}>
                     <td className="py-2.5 px-3 font-medium">{l.employee_name}</td>
                     <td className="py-2.5 px-3">{l.leave_type}</td>
                     <td className="py-2.5 px-3 text-xs text-[var(--muted-foreground)]">{l.start_date} ~ {l.end_date}</td>
                     <td className="py-2.5 px-3 text-xs text-[var(--muted-foreground)] max-w-xs truncate">{l.reason || "—"}</td>
                     <td className="py-2.5 px-3">
-                      {l.judgment === "疑似异常" ? (
+                      {l.judgment ? (
                         <button onClick={() => setDetail(l)} className="text-left block">
-                          <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">疑似异常</span>
-                          {l.ai_reason && <span className="ml-2 text-xs text-red-600 dark:text-red-400">{l.ai_reason}</span>}
+                          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", JUDGMENT_BADGE[l.judgment] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{l.judgment}</span>
+                          {l.ai_reason && <span className="ml-2 text-xs text-[var(--muted-foreground)]">{l.ai_reason}</span>}
                         </button>
-                      ) : l.judgment === "正常" ? (
-                        <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">正常</span>
                       ) : (
                         <span className="text-xs text-[var(--muted-foreground)]">未分析</span>
                       )}
@@ -159,7 +165,7 @@ export function LeaveAnalysisTab() {
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">理由</span><span className="text-right">{detail.reason || "—"}</span></div>
               <div className="flex items-center gap-2">
                 <span className="text-[var(--muted-foreground)]">判断</span>
-                <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", detail.judgment === "疑似异常" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300")}>{detail.judgment || "未分析"}</span>
+                <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", JUDGMENT_BADGE[detail.judgment || ""] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{detail.judgment || "未分析"}</span>
               </div>
               {detail.ai_reason && (
                 <div>

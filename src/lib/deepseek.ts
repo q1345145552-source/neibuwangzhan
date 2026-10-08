@@ -13,7 +13,7 @@ export interface ChatSummary {
 
 /** 请假 AI 分析结果 */
 export interface LeaveAnalysis {
-  judgment: "正常" | "疑似异常";
+  judgment: "建议批准" | "谨慎" | "建议不批准";
   /** 简短理由（一句话，用于列表标签） */
   reason: string;
   /** 详细分析（为什么这么判断、结合了哪些情况） */
@@ -135,22 +135,30 @@ export async function summarizeChatTranscript(transcript: string): Promise<ChatS
   };
 }
 
-const LEAVE_ANALYSIS_PROMPT = `你是湘泰内部管理系统的请假风险分析助手。请根据员工的本次请假理由、请假日期、历史请假记录和个人情况，判断这次请假是「正常」还是「疑似异常」，并给出简短判断理由。
+const LEAVE_ANALYSIS_PROMPT = `你是湘泰内部管理系统的请假审批分析助手。请根据员工的本次请假理由、请假日期、历史请假记录、个人情况和团队人手情况，给出三档审批建议，并给出简短理由和详细分析。
+
+三档建议：
+- 建议批准：请假理由合理、历史记录正常、个人情况吻合、该时段人手不紧张，可以批准。
+- 谨慎：有条件批准，可以批但要注意一些情况（例如理由不够充分、历史请假偏多、个人存在风险因素、或该时段团队已有多人请假导致人手紧张等），建议批准时留意或补充说明。
+- 建议不批准：理由含糊或前后矛盾、历史请假明显异常、存在较大风险，建议不批准。
+
+团队人手情况：会给出这次请假日期范围内已有多少人的请假是「已通过」状态；人数越多说明该时段越可能人手紧张，越要谨慎。
 
 判断参考：
 - 历史请假频率是否异常（如每周五都请事假、频繁周一/周五请假、总是连着节假日请假）。
 - 请假理由是否含糊、前后矛盾或过于笼统。
 - 是否与个人情况吻合（如家庭有事、感情不稳定、父母需照顾、工作压力大等）。
 - 日期是否可疑（如节假日前后、发薪日、周末前后等）。
+- 团队人手：该时段已通过请假的人数，人多则要谨慎。
 
 要求：
 1. 只输出一个 JSON 对象，字段固定为：
-   - judgment：判断结果，只能是「正常」或「疑似异常」
+   - judgment：判断结果，只能是「建议批准」或「谨慎」或「建议不批准」
    - reason：简短理由（中文，一句话，用于列表标签）
-   - detail：详细分析（中文，2-4 句话，说明为什么这么判断、结合了哪些情况，比如历史请假频率、个人情况、请假日期等）
+   - detail：详细分析（中文，2-4 句话，说明为什么这么判断、结合了哪些情况，包括历史请假频率、个人情况、请假日期、团队人手等）
 2. 不要输出任何其它文字，也不要包在 markdown 代码块里。`;
 
-/** 分析一次请假：正常还是疑似异常（输入含请假理由/日期/历史/个人情况） */
+/** 分析一次请假：三档审批建议（输入含请假理由/日期/历史/个人情况/团队人手） */
 export async function analyzeLeaveRequest(input: {
   employeeName: string;
   leaveType: string;
@@ -159,6 +167,7 @@ export async function analyzeLeaveRequest(input: {
   reason: string;
   history: string;
   personal: string;
+  team: string;
 }): Promise<LeaveAnalysis> {
   const { apiKey, apiBase, model } = getAiConfig();
 
@@ -171,6 +180,9 @@ export async function analyzeLeaveRequest(input: {
     ``,
     `员工个人情况：`,
     input.personal || "（无记录）",
+    ``,
+    `团队人手情况：`,
+    input.team || "（无信息）",
   ].join("\n");
 
   const res = await fetch(apiBase, {
@@ -210,10 +222,12 @@ export async function analyzeLeaveRequest(input: {
 
   const obj = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
   const judgmentRaw = toString(obj.judgment);
-  const judgment: "正常" | "疑似异常" = judgmentRaw.includes("异常") ? "疑似异常" : "正常";
+  const judgment: "建议批准" | "谨慎" | "建议不批准" =
+    judgmentRaw.includes("不批准") ? "建议不批准" :
+    judgmentRaw.includes("谨慎") ? "谨慎" : "建议批准";
   return {
     judgment,
-    reason: toString(obj.reason) || (judgment === "正常" ? "正常" : "疑似异常"),
+    reason: toString(obj.reason) || judgment,
     detail: toString(obj.detail) || toString(obj.reason) || "（无详细说明）",
   };
 }

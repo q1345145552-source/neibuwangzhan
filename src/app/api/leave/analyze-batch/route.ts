@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
   if (Array.isArray(body?.ids)) {
     ids = (body.ids as unknown[]).map((x) => Number(x)).filter((n) => Number.isInteger(n) && n > 0);
   } else {
-    // 分析所有尚未有分析结果的请假
+    // 分析所有尚未有分析结果的请假（旧的两档「正常/疑似异常」也一并重分析成三档）
     const rows = db.prepare(
-      "SELECT l.id FROM leave_requests l LEFT JOIN leave_ai_analyses a ON a.leave_id = l.id WHERE a.judgment IS NULL OR a.judgment = '' ORDER BY l.start_date DESC, l.id DESC"
+      "SELECT l.id FROM leave_requests l LEFT JOIN leave_ai_analyses a ON a.leave_id = l.id WHERE a.judgment IS NULL OR a.judgment = '' OR a.judgment NOT IN ('建议批准','谨慎','建议不批准') ORDER BY l.start_date DESC, l.id DESC"
     ).all() as { id: number }[];
     ids = rows.map((r) => r.id);
   }

@@ -14,9 +14,10 @@ export async function analyzeLeave(db: Database.Database, leaveId: number): Prom
   const leave = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(leaveId) as any;
   if (!leave) throw new Error("请假记录不存在");
 
-  // 缓存命中：直接返回
+  // 缓存命中：直接返回。旧的两档（正常/疑似异常）缓存视为过期，触发重新分析成三档。
+  const VALID_JUDGMENTS = new Set(["建议批准", "谨慎", "建议不批准"]);
   const cached = db.prepare("SELECT judgment, reason, detail, analyzed_at FROM leave_ai_analyses WHERE leave_id = ?").get(leaveId) as any;
-  if (cached && cached.judgment) {
+  if (cached && cached.judgment && VALID_JUDGMENTS.has(cached.judgment)) {
     return { leave_id: leaveId, judgment: cached.judgment, reason: cached.reason, detail: cached.detail || "", cached: true };
   }
 
@@ -47,6 +48,14 @@ export async function analyzeLeave(db: Database.Database, leaveId: number): Prom
     }
   }
 
+  // 团队人手：这次请假日期范围内，已有多少人的请假是「已通过」状态（日期有重叠就算）
+  const teamRows = db.prepare(
+    "SELECT employee_name, leave_type, start_date, end_date FROM leave_requests WHERE status = '已通过' AND id != ? AND start_date <= ? AND end_date >= ? ORDER BY employee_name"
+  ).all(leaveId, leave.end_date, leave.start_date) as { employee_name: string; leave_type: string; start_date: string; end_date: string }[];
+  const team = teamRows.length > 0
+    ? `${teamRows.length} 人已通过请假：${teamRows.map((r) => `${r.employee_name}（${r.leave_type} ${r.start_date}~${r.end_date}）`).join("；")}`
+    : "0 人（该时段暂无其他人已通过请假）";
+
   const result = await analyzeLeaveRequest({
     employeeName: leave.employee_name,
     leaveType: leave.leave_type,
@@ -55,6 +64,7 @@ export async function analyzeLeave(db: Database.Database, leaveId: number): Prom
     reason: leave.reason || "",
     history,
     personal,
+    team,
   });
 
   db.prepare(

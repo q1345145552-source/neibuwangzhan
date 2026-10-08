@@ -6,6 +6,12 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { MedicalProofModal } from "./medical-proof-modal";
 
+const AI_BADGE: Record<string, string> = {
+  建议批准: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  谨慎: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  建议不批准: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
+
 export function LeaveDashboardTab() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -20,6 +26,8 @@ export function LeaveDashboardTab() {
   const [rejectModal, setRejectModal] = useState<{ id: number } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  const [aiResult, setAiResult] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   // 请假记录筛选
   const [records, setRecords] = useState<any[]>([]);
@@ -145,6 +153,24 @@ export function LeaveDashboardTab() {
     setRejecting(false);
   };
 
+  // 手动触发 AI 分析（三档建议 + 理由 + 详细分析），结果走缓存，同一条不重复分析
+  const handleAiAnalyze = async () => {
+    if (!pendingDetail?.id) return;
+    setAiLoading(true);
+    setAiResult(null);
+    try {
+      const res = await fetchWithAuth("/api/leave/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: pendingDetail.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) alert(data.error || "AI 分析失败");
+      else setAiResult(data);
+    } catch (e) { alert("AI 分析失败"); }
+    setAiLoading(false);
+  };
+
   // 按员工按理由汇总：事假：原因1、原因2｜病假：原因3
   const reasonSummary = (s: any) => {
     const groups: Record<string, string[]> = {};
@@ -237,7 +263,7 @@ export function LeaveDashboardTab() {
           {dashboard.pendingList?.length > 0 && (
             <div className="mt-1 space-y-1">
               {dashboard.pendingList.map((l: any, i: number) => (
-                <div key={i} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => setPendingDetail(l)}>
+                <div key={i} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => { setPendingDetail(l); setAiResult(null); }}>
                   <span className="font-medium text-blue-600 hover:underline">{l.employee_name}</span>
                   <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700">{l.leave_type}</span>
                   <span>{l.start_date} ~ {l.end_date}</span>
@@ -489,6 +515,30 @@ export function LeaveDashboardTab() {
                 return null;
               })()}
             </div>
+
+            {/* AI 分析（手动触发，三档建议 + 理由 + 详细分析） */}
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <button
+                onClick={handleAiAnalyze}
+                disabled={aiLoading || approving}
+                className="w-full py-2 rounded-lg border border-[var(--border)] text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)]/40 disabled:opacity-50 transition-colors"
+              >
+                {aiLoading ? "AI 分析中…" : "🤖 AI 分析"}
+              </button>
+              {aiResult && (
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-[var(--muted-foreground)]">建议</span>
+                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", AI_BADGE[aiResult.judgment] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{aiResult.judgment || "—"}</span>
+                  </div>
+                  {aiResult.reason && <p className="text-sm font-medium">{aiResult.reason}</p>}
+                  {aiResult.detail && (
+                    <p className="text-xs text-[var(--muted-foreground)] whitespace-pre-wrap bg-[var(--muted)]/30 rounded p-2">{aiResult.detail}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => handleApprove(pendingDetail.id, "已通过")}

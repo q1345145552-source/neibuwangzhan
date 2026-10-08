@@ -4,7 +4,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { analyzeLeave } from "@/lib/leave-ai";
 
-// POST /api/leave/analyze — 分析一次请假（正常/疑似异常），结果缓存，同一条不重复分析（仅管理员）
+// POST /api/leave/analyze — 分析一次请假（建议批准/谨慎/建议不批准），结果缓存，同一条不重复分析（仅管理员）
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   // ── 待审批 ──
   const pendingCount = (db.prepare("SELECT COUNT(*) as cnt FROM leave_requests WHERE status = '待审批'").get() as any).cnt;
   const pendingList = db.prepare(
-    "SELECT employee_name, leave_type, start_date, end_date, created_at FROM leave_requests WHERE status = '待审批' ORDER BY created_at DESC LIMIT 10"
+    "SELECT id, employee_name, leave_type, start_date, end_date, start_time, end_time, destination, reason, images, created_at FROM leave_requests WHERE status = '待审批' ORDER BY created_at DESC LIMIT 10"
   ).all() as any[];
 
   // ── 当月统计：每人请了多少次 + 各类型次数 + 总天数 ──
