@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell, AlertCircle } from "lucide-react";
+import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell, AlertCircle, RotateCcw } from "lucide-react";
 
 interface Todo {
   id: number;
@@ -539,6 +539,23 @@ export default function TodosPage() {
     } catch { alert("操作失败"); }
   };
 
+  // 恢复：把已完成待办变回未完成，完成时间清空
+  const handleRestore = async (todo: Todo) => {
+    try {
+      const res = await fetchWithAuth(`/api/todos/${todo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "未完成" }),
+      });
+      if (res.ok) {
+        load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "操作失败");
+      }
+    } catch { alert("操作失败"); }
+  };
+
   // 未完成待办表格（员工视角 + 管理员每个分组共用）
   const renderTodoTable = (list: Todo[]) => (
     <div className="overflow-x-auto">
@@ -1025,6 +1042,7 @@ export default function TodosPage() {
                     <th className="py-3 px-5 text-left text-xs font-medium text-[var(--muted-foreground)]">工作内容</th>
                     <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">负责人</th>
                     <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">完成时间</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1033,6 +1051,11 @@ export default function TodosPage() {
                       <td className="py-3 px-5 text-[var(--muted-foreground)] line-through">{t.content}</td>
                       <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
                       <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.completed_at) || "—"}</td>
+                      <td className="py-3 px-4">
+                        <Button size="sm" variant="outline" onClick={() => handleRestore(t)} className="gap-1">
+                          <RotateCcw className="size-3.5" />恢复
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1046,6 +1069,11 @@ export default function TodosPage() {
                       <span className="text-xs text-[var(--muted-foreground)] shrink-0">{t.assignee || "—"}</span>
                     </div>
                     <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(t.completed_at) || "—"}</div>
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm" variant="outline" onClick={() => handleRestore(t)} className="gap-1">
+                        <RotateCcw className="size-3.5" />恢复
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
