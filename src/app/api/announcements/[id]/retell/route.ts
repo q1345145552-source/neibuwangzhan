@@ -21,6 +21,10 @@ export async function PATCH(
   if (!retellTh) return NextResponse.json({ error: "请填写泰语复述" }, { status: 400 });
   if (!retellZh) return NextResponse.json({ error: "请填写中文复述" }, { status: 400 });
 
+  const ann = db.prepare("SELECT recalled FROM announcements WHERE id = ?").get(id) as any;
+  if (!ann) return NextResponse.json({ error: "通知不存在" }, { status: 404 });
+  if (ann.recalled) return NextResponse.json({ error: "该通知已撤回，无法复述" }, { status: 400 });
+
   const rec = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? AND employee_name = ?").get(id, auth.name) as any;
   if (!rec) return NextResponse.json({ error: "你不在该通知的接收人中" }, { status: 404 });
 

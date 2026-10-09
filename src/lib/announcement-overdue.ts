@@ -20,12 +20,13 @@ export function syncAnnouncementOverdueTodos(adminName: string): { created: numb
   const db = getDb();
   const nowStr = bangkokNowMinute();
 
-  // 所有接收记录 + 通知标题/截止时间
+  // 所有接收记录 + 通知标题/截止时间（已撤回的通知不算逾期）
   const rows = db.prepare(
     `SELECT r.announcement_id, r.employee_name, r.status,
             a.title, a.deadline
      FROM announcement_recipients r
-     JOIN announcements a ON a.id = r.announcement_id`
+     JOIN announcements a ON a.id = r.announcement_id
+     WHERE a.recalled = 0`
   ).all() as any[];
 
   // 当前逾期集合（key = announcement_id|employee_name）
@@ -85,4 +86,25 @@ export function syncAnnouncementOverdueTodos(adminName: string): { created: numb
   }
 
   return { created, removed };
+}
+
+/** 清掉某条通知的所有逾期待办（撤回/编辑时用），返回删除条数 */
+export function clearAnnouncementOverdueTodos(announcementId: number): number {
+  const db = getDb();
+  const maps = db.prepare("SELECT id, todo_id FROM announcement_overdue_todos WHERE announcement_id = ?").all(announcementId) as any[];
+  const delFollowUps = db.prepare("DELETE FROM todo_follow_ups WHERE todo_id = ?");
+  const delImages = db.prepare("DELETE FROM todo_images WHERE todo_id = ?");
+  const delTodo = db.prepare("DELETE FROM todos WHERE id = ?");
+  const delMap = db.prepare("DELETE FROM announcement_overdue_todos WHERE id = ?");
+  let removed = 0;
+  for (const m of maps) {
+    db.transaction(() => {
+      delFollowUps.run(m.todo_id);
+      delImages.run(m.todo_id);
+      delTodo.run(m.todo_id);
+      delMap.run(m.id);
+    })();
+    removed++;
+  }
+  return removed;
 }

@@ -1252,6 +1252,7 @@ function initTables(database: Database.Database) {
       attachments TEXT DEFAULT '[]',
       type TEXT NOT NULL DEFAULT '短通知' CHECK(type IN ('长通知','短通知')),
       deadline TEXT DEFAULT '',
+      recalled INTEGER NOT NULL DEFAULT 0,
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -1289,6 +1290,8 @@ function initTables(database: Database.Database) {
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
+  // 通知迁移：撤回标记（管理员撤回后员工看到「已撤回」）
+  try { database.exec("ALTER TABLE announcements ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0"); } catch {}
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
