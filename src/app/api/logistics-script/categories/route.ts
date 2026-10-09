@@ -3,13 +3,12 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 
-// 话术分类：管理员可增删改，员工只读
+// 话术分类：员工和管理员都能加；改/删只允许管理员或创建该分类的本人
 
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
 
   const db = getDb();
   const body = await readJson(req);
@@ -26,12 +25,14 @@ export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
 
   const db = getDb();
   const body = await readJson(req);
   const id = Number(body?.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "缺少分类ID" }, { status: 400 });
+  const cat = db.prepare("SELECT created_by FROM logistics_script_categories WHERE id = ?").get(id) as { created_by: string } | undefined;
+  if (!cat) return NextResponse.json({ error: "分类不存在" }, { status: 404 });
+  if (auth.role !== "admin" && cat.created_by !== auth.name) return NextResponse.json({ error: "只能修改自己创建的分类" }, { status: 403 });
   const name = body?.name !== undefined ? String(body.name).trim() : "";
   if (body?.name !== undefined && !name) return NextResponse.json({ error: "请填写分类名" }, { status: 400 });
 
@@ -52,11 +53,13 @@ export async function DELETE(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
 
   const db = getDb();
   const id = Number(new URL(req.url).searchParams.get("id"));
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "缺少分类ID" }, { status: 400 });
+  const cat = db.prepare("SELECT created_by FROM logistics_script_categories WHERE id = ?").get(id) as { created_by: string } | undefined;
+  if (!cat) return NextResponse.json({ error: "分类不存在" }, { status: 404 });
+  if (auth.role !== "admin" && cat.created_by !== auth.name) return NextResponse.json({ error: "只能删除自己创建的分类" }, { status: 403 });
 
   // 级联删除：该分类下的问题及其话术一起删
   db.transaction(() => {

@@ -346,11 +346,9 @@ export default function LogisticsScriptsPage() {
           <option value="all">全部分类</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        {isAdmin && (
-          <Button size="sm" variant="outline" onClick={() => { setCatModalOpen(true); setNewCatName(""); setEditCatId(null); setErr(""); }} className="gap-1.5">
-            <Plus className="size-3.5" />管理分类
-          </Button>
-        )}
+        <Button size="sm" variant="outline" onClick={() => { setCatModalOpen(true); setNewCatName(""); setEditCatId(null); setErr(""); }} className="gap-1.5">
+          <Plus className="size-3.5" />管理分类
+        </Button>
       </div>
 
       {err && <p className="text-xs text-[var(--destructive)]">{err}</p>}
@@ -389,15 +387,17 @@ export default function LogisticsScriptsPage() {
                     <span className="text-sm font-semibold text-[var(--foreground)]">{cat.name}</span>
                     <span className="text-[0.65rem] text-[var(--muted-foreground)]">{trailText(cat)}</span>
                   </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("category", cat.id, "up")} title="上移"><ArrowUp className="size-3.5" /></Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("category", cat.id, "down")} title="下移"><ArrowDown className="size-3.5" /></Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionCreate(cat.id)}>
-                        <Plus className="size-3.5" />新建问题
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {isAdmin && (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("category", cat.id, "up")} title="上移"><ArrowUp className="size-3.5" /></Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleReorder("category", cat.id, "down")} title="下移"><ArrowDown className="size-3.5" /></Button>
+                      </>
+                    )}
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionCreate(cat.id)}>
+                      <Plus className="size-3.5" />新建问题
+                    </Button>
+                  </div>
                 </div>
                 <div className="divide-y divide-[var(--border)]">
                   {cat.questions.map((q) => (
@@ -422,12 +422,14 @@ export default function LogisticsScriptsPage() {
                           ) : (
                             q.scripts.map((s) => scriptCard({ script: s, question: q.question, category_name: cat.name }, false, true))
                           )}
-                          {isAdmin && (
+                          {(isAdmin || q.created_by === user?.name) && (
                             <div className="flex items-center justify-between gap-2 pt-1">
-                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptCreate(q.id)}>
-                                <Plus className="size-3.5" />新建话术
-                              </Button>
-                              <div className="flex gap-1">
+                              {isAdmin && (
+                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openScriptCreate(q.id)}>
+                                  <Plus className="size-3.5" />新建话术
+                                </Button>
+                              )}
+                              <div className="ml-auto flex gap-1">
                                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => openQuestionEdit(q)}><Edit3 className="size-3" /></Button>
                                 <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500" onClick={() => deleteQuestion(q.id)}><Trash2 className="size-3" /></Button>
                               </div>
@@ -472,8 +474,12 @@ export default function LogisticsScriptsPage() {
                     ) : (
                       <>
                         <span className="flex-1 truncate text-sm text-[var(--foreground)]">{c.name}</span>
-                        <button onClick={() => { setEditCatId(c.id); setEditCatName(c.name); setErr(""); }} className="shrink-0 text-xs text-blue-600 hover:underline">重命名</button>
-                        <button onClick={() => deleteCategory(c.id)} className="shrink-0 text-xs text-red-500 hover:underline">删除</button>
+                        {(isAdmin || c.created_by === user?.name) && (
+                          <>
+                            <button onClick={() => { setEditCatId(c.id); setEditCatName(c.name); setErr(""); }} className="shrink-0 text-xs text-blue-600 hover:underline">重命名</button>
+                            <button onClick={() => deleteCategory(c.id)} className="shrink-0 text-xs text-red-500 hover:underline">删除</button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
