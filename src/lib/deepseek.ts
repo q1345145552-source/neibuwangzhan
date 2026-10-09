@@ -310,3 +310,55 @@ export async function assessEmployeeStatus(input: {
     reason: toString(obj.reason) || (level === "稳定" ? "各方面正常" : level === "需关注" ? "存在需要关注的因素" : "存在高风险因素"),
   };
 }
+
+/** 通知复述比对结果 */
+export interface RetellCompareResult {
+  conclusion: string;
+}
+
+const RETELL_COMPARE_PROMPT = `你是湘泰内部管理系统的通知理解比对助手。请对比「通知原文」和「员工的中文复述」，判断员工是否准确理解了通知要求，并给出简明的比对结论。
+
+要求：
+1. 用简洁中文，逐条列出：
+   - 理解有偏差的地方（员工理解错了什么）
+   - 有遗漏的地方（通知里要求了、但员工没提到）
+2. 如果理解准确、没有偏差和遗漏，就输出「理解准确，无明显偏差或遗漏」。
+3. 直接输出文字，不要 JSON，不要 markdown 代码块，2-5 条以内，每条简短。`;
+
+/** 比对通知原文和员工中文复述，返回理解偏差/遗漏的结论 */
+export async function compareRetell(noticeBody: string, retellZh: string): Promise<RetellCompareResult> {
+  const { apiKey, apiBase, model } = getAiConfig();
+  const userContent = [
+    `通知原文：`,
+    noticeBody || "（空）",
+    ``,
+    `员工的中文复述：`,
+    retellZh || "（空）",
+  ].join("\n");
+
+  const res = await fetch(apiBase, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: RETELL_COMPARE_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      temperature: 0.3,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DeepSeek 调用失败（${res.status}）：${text.slice(0, 300)}`);
+  }
+  const data = await res.json().catch(() => null);
+  const raw: unknown = data?.choices?.[0]?.message?.content;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
+  return { conclusion: raw.trim() };
+}

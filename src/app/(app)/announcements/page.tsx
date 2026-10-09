@@ -67,6 +67,14 @@ export default function AnnouncementsPage() {
   const [retellSaving, setRetellSaving] = useState(false);
   const [retellErr, setRetellErr] = useState("");
 
+  // 管理员复核
+  const [reviewRec, setReviewRec] = useState<Recipient | null>(null);
+  const [aiConclusion, setAiConclusion] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [rejectComment, setRejectComment] = useState("");
+  const [reviewErr, setReviewErr] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
+
   const load = () => {
     setLoading(true);
     fetchWithAuth("/api/announcements", { cache: "no-store" })
@@ -178,6 +186,60 @@ export default function AnnouncementsPage() {
     if (ok) { setRetellErr(""); load(); openDetail(detail as Announcement); }
   };
 
+  // 管理员：打开某员工复核
+  const openReview = (rec: Recipient) => {
+    setReviewRec(rec);
+    setAiConclusion("");
+    setRejectComment("");
+    setReviewErr("");
+  };
+
+  const runAiCompare = async () => {
+    if (!detail || !reviewRec) return;
+    setAiLoading(true);
+    setAiConclusion("");
+    try {
+      const res = await fetchWithAuth(`/api/announcements/${detail.id}/ai-compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_name: reviewRec.employee_name }),
+      });
+      const d = await res.json();
+      if (!res.ok) setAiConclusion("比对失败：" + (d.error || "未知错误"));
+      else setAiConclusion(d.conclusion || "");
+    } catch {
+      setAiConclusion("比对失败：网络错误");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const doReview = async (action: "confirm" | "reject") => {
+    if (!detail || !reviewRec) return;
+    if (action === "reject" && !rejectComment.trim()) { setReviewErr("请填写打回批注"); return; }
+    setReviewSaving(true);
+    const ok = await apiCall(`/api/announcements/${detail.id}/review`, {
+      method: "PATCH",
+      body: { employee_name: reviewRec.employee_name, action, comment: rejectComment.trim() },
+      onError: (m) => setReviewErr(m),
+    });
+    setReviewSaving(false);
+    if (ok) {
+      setReviewErr("");
+      setRejectComment("");
+      load();
+      try {
+        const res = await fetchWithAuth(`/api/announcements/${detail.id}`, { cache: "no-store" });
+        const d = await res.json();
+        if (res.ok) {
+          setDetail(d);
+          const rec = d.recipients?.find((r: any) => r.employee_name === reviewRec.employee_name);
+          if (rec) setReviewRec(rec);
+        }
+      } catch {}
+    }
+  };
+
   // 员工：每个通知的「我的状态」+ 是否逾期
   const myStatusOf = (a: Announcement) => {
     return a.recipients?.find((r) => r.employee_name === user?.name)?.status || "待读";
@@ -197,10 +259,22 @@ export default function AnnouncementsPage() {
     return st;
   };
 
-  // 员工列表排序：逾期/需重述 排前面，再按截止时间近的在前
+  // 管理员：逾期人数 / 需重述人数
+  const bangkokNowStr = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+  const adminOverdueCount = (a: Announcement) => {
+    if (!a.deadline) return 0;
+    return a.recipients.filter((r) => r.status !== "已确认" && r.status !== "已复述待确认" && a.deadline.replace("T", " ") < bangkokNowStr()).length;
+  };
+  const adminRetellDueCount = (a: Announcement) => a.recipients.filter((r) => r.status === "需重述").length;
+  const isUrgent = (a: Announcement) => {
+    if (isAdmin) return adminOverdueCount(a) > 0 || adminRetellDueCount(a) > 0;
+    return isOverdue(a) || displayStatus(a) === "需重述";
+  };
+
+  // 列表排序：逾期/需重述 排前面，再按截止时间近的在前
   const sortedList = [...announcements].sort((a, b) => {
-    const urgentA = isOverdue(a) || displayStatus(a) === "需重述" ? 1 : 0;
-    const urgentB = isOverdue(b) || displayStatus(b) === "需重述" ? 1 : 0;
+    const urgentA = isUrgent(a) ? 1 : 0;
+    const urgentB = isUrgent(b) ? 1 : 0;
     if (urgentA !== urgentB) return urgentB - urgentA;
     return (a.deadline || "").localeCompare(b.deadline || "");
   });
@@ -297,7 +371,7 @@ export default function AnnouncementsPage() {
         <div className="flex flex-col gap-3">
           {sortedList.map((a) => {
             const st = displayStatus(a);
-            const urgent = isOverdue(a) || st === "需重述";
+            const urgent = isUrgent(a);
             return (
               <button
                 key={a.id}
@@ -315,11 +389,17 @@ export default function AnnouncementsPage() {
                     )}
                     {isAdmin && (
                       <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                        截止 {a.deadline?.replace("T", " ").slice(0, 16)} · 接收 {a.recipients.length} 人 · 待读 {a.recipients.filter((r) => r.status === "待读").length} 人
+                        截止 {a.deadline?.replace("T", " ").slice(0, 16)} · 发给 {a.recipients.length} 人 · 已确认 {a.recipients.filter((r) => r.status === "已确认").length} · 没复述 {a.recipients.filter((r) => ["待读", "已读待复述", "需重述"].includes(r.status)).length} · 逾期 {adminOverdueCount(a)}
                       </p>
                     )}
                   </div>
-                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR[st] || "bg-gray-100 text-gray-600")}>{st}</span>
+                  {isAdmin ? (
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR["已确认"] || "bg-green-100 text-green-700")}>
+                      已确认 {a.recipients.filter((r) => r.status === "已确认").length}/{a.recipients.length}
+                    </span>
+                  ) : (
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR[st] || "bg-gray-100 text-gray-600")}>{st}</span>
+                  )}
                 </div>
               </button>
             );
@@ -346,6 +426,24 @@ export default function AnnouncementsPage() {
                 {parseAttachments(detail.attachments).map((url) => (
                   <img key={url} src={fileUrl(url)} alt="" className="h-16 w-16 cursor-pointer rounded-md border border-[var(--border)] object-cover" onClick={() => window.open(fileUrl(url), "_blank")} />
                 ))}
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="mt-4 border-t border-[var(--border)] pt-4">
+                <h4 className="text-sm font-medium">接收人状态（{detail.recipients?.length || 0} 人）</h4>
+                {(!detail.recipients || detail.recipients.length === 0) ? (
+                  <p className="mt-2 text-xs text-[var(--muted-foreground)]">暂无接收人</p>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    {detail.recipients.map((r: Recipient) => (
+                      <button key={r.id} onClick={() => openReview(r)} className="flex items-center justify-between gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--primary)]">
+                        <span className="truncate font-medium">{r.employee_name}</span>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR[r.status] || "bg-gray-100 text-gray-600")}>{r.status}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -381,6 +479,55 @@ export default function AnnouncementsPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 管理员复核单个员工弹窗 */}
+      {reviewRec && isAdmin && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setReviewRec(null)}>
+          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-[var(--foreground)]">{reviewRec.employee_name}</h3>
+                <span className={cn("mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR[reviewRec.status] || "bg-gray-100 text-gray-600")}>{reviewRec.status}</span>
+              </div>
+              <button onClick={() => setReviewRec(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            {reviewRec.reject_comment && (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                当前批注：{reviewRec.reject_comment}
+              </div>
+            )}
+
+            <div className="mt-3 space-y-2 text-sm">
+              <p className="text-[var(--muted-foreground)]">泰语复述：</p>
+              <p className="rounded bg-[var(--muted)]/30 p-2 whitespace-pre-wrap break-words">{reviewRec.retell_th || "—"}</p>
+              <p className="text-[var(--muted-foreground)]">中文复述：</p>
+              <p className="rounded bg-[var(--muted)]/30 p-2 whitespace-pre-wrap break-words">{reviewRec.retell_zh || "—"}</p>
+            </div>
+
+            <div className="mt-3">
+              <Button size="sm" variant="outline" onClick={runAiCompare} disabled={aiLoading || !reviewRec.retell_zh?.trim()}>
+                {aiLoading ? "AI 比对中…" : "AI 比对复述"}
+              </Button>
+              {aiConclusion && (
+                <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--muted)]/20 p-3 text-sm whitespace-pre-wrap break-words">
+                  {aiConclusion}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 border-t border-[var(--border)] pt-3">
+              <label className="text-xs font-medium">打回批注（标不对时必填）</label>
+              <textarea value={rejectComment} onChange={(e) => setRejectComment(e.target.value)} rows={2} placeholder="哪里理解错了，说清楚让员工重述" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+              {reviewErr && <p className="mt-2 text-xs text-[var(--destructive)]">{reviewErr}</p>}
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" onClick={() => doReview("confirm")} disabled={reviewSaving || reviewRec.status === "已确认"}>标对（已确认）</Button>
+                <Button size="sm" variant="destructive" onClick={() => doReview("reject")} disabled={reviewSaving}>标不对（需重述）</Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

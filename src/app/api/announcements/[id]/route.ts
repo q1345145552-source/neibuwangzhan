@@ -25,5 +25,7 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ ...announcement, my_recipient: myRecipient });
+  const recipients = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? ORDER BY id ASC").all(id) as any[];
+
+  return NextResponse.json({ ...announcement, my_recipient: myRecipient, recipients });
 }
