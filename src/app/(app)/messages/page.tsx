@@ -194,9 +194,9 @@ function last12Months(): string[] {
 }
 
 // 各分类的下拉筛选选项（默认「全部」由调用方加）
-function shareFilterOptions(cat: CardKind, businessTypes: { id: number; name: string }[], employees: { name: string }[]): { value: string; label: string }[] {
+function shareFilterOptions(cat: CardKind, businessTypes: { id: number; name: string }[], employees: { name: string; role?: string }[]): { value: string; label: string }[] {
   if (cat === "order") return businessTypes.map((b) => ({ value: String(b.id), label: b.name }));
-  if (cat === "todo") return employees.filter((e) => e.name).map((e) => ({ value: e.name, label: e.name }));
+  if (cat === "todo") return employees.filter((e) => e.name && e.role === "employee").map((e) => ({ value: e.name, label: e.name }));
   if (cat === "project") return ["构思", "执行", "里程碑", "收益"].map((p) => ({ value: p, label: p }));
   if (cat === "customer") return ["潜在", "跟进中", "已合作", "沉睡"].map((s) => ({ value: s, label: s }));
   if (cat === "vat" || cat === "wht") return last12Months().map((m) => ({ value: m, label: m }));
@@ -464,7 +464,7 @@ export default function MessagesPage() {
   const [shareSearch, setShareSearch] = useState("");
   const [shareFilter, setShareFilter] = useState("all");
   const [shareBusinessTypes, setShareBusinessTypes] = useState<{ id: number; name: string }[]>([]);
-  const [shareEmployees, setShareEmployees] = useState<{ name: string }[]>([]);
+  const [shareEmployees, setShareEmployees] = useState<{ name: string; role?: string }[]>([]);
   const [exporting, setExporting] = useState(false);
   // AI 总结
   const [summaryOpen, setSummaryOpen] = useState(false);
