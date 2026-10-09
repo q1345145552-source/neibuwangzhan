@@ -1253,6 +1253,8 @@ function initTables(database: Database.Database) {
       type TEXT NOT NULL DEFAULT '短通知' CHECK(type IN ('长通知','短通知')),
       deadline TEXT DEFAULT '',
       recalled INTEGER NOT NULL DEFAULT 0,
+      rule_id INTEGER DEFAULT NULL,
+      converted_rule_id INTEGER DEFAULT NULL,
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -1287,11 +1289,36 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_announcement_overdue_todos_todo ON announcement_overdue_todos(todo_id);
   `);
 
+  // 规则库：长通知可转成规则；规则可更新覆盖（旧内容存历史）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS rule_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rule_id INTEGER NOT NULL REFERENCES rules(id),
+      title TEXT DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      changed_by TEXT DEFAULT '',
+      changed_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_rule_history_rule_id ON rule_history(rule_id);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
   // 通知迁移：撤回标记（管理员撤回后员工看到「已撤回」）
   try { database.exec("ALTER TABLE announcements ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // 通知迁移：规则库关联（rule_id=该通知是某规则的待覆盖更新；converted_rule_id=该长通知已转成的规则）
+  try { database.exec("ALTER TABLE announcements ADD COLUMN rule_id INTEGER DEFAULT NULL"); } catch {}
+  try { database.exec("ALTER TABLE announcements ADD COLUMN converted_rule_id INTEGER DEFAULT NULL"); } catch {}
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。

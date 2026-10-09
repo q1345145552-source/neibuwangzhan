@@ -44,6 +44,7 @@ import {
   IdCard,
   Ticket,
   Bell,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -56,6 +57,7 @@ const navigation = [
   { name: "员工动态", href: "/activity", icon: Activity },
   { name: "消息", href: "/messages", icon: MessageSquare },
   { name: "通知", href: "/announcements", icon: Bell },
+  { name: "规则库", href: "/rules", icon: BookOpen },
 ];
 
 const businessLines = [

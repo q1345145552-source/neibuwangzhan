@@ -26,6 +26,8 @@ interface Announcement {
   created_by: string;
   created_at: string;
   recalled: number;
+  rule_id?: number | null;
+  converted_rule_id?: number | null;
   recipients: Recipient[];
 }
 
@@ -86,6 +88,7 @@ export default function AnnouncementsPage() {
   const [editUploading, setEditUploading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState("");
+  const [converting, setConverting] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -324,6 +327,20 @@ export default function AnnouncementsPage() {
     if (ok) { setEditTarget(null); setEditErr(""); load(); setDetailOpen(false); setReviewRec(null); }
   };
 
+  // 长通知转成规则
+  const convertToRule = async (a: Announcement) => {
+    setConverting(true);
+    const ok = await apiCall(`/api/announcements/${a.id}/to-rule`, { method: "POST" });
+    setConverting(false);
+    if (ok) {
+      try {
+        const res = await fetchWithAuth(`/api/announcements/${a.id}`, { cache: "no-store" });
+        const d = await res.json();
+        if (res.ok) setDetail(d);
+      } catch {}
+    }
+  };
+
   // 员工：每个通知的「我的状态」+ 是否逾期
   const myStatusOf = (a: Announcement) => {
     return a.recipients?.find((r) => r.employee_name === user?.name)?.status || "待读";
@@ -521,6 +538,17 @@ export default function AnnouncementsPage() {
               <span>截止：{detail.deadline?.replace("T", " ").slice(0, 16)}</span>
               <span>发送人：{detail.created_by}</span>
             </div>
+            {isAdmin && detail.type === "长通知" && !detail.recalled && (
+              <div className="mt-3">
+                {detail.converted_rule_id ? (
+                  <span className="text-xs text-[var(--muted-foreground)]">已转成规则</span>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => convertToRule(detail)} disabled={converting}>
+                    {converting ? "转换中…" : "转成规则"}
+                  </Button>
+                )}
+              </div>
+            )}
             {detail.recalled ? (
               <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                 该通知已撤回
