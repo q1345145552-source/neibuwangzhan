@@ -1272,6 +1272,20 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_announcement_recipients_employee ON announcement_recipients(employee_name);
   `);
 
+  // 通知逾期闭环：员工逾期 → 生成的管理员待办映射（同一员工+同一通知只生成一次）
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS announcement_overdue_todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      announcement_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL,
+      todo_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(announcement_id, employee_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_announcement_overdue_todos_announcement ON announcement_overdue_todos(announcement_id);
+    CREATE INDEX IF NOT EXISTS idx_announcement_overdue_todos_todo ON announcement_overdue_todos(todo_id);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}

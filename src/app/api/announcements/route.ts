@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
+import { syncAnnouncementOverdueTodos } from "@/lib/announcement-overdue";
 
 // 通知（老板向下发工作交代）：
 // GET 管理员看全部，员工看发给自己的；POST 仅管理员发送。
@@ -14,6 +15,10 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const isAdmin = auth.role === "admin";
+  if (isAdmin) {
+    // 管理员打开通知页面：顺带检测一遍逾期待办（生成/清理）
+    syncAnnouncementOverdueTodos(auth.name);
+  }
   let announcements: any[];
   if (isAdmin) {
     announcements = db.prepare("SELECT * FROM announcements ORDER BY id DESC").all() as any[];

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { syncAnnouncementOverdueTodos } from "@/lib/announcement-overdue";
 
 // GET /api/todos — 待办列表（紧急的排前面）
 // 管理员看所有员工的待办（前端按员工分组）；员工只看自己的
@@ -12,6 +13,10 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const isAdmin = auth.role === "admin";
+  if (isAdmin) {
+    // 管理员打开我的待办页面：顺带检测一遍逾期待办（生成/清理）
+    syncAnnouncementOverdueTodos(auth.name);
+  }
   // 每条待办附带最新一条跟进记录（按时间倒序取第一条），列表页直接展示进展
   const select = `SELECT t.*,
       (SELECT name FROM todo_categories tc WHERE tc.id = t.category_id) AS category_name,
