@@ -1243,6 +1243,33 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 通知（老板向下发工作交代）：通知本身 + 每个接收员工一条记录
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      attachments TEXT DEFAULT '[]',
+      type TEXT NOT NULL DEFAULT '短通知' CHECK(type IN ('长通知','短通知')),
+      deadline TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS announcement_recipients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      announcement_id INTEGER NOT NULL REFERENCES announcements(id),
+      employee_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT '待读' CHECK(status IN ('待读','已读待复述','已复述待确认','已确认','需重述','逾期')),
+      retell_content TEXT DEFAULT '',
+      reject_comment TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(announcement_id, employee_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_announcement_recipients_announcement ON announcement_recipients(announcement_id);
+    CREATE INDEX IF NOT EXISTS idx_announcement_recipients_employee ON announcement_recipients(employee_name);
+  `);
+
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
   expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request"]);

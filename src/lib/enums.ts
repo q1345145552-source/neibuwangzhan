@@ -61,6 +61,8 @@ export const ENUMS = {
   "tasks.priority": ["low", "medium", "high"],
   "tasks.status": ["pending", "in_progress", "completed"],
   "templates.type": ["contract", "evaluation", "finance"],
+  "announcements.type": ["长通知", "短通知"],
+  "announcement_recipients.status": ["待读", "已读待复述", "已复述待确认", "已确认", "需重述", "逾期"],
   "shopee_stores.status": ["可售", "等待扫描", "被封"],
   "shopee_stores.sold": ["已出售", "未出售"],
   "shopee_stores.platform": ["Shopee", "TikTok"],
