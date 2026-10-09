@@ -140,6 +140,61 @@ export default function AnnouncementsPage() {
 
   const removeAttachment = (url: string) => setAttachments((prev) => prev.filter((u) => u !== url));
 
+  // 从剪贴板事件里取出图片文件（没有图片返回空数组）
+  const getPastedImages = (e: React.ClipboardEvent): File[] => {
+    const items = e.clipboardData?.items;
+    if (!items) return [];
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    return files;
+  };
+
+  // 上传一批图片文件（与点按钮上传走同一个接口），返回成功的 url 列表
+  const uploadImageFiles = async (files: File[]): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) urls.push(data.url);
+      }
+    }
+    return urls;
+  };
+
+  // 新建表单粘贴截图：有图片就自动上传，纯文字粘贴不拦截
+  const handleFormPaste = async (e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const files = getPastedImages(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setUploading(true);
+    try {
+      const urls = await uploadImageFiles(files);
+      if (urls.length > 0) setAttachments((prev) => [...prev, ...urls]);
+    } catch { setErr("附件上传失败"); }
+    finally { setUploading(false); }
+  };
+
+  // 编辑表单粘贴截图：有图片就自动上传，纯文字粘贴不拦截
+  const handleEditPaste = async (e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const files = getPastedImages(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setEditUploading(true);
+    try {
+      const urls = await uploadImageFiles(files);
+      if (urls.length > 0) setEditAttachments((prev) => [...prev, ...urls]);
+    } catch { setEditErr("附件上传失败"); }
+    finally { setEditUploading(false); }
+  };
+
   const toggleEmployee = (name: string) => {
     setSelectedEmployees((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   };
@@ -401,11 +456,11 @@ export default function AnnouncementsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="text-xs font-medium">标题 <span className="text-[var(--destructive)]">*</span></label>
-              <input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="通知标题" className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              <input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} onPaste={handleFormPaste} placeholder="通知标题" className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
             </div>
             <div className="sm:col-span-2">
               <label className="text-xs font-medium">正文 <span className="text-[var(--destructive)]">*</span></label>
-              <textarea value={form.body} onChange={(e) => setForm((p) => ({ ...p, body: e.target.value }))} rows={5} placeholder="通知内容" className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+              <textarea value={form.body} onChange={(e) => setForm((p) => ({ ...p, body: e.target.value }))} onPaste={handleFormPaste} rows={5} placeholder="通知内容" className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
             </div>
             <div>
               <label className="text-xs font-medium">类型</label>
@@ -683,11 +738,11 @@ export default function AnnouncementsPage() {
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">标题 <span className="text-[var(--destructive)]">*</span></label>
-                <input value={editForm.title} onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))} placeholder="通知标题" className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                <input value={editForm.title} onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))} onPaste={handleEditPaste} placeholder="通知标题" className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium">正文 <span className="text-[var(--destructive)]">*</span></label>
-                <textarea value={editForm.body} onChange={(e) => setEditForm((p) => ({ ...p, body: e.target.value }))} rows={5} placeholder="通知内容" className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                <textarea value={editForm.body} onChange={(e) => setEditForm((p) => ({ ...p, body: e.target.value }))} onPaste={handleEditPaste} rows={5} placeholder="通知内容" className="mt-1 w-full rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
               <div>
                 <label className="text-xs font-medium">类型</label>
