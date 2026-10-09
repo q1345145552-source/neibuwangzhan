@@ -74,8 +74,10 @@ export async function POST(req: NextRequest) {
   const announcementId = Number(r.lastInsertRowid);
 
   const insRec = db.prepare("INSERT INTO announcement_recipients (announcement_id, employee_name, status) VALUES (?, ?, '待读')");
+  const insNotif = db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)");
   for (const name of recipientNames) {
     insRec.run(announcementId, name);
+    insNotif.run("老板通知", "老板给你发了通知", `老板通知「${String(title).trim()}」，请去复述`, name, String(announcementId), "announcement");
   }
   logOperation(auth.name, "发送通知", "announcement", String(announcementId), String(title));
   return NextResponse.json(db.prepare("SELECT * FROM announcements WHERE id = ?").get(announcementId), { status: 201 });

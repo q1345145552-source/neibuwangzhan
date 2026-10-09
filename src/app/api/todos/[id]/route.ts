@@ -34,7 +34,7 @@ export async function PATCH(
 
   const { id } = await params;
   const db = getDb();
-  const todo = db.prepare("SELECT assignee FROM todos WHERE id = ?").get(id) as { assignee: string } | undefined;
+  const todo = db.prepare("SELECT assignee, content, created_by FROM todos WHERE id = ?").get(id) as { assignee: string; content: string; created_by: string } | undefined;
   if (!todo) return NextResponse.json({ error: "待办不存在" }, { status: 404 });
 
   // 权限：员工操作自己，管理员任何人
@@ -83,6 +83,12 @@ export async function PATCH(
       "UPDATE todos SET status = '已完成', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
     ).run(id);
     logOperation(auth.name, "标记待办完成", "todo", String(id));
+    // 通知创建这条待办的人（跳过自己完成的）
+    if (todo.created_by && todo.created_by !== auth.name) {
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "待办完成", "你建的待办已完成", `待办「${todo.content}」已由 ${auth.name} 完成`, todo.created_by, String(id), "todo"
+      );
+    }
   } else if (status === "未完成") {
     db.prepare(
       "UPDATE todos SET status = '未完成', completed_at = '', updated_at = datetime('now') WHERE id = ?"

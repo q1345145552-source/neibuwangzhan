@@ -74,6 +74,11 @@ export async function POST(req: NextRequest) {
   // 自己给自己建的待办算「已看过」；派给别人的待办初始为未读（seen_at 留空）
   if (finalAssignee === auth.name) {
     db.prepare("UPDATE todos SET seen_at = datetime('now') WHERE id = ?").run(todoId);
+  } else {
+    // 有人给别的员工建待办 → 给负责人发消息中心通知
+    db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+      "待办指派", "你有新待办", `待办「${content.trim()}」由 ${auth.name} 派给你`, finalAssignee, String(todoId), "todo"
+    );
   }
 
   // 图片（可选，多张）：url 列表随待办一起保存

@@ -107,6 +107,15 @@ export async function PATCH(req: NextRequest) {
   sets.push("updated_at = datetime('now')");
   vals.push(id);
   db.prepare(`UPDATE issue_tickets SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+  if (status === "已解决") {
+    const updated = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(id) as any;
+    // 通知创建这张工单的人（跳过自己解决的）
+    if (updated.created_by && updated.created_by !== auth.name) {
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "工单完成", "你派的工单已解决", `工单「${updated.description || ""}」已由 ${auth.name} 解决`, updated.created_by, String(id), "issue"
+      );
+    }
+  }
   if (status) {
     logOperation(auth.name, status === "已解决" ? "解决工单" : "改工单状态", "issue", String(id), status);
   }
