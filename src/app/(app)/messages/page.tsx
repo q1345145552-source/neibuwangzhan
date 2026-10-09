@@ -1074,6 +1074,8 @@ export default function MessagesPage() {
     if (ok) {
       setInput("");
       setEmojiPanelOpen(false);
+      // 发送成功后把焦点设回输入框，手机端键盘保持弹出，可连续输入下一条
+      textareaRef.current?.focus();
     }
   };
 
