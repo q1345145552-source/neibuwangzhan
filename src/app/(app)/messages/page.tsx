@@ -2491,7 +2491,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
-              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
+              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-1 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
@@ -2584,22 +2584,6 @@ export default function MessagesPage() {
                               )}
                             </div>
                           )}
-                          <p className="mt-1 flex items-center gap-1.5 px-1 text-[0.6rem] text-[var(--muted-foreground)]">
-                            {toThaiTime(m.created_at) || "—"}
-                            {isMentioned && !mine && <span className="font-medium text-amber-600">{isMentionAll ? "@全体" : "@你"}</span>}
-                            {canRecall && <button onClick={() => recallMessage(m)} className="opacity-70 hover:opacity-100">撤回</button>}
-                            {showRead && !recalled && <span>{m.is_read ? "已读" : "未读"}</span>}
-                            {isGroup && !recalled && (
-                              <button onClick={() => openReadDetail(m)} className="opacity-70 hover:opacity-100" title="查看谁读了谁没读">
-                                已读 {m.read_members?.length ?? 0}/{groupMemberCount}
-                              </button>
-                            )}
-                            {!recalled && !card && !isImage && (
-                              <button onClick={() => toggleTranslate(m.id)} className="opacity-70 hover:opacity-100">
-                                <Languages className="mr-0.5 inline size-3" />翻译
-                              </button>
-                            )}
-                          </p>
                           {!recalled && !card && !isImage && translateOpen.has(m.id) && (
                             <div className={cn("mt-1 rounded-lg border border-[var(--border)]/70 bg-[var(--background)]/70 px-2 py-1.5", mine ? "self-end text-right" : "self-start text-left")}>
                               <div className="flex items-center gap-2">
@@ -2655,6 +2639,24 @@ export default function MessagesPage() {
                                 );
                               })}
                             </div>
+                          )}
+                        </div>
+                        <div className={cn("flex shrink-0 flex-col gap-1", mine ? "items-end" : "items-start")}>
+                          {showRead && !recalled && (
+                            <span className="text-[0.65rem] leading-none text-[var(--muted-foreground)]">{m.is_read ? "已读" : "未读"}</span>
+                          )}
+                          {isGroup && !recalled && (
+                            <button onClick={() => openReadDetail(m)} className="text-left text-[0.65rem] leading-none text-[var(--muted-foreground)] transition-opacity hover:opacity-70" title="查看谁读了谁没读">
+                              已读 {m.read_members?.length ?? 0}/{groupMemberCount}
+                            </button>
+                          )}
+                          {isMentioned && !mine && (
+                            <span className="text-[0.65rem] leading-none font-medium text-amber-600">{isMentionAll ? "@全体" : "@你"}</span>
+                          )}
+                          {!recalled && !card && !isImage && (
+                            <button onClick={() => toggleTranslate(m.id)} className="flex items-center gap-0.5 text-left text-[0.65rem] leading-none text-[var(--primary)] transition-opacity hover:opacity-70">
+                              <Languages className="size-3" />翻译
+                            </button>
                           )}
                         </div>
                         <div className="hidden shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 md:flex">
