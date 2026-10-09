@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
@@ -57,6 +58,10 @@ function bangkokDaysAgo(n: number): string {
 export default function TodosPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  // 从消息中心跳转过来时，自动定位并高亮指定的待办
+  const searchParams = useSearchParams();
+  const todoIdParam = searchParams.get("todo");
+  const autoJumpedTodo = useRef<string | null>(null);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [employees, setEmployees] = useState<{ id: number; name: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,6 +210,19 @@ export default function TodosPage() {
     const clearTimer = setTimeout(() => setHighlightTodoId(null), 3000);
     return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer); };
   }, [highlightTodoId, selectedAssignee]);
+
+  // 消息中心跳转：待办列表加载后，自动定位并高亮指定的待办
+  useEffect(() => {
+    if (!todoIdParam || autoJumpedTodo.current === todoIdParam) return;
+    const id = Number(todoIdParam);
+    if (!Number.isInteger(id)) return;
+    const t = todos.find((x) => x.id === id);
+    if (t) {
+      autoJumpedTodo.current = todoIdParam;
+      setSelectedAssignee(t.assignee || "未分配");
+      setHighlightTodoId(id);
+    }
+  }, [todos, todoIdParam]);
 
   // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
   const completedFiltered = useMemo(() => {

@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   // 每个被指派的员工都发一条通知
   for (const name of assigneeList) {
     db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
-      "issue_assigned", "新问题工单", description, name, String(result.lastInsertRowid), "issue"
+      "工单指派", "新问题工单", description, name, String(result.lastInsertRowid), "issue"
     );
   }
   return NextResponse.json(row, { status: 201 });

@@ -1232,13 +1232,14 @@ function initTables(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip')),
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip','工单指派','工单完成','待办指派','待办完成','规则更新','老板通知')),
       title TEXT DEFAULT '',
       body TEXT DEFAULT '',
       recipient TEXT DEFAULT '',
       related_id TEXT DEFAULT '',
       related_type TEXT DEFAULT '',
       is_read INTEGER DEFAULT 0,
+      hidden INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
@@ -1322,7 +1323,11 @@ function initTables(database: Database.Database) {
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request"]);
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request", "工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知"]);
+
+  // 消息中心迁移：隐藏字段 + 旧「工单指派」类型统一改成中文值
+  try { database.exec("ALTER TABLE notifications ADD COLUMN hidden INTEGER DEFAULT 0"); } catch {}
+  database.prepare("UPDATE notifications SET type = '工单指派' WHERE type = 'issue_assigned'").run();
 
   // 模板库
   database.exec(`

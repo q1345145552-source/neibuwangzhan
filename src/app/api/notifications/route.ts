@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, isAgencyEnabled } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { MESSAGE_CENTER_TYPES } from "@/lib/notification-types";
 
+// GET /api/notifications — 消息中心列表：未读排前面，再按时间倒序；已隐藏的不返回
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -10,25 +12,21 @@ export async function GET(req: NextRequest) {
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const db = getDb();
   const { searchParams } = new URL(req.url);
-  const unreadOnly = searchParams.get("unread") === "1";
-  const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "50", 10) || 50));
-  // 通知里含对账明细、请假理由、工单内容等敏感信息：
-  // 普通员工强制只能看发给自己的（recipient 参数不可信），管理员才能按人查
-  const requested = searchParams.get("recipient");
-  const recipient = auth.role === "admin" ? requested : auth.name;
+  const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
 
-  let sql = "SELECT * FROM notifications WHERE 1=1";
-  const params: any[] = [];
-  // 机构业务总开关：关闭时不返回达人评估、签约相关的通知
-  if (!isAgencyEnabled()) { sql += " AND type NOT IN ('eval_done', 'contract_overdue')"; }
-  if (recipient) { sql += " AND (recipient = ? OR recipient = '')"; params.push(recipient); }
-  if (unreadOnly) { sql += " AND is_read = 0"; }
-  sql += " ORDER BY created_at DESC LIMIT ?";
+  const placeholders = MESSAGE_CENTER_TYPES.map(() => "?").join(",");
+  const params: any[] = [...MESSAGE_CENTER_TYPES, auth.name];
+  const sql = `SELECT * FROM notifications
+    WHERE hidden = 0
+      AND type IN (${placeholders})
+      AND (recipient = ? OR recipient = '')
+    ORDER BY is_read ASC, created_at DESC, id DESC
+    LIMIT ?`;
   params.push(limit);
-
   return NextResponse.json(db.prepare(sql).all(...params));
 }
 
+// PATCH /api/notifications — 标记已读 / 隐藏 / 全部已读
 export async function PATCH(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -36,8 +34,7 @@ export async function PATCH(req: NextRequest) {
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const db = getDb();
   const body = await readJson(req);
-  const { id, markAll } = body;
-  // 同 GET：普通员工只能操作自己的通知，不接受请求体里的 recipient
+  const { id, markAll, hide } = body;
   const recipient = auth.role === "admin" && body.recipient ? body.recipient : auth.name;
 
   if (markAll) {
@@ -45,11 +42,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
   if (id) {
-    // 非管理员只能标记发给自己（或全员广播）的那条
+    const setClause = hide ? "hidden = 1" : "is_read = 1";
     if (auth.role === "admin") {
-      db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ?").run(id);
+      db.prepare(`UPDATE notifications SET ${setClause} WHERE id = ?`).run(id);
     } else {
-      db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND (recipient = ? OR recipient = '')").run(id, auth.name);
+      db.prepare(`UPDATE notifications SET ${setClause} WHERE id = ? AND (recipient = ? OR recipient = '')`).run(id, auth.name);
     }
     return NextResponse.json({ success: true });
   }

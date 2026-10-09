@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
@@ -33,6 +34,10 @@ interface IssueTicket {
 export default function IssuesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  // 从消息中心跳转过来时，自动打开对应工单详情
+  const searchParams = useSearchParams();
+  const openIssueId = searchParams.get("open");
+  const autoOpenedIssue = useRef<string | null>(null);
 
   const [issues, setIssues] = useState<IssueTicket[]>([]);
   // 工单指派人/解决人候选：老板(admin) + 普通员工，仅排除客户
@@ -260,6 +265,16 @@ export default function IssuesPage() {
     setTranslating(false);
     setTranslateErr("");
   };
+
+  // 消息中心跳转：工单列表加载后，自动打开指定的那张工单
+  useEffect(() => {
+    if (!openIssueId || autoOpenedIssue.current === openIssueId) return;
+    const t = issues.find((x) => String(x.id) === openIssueId);
+    if (t) {
+      autoOpenedIssue.current = openIssueId;
+      openIssueDetail(t);
+    }
+  }, [issues, openIssueId]);
 
   // 把问题描述翻译成中文，结果缓存，下次直接显示
   const handleTranslateDescription = async () => {

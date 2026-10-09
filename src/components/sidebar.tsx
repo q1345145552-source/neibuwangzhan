@@ -44,6 +44,7 @@ import {
   IdCard,
   Ticket,
   Bell,
+  BellRing,
   BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,8 @@ const navigation = [
   { name: "我的项目", href: "/projects", icon: FolderKanban },
   { name: "员工动态", href: "/activity", icon: Activity },
   { name: "消息", href: "/messages", icon: MessageSquare },
-  { name: "通知", href: "/announcements", icon: Bell },
+  { name: "消息中心", href: "/notifications", icon: BellRing },
+  { name: "老板通知", href: "/announcements", icon: Bell },
   { name: "规则库", href: "/rules", icon: BookOpen },
 ];
 
@@ -163,6 +165,7 @@ export function Sidebar() {
   const router = useRouter();
   const [todoCount, setTodoCount] = useState(0);
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
+  const [notifUnreadCount, setNotifUnreadCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
@@ -201,6 +204,24 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, [user?.name, user?.role]);
 
+  // 消息中心未读数：侧栏「消息中心」入口的红色角标，每 3 秒轮询（客户账号没有，不轮询）
+  useEffect(() => {
+    if (!user?.name || user.role === "client") return;
+    const fetchUnread = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/notifications/unread-count", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.count === "number") setNotifUnreadCount(d.count); })
+        .catch(() => {});
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 3000); // poll every 3s
+    return () => clearInterval(interval);
+  }, [user?.name, user?.role]);
+
   // 机构业务总开关：关闭时隐藏机构入口
   useEffect(() => {
     const token = getStoredAuthToken();
@@ -231,7 +252,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount }} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
