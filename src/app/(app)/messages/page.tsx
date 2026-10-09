@@ -1067,6 +1067,8 @@ export default function MessagesPage() {
   const sendText = async () => {
     const text = input.trim();
     if (!text || !selected || sending) return;
+    // 必须在点击手势里同步聚焦，iOS 才会唤起键盘；异步（等服务器返回后）聚焦无效
+    textareaRef.current?.focus();
     setSending(true);
     setError(null);
     const ok = await postMessage(text, "");
@@ -1074,8 +1076,6 @@ export default function MessagesPage() {
     if (ok) {
       setInput("");
       setEmojiPanelOpen(false);
-      // 发送成功后把焦点设回输入框，手机端键盘保持弹出，可连续输入下一条
-      textareaRef.current?.focus();
     }
   };
 
