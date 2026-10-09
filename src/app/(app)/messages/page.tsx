@@ -2423,7 +2423,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
-              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
+              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />
