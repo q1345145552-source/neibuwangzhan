@@ -168,16 +168,51 @@ const SHARE_CATEGORIES: { key: CardKind; label: string }[] = [
   { key: "problem", label: "问题跟踪" },
 ];
 
-// 各分类接口返回的条目 → 统一的 { id, title, subtitle }
-function mapShareItem(cat: string, x: any): { id: string; title: string; subtitle: string } {
-  if (cat === "order") return { id: String(x.id), title: String(x.id), subtitle: x.customer_name || "" };
-  if (cat === "todo") return { id: String(x.id), title: x.content || "", subtitle: "" };
-  if (cat === "project") return { id: String(x.id), title: x.name || "", subtitle: x.current_phase ? `当前阶段：${x.current_phase}` : "" };
-  if (cat === "customer") return { id: String(x.id), title: x.company_name || "", subtitle: "" };
-  if (cat === "vat") return { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
-  if (cat === "wht") return { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
-  if (cat === "problem") return { id: String(x.id), title: x.problem_number || "", subtitle: x.company_name || "" };
-  return { id: "", title: "", subtitle: "" };
+// 各分类接口返回的条目 → 统一的 { id, title, subtitle, raw }
+function mapShareItem(cat: string, x: any): { id: string; title: string; subtitle: string; raw: any } {
+  let base: { id: string; title: string; subtitle: string };
+  if (cat === "order") base = { id: String(x.id), title: String(x.id), subtitle: x.customer_name || "" };
+  else if (cat === "todo") base = { id: String(x.id), title: x.content || "", subtitle: "" };
+  else if (cat === "project") base = { id: String(x.id), title: x.name || "", subtitle: x.current_phase ? `当前阶段：${x.current_phase}` : "" };
+  else if (cat === "customer") base = { id: String(x.id), title: x.company_name || "", subtitle: "" };
+  else if (cat === "vat") base = { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
+  else if (cat === "wht") base = { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
+  else if (cat === "problem") base = { id: String(x.id), title: x.problem_number || "", subtitle: x.company_name || "" };
+  else base = { id: "", title: "", subtitle: "" };
+  return { ...base, raw: x };
+}
+
+// 最近 12 个月（YYYY-MM，当月在前）
+function last12Months(): string[] {
+  const out: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+// 各分类的下拉筛选选项（默认「全部」由调用方加）
+function shareFilterOptions(cat: CardKind, businessTypes: { id: number; name: string }[], employees: { name: string }[]): { value: string; label: string }[] {
+  if (cat === "order") return businessTypes.map((b) => ({ value: String(b.id), label: b.name }));
+  if (cat === "todo") return employees.filter((e) => e.name).map((e) => ({ value: e.name, label: e.name }));
+  if (cat === "project") return ["构思", "执行", "里程碑", "收益"].map((p) => ({ value: p, label: p }));
+  if (cat === "customer") return ["潜在", "跟进中", "已合作", "沉睡"].map((s) => ({ value: s, label: s }));
+  if (cat === "vat" || cat === "wht") return last12Months().map((m) => ({ value: m, label: m }));
+  if (cat === "problem") return ["待处理", "跟进中", "已解决", "老板验收", "搁置"].map((s) => ({ value: s, label: s }));
+  return [];
+}
+
+// 条目在该分类下对应的筛选值
+function shareItemFilterValue(cat: CardKind, x: any): string {
+  if (cat === "order") return String(x.business_type_id ?? "");
+  if (cat === "todo") return x.assignee || "";
+  if (cat === "project") return x.current_phase || "";
+  if (cat === "customer") return x.status || "";
+  if (cat === "vat" || cat === "wht") return x.year_month || "";
+  if (cat === "problem") return x.status || "";
+  return "";
 }
 
 // ── AI 总结：时间档位 ──
@@ -423,9 +458,13 @@ export default function MessagesPage() {
   // 分享卡片：先选分类，再选具体条目
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCategory, setShareCategory] = useState<"" | CardKind>("");
-  const [shareItems, setShareItems] = useState<{ id: string; title: string; subtitle: string }[]>([]);
+  const [shareItems, setShareItems] = useState<{ id: string; title: string; subtitle: string; raw: any }[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [shareSearch, setShareSearch] = useState("");
+  const [shareFilter, setShareFilter] = useState("all");
+  const [shareBusinessTypes, setShareBusinessTypes] = useState<{ id: number; name: string }[]>([]);
+  const [shareEmployees, setShareEmployees] = useState<{ name: string }[]>([]);
   const [exporting, setExporting] = useState(false);
   // AI 总结
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -1169,11 +1208,24 @@ export default function MessagesPage() {
     setShareCategory("");
     setShareItems([]);
     setShareError(null);
+    setShareSearch("");
+    setShareFilter("all");
+    // 预取筛选用参考数据：业务线 + 员工
+    fetchWithAuth("/api/business-types", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setShareBusinessTypes(Array.isArray(d) ? d : []))
+      .catch(() => {});
+    fetchWithAuth("/api/employees", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setShareEmployees(Array.isArray(d) ? d : []))
+      .catch(() => {});
   };
 
   // 选好分类后加载该分类下的条目
   const pickShareCategory = (cat: CardKind) => {
     setShareCategory(cat);
+    setShareSearch("");
+    setShareFilter("all");
     setShareLoading(true);
     setShareError(null);
     const urlMap: Record<CardKind, string> = {
@@ -1192,6 +1244,22 @@ export default function MessagesPage() {
       .catch(() => setShareError("加载失败"))
       .finally(() => setShareLoading(false));
   };
+
+  // 分享条目：先按分类下拉筛选，再按关键词搜标题+副标题（两条件叠加）
+  const filteredShareItems = useMemo(() => {
+    const kw = shareSearch.trim().toLowerCase();
+    return shareItems.filter((item) => {
+      if (shareFilter !== "all") {
+        const v = shareItemFilterValue(shareCategory as CardKind, item.raw);
+        if (String(v) !== shareFilter) return false;
+      }
+      if (kw) {
+        const hay = `${item.title} ${item.subtitle}`.toLowerCase();
+        if (!hay.includes(kw)) return false;
+      }
+      return true;
+    });
+  }, [shareItems, shareFilter, shareSearch, shareCategory]);
 
   // 发一条分享卡片消息
   const sendCard = async (cardType: string, cardId: string) => {
@@ -2872,21 +2940,48 @@ export default function MessagesPage() {
             ) : shareItems.length === 0 ? (
               <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">{shareError || "暂无数据"}</p>
             ) : (
-              <div className="space-y-1.5">
-                {shareItems.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => sendCard(shareCategory, item.id)}
-                    className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]"
+              <>
+                <div className="mb-3 flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                    <input
+                      value={shareSearch}
+                      onChange={(e) => setShareSearch(e.target.value)}
+                      placeholder="搜索标题/副标题"
+                      className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] pl-8 pr-3 text-sm outline-none focus:border-[var(--ring)]"
+                    />
+                  </div>
+                  <select
+                    value={shareFilter}
+                    onChange={(e) => setShareFilter(e.target.value)}
+                    className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
                   >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-[var(--foreground)]">{item.title}</span>
-                      {item.subtitle && <span className="block truncate text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
-                    </span>
-                    <span className="ml-3 shrink-0 text-xs font-medium text-[var(--primary)]">发送</span>
-                  </button>
-                ))}
-              </div>
+                    <option value="all">全部</option>
+                    {shareFilterOptions(shareCategory as CardKind, shareBusinessTypes, shareEmployees).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {filteredShareItems.length === 0 ? (
+                  <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">无匹配结果</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {filteredShareItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => sendCard(shareCategory, item.id)}
+                        className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-[var(--foreground)]">{item.title}</span>
+                          {item.subtitle && <span className="block truncate text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
+                        </span>
+                        <span className="ml-3 shrink-0 text-xs font-medium text-[var(--primary)]">发送</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
             {shareError && shareItems.length > 0 && <p className="mt-2 text-xs text-red-500">{shareError}</p>}
           </div>
