@@ -208,9 +208,9 @@ function shareFilterOptions(cat: CardKind, businessTypes: { id: number; name: st
   return [];
 }
 
-// 第二下拉筛选选项（目前仅工单有：按负责人）
+// 第二下拉筛选选项（目前仅工单有：按负责人；与工单页面指派候选一致——老板+员工，只排除客户）
 function shareFilterOptions2(cat: CardKind, employees: { name: string; role?: string }[]): { value: string; label: string }[] {
-  if (cat === "issue") return employees.filter((e) => e.name && e.role === "employee").map((e) => ({ value: e.name, label: e.name }));
+  if (cat === "issue") return employees.filter((e) => e.name && e.role !== "client").map((e) => ({ value: e.name, label: e.name }));
   return [];
 }
 
