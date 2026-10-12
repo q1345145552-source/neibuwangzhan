@@ -166,6 +166,7 @@ export function Sidebar() {
   const [todoCount, setTodoCount] = useState(0);
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [notifUnreadCount, setNotifUnreadCount] = useState(0);
+  const [finPendingVerifyCount, setFinPendingVerifyCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
@@ -219,6 +220,24 @@ export function Sidebar() {
     };
     fetchUnread();
     const interval = setInterval(fetchUnread, 3000); // poll every 3s
+    return () => clearInterval(interval);
+  }, [user?.name, user?.role]);
+
+  // 费用管理待核对角标：侧栏「费用管理」入口的红色角标，每 3 秒轮询（仅管理员有数，客户不轮询）
+  useEffect(() => {
+    if (!user?.name || user.role === "client") return;
+    const fetchPending = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/finances/pending-verify-count", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.count === "number") setFinPendingVerifyCount(d.count); })
+        .catch(() => {});
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 3000); // poll every 3s
     return () => clearInterval(interval);
   }, [user?.name, user?.role]);
 
@@ -289,7 +308,7 @@ export function Sidebar() {
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">工具</span>
         </div>
-        <NavSection items={utilityNav} pathname={pathname} onClose={close} />
+        <NavSection items={utilityNav} pathname={pathname} onClose={close} badgeMap={{ "费用管理": finPendingVerifyCount }} />
       </nav>
 
       <div className="border-t border-[var(--sidebar-border)] px-5 py-3">
