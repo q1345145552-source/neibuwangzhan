@@ -2591,6 +2591,8 @@ export default function MessagesPage() {
                           ) : card ? (
                             <button
                               onClick={() => router.push(CARD_META[card.kind].href(card.id))}
+                              onTouchStart={(e) => e.stopPropagation()}
+                              onTouchEnd={(e) => e.stopPropagation()}
                               className={cn(
                                 "block max-w-[250px] rounded-2xl p-3 text-left shadow-[0_2px_8px_-2px_rgba(0,0,0,0.18)] transition-colors",
                                 mine
