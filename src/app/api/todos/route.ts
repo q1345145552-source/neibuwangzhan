@@ -65,9 +65,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const now = new Date().toISOString();
   const result = db.prepare(
-    "INSERT INTO todos (content, assignee, priority, status, created_by, category_id) VALUES (?, ?, ?, '未完成', ?, ?)"
-  ).run(content.trim(), finalAssignee, finalPriority, auth.name, categoryId);
+    "INSERT INTO todos (content, assignee, priority, status, created_by, category_id, created_at, updated_at) VALUES (?, ?, ?, '未完成', ?, ?, ?, ?)"
+  ).run(content.trim(), finalAssignee, finalPriority, auth.name, categoryId, now, now);
 
   const todoId = Number(result.lastInsertRowid);
 

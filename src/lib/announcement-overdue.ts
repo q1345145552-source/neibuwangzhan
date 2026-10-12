@@ -69,8 +69,9 @@ export function syncAnnouncementOverdueTodos(adminName: string): { created: numb
   }
 
   // 生成：新逾期的员工 → 建待办 + 映射（UNIQUE 保证不重复）
+  const now = new Date().toISOString();
   const insTodo = db.prepare(
-    "INSERT INTO todos (content, assignee, priority, status, created_by) VALUES (?, ?, '紧急', '未完成', ?)"
+    "INSERT INTO todos (content, assignee, priority, status, created_by, created_at, updated_at) VALUES (?, ?, '紧急', '未完成', ?, ?, ?)"
   );
   const insMap = db.prepare(
     "INSERT INTO announcement_overdue_todos (announcement_id, employee_name, todo_id) VALUES (?, ?, ?)"
@@ -78,7 +79,7 @@ export function syncAnnouncementOverdueTodos(adminName: string): { created: numb
   for (const [key, info] of overdue) {
     if (existingByKey.has(key)) continue;
     const content = `员工「${info.employeeName}」未复述通知「${info.title}」，截止时间 ${info.deadline}`;
-    const r = insTodo.run(content, adminName, adminName);
+    const r = insTodo.run(content, adminName, adminName, now, now);
     const todoId = Number(r.lastInsertRowid);
     insMap.run(info.announcementId, info.employeeName, todoId);
     logOperation(adminName, "通知逾期待办", "todo", String(todoId), content);
