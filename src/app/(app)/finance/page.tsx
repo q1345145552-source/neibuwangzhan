@@ -43,6 +43,20 @@ function profitNode(cny: number, thb: number) {
   );
 }
 
+// 最近 12 个月（曼谷时区，当月在前），value 为 YYYY-MM
+function last12Months(): { value: string; label: string }[] {
+  const bangkokNow = new Date(Date.now() + 7 * 3600 * 1000);
+  let y = bangkokNow.getUTCFullYear();
+  let m = bangkokNow.getUTCMonth();
+  const out: { value: string; label: string }[] = [];
+  for (let i = 0; i < 12; i++) {
+    out.push({ value: `${y}-${String(m + 1).padStart(2, "0")}`, label: `${y}年${m + 1}月` });
+    m--;
+    if (m < 0) { m = 11; y--; }
+  }
+  return out;
+}
+
 interface FinanceRecord {
   id: number;
   order_id: string;
@@ -66,6 +80,7 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
   const [selectedBusiness, setSelectedBusiness] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,8 +97,14 @@ export default function FinancePage() {
     load();
   }, []);
 
+  // 先按月份（费用创建时间的泰国时间）过滤
+  const monthFiltered = useMemo(() => {
+    if (monthFilter === "all") return allFinances;
+    return allFinances.filter((r) => (toThaiDate(r.created_at) || "").slice(0, 7) === monthFilter);
+  }, [allFinances, monthFilter]);
+
   const filtered = useMemo(() => {
-    let result = [...allFinances];
+    let result = [...monthFiltered];
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -98,7 +119,7 @@ export default function FinancePage() {
       result = result.filter((r: FinanceRecord) => (r.commerce_refund ? "refund" : r.type) === typeFilter);
     }
     return result;
-  }, [allFinances, search, typeFilter]);
+  }, [monthFiltered, search, typeFilter]);
 
   // 按币种分别汇总（人民币和泰铢不能直接相加），返回 "¥x + ฿y" 形式的展示文案
   const sumByCurrency = (rows: FinanceRecord[]): string => {
@@ -128,7 +149,7 @@ export default function FinancePage() {
   // 按业务线分组汇总：收入=已支付收入、支出=全部支出、利润=收入-支出，币种分开
   const businessGroups = useMemo(() => {
     const map = new Map<string, { name: string; incomeCNY: number; incomeTHB: number; expenseCNY: number; expenseTHB: number }>();
-    for (const r of allFinances) {
+    for (const r of monthFiltered) {
       const name = r.business_name || "未分类";
       let g = map.get(name);
       if (!g) {
@@ -144,7 +165,7 @@ export default function FinancePage() {
       }
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "zh"));
-  }, [allFinances]);
+  }, [monthFiltered]);
 
   // 当前点开的业务线（汇总沿用 businessGroups，保证和分组卡片数字一致）
   const selectedGroup = useMemo(
@@ -155,10 +176,10 @@ export default function FinancePage() {
   // 该业务线下所有订单的费用明细（按时间倒序）
   const selectedDetails = useMemo(() => {
     if (!selectedBusiness) return [];
-    return allFinances
+    return monthFiltered
       .filter((r) => (r.business_name || "未分类") === selectedBusiness)
       .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-  }, [allFinances, selectedBusiness]);
+  }, [monthFiltered, selectedBusiness]);
 
   if (loading) {
     return (
@@ -315,6 +336,16 @@ export default function FinancePage() {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <select
+          value={monthFilter}
+          onChange={(e) => setMonthFilter(e.target.value)}
+          className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+        >
+          <option value="all">全部</option>
+          {last12Months().map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
           <Input
