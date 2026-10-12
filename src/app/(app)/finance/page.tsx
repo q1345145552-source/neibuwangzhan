@@ -335,12 +335,14 @@ export default function FinancePage() {
             <TrendingUp className="size-4 text-[var(--success)]" />总收入
           </div>
           <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">{totalIncome}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">已支付的收入才算进去</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
             <TrendingDown className="size-4 text-[var(--destructive)]" />总支出
           </div>
           <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">{totalExpense}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">全部支出，包括还没支付的</p>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">其中商城实际退款 {totalRefund}（不是办理成本）</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
@@ -348,6 +350,7 @@ export default function FinancePage() {
             待付余额
           </div>
           <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">{totalPending}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">未支付 + 待处理 的金额</p>
         </div>
       </div>
 
