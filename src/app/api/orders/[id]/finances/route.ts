@@ -54,9 +54,11 @@ export async function POST(
   const order = db.prepare("SELECT id FROM orders WHERE id = ?").get(id);
   if (!order) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
 
+  // 收入默认「待核对」（等老板核对到账），支出默认「待处理」
+  const finalStatus = status || (type === "income" ? "待核对" : "pending");
   const result = db.prepare(
     "INSERT INTO finances (order_id, type, amount, status, description, payment_method, slip_number, slip_file, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, type, Number(amount), status || "pending", description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
+  ).run(id, type, Number(amount), finalStatus, description || "", payment_method || "", slip_number || "", slip_file || "", currency || "CNY");
   const fin = db.prepare("SELECT * FROM finances WHERE id = ?").get(result.lastInsertRowid) as { id: number };
   logOperation(auth.name, "添加费用", "finance", String(fin.id), `订单:${id} 类型:${type}`);
   return NextResponse.json(fin, { status: 201 });
