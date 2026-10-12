@@ -1028,10 +1028,24 @@ export default function MessagesPage() {
     return () => { active = false; clearInterval(id); };
   }, [typingScopeKey]);
 
+  // 滚到底部（新消息/切会话时用）
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
   // 新消息自动滚到底部
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // 图片加载完成后：如果用户还停在底部，就再补滚一次到底（防止图片高度撑开把最新消息顶下去）
+  const handleImageLoad = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, []);
 
   // 搜索聊天记录（防抖 300ms）
   useEffect(() => {
@@ -2577,7 +2591,7 @@ export default function MessagesPage() {
                             >
                               {isImage ? (
                                 <button onClick={() => setLightbox(m.image_url)} className="block max-w-full" title="查看大图">
-                                  <img src={imgSrc(m.image_url)} alt="图片消息" className="max-h-60 max-w-full cursor-zoom-in rounded-xl object-contain" />
+                                  <img src={imgSrc(m.image_url)} alt="图片消息" onLoad={handleImageLoad} className="h-60 w-60 max-w-full cursor-zoom-in rounded-xl object-cover" />
                                 </button>
                               ) : (
                                 <p className="whitespace-pre-wrap break-words">{m.content}</p>
