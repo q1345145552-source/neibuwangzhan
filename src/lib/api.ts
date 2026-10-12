@@ -324,6 +324,10 @@ export interface Finance {
   currency?: string;
   trademark_name?: string;
   created_at: string;
+  created_by?: string;
+  verify_by?: string;
+  verify_at?: string;
+  verify_note?: string;
 }
 
 export interface StepNote {

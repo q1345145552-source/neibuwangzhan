@@ -28,6 +28,26 @@ const stepStatusClass: Record<string, string> = {
   "阻塞": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
 };
 
+// 费用状态展示：收入显示核对结果（待核对/已到账/未到账），支出显示 已付/待付/已取消
+function financeStatusText(f: Finance): string {
+  if (f.type === "income") {
+    if (f.status === "paid") return "已到账";
+    if (f.status === "待核对") return "待核对";
+    if (f.status === "未到账") return "未到账";
+    return f.status === "pending" ? "待付" : "已取消";
+  }
+  return f.status === "paid" ? "已付" : f.status === "pending" ? "待付" : "已取消";
+}
+function financeStatusClass(f: Finance): string {
+  if (f.type === "income") {
+    if (f.status === "paid") return "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]";
+    if (f.status === "待核对") return "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]";
+    if (f.status === "未到账") return "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]";
+    return "bg-[var(--muted)] text-[var(--muted-foreground)]";
+  }
+  return f.status === "paid" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : f.status === "pending" ? "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]" : "bg-[var(--muted)] text-[var(--muted-foreground)]";
+}
+
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -1219,7 +1239,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           <div className="flex items-center gap-2">
                             <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[0.6rem] font-medium", f.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]")}>{f.commerce_refund ? "退款" : f.type === "income" ? "收入" : "支出"}</span>
                             <span className="text-xs font-mono font-medium text-[var(--foreground)]">{f.type === "income" ? "+" : "-"}{formatCurrency(f.amount, f.currency)}</span>
-                            <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium ml-auto", f.status === "paid" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]" : f.status === "pending" ? "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]" : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{f.status === "paid" ? "已付" : f.status === "pending" ? "待付" : f.status === "待核对" ? "待核对" : f.status === "未到账" ? "未到账" : "已取消"}</span>
+                            <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium ml-auto", financeStatusClass(f))}>{financeStatusText(f)}</span>
                             {!isClient && (!isNativeCommerce || (f.type === "expense" && !f.commerce_refund)) && (
                               <div className="flex items-center gap-0.5">
                                 <button onClick={() => { setEditingFinanceId(f.id); setEditFinanceFields({ type: f.type, amount: f.amount, description: f.description, payment_method: f.payment_method, slip_number: f.slip_number, status: f.status }); }} className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="编辑"><Pencil className="size-3" /></button>
@@ -1228,6 +1248,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             )}
                           </div>
                           {f.description && <p className="mt-0.5 text-xs text-[var(--foreground)]">{f.description}</p>}
+                          {f.type === "income" && f.status === "未到账" && f.verify_note && (
+                            <p className="mt-0.5 text-[0.65rem] text-[var(--destructive)]">未到账原因：{f.verify_note}</p>
+                          )}
                           {(f.payment_method || f.slip_number) && <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">{f.payment_method || ""}{f.payment_method && f.slip_number && " · "}{f.slip_number ? "流水号 " + f.slip_number : ""}</p>}
                           {f.slip_file && (
                             <p className="mt-0.5">

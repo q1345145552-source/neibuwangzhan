@@ -166,6 +166,14 @@ export default function FinancePage() {
     () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.status === "unpaid" || r.status === "pending")),
     [filtered]
   );
+  const totalPendingVerify = useMemo(
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "income" && r.status === "待核对")),
+    [filtered]
+  );
+  const totalNotReceived = useMemo(
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "income" && r.status === "未到账")),
+    [filtered]
+  );
 
   // 按业务线分组汇总：收入=已支付收入、支出=全部支出、利润=收入-支出，币种分开
   const businessGroups = useMemo(() => {
@@ -388,13 +396,27 @@ export default function FinancePage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
             <TrendingUp className="size-4 text-[var(--success)]" />总收入
           </div>
           <p className="mt-1 text-2xl font-semibold text-[var(--foreground)]">{totalIncome}</p>
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">已支付的收入才算进去</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">已到账的收入才算进去</p>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+            待核对金额
+          </div>
+          <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">{totalPendingVerify}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">收入里待核对状态的金额</p>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+            未到账金额
+          </div>
+          <p className="mt-1 text-2xl font-semibold text-[var(--destructive)]">{totalNotReceived}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">收入里未到账状态的金额</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
