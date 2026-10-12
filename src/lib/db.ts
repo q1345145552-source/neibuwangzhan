@@ -868,6 +868,7 @@ function initTables(database: Database.Database) {
       verify_by TEXT DEFAULT '',
       verify_at TEXT DEFAULT '',
       verify_note TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -1962,6 +1963,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE finances ADD COLUMN verify_by TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN verify_at TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN verify_note TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE finances ADD COLUMN created_by TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE documents ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE certificates ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}

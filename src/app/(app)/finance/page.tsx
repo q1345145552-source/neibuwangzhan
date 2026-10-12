@@ -4,8 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "lucide-react";
-import { fetchAllFinances } from "@/lib/api";
-import { cn, toThaiTime, toThaiDate, bangkokDateStr } from "@/lib/utils";
+import { fetchAllFinances, fetchWithAuth } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
+import { cn, toThaiTime, toThaiDate, bangkokDateStr, fileUrl } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
@@ -73,28 +74,39 @@ interface FinanceRecord {
   business_type_id?: number;
   business_name?: string;
   currency?: string;
+  created_by?: string;
+  verify_by?: string;
+  verify_at?: string;
+  verify_note?: string;
 }
 
 export default function FinancePage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [allFinances, setAllFinances] = useState<FinanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
+  const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedBusiness, setSelectedBusiness] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const data = await fetchAllFinances();
-        setAllFinances(data);
-      } catch {
-        console.error("Failed to load finances");
-      } finally {
-        setLoading(false);
-      }
+  // 收入到账核对弹窗
+  const [verifyTarget, setVerifyTarget] = useState<FinanceRecord | null>(null);
+  const [verifyNote, setVerifyNote] = useState("");
+  const [verifyErr, setVerifyErr] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
+  const reload = async () => {
+    try {
+      setAllFinances(await fetchAllFinances());
+    } catch {
+      console.error("Failed to load finances");
     }
-    load();
+  };
+
+  useEffect(() => {
+    reload().finally(() => setLoading(false));
   }, []);
 
   // 先按月份（费用创建时间的泰国时间）过滤
@@ -105,6 +117,9 @@ export default function FinancePage() {
 
   const filtered = useMemo(() => {
     let result = [...monthFiltered];
+    if (pendingOnly) {
+      result = result.filter((r: FinanceRecord) => r.type === "income" && r.status === "待核对");
+    }
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -119,7 +134,13 @@ export default function FinancePage() {
       result = result.filter((r: FinanceRecord) => (r.commerce_refund ? "refund" : r.type) === typeFilter);
     }
     return result;
-  }, [monthFiltered, search, typeFilter]);
+  }, [monthFiltered, search, typeFilter, pendingOnly]);
+
+  // 待核对收入数量（给「待核对」标签带数字）
+  const pendingVerifyCount = useMemo(
+    () => allFinances.filter((r: FinanceRecord) => r.type === "income" && r.status === "待核对").length,
+    [allFinances]
+  );
 
   // 按币种分别汇总（人民币和泰铢不能直接相加），返回 "¥x + ฿y" 形式的展示文案
   const sumByCurrency = (rows: FinanceRecord[]): string => {
@@ -196,6 +217,44 @@ export default function FinancePage() {
       { header: "日期", render: (r) => toThaiDate(r.created_at) || "-" },
     ];
     exportToExcel(filtered, cols, `费用明细${bangkokDateStr()}`);
+  };
+
+  // 可核对：待核对 或 未到账 的收入（点击打开核对详情）
+  const isVerifyable = (r: FinanceRecord) => r.type === "income" && (r.status === "待核对" || r.status === "未到账");
+
+  // 打开收入核对详情
+  const openVerify = (r: FinanceRecord) => {
+    setVerifyTarget(r);
+    setVerifyNote("");
+    setVerifyErr("");
+  };
+
+  // 老板核对：已到账 / 未到账
+  const doVerify = async (action: "arrived" | "not_arrived") => {
+    if (!verifyTarget) return;
+    if (action === "not_arrived" && !verifyNote.trim()) { setVerifyErr("请填写未到账原因"); return; }
+    setVerifying(true);
+    setVerifyErr("");
+    try {
+      const res = await fetchWithAuth(`/api/orders/${verifyTarget.order_id}/finances/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ finance_id: verifyTarget.id, action, note: verifyNote.trim() }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setVerifyTarget(null);
+        setVerifyNote("");
+        setVerifyErr("");
+        reload();
+      } else {
+        setVerifyErr(d.error || "核对失败");
+      }
+    } catch {
+      setVerifyErr("核对失败，请重试");
+    } finally {
+      setVerifying(false);
+    }
   };
 
   if (loading) {
@@ -382,12 +441,20 @@ export default function FinancePage() {
               variant={typeFilter === t ? "default" : "ghost"}
               size="sm"
               className="h-8 text-xs"
-              onClick={() => setTypeFilter(t)}
+              onClick={() => { setTypeFilter(t); setPendingOnly(false); }}
             >
               {t === "all" ? "全部" : typeLabels[t]}
             </Button>
           ))}
         </div>
+        <Button
+          size="sm"
+          variant={pendingOnly ? "default" : "outline"}
+          className={cn("h-8 text-xs gap-1", pendingOnly && "bg-[var(--warning)] text-[oklch(0.40_0.14_85)] border-[var(--warning)]")}
+          onClick={() => { setPendingOnly(!pendingOnly); setTypeFilter("all"); }}
+        >
+          待核对{pendingVerifyCount > 0 ? ` ${pendingVerifyCount}` : ""}
+        </Button>
         <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5">
           <Download className="size-4" />导出 Excel
         </Button>
@@ -414,7 +481,7 @@ export default function FinancePage() {
                 </tr>
               ) : (
                 filtered.map((r: FinanceRecord) => (
-                  <tr key={r.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/50">
+                  <tr key={r.id} onClick={() => isVerifyable(r) && openVerify(r)} className={cn("border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/50", isVerifyable(r) && "cursor-pointer")}>
                     <td className="px-4 py-3">
                       <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
                         r.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
@@ -441,7 +508,7 @@ export default function FinancePage() {
             {filtered.length === 0 ? (
               <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无费用记录</p>
             ) : filtered.map((r: FinanceRecord) => (
-              <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+              <div key={r.id} onClick={() => isVerifyable(r) && openVerify(r)} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", isVerifyable(r) && "cursor-pointer")}>
                 <div className="flex items-center justify-between gap-2">
                   <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
                     r.type === "income" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
@@ -461,6 +528,50 @@ export default function FinancePage() {
           </div>
         </div>
       </div>
+
+      {/* 收入到账核对详情弹窗 */}
+      {verifyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setVerifyTarget(null)}>
+          <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-base font-semibold text-[var(--foreground)]">收入到账核对</h3>
+              <button onClick={() => setVerifyTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">金额</span><span className="font-mono font-medium text-[var(--foreground)]">{verifyTarget.currency === "THB" ? "฿" : "¥"}{Number(verifyTarget.amount).toLocaleString()}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">客户</span><span className="text-right">{verifyTarget.customer_name || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">订单号</span><span className="font-mono text-xs">{verifyTarget.order_id || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">描述</span><span className="text-right break-words">{verifyTarget.description || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">录入人</span><span>{verifyTarget.created_by || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">录入时间</span><span>{toThaiTime(verifyTarget.created_at) || "—"}</span></div>
+            </div>
+
+            {verifyTarget.slip_file && (
+              <div className="mt-3">
+                <p className="text-xs text-[var(--muted-foreground)]">截图</p>
+                {/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(verifyTarget.slip_file) ? (
+                  <img src={fileUrl(verifyTarget.slip_file)} alt="截图" className="mt-1 max-h-56 cursor-pointer rounded-md border border-[var(--border)] object-contain" onClick={() => window.open(fileUrl(verifyTarget.slip_file), "_blank")} />
+                ) : (
+                  <a href={fileUrl(verifyTarget.slip_file)} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-[var(--primary)] hover:underline">查看截图文件</a>
+                )}
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="mt-4 border-t border-[var(--border)] pt-4">
+                <label className="text-xs font-medium">未到账原因（标未到账时必填）</label>
+                <textarea value={verifyNote} onChange={(e) => setVerifyNote(e.target.value)} rows={2} placeholder="钱为什么没到账" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                {verifyErr && <p className="mt-2 text-xs text-[var(--destructive)]">{verifyErr}</p>}
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" onClick={() => doVerify("arrived")} disabled={verifying || verifyTarget.status === "paid"}>已到账</Button>
+                  <Button size="sm" variant="destructive" onClick={() => doVerify("not_arrived")} disabled={verifying}>未到账</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
