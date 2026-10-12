@@ -595,9 +595,9 @@ export default function TodosPage() {
               <td className="py-3 px-5">
                 <div className="text-base font-semibold text-[var(--foreground)]">{t.content}</div>
                 {t.latest_follow_content && (
-                  <div className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  <div className="mt-1 text-sm text-[var(--foreground)]">
                     最新：{t.latest_follow_content}
-                    <span className="ml-1 text-[var(--muted-foreground)]/70">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
+                    <span className="ml-1 text-[var(--muted-foreground)]">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
                   </div>
                 )}
                 {t.images && t.images.length > 0 && (
@@ -662,9 +662,9 @@ export default function TodosPage() {
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
             </div>
             {t.latest_follow_content && (
-              <div className="mt-1.5 break-words text-xs text-[var(--muted-foreground)]">
+              <div className="mt-1.5 break-words text-sm text-[var(--foreground)]">
                 最新：{t.latest_follow_content}
-                <span className="ml-1 text-[var(--muted-foreground)]/70">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
+                <span className="ml-1 text-[var(--muted-foreground)]">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
               </div>
             )}
             {t.images && t.images.length > 0 && (
