@@ -1326,6 +1326,7 @@ function initTables(database: Database.Database) {
       summary TEXT DEFAULT '',
       tomorrow_plan TEXT DEFAULT '',
       problems TEXT DEFAULT '',
+      related_objects TEXT NOT NULL DEFAULT '[]',
       status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
       is_backfill INTEGER NOT NULL DEFAULT 0,
       submitted_at TEXT DEFAULT '',
@@ -1336,6 +1337,9 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_work_reports_employee ON work_reports(employee_name);
     CREATE INDEX IF NOT EXISTS idx_work_reports_date ON work_reports(report_date);
   `);
+
+  // 工作记录迁移：关联业务对象（项目/客户/订单）
+  try { database.exec("ALTER TABLE work_reports ADD COLUMN related_objects TEXT NOT NULL DEFAULT '[]'"); } catch {}
 
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}

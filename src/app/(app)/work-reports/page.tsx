@@ -16,14 +16,46 @@ interface WorkReport {
   summary: string;
   tomorrow_plan: string;
   problems: string;
+  related_objects: string;
   status: string;
   is_backfill: number;
   submitted_at: string;
   created_at: string;
 }
 
+interface FormItem { text: string; source: "system" | "manual"; }
+interface RelatedObject { type: "project" | "customer" | "order"; id: string; name: string; }
+interface PickObject { id: string; name: string; }
+
 function parseItems(s: string): string[] {
   try { const a = JSON.parse(s || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+
+function parseRelated(s: string): RelatedObject[] {
+  try {
+    const a = JSON.parse(s || "[]");
+    if (!Array.isArray(a)) return [];
+    const out: RelatedObject[] = [];
+    for (const o of a as Record<string, unknown>[]) {
+      const type = String(o?.type || "");
+      const id = String(o?.id ?? "");
+      const name = String(o?.name || "");
+      if (["project", "customer", "order"].includes(type) && id) {
+        out.push({ type: type as RelatedObject["type"], id, name });
+      }
+    }
+    return out;
+  } catch { return []; }
+}
+
+function relatedTypeLabel(t: string): string {
+  return t === "project" ? "项目" : t === "customer" ? "客户" : "订单";
+}
+
+function dateMinusOne(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().split("T")[0];
 }
 
 function bkkYesterday(): string {
@@ -44,12 +76,20 @@ export default function WorkReportsPage() {
   const [formMode, setFormMode] = useState<"create" | "resubmit">("create");
   const [formId, setFormId] = useState<number | null>(null);
   const [formDate, setFormDate] = useState("");
-  const [formItems, setFormItems] = useState<string[]>([""]);
+  const [formItems, setFormItems] = useState<FormItem[]>([{ text: "", source: "manual" }]);
+  const [formRelated, setFormRelated] = useState<RelatedObject[]>([]);
   const [formSummary, setFormSummary] = useState("");
   const [formPlan, setFormPlan] = useState("");
   const [formProblems, setFormProblems] = useState("");
   const [formErr, setFormErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [prevPlan, setPrevPlan] = useState("");
+
+  // 关联业务对象选择器
+  const [pickerType, setPickerType] = useState<"project" | "customer" | "order">("order");
+  const [pickerObjects, setPickerObjects] = useState<PickObject[]>([]);
+  const [pickerId, setPickerId] = useState("");
 
   // 详情弹窗
   const [detail, setDetail] = useState<WorkReport | null>(null);
@@ -70,40 +110,110 @@ export default function WorkReportsPage() {
   const todayReport = reports.find((r) => r.report_date === today);
   const yesterdayReport = reports.find((r) => r.report_date === yesterday);
 
+  // 加载某类型业务对象列表（项目/客户/订单）
+  const loadPickerObjects = (type: string) => {
+    const url = type === "project" ? "/api/projects" : type === "customer" ? "/api/customers" : "/api/orders";
+    fetchWithAuth(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => {
+        const arr: any[] = Array.isArray(d) ? d : [];
+        const objs: PickObject[] = arr
+          .map((o) => {
+            if (type === "project") return { id: String(o.id), name: String(o.name || "").trim() };
+            if (type === "customer") return { id: String(o.id), name: String(o.company_name || "").trim() };
+            return { id: String(o.id), name: o.customer_name ? `${o.id} · ${o.customer_name}` : String(o.id) };
+          })
+          .filter((o) => o.name);
+        setPickerObjects(objs);
+        setPickerId(objs[0]?.id || "");
+      })
+      .catch(() => { setPickerObjects([]); setPickerId(""); });
+  };
+
+  const resetPicker = () => {
+    setPickerType("order");
+    setPickerObjects([]);
+    setPickerId("");
+  };
+
   const openCreate = (date: string) => {
     setFormMode("create");
     setFormId(null);
     setFormDate(date);
-    setFormItems([""]);
+    setFormItems([{ text: "", source: "manual" }]);
+    setFormRelated([]);
     setFormSummary("");
     setFormPlan("");
     setFormProblems("");
     setFormErr("");
+    setPrevPlan("");
     setFormOpen(true);
+    resetPicker();
+    loadPickerObjects("order");
+
+    // 自动带出：当天系统操作 + 前一天的明日计划
+    setAutoLoading(true);
+    fetchWithAuth(`/api/work-reports/auto?date=${date}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          const sys: string[] = Array.isArray(d.system_items) ? d.system_items : [];
+          setFormItems((p) => {
+            const manual = p.filter((it) => it.source === "manual" && it.text.trim() !== "");
+            const items: FormItem[] = sys.map((s) => ({ text: s, source: "system" }));
+            if (manual.length) items.push(...manual);
+            items.push({ text: "", source: "manual" });
+            return items;
+          });
+          setPrevPlan(typeof d.prev_plan === "string" ? d.prev_plan : "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAutoLoading(false));
   };
 
   const openResubmit = (r: WorkReport) => {
     setFormMode("resubmit");
     setFormId(r.id);
     setFormDate(r.report_date);
-    setFormItems(parseItems(r.completed_items).length ? parseItems(r.completed_items) : [""]);
+    const items = parseItems(r.completed_items);
+    setFormItems(items.length ? items.map((t) => ({ text: t, source: "manual" as const })) : [{ text: "", source: "manual" }]);
+    setFormRelated(parseRelated(r.related_objects));
     setFormSummary(r.summary || "");
     setFormPlan(r.tomorrow_plan || "");
     setFormProblems(r.problems || "");
     setFormErr("");
+    setPrevPlan("");
     setFormOpen(true);
     setDetail(null);
+    resetPicker();
+    loadPickerObjects("order");
   };
 
-  const addItem = () => setFormItems((p) => [...p, ""]);
+  const addItem = () => setFormItems((p) => [...p, { text: "", source: "manual" }]);
   const removeItem = (i: number) => setFormItems((p) => p.filter((_, idx) => idx !== i));
-  const updateItem = (i: number, v: string) => setFormItems((p) => p.map((it, idx) => (idx === i ? v : it)));
+  const updateItem = (i: number, v: string) => setFormItems((p) => p.map((it, idx) => (idx === i ? { ...it, text: v } : it)));
+
+  const changePickerType = (t: "project" | "customer" | "order") => {
+    setPickerType(t);
+    setPickerObjects([]);
+    setPickerId("");
+    loadPickerObjects(t);
+  };
+
+  const addRelated = () => {
+    const obj = pickerObjects.find((o) => o.id === pickerId);
+    if (!obj) return;
+    setFormRelated((p) => (p.some((r) => r.type === pickerType && r.id === obj.id) ? p : [...p, { type: pickerType, id: obj.id, name: obj.name }]));
+  };
+
+  const removeRelated = (type: string, id: string) => setFormRelated((p) => p.filter((r) => !(r.type === type && r.id === id)));
 
   const submit = async () => {
-    const items = formItems.map((s) => s.trim()).filter(Boolean);
+    const items = formItems.map((it) => it.text.trim()).filter(Boolean);
     if (items.length === 0) { setFormErr("请至少填写一条今日已完成"); return; }
     setSaving(true);
-    const body = { report_date: formDate, completed_items: items, summary: formSummary, tomorrow_plan: formPlan, problems: formProblems };
+    const body = { report_date: formDate, completed_items: items, summary: formSummary, tomorrow_plan: formPlan, problems: formProblems, related_objects: formRelated };
     const ok = formMode === "create"
       ? await apiCall("/api/work-reports", { method: "POST", body, onError: (m) => setFormErr(m) })
       : await apiCall(`/api/work-reports/${formId}`, { method: "PATCH", body, onError: (m) => setFormErr(m) });
@@ -188,17 +298,64 @@ export default function WorkReportsPage() {
             </div>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">日期：{formDate}</p>
 
+            {/* 前一天的明日计划对照 */}
+            {prevPlan && (
+              <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/30 p-3">
+                <p className="text-xs font-medium text-[var(--muted-foreground)]">{dateMinusOne(formDate)} 的明日计划（对照，看看做了没）</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm">{prevPlan}</p>
+              </div>
+            )}
+
             <div className="mt-4">
               <label className="text-xs font-medium">今日已完成 <span className="text-[var(--destructive)]">*</span></label>
               <div className="mt-1.5 space-y-1.5">
                 {formItems.map((item, i) => (
-                  <div key={i} className="flex gap-1.5">
-                    <input value={item} onChange={(e) => updateItem(i, e.target.value)} placeholder={`工作项 ${i + 1}`} className="h-9 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                  <div key={i} className="flex items-center gap-1.5">
+                    {item.source === "system" ? (
+                      <>
+                        <span className="h-9 flex-1 truncate rounded border border-[var(--border)] bg-[var(--muted)]/30 px-3 text-sm leading-9">{item.text}</span>
+                        <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">系统记录</span>
+                      </>
+                    ) : (
+                      <input value={item.text} onChange={(e) => updateItem(i, e.target.value)} placeholder={`工作项 ${i + 1}`} className="h-9 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                    )}
                     <button type="button" onClick={() => removeItem(i)} className="flex size-9 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40"><X className="size-3.5" /></button>
                   </div>
                 ))}
               </div>
+              {autoLoading && <p className="mt-1 text-xs text-[var(--muted-foreground)]">正在带出系统记录…</p>}
               <button type="button" onClick={addItem} className="mt-1.5 inline-flex items-center gap-1 text-xs text-[var(--primary)] hover:underline"><Plus className="size-3.5" />添加工作项</button>
+            </div>
+
+            {/* 关联业务对象 */}
+            <div className="mt-3">
+              <label className="text-xs font-medium">关联业务对象（可选）</label>
+              {formRelated.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {formRelated.map((r, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/30 px-2 py-1 text-xs text-[var(--foreground)]">
+                      <span className="text-[var(--muted-foreground)]">{relatedTypeLabel(r.type)}</span>
+                      <span className="max-w-[180px] truncate">{r.name}</span>
+                      <button type="button" onClick={() => removeRelated(r.type, r.id)} className="text-[var(--muted-foreground)] hover:text-[var(--destructive)]"><X className="size-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <select value={pickerType} onChange={(e) => changePickerType(e.target.value as any)} className="h-9 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+                  <option value="order">订单</option>
+                  <option value="customer">客户</option>
+                  <option value="project">项目</option>
+                </select>
+                <select value={pickerId} onChange={(e) => setPickerId(e.target.value)} className="h-9 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+                  {pickerObjects.length === 0 ? (
+                    <option value="">无可用对象</option>
+                  ) : (
+                    pickerObjects.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)
+                  )}
+                </select>
+                <Button size="sm" variant="outline" onClick={addRelated} disabled={!pickerId}>添加</Button>
+              </div>
             </div>
 
             <div className="mt-3">
@@ -250,6 +407,19 @@ export default function WorkReportsPage() {
                   ))}
                 </ul>
               </div>
+              {parseRelated(detail.related_objects).length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-[var(--muted-foreground)]">关联业务对象</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {parseRelated(detail.related_objects).map((r, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/30 px-2 py-1 text-xs text-[var(--foreground)]">
+                        <span className="text-[var(--muted-foreground)]">{relatedTypeLabel(r.type)}</span>
+                        <span className="max-w-[200px] truncate">{r.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {detail.summary && (
                 <div>
                   <p className="text-xs font-medium text-[var(--muted-foreground)]">工作总结</p>

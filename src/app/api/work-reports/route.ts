@@ -11,6 +11,26 @@ function bangkokDaysAgo(n: number): string {
   return d.toISOString().split("T")[0];
 }
 
+// 校验并序列化关联业务对象 [{type, id, name}] → JSON 字符串
+function parseRelatedObjects(raw: unknown): string {
+  let arr: unknown[] = [];
+  if (Array.isArray(raw)) arr = raw;
+  else if (typeof raw === "string") {
+    try { const p = JSON.parse(raw); if (Array.isArray(p)) arr = p; } catch {}
+  }
+  const out: { type: string; id: string; name: string }[] = [];
+  for (const o of arr) {
+    if (!o || typeof o !== "object") continue;
+    const rec = o as Record<string, unknown>;
+    const type = String(rec.type || "").trim();
+    const id = String(rec.id ?? "").trim();
+    const name = String(rec.name || "").trim();
+    if (!type || !id || !["project", "customer", "order"].includes(type)) continue;
+    out.push({ type, id, name });
+  }
+  return JSON.stringify(out);
+}
+
 // GET /api/work-reports — 管理员看全部，员工看自己
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -33,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const body = await readJson(req);
-  const { report_date, completed_items, summary, tomorrow_plan, problems } = body;
+  const { report_date, completed_items, summary, tomorrow_plan, problems, related_objects } = body;
 
   const today = bangkokToday();
   const yesterday = bangkokDaysAgo(1);
@@ -62,10 +82,11 @@ export async function POST(req: NextRequest) {
   if (items.length === 0) return NextResponse.json({ error: "请至少填写一条今日已完成" }, { status: 400 });
 
   const isBackfill = date === yesterday ? 1 : 0;
+  const relatedJson = parseRelatedObjects(related_objects);
   const now = new Date().toISOString();
   const result = db.prepare(
-    "INSERT INTO work_reports (employee_name, report_date, completed_items, summary, tomorrow_plan, problems, status, is_backfill, submitted_at) VALUES (?, ?, ?, ?, ?, ?, '已提交', ?, ?)"
-  ).run(auth.name, date, JSON.stringify(items), String(summary || "").trim(), String(tomorrow_plan || "").trim(), String(problems || "").trim(), isBackfill, now);
+    "INSERT INTO work_reports (employee_name, report_date, completed_items, summary, tomorrow_plan, problems, related_objects, status, is_backfill, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, '已提交', ?, ?)"
+  ).run(auth.name, date, JSON.stringify(items), String(summary || "").trim(), String(tomorrow_plan || "").trim(), String(problems || "").trim(), relatedJson, isBackfill, now);
   logOperation(auth.name, "提交工作记录", "work_report", String(result.lastInsertRowid), date);
   return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
 }
