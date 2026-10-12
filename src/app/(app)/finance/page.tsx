@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "lucide-react";
 import { fetchAllFinances } from "@/lib/api";
-import { cn, toThaiTime } from "@/lib/utils";
+import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
@@ -89,7 +89,9 @@ export default function FinancePage() {
       result = result.filter(
         (r: FinanceRecord) =>
           (r.description || "").toLowerCase().includes(s) ||
-          (r.order_id || "").toLowerCase().includes(s)
+          (r.order_id || "").toLowerCase().includes(s) ||
+          (r.customer_name || "").toLowerCase().includes(s) ||
+          (r.business_name || "").toLowerCase().includes(s)
       );
     }
     if (typeFilter !== "all") {
@@ -316,7 +318,7 @@ export default function FinancePage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
           <Input
-            placeholder="搜索描述或订单号..."
+            placeholder="搜索描述/订单号/客户名/业务线..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9 pl-9"
@@ -374,7 +376,7 @@ export default function FinancePage() {
                     </td>
                     <td className="px-4 py-3 max-w-[200px] truncate">{r.description || "-"}</td>
                     <td className="px-4 py-3 font-mono text-xs">{r.order_id || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">{r.created_at?.slice(0, 10) || "-"}</td>
+                    <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">{toThaiDate(r.created_at) || "-"}</td>
                   </tr>
                 ))
               )}
@@ -394,7 +396,7 @@ export default function FinancePage() {
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{statusLabels[r.status] || r.status}</span>
-                  <span className="text-xs text-[var(--muted-foreground)]">{r.created_at?.slice(0, 10) || "-"}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">{toThaiDate(r.created_at) || "-"}</span>
                 </div>
                 <div className="mt-2 space-y-1.5 text-sm">
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">描述</span><span className="text-right">{r.description || "—"}</span></div>
