@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokToday } from "@/lib/time";
+import { syncWorkReportReminders } from "@/lib/work-report-sync";
 
 // 曼谷日期往前推 n 天（纯日历运算）
 function bangkokDaysAgo(n: number): string {
@@ -39,6 +40,10 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const isAdmin = auth.role === "admin";
+
+  // 顺带触发提醒同步：昨天没交的生成补交待办，当天下午没交的发通知
+  try { syncWorkReportReminders(); } catch {}
+
   const rows = isAdmin
     ? db.prepare("SELECT * FROM work_reports ORDER BY report_date DESC, id DESC").all()
     : db.prepare("SELECT * FROM work_reports WHERE employee_name = ? ORDER BY report_date DESC, id DESC").all(auth.name);

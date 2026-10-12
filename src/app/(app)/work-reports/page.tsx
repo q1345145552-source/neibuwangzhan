@@ -26,6 +26,9 @@ interface WorkReport {
 interface FormItem { text: string; source: "system" | "manual"; }
 interface RelatedObject { type: "project" | "customer" | "order"; id: string; name: string; }
 interface PickObject { id: string; name: string; }
+interface BoardRow { name: string; report: WorkReport | null; }
+
+type DayStatus = "已提交" | "补交" | "未提交" | "退回";
 
 function parseItems(s: string): string[] {
   try { const a = JSON.parse(s || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
@@ -52,24 +55,41 @@ function relatedTypeLabel(t: string): string {
   return t === "project" ? "项目" : t === "customer" ? "客户" : "订单";
 }
 
-function dateMinusOne(dateStr: string): string {
+function dateMinusDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() - 1);
+  d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().split("T")[0];
 }
 
-function bkkYesterday(): string {
-  const d = new Date(bangkokDateStr() + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().split("T")[0];
+function reportStatus(r: WorkReport | null | undefined): DayStatus {
+  if (!r) return "未提交";
+  if (r.status === "退回") return "退回";
+  return r.is_backfill === 1 ? "补交" : "已提交";
+}
+
+function statusBadgeClass(st: DayStatus): string {
+  if (st === "已提交") return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300";
+  if (st === "补交") return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
+  if (st === "退回") return "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300";
+  return "bg-red-100 font-semibold text-red-700 dark:bg-red-900/50 dark:text-red-300";
+}
+
+function StatusBadge({ st }: { st: DayStatus }) {
+  return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", statusBadgeClass(st))}>{st}</span>;
 }
 
 export default function WorkReportsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
+  // 员工：自己的日报列表
   const [reports, setReports] = useState<WorkReport[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 老板：看板（按日期看所有在职员工状态）
+  const [boardDate, setBoardDate] = useState(bangkokDateStr());
+  const [board, setBoard] = useState<BoardRow[]>([]);
+  const [boardLoading, setBoardLoading] = useState(true);
 
   // 填写/重交表单
   const [formOpen, setFormOpen] = useState(false);
@@ -94,7 +114,10 @@ export default function WorkReportsPage() {
   // 详情弹窗
   const [detail, setDetail] = useState<WorkReport | null>(null);
 
-  const load = () => {
+  const today = bangkokDateStr();
+  const yesterday = dateMinusDays(today, 1);
+
+  const loadEmployee = () => {
     setLoading(true);
     fetchWithAuth("/api/work-reports", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
@@ -103,12 +126,22 @@ export default function WorkReportsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [user?.name]);
+  const loadBoard = () => {
+    setBoardLoading(true);
+    fetchWithAuth(`/api/work-reports/board?date=${boardDate}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setBoard(d && Array.isArray(d.employees) ? d.employees : []))
+      .catch(() => setBoard([]))
+      .finally(() => setBoardLoading(false));
+  };
 
-  const today = bangkokDateStr();
-  const yesterday = bkkYesterday();
-  const todayReport = reports.find((r) => r.report_date === today);
-  const yesterdayReport = reports.find((r) => r.report_date === yesterday);
+  const refresh = () => { if (isAdmin) loadBoard(); else loadEmployee(); };
+
+  useEffect(() => {
+    if (isAdmin) loadBoard();
+    else loadEmployee();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.name, isAdmin, boardDate]);
 
   // 加载某类型业务对象列表（项目/客户/订单）
   const loadPickerObjects = (type: string) => {
@@ -218,71 +251,113 @@ export default function WorkReportsPage() {
       ? await apiCall("/api/work-reports", { method: "POST", body, onError: (m) => setFormErr(m) })
       : await apiCall(`/api/work-reports/${formId}`, { method: "PATCH", body, onError: (m) => setFormErr(m) });
     setSaving(false);
-    if (ok) { setFormOpen(false); setFormErr(""); load(); }
+    if (ok) { setFormOpen(false); setFormErr(""); refresh(); }
   };
 
   const reject = async (r: WorkReport) => {
     if (!confirm(`确定退回 ${r.employee_name} ${r.report_date} 的工作记录？`)) return;
     const ok = await apiCall(`/api/work-reports/${r.id}`, { method: "PATCH", body: { action: "reject" } });
-    if (ok) { setDetail(null); load(); }
+    if (ok) { setDetail(null); refresh(); }
   };
+
+  // 员工：最近 30 天（含今天）的每日状态
+  const dayList = Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i));
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{isAdmin ? "工作记录" : "我的工作记录"}</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "查看所有员工的每日工作记录，可退回" : "每天填一份，记录今天做了什么"}</p>
+        <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{isAdmin ? "工作记录看板" : "我的工作记录"}</h1>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "按日期查看所有在职员工的提交情况" : "每天填一份，记录今天做了什么"}</p>
       </div>
 
-      {/* 员工：今日填写状态 */}
-      {!isAdmin && (
-        <div className="flex flex-wrap items-center gap-2">
-          {todayReport ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] px-3 py-1.5 text-sm font-medium text-[oklch(0.38_0.14_155)]">
-              今日已提交
-            </span>
+      {/* 老板看板 */}
+      {isAdmin && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={boardDate}
+              onChange={(e) => setBoardDate(e.target.value)}
+              className="h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+            />
+            <span className="text-xs text-[var(--muted-foreground)]">共 {board.length} 名在职员工</span>
+          </div>
+
+          {boardLoading ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+          ) : board.length === 0 ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无在职员工</p>
           ) : (
-            <Button size="sm" onClick={() => openCreate(today)} className="gap-1.5">
-              <ClipboardList className="size-4" />填写今日工作记录
-            </Button>
-          )}
-          {!yesterdayReport && (
-            <Button size="sm" variant="outline" onClick={() => openCreate(yesterday)}>
-              补交昨日工作记录
-            </Button>
+            <div className="flex flex-col gap-2">
+              {board.map((row) => {
+                const st = reportStatus(row.report);
+                return (
+                  <div
+                    key={row.name}
+                    onClick={() => row.report && setDetail(row.report)}
+                    className={cn(
+                      "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
+                      row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]"
+                    )}
+                  >
+                    <span className="truncate text-sm font-medium text-[var(--foreground)]">{row.name}</span>
+                    <StatusBadge st={st} />
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
 
-      {loading ? (
-        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
-      ) : reports.length === 0 ? (
-        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无工作记录</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {reports.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setDetail(r)}
-              className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-left transition-colors hover:border-[var(--primary)]"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  {isAdmin && <span className="truncate text-sm font-medium text-[var(--foreground)]">{r.employee_name}</span>}
-                  <span className="text-sm text-[var(--foreground)]">{r.report_date}</span>
-                  {r.is_backfill === 1 && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">补交</span>
-                  )}
-                </div>
-                <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">
-                  {parseItems(r.completed_items).slice(0, 2).join("、")}{parseItems(r.completed_items).length > 2 ? "…" : ""}
-                </p>
-              </div>
-              <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已提交" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300")}>
-                {r.status}
+      {/* 员工视角 */}
+      {!isAdmin && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {reports.some((r) => r.report_date === today) ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] px-3 py-1.5 text-sm font-medium text-[oklch(0.38_0.14_155)]">
+                今日已提交
               </span>
-            </button>
-          ))}
+            ) : (
+              <Button size="sm" onClick={() => openCreate(today)} className="gap-1.5">
+                <ClipboardList className="size-4" />填写今日工作记录
+              </Button>
+            )}
+            {!reports.some((r) => r.report_date === yesterday) && (
+              <Button size="sm" variant="outline" onClick={() => openCreate(yesterday)}>
+                补交昨日工作记录
+              </Button>
+            )}
+          </div>
+
+          {loading ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {dayList.map((day) => {
+                const r = reports.find((x) => x.report_date === day);
+                const st = reportStatus(r);
+                return (
+                  <div
+                    key={day}
+                    onClick={() => r && setDetail(r)}
+                    className={cn(
+                      "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
+                      r && "cursor-pointer transition-colors hover:border-[var(--primary)]"
+                    )}
+                  >
+                    <span className="text-sm text-[var(--foreground)]">{day}</span>
+                    <div className="flex items-center gap-2">
+                      {!r && day === today && <Button size="sm" onClick={(e) => { e.stopPropagation(); openCreate(today); }}>去填写</Button>}
+                      {!r && day === yesterday && <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openCreate(yesterday); }}>去补交</Button>}
+                      {r && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDetail(r); }}>查看</Button>}
+                      <StatusBadge st={st} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -301,7 +376,7 @@ export default function WorkReportsPage() {
             {/* 前一天的明日计划对照 */}
             {prevPlan && (
               <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--muted)]/30 p-3">
-                <p className="text-xs font-medium text-[var(--muted-foreground)]">{dateMinusOne(formDate)} 的明日计划（对照，看看做了没）</p>
+                <p className="text-xs font-medium text-[var(--muted-foreground)]">{dateMinusDays(formDate, 1)} 的明日计划（对照，看看做了没）</p>
                 <p className="mt-1 whitespace-pre-wrap break-words text-sm">{prevPlan}</p>
               </div>
             )}
@@ -392,7 +467,7 @@ export default function WorkReportsPage() {
                 <div className="mt-1 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
                   <span>{detail.report_date}</span>
                   {detail.is_backfill === 1 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">补交</span>}
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", detail.status === "已提交" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300")}>{detail.status}</span>
+                  <StatusBadge st={reportStatus(detail)} />
                 </div>
               </div>
               <button onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
