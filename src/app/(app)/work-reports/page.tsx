@@ -112,7 +112,7 @@ export default function WorkReportsPage() {
 
   // 加载某类型业务对象列表（项目/客户/订单）
   const loadPickerObjects = (type: string) => {
-    const url = type === "project" ? "/api/projects" : type === "customer" ? "/api/customers" : "/api/orders";
+    const url = type === "project" ? "/api/projects/names" : type === "customer" ? "/api/customers" : "/api/orders";
     fetchWithAuth(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
