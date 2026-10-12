@@ -1316,6 +1316,27 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_rule_history_rule_id ON rule_history(rule_id);
   `);
 
+  // 每日工作记录（日报）：每人每天一份，可补交昨天，老板可退回
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS work_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      report_date TEXT NOT NULL,
+      completed_items TEXT NOT NULL DEFAULT '[]',
+      summary TEXT DEFAULT '',
+      tomorrow_plan TEXT DEFAULT '',
+      problems TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
+      is_backfill INTEGER NOT NULL DEFAULT 0,
+      submitted_at TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_name, report_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_work_reports_employee ON work_reports(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_work_reports_date ON work_reports(report_date);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}

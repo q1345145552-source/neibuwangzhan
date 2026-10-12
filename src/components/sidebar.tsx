@@ -46,6 +46,7 @@ import {
   Bell,
   BellRing,
   BookOpen,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -60,6 +61,7 @@ const navigation = [
   { name: "消息中心", href: "/notifications", icon: BellRing },
   { name: "老板通知", href: "/announcements", icon: Bell },
   { name: "规则库", href: "/rules", icon: BookOpen },
+  { name: "工作记录", href: "/work-reports", icon: ClipboardList },
 ];
 
 const businessLines = [
