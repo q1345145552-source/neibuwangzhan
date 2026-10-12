@@ -43,10 +43,11 @@ export async function POST(req: NextRequest) {
   const assigneeStr = assigneeList.join(",");
   if (assigneeList.length === 0) return NextResponse.json({ error: "请至少指定一个解决人" }, { status: 400 });
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
+  const now = new Date().toISOString();
   const result = db.prepare(
-    `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assigneeStr, created_by || "", imagesJson);
+    `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assigneeStr, created_by || "", imagesJson, now, now);
   const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
   logOperation(created_by || auth.name, "提交工单", "issue", String(result.lastInsertRowid), description);
   // 每个被指派的员工都发一条通知
