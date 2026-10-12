@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "lucide-react";
 import { fetchAllFinances } from "@/lib/api";
-import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
+import { cn, toThaiTime, toThaiDate, bangkokDateStr } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
@@ -180,6 +180,23 @@ export default function FinancePage() {
       .filter((r) => (r.business_name || "未分类") === selectedBusiness)
       .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
   }, [monthFiltered, selectedBusiness]);
+
+  // 导出当前筛选后的费用明细为 Excel
+  const handleExport = () => {
+    const statusText: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款", pending: "待处理" };
+    const cols: ExportColumn<FinanceRecord>[] = [
+      { header: "订单号", render: (r) => r.order_id || "-" },
+      { header: "客户名", render: (r) => r.customer_name || "-" },
+      { header: "业务线", render: (r) => r.business_name || "未分类" },
+      { header: "类型", render: (r) => (r.commerce_refund ? "退款" : typeLabels[r.type] || r.type) },
+      { header: "金额", render: (r) => `${r.currency === "THB" ? "฿" : "¥"}${Number(r.amount).toLocaleString()}` },
+      { header: "币种", render: (r) => (r.currency === "THB" ? "泰铢" : "人民币") },
+      { header: "状态", render: (r) => statusText[r.status] || r.status },
+      { header: "描述", render: (r) => r.description || "-" },
+      { header: "日期", render: (r) => toThaiDate(r.created_at) || "-" },
+    ];
+    exportToExcel(filtered, cols, `费用明细${bangkokDateStr()}`);
+  };
 
   if (loading) {
     return (
@@ -368,6 +385,9 @@ export default function FinancePage() {
             </Button>
           ))}
         </div>
+        <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5">
+          <Download className="size-4" />导出 Excel
+        </Button>
       </div>
 
       {/* Table */}
