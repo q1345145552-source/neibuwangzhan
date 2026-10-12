@@ -46,6 +46,10 @@ function resolveCard(db: Db, type: string, id: string): { title: string; subtitl
     const r = db.prepare("SELECT problem_number, company_name FROM problems WHERE id = ?").get(n) as { problem_number: string; company_name: string } | undefined;
     return r ? { title: r.problem_number, subtitle: r.company_name || "" } : null;
   }
+  if (type === "issue") {
+    const r = db.prepare("SELECT ticket_number, description, description_zh FROM issue_tickets WHERE id = ?").get(n) as { ticket_number: string; description: string; description_zh: string } | undefined;
+    return r ? { title: r.ticket_number || `#${n}`, subtitle: r.description_zh || r.description || "" } : null;
+  }
   return null;
 }
 

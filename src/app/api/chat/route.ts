@@ -27,7 +27,7 @@ function findActiveStaff(db: Db, name: string): boolean {
 // 分享卡片类型 → 会话列表预览文案
 const CARD_LABELS: Record<string, string> = {
   order: "[订单]", todo: "[待办]", project: "[项目]", customer: "[客户]",
-  vat: "[VAT申报]", wht: "[预扣税]", problem: "[问题]",
+  vat: "[VAT申报]", wht: "[预扣税]", problem: "[问题]", issue: "[工单]",
 };
 
 // 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
@@ -61,6 +61,10 @@ function resolveCard(db: Db, type: string, id: string): { title: string; subtitl
   if (type === "problem") {
     const r = db.prepare("SELECT problem_number, company_name FROM problems WHERE id = ?").get(n) as { problem_number: string; company_name: string } | undefined;
     return r ? { title: r.problem_number, subtitle: r.company_name || "" } : null;
+  }
+  if (type === "issue") {
+    const r = db.prepare("SELECT ticket_number, description, description_zh FROM issue_tickets WHERE id = ?").get(n) as { ticket_number: string; description: string; description_zh: string } | undefined;
+    return r ? { title: r.ticket_number || `#${n}`, subtitle: r.description_zh || r.description || "" } : null;
   }
   return null;
 }

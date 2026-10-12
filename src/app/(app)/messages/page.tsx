@@ -107,7 +107,7 @@ function within2Min(createdAt: string): boolean {
 }
 
 // ── 分享卡片（订单/待办/项目/客户/VAT/预扣税/问题）──
-type CardKind = "order" | "todo" | "project" | "customer" | "vat" | "wht" | "problem";
+type CardKind = "order" | "todo" | "project" | "customer" | "vat" | "wht" | "problem" | "issue";
 
 interface CardInfo {
   kind: CardKind;
@@ -125,6 +125,7 @@ const CARD_META: Record<CardKind, { label: string; href: (id: string) => string 
   vat:      { label: "VAT申报", href: (id) => `/vat/${id}` },
   wht:      { label: "预扣税", href: (id) => `/wht/${id}` },
   problem:  { label: "问题", href: (id) => `/problems/${id}` },
+  issue:    { label: "工单", href: (id) => `/issues?open=${id}` },
 };
 
 // 解析消息里的分享卡片：新格式 order_id = "类型:id"、content = JSON{title,subtitle}；
@@ -166,6 +167,7 @@ const SHARE_CATEGORIES: { key: CardKind; label: string }[] = [
   { key: "vat", label: "VAT申报" },
   { key: "wht", label: "预扣税申报" },
   { key: "problem", label: "问题跟踪" },
+  { key: "issue", label: "工单" },
 ];
 
 // 各分类接口返回的条目 → 统一的 { id, title, subtitle, raw }
@@ -178,6 +180,7 @@ function mapShareItem(cat: string, x: any): { id: string; title: string; subtitl
   else if (cat === "vat") base = { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
   else if (cat === "wht") base = { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
   else if (cat === "problem") base = { id: String(x.id), title: x.problem_number || "", subtitle: x.company_name || "" };
+  else if (cat === "issue") base = { id: String(x.id), title: x.ticket_number || `#${x.id}`, subtitle: x.description_zh || x.description || "" };
   else base = { id: "", title: "", subtitle: "" };
   return { ...base, raw: x };
 }
@@ -201,6 +204,13 @@ function shareFilterOptions(cat: CardKind, businessTypes: { id: number; name: st
   if (cat === "customer") return ["潜在", "跟进中", "已合作", "沉睡"].map((s) => ({ value: s, label: s }));
   if (cat === "vat" || cat === "wht") return last12Months().map((m) => ({ value: m, label: m }));
   if (cat === "problem") return ["待处理", "跟进中", "已解决", "老板验收", "搁置"].map((s) => ({ value: s, label: s }));
+  if (cat === "issue") return ["待处理", "处理中", "已解决"].map((s) => ({ value: s, label: s }));
+  return [];
+}
+
+// 第二下拉筛选选项（目前仅工单有：按负责人）
+function shareFilterOptions2(cat: CardKind, employees: { name: string; role?: string }[]): { value: string; label: string }[] {
+  if (cat === "issue") return employees.filter((e) => e.name && e.role === "employee").map((e) => ({ value: e.name, label: e.name }));
   return [];
 }
 
@@ -212,6 +222,13 @@ function shareItemFilterValue(cat: CardKind, x: any): string {
   if (cat === "customer") return x.status || "";
   if (cat === "vat" || cat === "wht") return x.year_month || "";
   if (cat === "problem") return x.status || "";
+  if (cat === "issue") return x.status || "";
+  return "";
+}
+
+// 条目在该分类下对应的第二筛选值（目前仅工单：负责人）
+function shareItemFilterValue2(cat: CardKind, x: any): string {
+  if (cat === "issue") return x.assignee || "";
   return "";
 }
 
@@ -463,6 +480,7 @@ export default function MessagesPage() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareSearch, setShareSearch] = useState("");
   const [shareFilter, setShareFilter] = useState("all");
+  const [shareFilter2, setShareFilter2] = useState("all");
   const [shareBusinessTypes, setShareBusinessTypes] = useState<{ id: number; name: string }[]>([]);
   const [shareEmployees, setShareEmployees] = useState<{ name: string; role?: string }[]>([]);
   const [exporting, setExporting] = useState(false);
@@ -1224,6 +1242,7 @@ export default function MessagesPage() {
     setShareError(null);
     setShareSearch("");
     setShareFilter("all");
+    setShareFilter2("all");
     // 预取筛选用参考数据：业务线 + 员工
     fetchWithAuth("/api/business-types", { cache: "no-store" })
       .then((r) => r.json())
@@ -1240,11 +1259,13 @@ export default function MessagesPage() {
     setShareCategory(cat);
     setShareSearch("");
     setShareFilter("all");
+    setShareFilter2("all");
     setShareLoading(true);
     setShareError(null);
     const urlMap: Record<CardKind, string> = {
       order: "/api/orders", todo: "/api/todos", project: "/api/projects", customer: "/api/customers",
       vat: "/api/vat/records?limit=100", wht: "/api/wht/records?pageSize=100", problem: "/api/problems",
+      issue: "/api/issues",
     };
     fetchWithAuth(urlMap[cat], { cache: "no-store" })
       .then(async (r) => {
@@ -1259,7 +1280,7 @@ export default function MessagesPage() {
       .finally(() => setShareLoading(false));
   };
 
-  // 分享条目：先按分类下拉筛选，再按关键词搜标题+副标题（两条件叠加）
+  // 分享条目：先按分类下拉筛选，再按关键词搜标题+副标题（条件叠加生效）
   const filteredShareItems = useMemo(() => {
     const kw = shareSearch.trim().toLowerCase();
     return shareItems.filter((item) => {
@@ -1267,13 +1288,21 @@ export default function MessagesPage() {
         const v = shareItemFilterValue(shareCategory as CardKind, item.raw);
         if (String(v) !== shareFilter) return false;
       }
+      if (shareFilter2 !== "all") {
+        const v2 = shareItemFilterValue2(shareCategory as CardKind, item.raw);
+        // 工单负责人是多选（逗号分隔），用包含匹配
+        const hit = shareCategory === "issue"
+          ? ("," + String(v2) + ",").includes("," + shareFilter2 + ",")
+          : String(v2) === shareFilter2;
+        if (!hit) return false;
+      }
       if (kw) {
         const hay = `${item.title} ${item.subtitle}`.toLowerCase();
         if (!hay.includes(kw)) return false;
       }
       return true;
     });
-  }, [shareItems, shareFilter, shareSearch, shareCategory]);
+  }, [shareItems, shareFilter, shareFilter2, shareSearch, shareCategory]);
 
   // 发一条分享卡片消息
   const sendCard = async (cardType: string, cardId: string) => {
@@ -2977,6 +3006,18 @@ export default function MessagesPage() {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
+                  {shareCategory === "issue" && (
+                    <select
+                      value={shareFilter2}
+                      onChange={(e) => setShareFilter2(e.target.value)}
+                      className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
+                    >
+                      <option value="all">全部负责人</option>
+                      {shareFilterOptions2(shareCategory as CardKind, shareEmployees).map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 {filteredShareItems.length === 0 ? (
                   <p className="py-8 text-center text-xs text-[var(--muted-foreground)]">无匹配结果</p>
