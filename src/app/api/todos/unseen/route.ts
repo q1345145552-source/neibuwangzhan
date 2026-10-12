@@ -23,12 +23,20 @@ export async function GET(req: NextRequest) {
     latest_follow_at: string | null;
   }[];
 
+  // 时间字符串转时间戳：兼容老格式（空格分隔）+ 新格式（ISO），非法返回 0
+  function toTs(s: string | null): number {
+    if (!s) return 0;
+    const str = s.includes("Z") || s.includes("+") || (s.match(/-/g) || []).length > 2 ? s : s.replace(" ", "T") + "Z";
+    const t = new Date(str).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  }
+
   const items = rows
-    .filter((r) => r.seen_at < r.created_at || (!!r.latest_follow_at && r.latest_follow_at > r.seen_at))
+    .filter((r) => toTs(r.seen_at) < toTs(r.created_at) || (!!r.latest_follow_at && toTs(r.latest_follow_at) > toTs(r.seen_at)))
     .map((r) => ({
       id: r.id,
       content: r.content,
-      type: r.seen_at < r.created_at ? "新增" : "新跟进",
+      type: toTs(r.seen_at) < toTs(r.created_at) ? "新增" : "新跟进",
       created_at: r.created_at,
     }));
 
