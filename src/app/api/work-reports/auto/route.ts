@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
      ORDER BY created_at ASC, id ASC`
   ).all(auth.name, start, end) as { action: string; target_type: string; target_id: string; detail: string }[];
 
-  const orderMap = new Map<string, { type: string; id: string; title: string; subtitle: string; href: string }>();
+  const orderMap = new Map<string, { type: string; id: string; title: string; subtitle: string; href: string; responsible: string; businessType: string }>();
   const todoMap = new Map<string, { type: string; id: string; title: string; subtitle: string; href: string }>();
   const issueMap = new Map<string, { type: string; id: string; title: string; subtitle: string; href: string }>();
   const otherMap = new Map<string, { type: string; id: string; title: string; subtitle: string; href: string }>();
@@ -81,8 +81,15 @@ export async function GET(req: NextRequest) {
     if (ORDER_TYPES.includes(tt)) {
       const oid = resolveOrderId(db, tt, tid);
       if (oid && !orderMap.has(oid)) {
-        const order = db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(oid) as { customer_name: string } | undefined;
-        orderMap.set(oid, { type: "order", id: oid, title: `订单 ${oid}`, subtitle: order?.customer_name || "", href: `/orders/${oid}` });
+        const order = db.prepare("SELECT customer_name, responsible_person, business_type_id FROM orders WHERE id = ?").get(oid) as { customer_name: string; responsible_person: string; business_type_id: number } | undefined;
+        const biz = order ? db.prepare("SELECT name FROM business_types WHERE id = ?").get(order.business_type_id) as { name: string } | undefined : undefined;
+        orderMap.set(oid, {
+          type: "order", id: oid, title: `订单 ${oid}`,
+          subtitle: order?.customer_name || "",
+          href: `/orders/${oid}`,
+          responsible: order?.responsible_person || "",
+          businessType: biz?.name || "待分类",
+        });
       }
     } else if (tt === "todo") {
       if (tid && !todoMap.has(tid)) {

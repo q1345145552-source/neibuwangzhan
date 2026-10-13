@@ -30,7 +30,7 @@ interface WorkReport {
   created_at: string;
 }
 
-interface AutoItem { type: string; id: string; title: string; subtitle: string; href: string; checked: boolean; }
+interface AutoItem { type: string; id: string; title: string; subtitle: string; href: string; checked: boolean; responsible?: string; businessType?: string; }
 interface AutoGroup { type: string; label: string; items: AutoItem[]; }
 interface RelatedObject { type: "project" | "customer" | "order"; id: string; name: string; }
 interface PickObject { id: string; name: string; }
@@ -151,6 +151,9 @@ export default function WorkReportsPage() {
   const [formDate, setFormDate] = useState("");
   const [formItems, setFormItems] = useState<string[]>([""]);
   const [autoGroups, setAutoGroups] = useState<AutoGroup[]>([]);
+  const [businessTypes, setBusinessTypes] = useState<{ id: number; name: string }[]>([]);
+  const [orderResponsibleFilter, setOrderResponsibleFilter] = useState("");
+  const [orderBizFilter, setOrderBizFilter] = useState("");
   const [formRelated, setFormRelated] = useState<RelatedObject[]>([]);
   const [formSummary, setFormSummary] = useState("");
   const [formPlan, setFormPlan] = useState("");
@@ -246,6 +249,8 @@ export default function WorkReportsPage() {
     setFormDate(date);
     setFormItems([""]);
     setAutoGroups([]);
+    setOrderResponsibleFilter("");
+    setOrderBizFilter("");
     setFormRelated([]);
     setFormSummary("");
     setFormPlan("");
@@ -255,6 +260,12 @@ export default function WorkReportsPage() {
     setFormOpen(true);
     resetPicker();
     loadPickerObjects("order");
+
+    // 业务线列表（订单组筛选用）
+    fetchWithAuth("/api/business-types", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setBusinessTypes(Array.isArray(d) ? d.map((b: any) => ({ id: b.id, name: String(b.name) })) : []))
+      .catch(() => setBusinessTypes([]));
 
     // 自动带出：当天系统操作（分四类）+ 前一天的明日计划
     setAutoLoading(true);
@@ -272,6 +283,8 @@ export default function WorkReportsPage() {
               subtitle: String(i.subtitle || ""),
               href: String(i.href || ""),
               checked: true,
+              responsible: typeof i.responsible === "string" ? i.responsible : "",
+              businessType: typeof i.businessType === "string" ? i.businessType : "",
             })),
           }));
           setAutoGroups(groups);
@@ -434,6 +447,15 @@ export default function WorkReportsPage() {
 
   // 员工：最近 30 天（含今天）的每日状态
   const dayList = Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i));
+
+  // 订单组筛选：负责人 + 业务线
+  const orderItems = autoGroups.find((g) => g.type === "order")?.items || [];
+  const responsibleOptions = [...new Set(orderItems.map((i) => (i.responsible || "").trim()).filter(Boolean))];
+  const filteredOrderItems = orderItems.filter((i) => {
+    if (orderResponsibleFilter && (i.responsible || "") !== orderResponsibleFilter) return false;
+    if (orderBizFilter && (i.businessType || "") !== orderBizFilter) return false;
+    return true;
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -623,23 +645,44 @@ export default function WorkReportsPage() {
               <label className="text-xs font-medium">今日已完成 <span className="text-[var(--destructive)]">*</span></label>
 
               {/* 自动带出，分四类勾选 */}
-              {autoGroups.map((g) => (
-                <div key={g.type} className="mt-2">
-                  <p className="text-xs font-medium text-[var(--muted-foreground)]">{g.label}（{g.items.length}）</p>
-                  <div className="mt-1 space-y-1">
-                    {g.items.map((item) => (
-                      <label key={item.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-[var(--border)] px-2.5 py-1.5">
-                        <input type="checkbox" checked={item.checked} onChange={() => toggleAutoItem(g.type, item.id)} className="mt-0.5 size-4 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <span className="text-sm text-[var(--foreground)]">{item.title}</span>
-                          {item.subtitle && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
+              {autoGroups.map((g) => {
+                const isOrder = g.type === "order";
+                const items = isOrder ? filteredOrderItems : g.items;
+                return (
+                  <div key={g.type} className="mt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-[var(--muted-foreground)]">{g.label}（{items.length}）</p>
+                      {isOrder && (
+                        <div className="flex items-center gap-1.5">
+                          <select value={orderResponsibleFilter} onChange={(e) => setOrderResponsibleFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-xs outline-none focus:border-[var(--ring)]">
+                            <option value="">全部负责人</option>
+                            {responsibleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                          <select value={orderBizFilter} onChange={(e) => setOrderBizFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-xs outline-none focus:border-[var(--ring)]">
+                            <option value="">全部业务线</option>
+                            {businessTypes.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+                          </select>
                         </div>
-                        {item.href && <Link href={item.href} className="shrink-0 text-xs text-[var(--primary)] hover:underline">查看</Link>}
-                      </label>
-                    ))}
+                      )}
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      {items.map((item) => (
+                        <div key={item.id} className="flex items-start gap-2 rounded-md border border-[var(--border)] px-2.5 py-1.5">
+                          <input type="checkbox" checked={item.checked} onChange={() => toggleAutoItem(g.type, item.id)} className="mt-0.5 size-4 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            {item.href ? (
+                              <Link href={item.href} className="text-sm text-[var(--foreground)] hover:text-[var(--primary)] hover:underline">{item.title}</Link>
+                            ) : (
+                              <span className="text-sm text-[var(--foreground)]">{item.title}</span>
+                            )}
+                            {item.subtitle && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {autoLoading && <p className="mt-1 text-xs text-[var(--muted-foreground)]">正在带出系统记录…</p>}
 
               {/* 手动添加 */}
