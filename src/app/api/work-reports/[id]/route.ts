@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { analyzeWorkReport } from "@/lib/deepseek";
+import { normalizeCompletedItems, completedItemText } from "@/lib/work-report-items";
 
 // 校验并序列化关联业务对象 [{type, id, name}] → JSON 字符串
 function parseRelatedObjects(raw: unknown): string {
@@ -77,15 +78,7 @@ export async function PATCH(
   if (report.status !== "退回") return NextResponse.json({ error: "只有退回的记录能修改" }, { status: 400 });
 
   const { completed_items, summary, tomorrow_plan, problems, related_objects } = body;
-  let items: string[] = [];
-  if (Array.isArray(completed_items)) {
-    items = completed_items.map((s: unknown) => String(s).trim()).filter(Boolean);
-  } else if (typeof completed_items === "string") {
-    try {
-      const p = JSON.parse(completed_items);
-      if (Array.isArray(p)) items = p.map((s: unknown) => String(s).trim()).filter(Boolean);
-    } catch {}
-  }
+  const items = normalizeCompletedItems(completed_items);
   if (items.length === 0) return NextResponse.json({ error: "请至少填写一条今日已完成" }, { status: 400 });
 
   const relatedJson = parseRelatedObjects(related_objects);
@@ -100,7 +93,7 @@ export async function PATCH(
 
   // 重新提交后重新用 AI 评估质量 + 判断风险（失败不阻断）
   try {
-    const analysis = await analyzeWorkReport({ completedItems: items, summary: summaryText, tomorrowPlan: planText, problems: problemsText });
+    const analysis = await analyzeWorkReport({ completedItems: items.map(completedItemText), summary: summaryText, tomorrowPlan: planText, problems: problemsText });
     if (analysis.risk) {
       const wasRisk = report.risk_flag === 1;
       db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ?, risk_flag = 1, risk_desc = ? WHERE id = ?").run(analysis.label, analysis.comment, analysis.riskDesc, id);

@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { summarizeWorkReportStory } from "@/lib/deepseek";
+import { completedItemText, normalizeCompletedItems } from "@/lib/work-report-items";
 
 function parseRelated(s: string): { type: string; id: string }[] {
   try {
@@ -15,7 +16,7 @@ function parseRelated(s: string): { type: string; id: string }[] {
 }
 
 function parseItems(s: string): string[] {
-  try { const a = JSON.parse(s || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
+  return normalizeCompletedItems(s).map(completedItemText);
 }
 
 function typeLabel(type: string): string {

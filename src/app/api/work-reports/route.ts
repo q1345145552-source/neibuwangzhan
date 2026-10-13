@@ -5,6 +5,7 @@ import { readJson } from "@/lib/req";
 import { bangkokToday } from "@/lib/time";
 import { syncWorkReportReminders } from "@/lib/work-report-sync";
 import { analyzeWorkReport } from "@/lib/deepseek";
+import { normalizeCompletedItems, completedItemText } from "@/lib/work-report-items";
 
 // 曼谷日期往前推 n 天（纯日历运算）
 function bangkokDaysAgo(n: number): string {
@@ -86,16 +87,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: date === today ? "今天已经提交过了" : "昨天已经提交过了" }, { status: 400 });
   }
 
-  // 今日已完成：手动添加的工作项（至少一条）
-  let items: string[] = [];
-  if (Array.isArray(completed_items)) {
-    items = completed_items.map((s: unknown) => String(s).trim()).filter(Boolean);
-  } else if (typeof completed_items === "string") {
-    try {
-      const p = JSON.parse(completed_items);
-      if (Array.isArray(p)) items = p.map((s: unknown) => String(s).trim()).filter(Boolean);
-    } catch {}
-  }
+  // 今日已完成：手动文本 + 勾选带出的结构化条目（至少一条）
+  const items = normalizeCompletedItems(completed_items);
   if (items.length === 0) return NextResponse.json({ error: "请至少填写一条今日已完成" }, { status: 400 });
 
   const isBackfill = date === yesterday ? 1 : 0;
@@ -112,7 +105,7 @@ export async function POST(req: NextRequest) {
   // 提交后自动用 AI 评估质量 + 判断风险（失败不阻断提交，标签/风险留空）
   const reportId = Number(result.lastInsertRowid);
   try {
-    const analysis = await analyzeWorkReport({ completedItems: items, summary: summaryText, tomorrowPlan: planText, problems: problemsText });
+    const analysis = await analyzeWorkReport({ completedItems: items.map(completedItemText), summary: summaryText, tomorrowPlan: planText, problems: problemsText });
     if (analysis.risk) {
       db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ?, risk_flag = 1, risk_desc = ? WHERE id = ?").run(analysis.label, analysis.comment, analysis.riskDesc, reportId);
       notifyRisk(db, reportId, auth.name, date, analysis.riskDesc);
