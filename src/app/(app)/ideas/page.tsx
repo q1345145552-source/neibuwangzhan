@@ -47,6 +47,14 @@ export default function IdeasPage() {
   const [formErr, setFormErr] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // 老板处理：采纳 / 已实现
+  const [actionModal, setActionModal] = useState<{ id: number; type: "adopt" | "complete" } | null>(null);
+  const [bonusAmount, setBonusAmount] = useState("");
+  const [bonusCurrency, setBonusCurrency] = useState("THB");
+  const [relatedFeature, setRelatedFeature] = useState("");
+  const [actionErr, setActionErr] = useState("");
+  const [acting, setActing] = useState(false);
+
   const load = () => {
     setLoading(true);
     fetchWithAuth("/api/ideas", { cache: "no-store" })
@@ -79,6 +87,32 @@ export default function IdeasPage() {
     if (ok) { setFormOpen(false); setFormErr(""); load(); }
   };
 
+  const openAdopt = (id: number) => { setBonusAmount(""); setBonusCurrency("THB"); setActionErr(""); setActionModal({ id, type: "adopt" }); };
+  const openComplete = (id: number) => { setRelatedFeature(""); setActionErr(""); setActionModal({ id, type: "complete" }); };
+
+  const doAction = async (id: number, action: string, extra?: Record<string, unknown>) => {
+    setActing(true);
+    const ok = await apiCall(`/api/ideas/${id}`, { method: "PATCH", body: { action, ...extra }, onError: (m) => setActionErr(m) });
+    setActing(false);
+    if (ok) { setActionModal(null); setActionErr(""); load(); }
+  };
+
+  const confirmReject = async (id: number) => { if (!confirm("确定拒绝这个想法？")) return; await doAction(id, "reject"); };
+  const confirmStart = async (id: number) => { if (!confirm("确定推进到进行中？")) return; await doAction(id, "start"); };
+
+  const submitAdopt = async () => {
+    const amt = Number(bonusAmount);
+    if (!Number.isFinite(amt) || amt < 0) { setActionErr("请填写奖金金额"); return; }
+    await doAction(actionModal!.id, "adopt", { bonus_amount: amt, currency: bonusCurrency });
+  };
+
+  const submitComplete = async () => {
+    if (!relatedFeature.trim()) { setActionErr("请填写关联功能"); return; }
+    await doAction(actionModal!.id, "complete", { related_feature: relatedFeature });
+  };
+
+  const bonusLabel = (i: Idea) => (i.currency === "CNY" ? `¥${Number(i.bonus_amount).toLocaleString()}` : `฿${Number(i.bonus_amount).toLocaleString()}`);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
@@ -104,12 +138,32 @@ export default function IdeasPage() {
                 <span className="text-sm font-medium text-[var(--foreground)]">{i.title}</span>
                 <span className="rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-xs text-[var(--foreground)]">{i.category}</span>
                 <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_BADGE[i.status] || "")}>{i.status}</span>
+                {i.status === "已采纳" && i.bonus_amount > 0 && (
+                  <span className="text-xs font-medium text-amber-600">奖金 {bonusLabel(i)}</span>
+                )}
               </div>
               {i.content && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{i.content}</p>}
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                <span>来源：{i.source}{i.is_boss === 1 && "（老板）"}</span>
-                <span>·</span>
-                <span>{toThaiTime(i.created_at)}</span>
+              {i.status === "已实现" && i.related_feature && (
+                <p className="mt-2 text-xs text-[var(--muted-foreground)]">关联功能：{i.related_feature}</p>
+              )}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                  <span>来源：{i.source}{i.is_boss === 1 && "（老板）"}</span>
+                  <span>·</span>
+                  <span>{toThaiTime(i.created_at)}</span>
+                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5">
+                    {i.status === "待评估" && (
+                      <>
+                        <Button size="xs" onClick={() => openAdopt(i.id)}>采纳</Button>
+                        <Button size="xs" variant="outline" onClick={() => confirmReject(i.id)}>拒绝</Button>
+                      </>
+                    )}
+                    {i.status === "已采纳" && <Button size="xs" onClick={() => confirmStart(i.id)}>进行中</Button>}
+                    {i.status === "进行中" && <Button size="xs" onClick={() => openComplete(i.id)}>已实现</Button>}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -146,6 +200,47 @@ export default function IdeasPage() {
             <div className="mt-4 flex gap-2">
               <Button size="sm" onClick={submit} disabled={saving}>{saving ? "提交中…" : "提交"}</Button>
               <Button variant="ghost" size="sm" onClick={() => setFormOpen(false)}>取消</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 老板处理弹窗：采纳 / 已实现 */}
+      {actionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setActionModal(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-base font-semibold text-[var(--foreground)]">{actionModal.type === "adopt" ? "采纳想法" : "标记已实现"}</h3>
+              <button onClick={() => setActionModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            {actionModal.type === "adopt" ? (
+              <div className="mt-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium">奖金金额</label>
+                    <input type="number" value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} placeholder="0" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">币种</label>
+                    <select value={bonusCurrency} onChange={(e) => setBonusCurrency(e.target.value)} className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+                      <option value="THB">泰铢</option>
+                      <option value="CNY">人民币</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4">
+                <label className="text-xs font-medium">关联功能 <span className="text-[var(--destructive)]">*</span></label>
+                <input value={relatedFeature} onChange={(e) => setRelatedFeature(e.target.value)} placeholder="做成了哪个功能" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+            )}
+
+            {actionErr && <p className="mt-2 text-xs text-[var(--destructive)]">{actionErr}</p>}
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" onClick={actionModal.type === "adopt" ? submitAdopt : submitComplete} disabled={acting}>{acting ? "处理中…" : "确认"}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setActionModal(null)}>取消</Button>
             </div>
           </div>
         </div>
