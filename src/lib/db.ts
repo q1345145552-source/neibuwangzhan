@@ -2206,6 +2206,8 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE issue_tickets ADD COLUMN description_zh TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE customers ADD COLUMN claimed_by TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE customers ADD COLUMN need_more_contact INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE customer_follow_ups ADD COLUMN images TEXT NOT NULL DEFAULT '[]'"); } catch {}
   try { database.exec("ALTER TABLE wht_records ADD COLUMN amount REAL DEFAULT 0"); } catch {}
 
   // 迁移：统一达人状态 — '评估中' → '待评估'
@@ -2234,6 +2236,7 @@ function initTables(database: Database.Database) {
       demand_tags TEXT DEFAULT '',
       status TEXT DEFAULT '潜在' CHECK(status IN ('潜在','跟进中','已合作','沉睡')),
       claimed_by TEXT DEFAULT '',
+      need_more_contact INTEGER NOT NULL DEFAULT 0,
       total_deal_amount REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -2244,6 +2247,7 @@ function initTables(database: Database.Database) {
       customer_id INTEGER NOT NULL REFERENCES customers(id),
       employee_name TEXT DEFAULT '',
       content TEXT DEFAULT '',
+      images TEXT NOT NULL DEFAULT '[]',
       next_contact_at TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );

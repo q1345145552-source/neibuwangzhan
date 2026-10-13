@@ -9,7 +9,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, X, Building2, Edit3, Trash2, ChevronRight,
-  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote, AlertTriangle, UserCheck, ArrowRightLeft, Upload, FileSpreadsheet
+  Filter, Tag, User, Calendar, DollarSign, Download, Hand, Zap, Banknote, AlertTriangle, UserCheck, ArrowRightLeft, Upload, FileSpreadsheet, Star
 } from "lucide-react";
 
 // ===== Types =====
@@ -28,6 +28,7 @@ interface Customer {
   demand_tags: string;
   status: "潜在" | "跟进中" | "已合作" | "沉睡";
   claimed_by: string;
+  need_more_contact: number;
   total_deal_amount: number;
   created_at: string;
   updated_at: string;
@@ -152,6 +153,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("全部");
+  const [needMoreContact, setNeedMoreContact] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showVatImport, setShowVatImport] = useState(false);
   const [vatImportable, setVatImportable] = useState<any[]>([]);
@@ -176,12 +178,13 @@ export default function CustomersPage() {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter !== "全部") params.set("status", statusFilter);
+      if (needMoreContact) params.set("need_more_contact", "1");
       const res = await fetchWithAuth(`/api/customers?${params.toString()}`);
       const data = await res.json();
       setCustomers(Array.isArray(data) ? data : []);
     } catch { setCustomers([]); }
     finally { setLoading(false); }
-  }, [search, statusFilter]);
+  }, [search, statusFilter, needMoreContact]);
 
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
@@ -582,6 +585,17 @@ export default function CustomersPage() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => { setNeedMoreContact(v => !v); setLoading(true); }}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+            needMoreContact
+              ? "border-amber-400 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+              : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          )}
+        >
+          <Star className="size-3" />需多联络
+        </button>
       </div>
 
       {/* Admin Review Panel */}
@@ -661,6 +675,9 @@ export default function CustomersPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <Building2 className="size-3.5 text-[var(--muted-foreground)] shrink-0" />
                       <span className="truncate hover:text-[var(--primary)] hover:underline">{c.company_name}</span>
+                      {c.need_more_contact === 1 && (
+                        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"><Star className="size-2.5" />需多联络</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-2.5 align-middle text-[var(--muted-foreground)] hidden sm:table-cell">{c.industry || "—"}</td>

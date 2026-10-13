@@ -6,10 +6,10 @@ import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, fileUrl } from "@/lib/utils";
 import {
   ArrowLeft, Building2, Tag, User, Calendar, DollarSign, Edit3, Save, X, Send, Plus,
-  Clock, MessageSquare, Star, TrendingUp, Unlock, AlertCircle
+  Clock, MessageSquare, Star, TrendingUp, Unlock, AlertCircle, ImagePlus
 } from "lucide-react";
 
 interface CustomerDetail {
@@ -27,6 +27,7 @@ interface CustomerDetail {
   demand_tags: string;
   status: string;
   claimed_by: string;
+  need_more_contact: number;
   total_deal_amount: number;
   created_at: string;
   updated_at: string;
@@ -40,6 +41,10 @@ const statusColor: Record<string, string> = {
   "已合作": "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   "沉睡": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 };
+
+function parseImages(s: string): string[] {
+  try { const a = JSON.parse(s || "[]"); return Array.isArray(a) ? a.map((x) => String(x)) : []; } catch { return []; }
+}
 
 interface ProblemItem {
   id: number;
@@ -67,9 +72,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const [newClaimedBy, setNewClaimedBy] = useState("");
   const [followUpContent, setFollowUpContent] = useState("");
   const [followUpNext, setFollowUpNext] = useState("");
+  const [followUpImages, setFollowUpImages] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [togglingContact, setTogglingContact] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -107,10 +116,66 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     setSavingFollowUp(true);
     const res = await fetchWithAuth("/api/customers", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "follow_up", customer_id: Number(id), content: followUpContent.trim(), next_contact_at: followUpNext }),
+      body: JSON.stringify({ action: "follow_up", customer_id: Number(id), content: followUpContent.trim(), next_contact_at: followUpNext, images: followUpImages }),
     });
     setSavingFollowUp(false);
-    if (res.ok) { setFollowUpContent(""); setFollowUpNext(""); reload(); }
+    if (res.ok) { setFollowUpContent(""); setFollowUpNext(""); setFollowUpImages([]); reload(); }
+  };
+
+  // 上传图片（多张）
+  const uploadFollowUpFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploadingImages(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) urls.push(data.url);
+        }
+      }
+      if (urls.length) setFollowUpImages((p) => [...p, ...urls]);
+    } catch {}
+    finally { setUploadingImages(false); }
+  };
+
+  const handleFollowUpImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) uploadFollowUpFiles(Array.from(files));
+    e.target.value = "";
+  };
+
+  // 电脑端 Ctrl+V 粘贴截图
+  const handleFollowUpPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) uploadFollowUpFiles(files);
+  };
+
+  const removeFollowUpImage = (url: string) => setFollowUpImages((p) => p.filter((u) => u !== url));
+
+  const toggleNeedMoreContact = async () => {
+    if (!customer) return;
+    setTogglingContact(true);
+    const res = await fetchWithAuth("/api/customers", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(id), need_more_contact: customer.need_more_contact ? 0 : 1 }),
+    });
+    setTogglingContact(false);
+    if (res.ok) {
+      const updated = await res.json();
+      setCustomer((prev) => prev ? { ...prev, need_more_contact: updated.need_more_contact } : prev);
+    }
   };
 
   const handleReassign = async () => {
@@ -170,6 +235,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">{customer.company_name}</h1>
           <div className="mt-1 flex items-center gap-2 flex-wrap">
             <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", statusColor[customer.status] || "")}>{customer.status}</span>
+            {(user?.role === "admin" || customer.claimed_by === user?.name) && (
+              <button onClick={toggleNeedMoreContact} disabled={togglingContact} title="需多联络" className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors", customer.need_more_contact ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
+                <Star className="size-3" />{togglingContact ? "…" : customer.need_more_contact ? "需多联络" : "标记需多联络"}
+              </button>
+            )}
             {customer.industry && <span className="text-xs text-[var(--muted-foreground)]">{customer.industry}</span>}
             <span className="text-xs text-[var(--muted-foreground)]">· 创建于 {customer.created_at?.slice(0, 10)}</span>
             {user?.role === "admin" && customer.status !== "潜在" && (
@@ -231,12 +301,26 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             </h3>
             {/* Follow-up input */}
             <div className="mb-4 flex flex-col gap-2">
-              <textarea value={followUpContent} onChange={e => setFollowUpContent(e.target.value)}
+              <textarea value={followUpContent} onChange={e => setFollowUpContent(e.target.value)} onPaste={handleFollowUpPaste}
                 className="w-full min-h-[60px] rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none resize-none focus:border-[var(--ring)]"
-                placeholder="写跟进记录... (+2 积分)" />
+                placeholder="写跟进记录... (+2 积分，可直接 Ctrl+V 粘贴截图)" />
+              {followUpImages.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {followUpImages.map((img, i) => (
+                    <div key={i} className="relative">
+                      <img src={fileUrl(img)} alt={`图 ${i + 1}`} className="h-14 w-14 rounded-md border border-[var(--border)] object-cover" />
+                      <button type="button" onClick={() => removeFollowUpImage(img)} className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)]"><X className="size-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input type="date" value={followUpNext} onChange={e => setFollowUpNext(e.target.value)}
                   className="h-8 rounded border border-[var(--border)] px-2 text-xs outline-none focus:border-[var(--ring)]" placeholder="下次联系" />
+                <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-[var(--primary)] hover:underline">
+                  <ImagePlus className="size-3.5" />{uploadingImages ? "上传中..." : "图片"}
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleFollowUpImageUpload} disabled={uploadingImages} />
+                </label>
                 <div className="flex-1" />
                 <Button size="xs" onClick={handleAddFollowUp} disabled={savingFollowUp || !followUpContent.trim()} className="gap-1">
                   <Send className="size-3" />{savingFollowUp ? "发送中..." : "发送"}
@@ -255,6 +339,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                       {f.next_contact_at && <><span>·</span><span>下次联系: {f.next_contact_at}</span></>}
                     </div>
                     <p className="text-sm">{f.content}</p>
+                    {parseImages(f.images).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {parseImages(f.images).map((img: string, i: number) => (
+                          <img key={i} src={fileUrl(img)} alt={`图 ${i + 1}`} className="h-16 w-16 cursor-pointer rounded-md border border-[var(--border)] object-cover hover:opacity-80" onClick={() => setLightbox(img)} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -327,6 +418,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
       </div>
+
+      {/* 图片放大灯箱 */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4" onClick={() => setLightbox(null)}>
+          <img src={fileUrl(lightbox)} alt="放大图片" className="max-h-full max-w-full rounded-md object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }

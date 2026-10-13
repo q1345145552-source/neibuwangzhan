@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const search = url.searchParams.get("search") || "";
   const status = url.searchParams.get("status") || "";
+  const needMoreContact = url.searchParams.get("need_more_contact") || "";
   const action = url.searchParams.get("action") || "";
 
   const db = getDb();
@@ -174,6 +175,9 @@ export async function GET(req: NextRequest) {
   if (status) {
     conditions.push("c.status = ?");
     params.push(status);
+  }
+  if (needMoreContact === "1") {
+    conditions.push("c.need_more_contact = 1");
   }
 
   // 员工只能看到未认领的客户 + 自己认领的客户
@@ -325,11 +329,15 @@ export async function POST(req: NextRequest) {
 
   // Follow-up: add follow-up log + points
   if (body.action === "follow_up") {
-    const { customer_id, content, next_contact_at } = body;
+    const { customer_id, content, next_contact_at, images } = body;
     if (!customer_id) return NextResponse.json({ error: "缺少客户 ID" }, { status: 400 });
     if (!content?.trim()) return NextResponse.json({ error: "请填写跟进内容" }, { status: 400 });
     const db = getDb();
-    db.prepare("INSERT INTO customer_follow_ups (customer_id, employee_name, content, next_contact_at) VALUES (?, ?, ?, ?)").run(customer_id, auth.name!, content.trim(), next_contact_at || "");
+    let imgUrls: string[] = [];
+    if (Array.isArray(images)) {
+      imgUrls = images.map((u: unknown) => String(u).trim()).filter(Boolean);
+    }
+    db.prepare("INSERT INTO customer_follow_ups (customer_id, employee_name, content, images, next_contact_at) VALUES (?, ?, ?, ?, ?)").run(customer_id, auth.name!, content.trim(), JSON.stringify([...new Set(imgUrls)]), next_contact_at || "");
     insertPointsRecord(db, auth.name!, 2, `跟进客户 #${customer_id}`, "customer_followup", String(customer_id));
     return NextResponse.json({ success: true });
   }
@@ -476,6 +484,16 @@ export async function PATCH(req: NextRequest) {
 
   const db = getDb();
 
+  // 需多联络标记：只有认领人本人或管理员能改
+  if (body.need_more_contact !== undefined) {
+    const c = db.prepare("SELECT claimed_by FROM customers WHERE id = ?").get(id) as any;
+    if (!c) return NextResponse.json({ error: "客户不存在" }, { status: 404 });
+    if (auth.role !== "admin" && c.claimed_by !== auth.name) {
+      return NextResponse.json({ error: "只有认领人或管理员能标记" }, { status: 403 });
+    }
+    body.need_more_contact = body.need_more_contact ? 1 : 0;
+  }
+
   // 如果修改 claimed_by，执行积分转移
   if (body.claimed_by !== undefined) {
     if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可修改认领人" }, { status: 403 });
@@ -511,7 +529,7 @@ export async function PATCH(req: NextRequest) {
 
   const _e = validateEnums({ "customers.status": body.status });
   if (_e) return NextResponse.json({ error: _e }, { status: 400 });
-  const fields = ["company_name","industry","company_type","founded_at","source_channel","owner_name","owner_wechat","handler_name","handler_wechat","willingness","demand_tags","status","total_deal_amount","claimed_by"];
+  const fields = ["company_name","industry","company_type","founded_at","source_channel","owner_name","owner_wechat","handler_name","handler_wechat","willingness","demand_tags","status","total_deal_amount","claimed_by","need_more_contact"];
   const sets: string[] = [];
   const vals: any[] = [];
   for (const f of fields) {
