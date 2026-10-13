@@ -49,6 +49,7 @@ import {
   ClipboardList,
   CalendarClock,
   Vault,
+  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -66,6 +67,7 @@ const navigation = [
   { name: "工作记录", href: "/work-reports", icon: ClipboardList },
   { name: "会议记录", href: "/meetings", icon: CalendarClock },
   { name: "资产台账", href: "/assets", icon: Vault },
+  { name: "想法记录", href: "/ideas", icon: Lightbulb },
 ];
 
 const businessLines = [

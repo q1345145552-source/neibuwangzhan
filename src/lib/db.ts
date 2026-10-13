@@ -1070,6 +1070,26 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_shop_fees_type ON shop_fees(fee_type);
   `);
 
+  // 想法记录（好点子）：老板记想法、员工提点子
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ideas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT DEFAULT '',
+      category TEXT NOT NULL DEFAULT '产品功能' CHECK(category IN ('产品功能','业务改进','新业务','其他')),
+      source TEXT DEFAULT '',
+      is_boss INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','已采纳','已拒绝','进行中','已实现')),
+      bonus_amount REAL DEFAULT 0,
+      currency TEXT DEFAULT 'CNY',
+      related_feature TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+    CREATE INDEX IF NOT EXISTS idx_ideas_is_boss ON ideas(is_boss);
+  `);
+
   database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

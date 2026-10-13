@@ -80,6 +80,8 @@ export const ENUMS = {
   "wht_record_steps.status": ["待处理", "进行中", "已完成", "已跳过"],
   "wht_records.subtype": ["ภ.ง.ด.1", "ภ.ง.ด.53"],
   "work_reports.status": ["已提交", "退回"],
+  "ideas.category": ["产品功能", "业务改进", "新业务", "其他"],
+  "ideas.status": ["待评估", "已采纳", "已拒绝", "进行中", "已实现"],
 } as const;
 
 export type EnumKey = keyof typeof ENUMS;
