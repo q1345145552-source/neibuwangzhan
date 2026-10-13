@@ -1413,6 +1413,36 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_meeting_reminders_meeting ON meeting_reminders(meeting_id);
   `);
 
+  // 资产台账：账号/密码/证件/设备等登记簿，敏感字段（账号/密码/手机号/证件号/收款账号）加密存储
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asset_type TEXT NOT NULL,
+      asset_subtype TEXT DEFAULT '',
+      name TEXT DEFAULT '',
+      account TEXT DEFAULT '',
+      password TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      id_number TEXT DEFAULT '',
+      payment_account TEXT DEFAULT '',
+      url TEXT DEFAULT '',
+      ownership TEXT NOT NULL DEFAULT '公司自有',
+      customer_name TEXT DEFAULT '',
+      expiry_date TEXT DEFAULT '',
+      device_type TEXT DEFAULT '',
+      brand_model TEXT DEFAULT '',
+      serial_number TEXT DEFAULT '',
+      device_owner TEXT DEFAULT '',
+      device_status TEXT DEFAULT '',
+      remark TEXT DEFAULT '',
+      uploaded_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);
+    CREATE INDEX IF NOT EXISTS idx_assets_uploaded_by ON assets(uploaded_by);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
