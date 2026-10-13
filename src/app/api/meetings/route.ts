@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { syncMeetingReminders } from "@/lib/meeting-sync";
 
 // 解析参会人 JSON 数组 → 去重后的员工名数组
 function parseParticipants(raw: unknown): string[] {
@@ -22,6 +23,10 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const isAdmin = auth.role === "admin";
+
+  // 顺带触发会议提醒同步：当天下午没交的发通知，昨天没交的生成补交待办
+  try { syncMeetingReminders(); } catch {}
+
   const rows = (isAdmin
     ? db.prepare("SELECT * FROM meetings ORDER BY meeting_date DESC, id DESC").all()
     : db.prepare("SELECT * FROM meetings ORDER BY meeting_date DESC, id DESC").all()) as any[];
