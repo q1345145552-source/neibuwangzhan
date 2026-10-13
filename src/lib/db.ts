@@ -1467,6 +1467,16 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 资产子分类：全员共用，可新增/删/改
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS asset_subcategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}

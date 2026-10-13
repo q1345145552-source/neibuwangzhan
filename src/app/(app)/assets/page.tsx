@@ -99,6 +99,16 @@ export default function AssetsPage() {
   const [copiedKey, setCopiedKey] = useState("");
   const [viewLogs, setViewLogs] = useState<any[]>([]);
 
+  // 子分类
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [subAdding, setSubAdding] = useState(false);
+  const [newSubName, setNewSubName] = useState("");
+  const [subErr, setSubErr] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
+  const [manageRenameId, setManageRenameId] = useState<number | null>(null);
+  const [manageRenameName, setManageRenameName] = useState("");
+  const [manageErr, setManageErr] = useState("");
+
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -123,11 +133,78 @@ export default function AssetsPage() {
   const openCreate = () => {
     setForm({ asset_type: "账号密码", ownership: "公司自有" });
     setFormErr("");
+    setSubAdding(false);
+    setNewSubName("");
+    setSubErr("");
     setFormOpen(true);
+    loadSubcategories();
     fetchWithAuth("/api/customers", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setCustomers((Array.isArray(d) ? d : []).map((c: any) => String(c.company_name || "").trim()).filter(Boolean)))
       .catch(() => setCustomers([]));
+  };
+
+  const loadSubcategories = () => {
+    fetchWithAuth("/api/assets/subcategories", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setSubcategories(Array.isArray(d) ? d : []))
+      .catch(() => setSubcategories([]));
+  };
+
+  const addSubcategory = async () => {
+    const name = newSubName.trim();
+    if (!name) { setSubErr("请输入子分类名称"); return; }
+    const res = await fetchWithAuth("/api/assets/subcategories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      const d = await res?.json().catch(() => ({}));
+      setSubErr(d?.error || "新增失败");
+      return;
+    }
+    const created = await res.json().catch(() => null);
+    if (created) setSubcategories((p) => [...p, created]);
+    setField("asset_subtype", name);
+    setNewSubName("");
+    setSubAdding(false);
+    setSubErr("");
+  };
+
+  const openManage = () => {
+    setManageOpen(true);
+    setManageRenameId(null);
+    setManageErr("");
+    loadSubcategories();
+  };
+
+  const canManageSub = (s: any) => isAdmin || s.created_by === user?.name;
+
+  const renameSubcategory = async (id: number) => {
+    const name = manageRenameName.trim();
+    if (!name) { setManageErr("请输入子分类名称"); return; }
+    const res = await fetchWithAuth(`/api/assets/subcategories/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      const d = await res?.json().catch(() => ({}));
+      setManageErr(d?.error || "改名失败");
+      return;
+    }
+    const updated = await res.json().catch(() => null);
+    if (updated) setSubcategories((p) => p.map((s) => (s.id === id ? updated : s)));
+    setManageRenameId(null);
+    setManageRenameName("");
+    setManageErr("");
+  };
+
+  const deleteSubcategory = async (id: number) => {
+    if (!confirm("确定删除这个子分类？已使用它的旧资产不受影响")) return;
+    const ok = await apiCall(`/api/assets/subcategories/${id}`, { method: "DELETE", onError: (m) => setManageErr(m) });
+    if (ok) { setSubcategories((p) => p.filter((s) => s.id !== id)); setManageErr(""); }
   };
 
   const submit = async () => {
@@ -193,9 +270,12 @@ export default function AssetsPage() {
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">资产台账</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "公司账号、密码、证件、设备等统一登记" : "登记并查看你上传的资产"}</p>
         </div>
-        <Button size="sm" onClick={openCreate} className="gap-1.5">
-          <Plus className="size-4" />录入资产
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={openManage}>管理子分类</Button>
+          <Button size="sm" onClick={openCreate} className="gap-1.5">
+            <Plus className="size-4" />录入资产
+          </Button>
+        </div>
       </div>
 
       {/* 分类筛选 + 搜索 */}
@@ -348,11 +428,22 @@ export default function AssetsPage() {
               {show.subtype && (
                 <div>
                   <label className="text-xs font-medium">子分类</label>
-                  <select value={form.asset_subtype || ""} onChange={(e) => setField("asset_subtype", e.target.value)} className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
-                    <option value="">（无）</option>
-                    <option value="银行支付">银行支付</option>
-                    <option value="其他">其他</option>
-                  </select>
+                  <div className="mt-1 flex items-center gap-2">
+                    <select value={form.asset_subtype || ""} onChange={(e) => setField("asset_subtype", e.target.value)} className="h-9 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+                      <option value="">（无）</option>
+                      {subcategories.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    </select>
+                    <Button size="sm" variant="outline" onClick={() => { setSubAdding((v) => !v); setNewSubName(""); setSubErr(""); }} className="gap-1 shrink-0"><Plus className="size-3.5" />新增</Button>
+                    <button type="button" onClick={openManage} className="shrink-0 text-xs text-[var(--primary)] hover:underline">管理</button>
+                  </div>
+                  {subAdding && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <input value={newSubName} onChange={(e) => setNewSubName(e.target.value)} placeholder="输入子分类名称" className="h-9 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                      <Button size="sm" onClick={addSubcategory}>添加</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSubAdding(false)}>取消</Button>
+                    </div>
+                  )}
+                  {subErr && <p className="mt-1 text-xs text-[var(--destructive)]">{subErr}</p>}
                 </div>
               )}
 
@@ -463,6 +554,51 @@ export default function AssetsPage() {
               <Button size="sm" onClick={submit} disabled={saving}>{saving ? "保存中…" : "保存"}</Button>
               <Button variant="ghost" size="sm" onClick={() => setFormOpen(false)}>取消</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 管理子分类弹窗 */}
+      {manageOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setManageOpen(false)}>
+          <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-base font-semibold text-[var(--foreground)]">管理子分类</h3>
+              <button onClick={() => setManageOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">{isAdmin ? "可增删改所有子分类" : "可删改自己新增的子分类"}</p>
+
+            {subcategories.length === 0 ? (
+              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无子分类，可在录入资产时随手新增</p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {subcategories.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
+                    {manageRenameId === s.id ? (
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <input value={manageRenameName} onChange={(e) => setManageRenameName(e.target.value)} className="h-8 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]" />
+                        <Button size="sm" onClick={() => renameSubcategory(s.id)}>保存</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setManageRenameId(null)}>取消</Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm text-[var(--foreground)]">{s.name}</span>
+                          <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{s.created_by}</span>
+                        </div>
+                        {canManageSub(s) && (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button type="button" onClick={() => { setManageRenameId(s.id); setManageRenameName(s.name); setManageErr(""); }} className="text-xs text-[var(--primary)] hover:underline">改名</button>
+                            <button type="button" onClick={() => deleteSubcategory(s.id)} className="text-xs text-[var(--destructive)] hover:underline">删除</button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {manageErr && <p className="mt-2 text-xs text-[var(--destructive)]">{manageErr}</p>}
           </div>
         </div>
       )}
