@@ -1384,6 +1384,22 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_meetings_creator ON meetings(creator);
   `);
 
+  // 会议心得：同一场会议员工可提交多条，图片存 JSON 数组
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS meeting_reflections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meeting_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      images TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_meeting_reflections_meeting ON meeting_reflections(meeting_id);
+    CREATE INDEX IF NOT EXISTS idx_meeting_reflections_employee ON meeting_reflections(employee_name);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
