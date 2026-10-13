@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { encryptAssetSecret, decryptAssetSecret } from "@/lib/asset-crypto";
+import { syncAssetExpiryReminders } from "@/lib/asset-sync";
 
 export const ASSET_TYPES = ["账号密码", "套餐会员", "邮箱", "设备", "证件执照", "身份证", "域名", "客户委托账号", "SIM卡手机号"] as string[];
 const OWNERSHIPS = ["公司自有", "客户委托"] as string[];
@@ -19,6 +20,9 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const isAdmin = auth.role === "admin";
+
+  // 顺带触发资产到期提醒同步：7 天内到期的资产给老板发通知
+  try { syncAssetExpiryReminders(); } catch {}
   let rows = (isAdmin
     ? db.prepare("SELECT * FROM assets ORDER BY id DESC").all()
     : db.prepare("SELECT * FROM assets WHERE uploaded_by = ? ORDER BY id DESC").all(auth.name)) as any[];

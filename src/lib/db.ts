@@ -1236,7 +1236,7 @@ function initTables(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip','工单指派','工单完成','待办指派','待办完成','规则更新','老板通知','日报提醒','日报风险','会议提醒')),
+      type TEXT DEFAULT '' CHECK(type IN ('','issue_assigned','leave_requested','contract_overdue','eval_done','mention','leave_overdue','problem_assigned','problem_followup','problem_accepted','problem_rejected','payslip','工单指派','工单完成','待办指派','待办完成','规则更新','老板通知','日报提醒','日报风险','会议提醒','资产到期提醒')),
       title TEXT DEFAULT '',
       body TEXT DEFAULT '',
       recipient TEXT DEFAULT '',
@@ -1456,6 +1456,17 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_asset_view_logs_asset ON asset_view_logs(asset_id);
   `);
 
+  // 资产到期提醒去重表：同一资产 + 同一到期时间只提醒一次
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS asset_expiry_reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asset_id INTEGER NOT NULL,
+      expiry_date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(asset_id, expiry_date)
+    );
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
@@ -1467,7 +1478,7 @@ function initTables(database: Database.Database) {
 
   // Already-current tables are untouched; old CHECK extensions are atomic across workers.
   // 2026-10-03 合并：远端新增的问题跟踪四类与工资单通知类型也走这里（远端原写法每次启动改名重建并吞错）。
-  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request", "工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知", "日报提醒", "日报风险", "会议提醒"]);
+  expandLegacyCheck(database, "notifications", "type", ["leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request", "工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知", "日报提醒", "日报风险", "会议提醒", "资产到期提醒"]);
 
   // 消息中心迁移：隐藏字段 + 旧「工单指派」类型统一改成中文值
   try { database.exec("ALTER TABLE notifications ADD COLUMN hidden INTEGER DEFAULT 0"); } catch {}
