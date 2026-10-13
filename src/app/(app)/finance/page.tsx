@@ -97,6 +97,17 @@ export default function FinancePage() {
   const [verifyErr, setVerifyErr] = useState("");
   const [verifying, setVerifying] = useState(false);
 
+  // 店铺管理费用（收付款 Tab 的数据）
+  const [shopFees, setShopFees] = useState<any[]>([]);
+  const [showShopDetail, setShowShopDetail] = useState(false);
+
+  useEffect(() => {
+    fetchWithAuth("/api/shop-fees", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setShopFees(Array.isArray(d) ? d : []))
+      .catch(() => setShopFees([]));
+  }, []);
+
   const reload = async () => {
     try {
       setAllFinances(await fetchAllFinances());
@@ -209,6 +220,29 @@ export default function FinancePage() {
       .filter((r) => (r.business_name || "未分类") === selectedBusiness)
       .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
   }, [monthFiltered, selectedBusiness]);
+
+  // 店铺管理分组汇总：总收入=已到账收入、待核对、未到账、总支出、利润=已到账-支出，币种分开
+  const shopSummary = useMemo(() => {
+    const s = { incomeCNY: 0, incomeTHB: 0, pendingCNY: 0, pendingTHB: 0, notReceivedCNY: 0, notReceivedTHB: 0, expenseCNY: 0, expenseTHB: 0 };
+    for (const r of shopFees) {
+      const isTHB = r.currency === "THB";
+      const amount = Number(r.amount) || 0;
+      if (r.fee_type === "收入") {
+        if (r.status === "已到账") { if (isTHB) s.incomeTHB += amount; else s.incomeCNY += amount; }
+        else if (r.status === "待核对") { if (isTHB) s.pendingTHB += amount; else s.pendingCNY += amount; }
+        else if (r.status === "未到账") { if (isTHB) s.notReceivedTHB += amount; else s.notReceivedCNY += amount; }
+      } else if (r.fee_type === "支出") {
+        if (isTHB) s.expenseTHB += amount; else s.expenseCNY += amount;
+      }
+    }
+    return s;
+  }, [shopFees]);
+
+  // 店铺管理明细（按时间倒序）
+  const shopDetails = useMemo(
+    () => [...shopFees].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")),
+    [shopFees]
+  );
 
   // 导出当前筛选后的费用明细为 Excel
   const handleExport = () => {
@@ -325,6 +359,108 @@ export default function FinancePage() {
           </div>
         )}
       </div>
+
+      {/* 店铺管理分组 */}
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-[var(--foreground)]">店铺管理分组</h2>
+        <div
+          onClick={() => setShowShopDetail((v) => !v)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowShopDetail((v) => !v); } }}
+          className={cn(
+            "cursor-pointer rounded-xl border bg-[var(--card)] p-4 transition-colors",
+            showShopDetail ? "border-[var(--primary)]" : "border-[var(--border)] hover:border-[var(--primary)]"
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-sm font-medium text-[var(--foreground)]">店铺管理</p>
+            <ChevronDown className={cn("size-4 shrink-0 text-[var(--muted-foreground)] transition-transform", showShopDetail && "rotate-180")} />
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
+            <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
+              <span className="text-xs text-[var(--muted-foreground)]">总收入</span>
+              <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(shopSummary.incomeCNY, shopSummary.incomeTHB)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
+              <span className="text-xs text-[var(--muted-foreground)]">待核对金额</span>
+              <span className="tabular-nums text-[var(--warning)]">{fmtMoney(shopSummary.pendingCNY, shopSummary.pendingTHB)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
+              <span className="text-xs text-[var(--muted-foreground)]">未到账金额</span>
+              <span className="tabular-nums text-[var(--destructive)]">{fmtMoney(shopSummary.notReceivedCNY, shopSummary.notReceivedTHB)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
+              <span className="text-xs text-[var(--muted-foreground)]">总支出</span>
+              <span className="tabular-nums text-[var(--foreground)]">{fmtMoney(shopSummary.expenseCNY, shopSummary.expenseTHB)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
+              <span className="text-xs text-[var(--muted-foreground)]">利润</span>
+              {profitNode(shopSummary.incomeCNY - shopSummary.expenseCNY, shopSummary.incomeTHB - shopSummary.expenseTHB)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 店铺管理明细 */}
+      {showShopDetail && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowShopDetail(false)} className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]" aria-label="关闭明细">
+                <X className="size-4" />
+              </button>
+              <h3 className="text-sm font-medium text-[var(--foreground)]">店铺管理明细</h3>
+              <span className="text-xs text-[var(--muted-foreground)]">{shopDetails.length} 笔</span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left">
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">类型</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">业务</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">金额</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">状态</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)] max-md:hidden">说明</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)] max-lg:hidden">录入人</th>
+                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shopDetails.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无店铺收付款明细</td>
+                  </tr>
+                ) : (
+                  shopDetails.map((r) => (
+                    <tr key={r.id} className="border-b border-[var(--border)] last:border-0">
+                      <td className="px-4 py-2.5">
+                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", r.fee_type === "收入" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]")}>
+                          {r.fee_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-[var(--foreground)]">{r.business_type || "-"}</td>
+                      <td className="px-4 py-2.5 font-mono tabular-nums">{r.currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs",
+                          r.status === "已到账" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]"
+                          : r.status === "未到账" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
+                          : r.status === "待核对" ? "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
+                          : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{r.status}</span>
+                      </td>
+                      <td className="px-4 py-2.5 max-w-[200px] truncate text-[var(--muted-foreground)] max-md:hidden">{r.note || "-"}</td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)] max-lg:hidden">{r.created_by || "-"}</td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at) || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 业务线明细 */}
       {selectedGroup && (
