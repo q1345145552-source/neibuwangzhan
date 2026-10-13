@@ -24,6 +24,17 @@ function parseRelatedObjects(raw: unknown): string {
   return JSON.stringify(out);
 }
 
+// 给所有在职老板发一条「日报有风险」系统通知
+function notifyRisk(db: ReturnType<typeof getDb>, reportId: number, employeeName: string, date: string, riskDesc: string) {
+  const parts = date.split("-").map(Number);
+  const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin' AND status = '在职'").all() as { name: string }[];
+  if (admins.length === 0) return;
+  const ins = db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES ('日报风险', '日报风险提醒', ?, ?, ?, 'work_report')");
+  for (const a of admins) {
+    ins.run(`${employeeName} ${parts[1]}月${parts[2]}日 的日报有风险：${riskDesc}`, a.name, String(reportId));
+  }
+}
+
 // PATCH /api/work-reports/[id] — 老板退回 / 员工退回后重新提交
 export async function PATCH(
   req: NextRequest,
@@ -87,10 +98,17 @@ export async function PATCH(
   ).run(JSON.stringify(items), summaryText, planText, problemsText, relatedJson, now, id);
   logOperation(auth.name, "重新提交工作记录", "work_report", String(id), String(report.report_date));
 
-  // 重新提交后重新用 AI 评估质量（失败不阻断）
+  // 重新提交后重新用 AI 评估质量 + 判断风险（失败不阻断）
   try {
     const analysis = await analyzeWorkReport({ completedItems: items, summary: summaryText, tomorrowPlan: planText, problems: problemsText });
-    db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ? WHERE id = ?").run(analysis.label, analysis.comment, id);
+    if (analysis.risk) {
+      const wasRisk = report.risk_flag === 1;
+      db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ?, risk_flag = 1, risk_desc = ? WHERE id = ?").run(analysis.label, analysis.comment, analysis.riskDesc, id);
+      // 只有从「无风险」变成「有风险」时才通知老板，避免重交时重复轰炸
+      if (!wasRisk) notifyRisk(db, Number(id), report.employee_name, report.report_date, analysis.riskDesc);
+    } else {
+      db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ?, risk_flag = 0, risk_desc = '' WHERE id = ?").run(analysis.label, analysis.comment, id);
+    }
   } catch (e) {
     console.error("[日报AI评估] 失败:", e);
   }

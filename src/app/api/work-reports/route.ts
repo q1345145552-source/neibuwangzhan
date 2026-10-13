@@ -33,6 +33,17 @@ function parseRelatedObjects(raw: unknown): string {
   return JSON.stringify(out);
 }
 
+// 给所有在职老板发一条「日报有风险」系统通知
+function notifyRisk(db: ReturnType<typeof getDb>, reportId: number, employeeName: string, date: string, riskDesc: string) {
+  const parts = date.split("-").map(Number);
+  const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin' AND status = '在职'").all() as { name: string }[];
+  if (admins.length === 0) return;
+  const ins = db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES ('日报风险', '日报风险提醒', ?, ?, ?, 'work_report')");
+  for (const a of admins) {
+    ins.run(`${employeeName} ${parts[1]}月${parts[2]}日 的日报有风险：${riskDesc}`, a.name, String(reportId));
+  }
+}
+
 // GET /api/work-reports — 管理员看全部，员工看自己
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -98,11 +109,16 @@ export async function POST(req: NextRequest) {
   ).run(auth.name, date, JSON.stringify(items), summaryText, planText, problemsText, relatedJson, isBackfill, now);
   logOperation(auth.name, "提交工作记录", "work_report", String(result.lastInsertRowid), date);
 
-  // 提交后自动用 AI 评估质量（失败不阻断提交，标签留空）
+  // 提交后自动用 AI 评估质量 + 判断风险（失败不阻断提交，标签/风险留空）
   const reportId = Number(result.lastInsertRowid);
   try {
     const analysis = await analyzeWorkReport({ completedItems: items, summary: summaryText, tomorrowPlan: planText, problems: problemsText });
-    db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ? WHERE id = ?").run(analysis.label, analysis.comment, reportId);
+    if (analysis.risk) {
+      db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ?, risk_flag = 1, risk_desc = ? WHERE id = ?").run(analysis.label, analysis.comment, analysis.riskDesc, reportId);
+      notifyRisk(db, reportId, auth.name, date, analysis.riskDesc);
+    } else {
+      db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ?, risk_flag = 0, risk_desc = '' WHERE id = ?").run(analysis.label, analysis.comment, reportId);
+    }
   } catch (e) {
     console.error("[日报AI评估] 失败:", e);
   }

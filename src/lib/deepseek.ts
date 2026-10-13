@@ -367,9 +367,13 @@ export async function compareRetell(noticeBody: string, retellZh: string): Promi
 export interface WorkReportAnalysis {
   label: "优秀" | "良好" | "合格" | "敷衍" | "过短";
   comment: string;
+  /** 是否有风险或卡点 */
+  risk: boolean;
+  /** 风险/卡点描述（无风险时为空字符串） */
+  riskDesc: string;
 }
 
-const WORK_REPORT_PROMPT = `你是湘泰内部管理系统的日报质量评估助手。请根据员工日报的内容（今日已完成、工作总结、明日计划、遇到的问题），给出一个质量标签和一句简评。
+const WORK_REPORT_PROMPT = `你是湘泰内部管理系统的日报质量评估助手。请根据员工日报的内容（今日已完成、工作总结、明日计划、遇到的问题），给出一个质量标签、一句简评，并判断是否有风险或卡点。
 
 五档质量标签：
 - 优秀：内容详实，工作项具体、有思考，总结和计划都到位。
@@ -378,13 +382,17 @@ const WORK_REPORT_PROMPT = `你是湘泰内部管理系统的日报质量评估�
 - 敷衍：明显应付，内容空泛、缺少实质信息。
 - 过短：几乎没有有效内容，只有一两句甚至没有实质工作项。
 
+风险/卡点判断：重点看「遇到的问题」以及工作项、总结里透露出的异常信号，例如：客户一直不回复、卡在审批/审核、资金没到账、逾期、被驳回、资料缺失、投诉、进度严重滞后等。只有确实存在这类风险或卡点时才判为有风险；没有异常就判无风险。
+
 要求：
 1. 只输出一个 JSON 对象，字段固定为：
    - label：只能是「优秀」「良好」「合格」「敷衍」「过短」之一
    - comment：一句简评（中文，一句话，例如「内容充实」或「写得太空」）
+   - risk：布尔值，true 表示存在风险或卡点，false 表示没有
+   - risk_desc：风险或卡点的简短描述（中文，一句话，例如「客户一直不回复，卡在审批」）；无风险时填空字符串
 2. 不要输出任何其它文字，也不要包在 markdown 代码块里。`;
 
-/** 分析一份日报的质量：五档标签 + 一句简评（接同一个 DeepSeek 配置） */
+/** 分析一份日报的质量：五档标签 + 一句简评 + 风险判断（接同一个 DeepSeek 配置） */
 export async function analyzeWorkReport(input: {
   completedItems: string[];
   summary: string;
@@ -445,5 +453,54 @@ export async function analyzeWorkReport(input: {
     labelRaw.includes("合格") ? "合格" :
     labelRaw.includes("敷衍") ? "敷衍" :
     labelRaw.includes("过短") ? "过短" : "合格";
-  return { label, comment: toString(obj.comment) || label };
+  const riskRaw = obj.risk;
+  const risk = riskRaw === true || riskRaw === "true" || riskRaw === 1 || riskRaw === "1";
+  const riskDesc = risk ? (toString(obj.risk_desc) || toString(obj.riskDesc) || "存在风险或卡点") : "";
+  return { label, comment: toString(obj.comment) || label, risk, riskDesc };
+}
+
+/** 故事线脉络总结：把围绕某个业务对象的一串日报串成一段脉络 */
+export async function summarizeWorkReportStory(input: {
+  objectLabel: string;
+  timeline: string;
+}): Promise<string> {
+  const { apiKey, apiBase, model } = getAiConfig();
+
+  const systemPrompt = `你是湘泰内部管理系统的业务脉络总结助手。请根据围绕同一个业务对象（项目/客户/订单）的一系列工作日报，串成一段完整的脉络总结。
+
+要覆盖：
+1. 这个对象什么时候开始有动作（启动/第一次跟进）。
+2. 中间先后做了什么关键动作。
+3. 目前进展到哪一步。
+4. 有没有卡点或风险。
+
+要求：
+1. 用中文，按时间顺序，3-8 句话，语气平实、信息完整。
+2. 直接输出总结文字，不要 JSON，不要 markdown 代码块，不要列点，就一段连贯的文字。`;
+
+  const res = await fetch(apiBase, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `业务对象：${input.objectLabel}\n\n相关日报时间线：\n${input.timeline}` },
+      ],
+      temperature: 0.3,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DeepSeek 调用失败（${res.status}）：${text.slice(0, 300)}`);
+  }
+  const data = await res.json().catch(() => null);
+  const raw: unknown = data?.choices?.[0]?.message?.content;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
+  return raw.trim();
 }

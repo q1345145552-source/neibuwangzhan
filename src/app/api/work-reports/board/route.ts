@@ -26,6 +26,14 @@ export async function GET(req: NextRequest) {
   const reports = db.prepare("SELECT * FROM work_reports WHERE report_date = ?").all(date) as any[];
   const byName = new Map(reports.map((r) => [r.employee_name, r]));
 
-  const rows = employees.map((e) => ({ name: e.name, report: byName.get(e.name) || null }));
+  const rows = employees
+    .map((e) => ({ name: e.name, report: byName.get(e.name) || null }))
+    .sort((a, b) => {
+      // 有风险标记的日报置顶，其余按姓名排
+      const ra = a.report?.risk_flag === 1 ? 0 : 1;
+      const rb = b.report?.risk_flag === 1 ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name, "zh");
+    });
   return NextResponse.json({ date, today: bangkokToday(), employees: rows });
 }

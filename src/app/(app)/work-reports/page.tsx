@@ -21,6 +21,8 @@ interface WorkReport {
   ai_comment: string;
   boss_rating: number;
   boss_comment: string;
+  risk_flag: number;
+  risk_desc: string;
   status: string;
   is_backfill: number;
   submitted_at: string;
@@ -57,6 +59,17 @@ function parseRelated(s: string): RelatedObject[] {
 
 function relatedTypeLabel(t: string): string {
   return t === "project" ? "项目" : t === "customer" ? "客户" : "订单";
+}
+
+function mapObjects(type: string, d: unknown): PickObject[] {
+  const arr: any[] = Array.isArray(d) ? d : [];
+  return arr
+    .map((o) => {
+      if (type === "project") return { id: String(o.id), name: String(o.name || "").trim() };
+      if (type === "customer") return { id: String(o.id), name: String(o.company_name || "").trim() };
+      return { id: String(o.id), name: o.customer_name ? `${o.id} · ${o.customer_name}` : String(o.id) };
+    })
+    .filter((o) => o.name);
 }
 
 function dateMinusDays(dateStr: string, n: number): string {
@@ -132,6 +145,17 @@ export default function WorkReportsPage() {
   const [reviewErr, setReviewErr] = useState("");
   const [reviewing, setReviewing] = useState(false);
 
+  // 故事线（按业务对象看）
+  const [storyOpen, setStoryOpen] = useState(false);
+  const [storyType, setStoryType] = useState<"project" | "customer" | "order">("order");
+  const [storyObjects, setStoryObjects] = useState<PickObject[]>([]);
+  const [storyObjectId, setStoryObjectId] = useState("");
+  const [timeline, setTimeline] = useState<WorkReport[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [storySummary, setStorySummary] = useState("");
+  const [summarizing, setSummarizing] = useState(false);
+  const [storyErr, setStoryErr] = useState("");
+
   const today = bangkokDateStr();
   const yesterday = dateMinusDays(today, 1);
 
@@ -174,14 +198,7 @@ export default function WorkReportsPage() {
     fetchWithAuth(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
-        const arr: any[] = Array.isArray(d) ? d : [];
-        const objs: PickObject[] = arr
-          .map((o) => {
-            if (type === "project") return { id: String(o.id), name: String(o.name || "").trim() };
-            if (type === "customer") return { id: String(o.id), name: String(o.company_name || "").trim() };
-            return { id: String(o.id), name: o.customer_name ? `${o.id} · ${o.customer_name}` : String(o.id) };
-          })
-          .filter((o) => o.name);
+        const objs = mapObjects(type, d);
         setPickerObjects(objs);
         setPickerId(objs[0]?.id || "");
       })
@@ -298,6 +315,68 @@ export default function WorkReportsPage() {
     }
   };
 
+  // ── 故事线（按业务对象看）──
+  const objectUrl = (type: string) => (type === "project" ? "/api/projects/names" : type === "customer" ? "/api/customers" : "/api/orders");
+
+  const loadStoryObjects = (type: string) => {
+    setStoryType(type as "project" | "customer" | "order");
+    setStoryObjects([]);
+    setStoryObjectId("");
+    setTimeline([]);
+    setStorySummary("");
+    setStoryErr("");
+    fetchWithAuth(objectUrl(type), { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => {
+        const objs = mapObjects(type, d);
+        setStoryObjects(objs);
+        setStoryObjectId(objs[0]?.id || "");
+        if (objs[0]?.id) loadTimeline(type, objs[0].id);
+      })
+      .catch(() => { setStoryObjects([]); setStoryObjectId(""); });
+  };
+
+  const loadTimeline = (type?: string, id?: string) => {
+    const t = type || storyType;
+    const i = id || storyObjectId;
+    if (!i) { setTimeline([]); setStorySummary(""); return; }
+    setTimelineLoading(true);
+    setStorySummary("");
+    setStoryErr("");
+    fetchWithAuth(`/api/work-reports/story?type=${t}&id=${encodeURIComponent(i)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setTimeline(Array.isArray(d) ? d : []))
+      .catch(() => setTimeline([]))
+      .finally(() => setTimelineLoading(false));
+  };
+
+  const openStory = () => {
+    setStoryOpen(true);
+    setStorySummary("");
+    setStoryErr("");
+    loadStoryObjects("order");
+  };
+
+  const generateStory = async () => {
+    if (!storyObjectId) return;
+    const obj = storyObjects.find((o) => o.id === storyObjectId);
+    setSummarizing(true);
+    setStoryErr("");
+    const res = await fetchWithAuth("/api/work-reports/story/summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: storyType, id: storyObjectId, name: obj?.name || "" }),
+    }).catch(() => null);
+    setSummarizing(false);
+    if (!res || !res.ok) {
+      const data = await res?.json().catch(() => ({}));
+      setStoryErr(data?.error || "AI 总结失败");
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    setStorySummary(typeof data.summary === "string" ? data.summary : "");
+  };
+
   // 员工：最近 30 天（含今天）的每日状态
   const dayList = Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i));
 
@@ -308,8 +387,14 @@ export default function WorkReportsPage() {
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "按日期查看所有在职员工的提交情况" : "每天填一份，记录今天做了什么"}</p>
       </div>
 
+      {/* 视图切换 */}
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant={storyOpen ? "ghost" : "default"} onClick={() => setStoryOpen(false)}>{isAdmin ? "看板" : "我的日报"}</Button>
+        <Button size="sm" variant={storyOpen ? "default" : "ghost"} onClick={openStory}>按业务对象看</Button>
+      </div>
+
       {/* 老板看板 */}
-      {isAdmin && (
+      {!storyOpen && isAdmin && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -329,16 +414,21 @@ export default function WorkReportsPage() {
             <div className="flex flex-col gap-2">
               {board.map((row) => {
                 const st = reportStatus(row.report);
+                const risky = row.report?.risk_flag === 1;
                 return (
                   <div
                     key={row.name}
                     onClick={() => row.report && openDetail(row.report)}
                     className={cn(
-                      "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
+                      "flex items-center justify-between gap-2 rounded-xl border p-3",
+                      risky ? "border-red-400 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30" : "border-[var(--border)] bg-[var(--background)]",
                       row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]"
                     )}
                   >
-                    <span className="truncate text-sm font-medium text-[var(--foreground)]">{row.name}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-medium text-[var(--foreground)]">{row.name}</span>
+                      {risky && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">风险</span>}
+                    </div>
                     <StatusBadge st={st} />
                   </div>
                 );
@@ -349,7 +439,7 @@ export default function WorkReportsPage() {
       )}
 
       {/* 员工视角 */}
-      {!isAdmin && (
+      {!storyOpen && !isAdmin && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {reports.some((r) => r.report_date === today) ? (
@@ -394,6 +484,61 @@ export default function WorkReportsPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 故事线：按业务对象看 */}
+      {storyOpen && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={storyType} onChange={(e) => loadStoryObjects(e.target.value)} className="h-9 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+              <option value="order">订单</option>
+              <option value="customer">客户</option>
+              <option value="project">项目</option>
+            </select>
+            <select value={storyObjectId} onChange={(e) => { setStoryObjectId(e.target.value); setStorySummary(""); loadTimeline(storyType, e.target.value); }} className="h-9 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+              {storyObjects.length === 0 ? (
+                <option value="">无可用对象</option>
+              ) : (
+                storyObjects.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)
+              )}
+            </select>
+            <Button size="sm" onClick={generateStory} disabled={!storyObjectId || timeline.length === 0 || summarizing}>
+              {summarizing ? "生成中…" : "生成故事线总结"}
+            </Button>
+          </div>
+
+          {storyErr && <p className="text-xs text-[var(--destructive)]">{storyErr}</p>}
+
+          {storySummary && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+              <p className="text-xs font-medium text-[var(--muted-foreground)]">故事线总结</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed">{storySummary}</p>
+            </div>
+          )}
+
+          {timelineLoading ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+          ) : timeline.length === 0 ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">该对象下暂无相关日报</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {timeline.map((r) => (
+                <div key={r.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-[var(--foreground)]">{r.report_date}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{r.employee_name}</span>
+                    {r.risk_flag === 1 && <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">风险</span>}
+                  </div>
+                  <ul className="mt-1 space-y-0.5 text-sm">
+                    {parseItems(r.completed_items).map((it, i) => <li key={i} className="break-words">· {it}</li>)}
+                  </ul>
+                  {r.summary && <p className="mt-1 break-words text-xs text-[var(--muted-foreground)]">{r.summary}</p>}
+                  {r.problems && <p className="mt-1 break-words text-xs text-[var(--muted-foreground)]">问题：{r.problems}</p>}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -527,6 +672,15 @@ export default function WorkReportsPage() {
                     <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", aiLabelClass(detail.ai_label))}>{detail.ai_label}</span>
                   </div>
                   {detail.ai_comment && <p className="mt-1 whitespace-pre-wrap break-words text-sm">{detail.ai_comment}</p>}
+                </div>
+              )}
+              {detail.risk_flag === 1 && (
+                <div className="rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/30">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">风险</span>
+                    <span className="text-xs font-medium text-[var(--foreground)]">存在风险或卡点</span>
+                  </div>
+                  {detail.risk_desc && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{detail.risk_desc}</p>}
                 </div>
               )}
               {parseRelated(detail.related_objects).length > 0 && (
