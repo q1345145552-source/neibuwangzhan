@@ -10,6 +10,7 @@ const tabs = [
   { key: "food", label: "食品认证", href: "/fda-certification/food" },
   { key: "hazard", label: "危险品认证", href: "/fda-certification/hazard" },
   { key: "medical", label: "医疗器械认证", href: "/fda-certification/medical" },
+  { key: "agency", label: "FDA代理", href: "/fda-certification/agency" },
 ];
 
 export default function FdaCertificationPage() {

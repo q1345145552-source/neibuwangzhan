@@ -233,6 +233,14 @@ export const servicePrices: Record<string, { label: string; items: { name: strin
     ],
     note: "最多免费提交2次，第3次起按全新申请收费",
   },
+  agency: {
+    label: "FDA代理",
+    items: [
+      { name: "代理服务费", price: "待定" },
+      { name: "备案费", price: "待定" },
+    ],
+    note: "",
+  },
 };
 
 /* ── FDA 审批状态 ── */
@@ -243,6 +251,7 @@ export const fdaSubServices = [
   { key: "food", label: "食品认证", businessTypeId: 3 },
   { key: "hazard", label: "危险品认证", businessTypeId: 3 },
   { key: "medical", label: "医疗器械认证", businessTypeId: 3 },
+  { key: "agency", label: "FDA代理", businessTypeId: 3 },
 ];
 
 /* ── Mall开店 ── */
@@ -345,6 +354,8 @@ export function getStepDocs(businessTypeId: number, subServiceType?: string): Re
     if (subServiceType === "hazard") return fdaHazardDocs;
     // 医疗器械暂无独立配置：返回空映射，避免展示化妆品的错误清单
     if (subServiceType === "medical") return {};
+    // FDA代理为简单流程，暂无专属资料清单，同样返回空映射
+    if (subServiceType === "agency") return {};
     return fdaCosmeticsDocs;
   }
   if (businessTypeId === 4) return tisiDocs;

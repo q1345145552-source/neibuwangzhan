@@ -421,6 +421,16 @@ export function getBusinessSteps(businessTypeId: number, subServiceType?: string
     { name: "审核通过后支付备案证书费", assignee: "Pop" },
     { name: "拿证，发给客户", assignee: "Ing" },
   ];
+  // FDA代理：做下级代理的简单流程，7 步，负责人全是 Ing
+  if (businessTypeId === 3 && subServiceType === "agency") return [
+    { name: "检查资料", assignee: "Ing" },
+    { name: "收费开票", assignee: "Ing" },
+    { name: "整理资料和发给代表", assignee: "Ing" },
+    { name: "给代理付款", assignee: "Ing" },
+    { name: "搞授权书 + 对接客户改资料", assignee: "Ing" },
+    { name: "代理安排注册", assignee: "Ing" },
+    { name: "拿到备案发给客户", assignee: "Ing" },
+  ];
   // DLD sub-services
   if (businessTypeId === 5 && subServiceType === "site") return [
     { name: "确认存储位置和进口位置分开（有货架+合规标识）", assignee: "" },
