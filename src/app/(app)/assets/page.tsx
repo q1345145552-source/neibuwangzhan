@@ -69,12 +69,20 @@ function showFields(type: string) {
   };
 }
 
+// 没带协议的链接补上 https://，方便新窗口直接打开云盘
+function externalUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+}
+
 export default function AssetsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState("");
+  const [search, setSearch] = useState("");
 
   // 录入表单
   const [formOpen, setFormOpen] = useState(false);
@@ -89,17 +97,26 @@ export default function AssetsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState("");
+  const [viewLogs, setViewLogs] = useState<any[]>([]);
 
   const load = () => {
     setLoading(true);
-    fetchWithAuth("/api/assets", { cache: "no-store" })
+    const params = new URLSearchParams();
+    if (filterType) params.set("type", filterType);
+    if (search.trim()) params.set("q", search.trim());
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    fetchWithAuth(`/api/assets${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setAssets(Array.isArray(d) ? d : []))
       .catch(() => setAssets([]))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [user?.name]);
+  useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.name, filterType, search]);
 
   const setField = (key: string, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
@@ -122,23 +139,44 @@ export default function AssetsPage() {
     if (ok) { setFormOpen(false); setFormErr(""); load(); }
   };
 
+  const logView = (action: string, fieldName: string) => {
+    if (!detailAsset) return;
+    fetchWithAuth(`/api/assets/${detailAsset.id}/view-log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, field_name: fieldName }),
+    }).catch(() => {});
+  };
+
   const openDetail = (a: Asset) => {
     setDetailOpen(true);
     setDetailAsset(null);
     setDetailLoading(true);
     setRevealed({});
+    setViewLogs([]);
     fetchWithAuth(`/api/assets/${a.id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setDetailAsset(d))
       .catch(() => setDetailAsset(null))
       .finally(() => setDetailLoading(false));
+    if (isAdmin) {
+      fetchWithAuth(`/api/assets/${a.id}/view-log`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((d) => setViewLogs(Array.isArray(d) ? d : []))
+        .catch(() => setViewLogs([]));
+    }
   };
 
   const closeDetail = () => { setDetailOpen(false); setDetailAsset(null); };
 
-  const toggleReveal = (key: string) => setRevealed((p) => ({ ...p, [key]: !p[key] }));
+  const toggleReveal = (key: string, label: string) => {
+    const next = !revealed[key];
+    setRevealed((p) => ({ ...p, [key]: next }));
+    if (next) logView("查看明文", label);
+  };
 
-  const copyField = async (key: string, value: string) => {
+  const copyField = async (key: string, value: string, label: string) => {
+    logView("复制", label);
     try {
       await navigator.clipboard.writeText(value);
       setCopiedKey(key);
@@ -158,6 +196,15 @@ export default function AssetsPage() {
         <Button size="sm" onClick={openCreate} className="gap-1.5">
           <Plus className="size-4" />录入资产
         </Button>
+      </div>
+
+      {/* 分类筛选 + 搜索 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="h-9 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+          <option value="">全部类型</option>
+          {ASSET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索名称或账号" className="h-9 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
       </div>
 
       {loading ? (
@@ -229,10 +276,10 @@ export default function AssetsPage() {
                     <div key={f.key} className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 px-3 py-2">
                       <span className="w-24 shrink-0 text-xs text-[var(--muted-foreground)]">{f.label}</span>
                       <span className="min-w-0 flex-1 break-all font-mono text-sm text-[var(--foreground)]">{isRevealed ? val : "••••••••"}</span>
-                      <button type="button" onClick={() => toggleReveal(f.key)} className="flex size-8 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]" title={isRevealed ? "隐藏" : "显示明文"}>
+                      <button type="button" onClick={() => toggleReveal(f.key, f.label)} className="flex size-8 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]" title={isRevealed ? "隐藏" : "显示明文"}>
                         {isRevealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                       </button>
-                      <button type="button" onClick={() => copyField(f.key, val)} className="flex size-8 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]" title="复制">
+                      <button type="button" onClick={() => copyField(f.key, val, f.label)} className="flex size-8 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]" title="复制">
                         {copiedKey === f.key ? <span className="text-[10px] text-green-600">已复制</span> : <Copy className="size-3.5" />}
                       </button>
                     </div>
@@ -240,7 +287,7 @@ export default function AssetsPage() {
                 })}
 
                 {detailAsset.url && (
-                  <div className="flex items-center gap-2 px-1"><span className="w-24 shrink-0 text-xs text-[var(--muted-foreground)]">网址/云盘</span><span className="min-w-0 flex-1 break-all">{detailAsset.url}</span></div>
+                  <div className="flex items-center gap-2 px-1"><span className="w-24 shrink-0 text-xs text-[var(--muted-foreground)]">网址/云盘</span><a href={externalUrl(detailAsset.url)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 break-all text-[var(--primary)] hover:underline">{detailAsset.url}</a></div>
                 )}
                 {detailAsset.expiry_date && (
                   <div className="flex items-center gap-2 px-1"><span className="w-24 shrink-0 text-xs text-[var(--muted-foreground)]">到期时间</span><span>{detailAsset.expiry_date}</span></div>
@@ -264,6 +311,16 @@ export default function AssetsPage() {
                   <div className="flex items-start gap-2 px-1"><span className="w-24 shrink-0 text-xs text-[var(--muted-foreground)]">备注</span><span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{detailAsset.remark}</span></div>
                 )}
                 <p className="px-1 text-xs text-[var(--muted-foreground)]">上传人：{detailAsset.uploaded_by} · {toThaiTime(detailAsset.created_at)}</p>
+                {isAdmin && viewLogs.length > 0 && (
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3">
+                    <p className="text-xs font-medium text-[var(--muted-foreground)]">查看留痕</p>
+                    <ul className="mt-1 space-y-1">
+                      {viewLogs.map((l) => (
+                        <li key={l.id} className="text-xs text-[var(--muted-foreground)]">{l.viewer} · {l.action}{l.field_name ? ` ${l.field_name}` : ""} · {toThaiTime(l.created_at)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 </div>
               </>
             )}

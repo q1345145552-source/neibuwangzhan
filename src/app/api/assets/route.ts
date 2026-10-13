@@ -2,22 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { encryptAssetSecret } from "@/lib/asset-crypto";
+import { encryptAssetSecret, decryptAssetSecret } from "@/lib/asset-crypto";
 
 export const ASSET_TYPES = ["账号密码", "套餐会员", "邮箱", "设备", "证件执照", "身份证", "域名", "客户委托账号", "SIM卡手机号"] as string[];
 const OWNERSHIPS = ["公司自有", "客户委托"] as string[];
 
-// GET /api/assets — 老板看全部资产；员工只看自己上传的（敏感字段列表里不返回明文）
+// GET /api/assets?type=&q= — 老板看全部资产；员工只看自己上传的（敏感字段列表里不返回明文）
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
+  const { searchParams } = new URL(req.url);
+  const type = (searchParams.get("type") || "").trim();
+  const q = (searchParams.get("q") || "").trim().toLowerCase();
+
   const db = getDb();
   const isAdmin = auth.role === "admin";
-  const rows = (isAdmin
+  let rows = (isAdmin
     ? db.prepare("SELECT * FROM assets ORDER BY id DESC").all()
     : db.prepare("SELECT * FROM assets WHERE uploaded_by = ? ORDER BY id DESC").all(auth.name)) as any[];
+
+  // 分类筛选
+  if (type) rows = rows.filter((r) => r.asset_type === type);
+  // 搜索：按名称 + 账号（账号加密，服务端解密后匹配，不回传明文）
+  if (q) {
+    rows = rows.filter((r) => {
+      const name = String(r.name || "").toLowerCase();
+      const account = decryptAssetSecret(r.account).toLowerCase();
+      return name.includes(q) || account.includes(q);
+    });
+  }
 
   // 列表接口不下发明文敏感字段
   const list = rows.map((r) => ({ ...r, account: "", password: "", phone: "", id_number: "", payment_account: "" }));

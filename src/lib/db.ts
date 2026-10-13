@@ -1443,6 +1443,19 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_assets_uploaded_by ON assets(uploaded_by);
   `);
 
+  // 资产查看留痕：谁在什么时间查看了/复制了哪条资产的哪个敏感字段
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS asset_view_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asset_id INTEGER NOT NULL,
+      viewer TEXT DEFAULT '',
+      action TEXT DEFAULT '',
+      field_name TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_asset_view_logs_asset ON asset_view_logs(asset_id);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
