@@ -47,6 +47,7 @@ import {
   BellRing,
   BookOpen,
   ClipboardList,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -62,6 +63,7 @@ const navigation = [
   { name: "老板通知", href: "/announcements", icon: Bell },
   { name: "规则库", href: "/rules", icon: BookOpen },
   { name: "工作记录", href: "/work-reports", icon: ClipboardList },
+  { name: "会议记录", href: "/meetings", icon: CalendarClock },
 ];
 
 const businessLines = [

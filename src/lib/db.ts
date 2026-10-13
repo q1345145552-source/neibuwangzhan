@@ -1367,6 +1367,23 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_work_report_reminders_date ON work_report_reminders(report_date);
   `);
 
+  // 会议记录（会议通知）：参会人存员工名 JSON 数组，发起人是管理员
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS meetings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      meeting_date TEXT NOT NULL,
+      meeting_time TEXT DEFAULT '',
+      agenda TEXT DEFAULT '',
+      participants TEXT NOT NULL DEFAULT '[]',
+      creator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(meeting_date);
+    CREATE INDEX IF NOT EXISTS idx_meetings_creator ON meetings(creator);
+  `);
+
   // 通知接收人迁移：复述内容拆成泰语/中文两份
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
