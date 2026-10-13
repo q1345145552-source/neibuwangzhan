@@ -1050,6 +1050,24 @@ function initTables(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_shopee_order_items_order ON shopee_order_items(order_id);
     CREATE INDEX IF NOT EXISTS idx_shopee_order_items_store ON shopee_order_items(store_id);
+
+    CREATE TABLE IF NOT EXISTS shop_fees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fee_type TEXT NOT NULL DEFAULT '收入' CHECK(fee_type IN ('收入','支出')),
+      business_type TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'CNY' CHECK(currency IN ('CNY','THB')),
+      note TEXT DEFAULT '',
+      screenshot TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT '待处理' CHECK(status IN ('待核对','待处理','已到账','未到账')),
+      reviewed_by TEXT DEFAULT '',
+      reviewed_at TEXT DEFAULT '',
+      review_note TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_shop_fees_status ON shop_fees(status);
+    CREATE INDEX IF NOT EXISTS idx_shop_fees_type ON shop_fees(fee_type);
   `);
 
   database.exec(`
