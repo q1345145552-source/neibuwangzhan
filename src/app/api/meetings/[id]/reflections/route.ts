@@ -58,10 +58,9 @@ export async function POST(
   if (!content || !String(content).trim()) return NextResponse.json({ error: "请填写心得内容" }, { status: 400 });
 
   const imgUrls = [...new Set(parseList(images))];
-  const now = new Date().toISOString();
   const result = db.prepare(
-    "INSERT INTO meeting_reflections (meeting_id, employee_name, content, images, status, created_at, updated_at) VALUES (?, ?, ?, ?, '已提交', ?, ?)"
-  ).run(meeting.id, auth.name, String(content).trim(), JSON.stringify(imgUrls), now, now);
+    "INSERT INTO meeting_reflections (meeting_id, employee_name, content, images, status) VALUES (?, ?, ?, ?, '已提交')"
+  ).run(meeting.id, auth.name, String(content).trim(), JSON.stringify(imgUrls));
 
   logOperation(auth.name, "提交会议心得", "meeting_reflection", String(result.lastInsertRowid), meeting.title);
   return NextResponse.json(db.prepare("SELECT * FROM meeting_reflections WHERE id = ?").get(result.lastInsertRowid), { status: 201 });

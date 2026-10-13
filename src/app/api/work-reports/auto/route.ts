@@ -52,6 +52,22 @@ export async function GET(req: NextRequest) {
     system_items.push(sentence);
   }
 
+  // 当天提交的会议心得 → 带出一条「参加了 X 这场会议 并提交了会议心得」
+  const meetingRows = db.prepare(
+    `SELECT m.title
+     FROM meeting_reflections r
+     JOIN meetings m ON m.id = r.meeting_id
+     WHERE r.employee_name = ? AND r.created_at >= ? AND r.created_at < ?
+     GROUP BY m.id
+     ORDER BY MIN(r.created_at) ASC`
+  ).all(auth.name, start, end) as { title: string }[];
+  for (const mr of meetingRows) {
+    const sentence = `参加了 ${mr.title} 这场会议 并提交了会议心得`;
+    if (!sentence || seen.has(sentence)) continue;
+    seen.add(sentence);
+    system_items.push(sentence);
+  }
+
   // 前一天的明日计划，给员工对照「昨天计划的今天做了没」
   const prevDate = dateMinusOne(date);
   const prev = db.prepare("SELECT tomorrow_plan FROM work_reports WHERE employee_name = ? AND report_date = ?").get(auth.name, prevDate) as { tomorrow_plan: string } | undefined;

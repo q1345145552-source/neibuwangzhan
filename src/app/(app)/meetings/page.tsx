@@ -263,46 +263,87 @@ export default function MeetingsPage() {
 
             {detailMeeting.agenda && <p className="mt-3 whitespace-pre-wrap break-words rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3 text-sm">{detailMeeting.agenda}</p>}
 
-            <div className="mt-4 flex items-center justify-between">
-              <h4 className="text-sm font-medium text-[var(--foreground)]">会议心得 {reflections.length > 0 && `(${reflections.length})`}</h4>
-              {!isAdmin && <Button size="sm" onClick={openRfCreate} className="gap-1"><Plus className="size-3.5" />提交心得</Button>}
-            </div>
-
-            {refLoading ? (
-              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
-            ) : reflections.length === 0 ? (
-              <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">{isAdmin ? "暂无员工提交心得" : "你还没提交心得"}</p>
+            {isAdmin ? (
+              <>
+                <div className="mt-4 flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">参会人提交情况（{parseList(detailMeeting.participants).length} 人）</h4>
+                </div>
+                {refLoading ? (
+                  <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {parseList(detailMeeting.participants).map((p) => {
+                      const mine = reflections.filter((r) => r.employee_name === p);
+                      return (
+                        <div key={p} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm font-medium", mine.length === 0 ? "text-red-600" : "text-[var(--foreground)]")}>{p}</span>
+                            {mine.length === 0 ? (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">未交</span>
+                            ) : (
+                              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">已交 {mine.length} 条</span>
+                            )}
+                          </div>
+                          {mine.map((r) => (
+                            <div key={r.id} className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
+                                {statusBadge(r.status)}
+                              </div>
+                              {r.content && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
+                              {parseList(r.images).length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-2">
+                                  {parseList(r.images).map((img, i) => (
+                                    <img key={i} src={fileUrl(img)} alt={`图片 ${i + 1}`} className="h-16 w-16 cursor-pointer rounded-md border border-[var(--border)] object-cover hover:opacity-80" onClick={() => setLightbox(img)} />
+                                  ))}
+                                </div>
+                              )}
+                              {r.status === "已提交" && (
+                                <div className="mt-1.5"><Button size="sm" variant="destructive" onClick={() => rejectRf(r)}>退回</Button></div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="mt-2 flex flex-col gap-2">
-                {reflections.map((r) => (
-                  <div key={r.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
-                    <div className="flex items-center gap-2">
-                      {isAdmin && <span className="text-sm font-medium text-[var(--foreground)]">{r.employee_name}</span>}
-                      <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
-                      {statusBadge(r.status)}
-                    </div>
-                    {r.content && <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
-                    {parseList(r.images).length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {parseList(r.images).map((img, i) => (
-                          <img key={i} src={fileUrl(img)} alt={`图片 ${i + 1}`} className="h-16 w-16 cursor-pointer rounded-md border border-[var(--border)] object-cover hover:opacity-80" onClick={() => setLightbox(img)} />
-                        ))}
-                      </div>
-                    )}
-                    <div className="mt-2 flex items-center gap-2">
-                      {isAdmin && r.status === "已提交" && (
-                        <Button size="sm" variant="destructive" onClick={() => rejectRf(r)}>退回</Button>
-                      )}
-                      {!isAdmin && r.employee_name === user?.name && (
-                        <>
+              <>
+                <div className="mt-4 flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">会议心得 {reflections.length > 0 && `(${reflections.length})`}</h4>
+                  <Button size="sm" onClick={openRfCreate} className="gap-1"><Plus className="size-3.5" />提交心得</Button>
+                </div>
+                {refLoading ? (
+                  <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+                ) : reflections.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">你还没提交心得</p>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {reflections.map((r) => (
+                      <div key={r.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
+                          {statusBadge(r.status)}
+                        </div>
+                        {r.content && <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
+                        {parseList(r.images).length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {parseList(r.images).map((img, i) => (
+                              <img key={i} src={fileUrl(img)} alt={`图片 ${i + 1}`} className="h-16 w-16 cursor-pointer rounded-md border border-[var(--border)] object-cover hover:opacity-80" onClick={() => setLightbox(img)} />
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
                           {r.status === "退回" && <Button size="sm" onClick={() => openRfEdit(r)}>修改重交</Button>}
                           <Button size="sm" variant="ghost" onClick={() => deleteRf(r)} className="gap-1 text-[var(--muted-foreground)]"><Trash2 className="size-3.5" />删除</Button>
-                        </>
-                      )}
-                    </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         </div>
