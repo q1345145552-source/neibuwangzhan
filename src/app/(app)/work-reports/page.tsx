@@ -17,6 +17,10 @@ interface WorkReport {
   tomorrow_plan: string;
   problems: string;
   related_objects: string;
+  ai_label: string;
+  ai_comment: string;
+  boss_rating: number;
+  boss_comment: string;
   status: string;
   is_backfill: number;
   submitted_at: string;
@@ -74,6 +78,14 @@ function statusBadgeClass(st: DayStatus): string {
   return "bg-red-100 font-semibold text-red-700 dark:bg-red-900/50 dark:text-red-300";
 }
 
+function aiLabelClass(label: string): string {
+  if (label === "优秀") return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300";
+  if (label === "良好") return "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
+  if (label === "敷衍") return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
+  if (label === "过短") return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
+  return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+}
+
 function StatusBadge({ st }: { st: DayStatus }) {
   return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", statusBadgeClass(st))}>{st}</span>;
 }
@@ -114,6 +126,12 @@ export default function WorkReportsPage() {
   // 详情弹窗
   const [detail, setDetail] = useState<WorkReport | null>(null);
 
+  // 老板点评（星级 + 一句点评）
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewErr, setReviewErr] = useState("");
+  const [reviewing, setReviewing] = useState(false);
+
   const today = bangkokDateStr();
   const yesterday = dateMinusDays(today, 1);
 
@@ -136,6 +154,13 @@ export default function WorkReportsPage() {
   };
 
   const refresh = () => { if (isAdmin) loadBoard(); else loadEmployee(); };
+
+  const openDetail = (r: WorkReport) => {
+    setDetail(r);
+    setReviewRating(r.boss_rating || 0);
+    setReviewComment(r.boss_comment || "");
+    setReviewErr("");
+  };
 
   useEffect(() => {
     if (isAdmin) loadBoard();
@@ -260,6 +285,19 @@ export default function WorkReportsPage() {
     if (ok) { setDetail(null); refresh(); }
   };
 
+  const submitReview = async () => {
+    if (!detail) return;
+    if (reviewRating < 1 || reviewRating > 5) { setReviewErr("请先打 1-5 星"); return; }
+    setReviewing(true);
+    const ok = await apiCall(`/api/work-reports/${detail.id}`, { method: "PATCH", body: { action: "review", rating: reviewRating, comment: reviewComment }, onError: (m) => setReviewErr(m) });
+    setReviewing(false);
+    if (ok) {
+      setDetail((p) => (p ? { ...p, boss_rating: reviewRating, boss_comment: reviewComment } : p));
+      setReviewErr("");
+      refresh();
+    }
+  };
+
   // 员工：最近 30 天（含今天）的每日状态
   const dayList = Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i));
 
@@ -294,7 +332,7 @@ export default function WorkReportsPage() {
                 return (
                   <div
                     key={row.name}
-                    onClick={() => row.report && setDetail(row.report)}
+                    onClick={() => row.report && openDetail(row.report)}
                     className={cn(
                       "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
                       row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]"
@@ -340,7 +378,7 @@ export default function WorkReportsPage() {
                 return (
                   <div
                     key={day}
-                    onClick={() => r && setDetail(r)}
+                    onClick={() => r && openDetail(r)}
                     className={cn(
                       "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
                       r && "cursor-pointer transition-colors hover:border-[var(--primary)]"
@@ -350,7 +388,7 @@ export default function WorkReportsPage() {
                     <div className="flex items-center gap-2">
                       {!r && day === today && <Button size="sm" onClick={(e) => { e.stopPropagation(); openCreate(today); }}>去填写</Button>}
                       {!r && day === yesterday && <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openCreate(yesterday); }}>去补交</Button>}
-                      {r && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDetail(r); }}>查看</Button>}
+                      {r && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openDetail(r); }}>查看</Button>}
                       <StatusBadge st={st} />
                     </div>
                   </div>
@@ -482,6 +520,15 @@ export default function WorkReportsPage() {
                   ))}
                 </ul>
               </div>
+              {detail.ai_label && (
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-[var(--muted-foreground)]">AI 质量评估</span>
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", aiLabelClass(detail.ai_label))}>{detail.ai_label}</span>
+                  </div>
+                  {detail.ai_comment && <p className="mt-1 whitespace-pre-wrap break-words text-sm">{detail.ai_comment}</p>}
+                </div>
+              )}
               {parseRelated(detail.related_objects).length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-[var(--muted-foreground)]">关联业务对象</p>
@@ -514,6 +561,35 @@ export default function WorkReportsPage() {
                 </div>
               )}
               <p className="text-xs text-[var(--muted-foreground)]">提交时间：{toThaiTime(detail.submitted_at) || "—"}</p>
+            </div>
+
+            {/* 老板点评 */}
+            <div className="mt-4 border-t border-[var(--border)] pt-3">
+              {isAdmin ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-[var(--muted-foreground)]">老板点评（1-5 星）</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button key={n} type="button" onClick={() => setReviewRating(n)} title={`${n} 星`} className={cn("text-2xl leading-none", n <= reviewRating ? "text-amber-500" : "text-[var(--border)]")}>{n <= reviewRating ? "★" : "☆"}</button>
+                    ))}
+                  </div>
+                  <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={2} placeholder="写一句点评" className="w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                  {reviewErr && <p className="text-xs text-[var(--destructive)]">{reviewErr}</p>}
+                  <Button size="sm" onClick={submitReview} disabled={reviewing}>{reviewing ? "提交中…" : "保存点评"}</Button>
+                </div>
+              ) : (
+                (detail.boss_rating > 0 || detail.boss_comment) && (
+                  <div>
+                    <p className="text-xs font-medium text-[var(--muted-foreground)]">老板点评</p>
+                    {detail.boss_rating > 0 && (
+                      <div className="mt-1 text-lg leading-none text-amber-500">
+                        {"★".repeat(detail.boss_rating)}{"☆".repeat(5 - detail.boss_rating)}
+                      </div>
+                    )}
+                    {detail.boss_comment && <p className="mt-1 whitespace-pre-wrap break-words text-sm">{detail.boss_comment}</p>}
+                  </div>
+                )
+              )}
             </div>
 
             {isAdmin && detail.status === "已提交" && (

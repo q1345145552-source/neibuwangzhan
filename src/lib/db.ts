@@ -1327,6 +1327,10 @@ function initTables(database: Database.Database) {
       tomorrow_plan TEXT DEFAULT '',
       problems TEXT DEFAULT '',
       related_objects TEXT NOT NULL DEFAULT '[]',
+      ai_label TEXT DEFAULT '',
+      ai_comment TEXT DEFAULT '',
+      boss_rating INTEGER NOT NULL DEFAULT 0,
+      boss_comment TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
       is_backfill INTEGER NOT NULL DEFAULT 0,
       submitted_at TEXT DEFAULT '',
@@ -1340,6 +1344,11 @@ function initTables(database: Database.Database) {
 
   // 工作记录迁移：关联业务对象（项目/客户/订单）
   try { database.exec("ALTER TABLE work_reports ADD COLUMN related_objects TEXT NOT NULL DEFAULT '[]'"); } catch {}
+  // 工作记录迁移：AI 质量标签/简评 + 老板星级/点评
+  try { database.exec("ALTER TABLE work_reports ADD COLUMN ai_label TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE work_reports ADD COLUMN ai_comment TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE work_reports ADD COLUMN boss_rating INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.exec("ALTER TABLE work_reports ADD COLUMN boss_comment TEXT DEFAULT ''"); } catch {}
 
   // 工作记录提醒去重表：同一员工 + 同一天 + 同类提醒（补交待办 / 下午催交通知）只生成一次
   database.exec(`

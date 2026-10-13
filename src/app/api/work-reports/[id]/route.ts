@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { analyzeWorkReport } from "@/lib/deepseek";
 
 // 校验并序列化关联业务对象 [{type, id, name}] → JSON 字符串
 function parseRelatedObjects(raw: unknown): string {
@@ -49,6 +50,17 @@ export async function PATCH(
     return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
   }
 
+  // 老板点评：打 1-5 星 + 一句点评（任意状态都能点评）
+  if (action === "review") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可点评" }, { status: 403 });
+    const rating = Number(body.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return NextResponse.json({ error: "请打 1-5 星" }, { status: 400 });
+    const comment = String(body.comment || "").trim();
+    db.prepare("UPDATE work_reports SET boss_rating = ?, boss_comment = ?, updated_at = datetime('now') WHERE id = ?").run(rating, comment, id);
+    logOperation(auth.name, "点评工作记录", "work_report", String(id), `${rating}星 ${comment}`);
+    return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
+  }
+
   // 员工重新提交（退回后编辑再提交）
   if (report.employee_name !== auth.name) return NextResponse.json({ error: "只能改自己的工作记录" }, { status: 403 });
   if (report.status !== "退回") return NextResponse.json({ error: "只有退回的记录能修改" }, { status: 400 });
@@ -66,10 +78,22 @@ export async function PATCH(
   if (items.length === 0) return NextResponse.json({ error: "请至少填写一条今日已完成" }, { status: 400 });
 
   const relatedJson = parseRelatedObjects(related_objects);
+  const summaryText = String(summary || "").trim();
+  const planText = String(tomorrow_plan || "").trim();
+  const problemsText = String(problems || "").trim();
   const now = new Date().toISOString();
   db.prepare(
     "UPDATE work_reports SET completed_items = ?, summary = ?, tomorrow_plan = ?, problems = ?, related_objects = ?, status = '已提交', submitted_at = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(JSON.stringify(items), String(summary || "").trim(), String(tomorrow_plan || "").trim(), String(problems || "").trim(), relatedJson, now, id);
+  ).run(JSON.stringify(items), summaryText, planText, problemsText, relatedJson, now, id);
   logOperation(auth.name, "重新提交工作记录", "work_report", String(id), String(report.report_date));
+
+  // 重新提交后重新用 AI 评估质量（失败不阻断）
+  try {
+    const analysis = await analyzeWorkReport({ completedItems: items, summary: summaryText, tomorrowPlan: planText, problems: problemsText });
+    db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ? WHERE id = ?").run(analysis.label, analysis.comment, id);
+  } catch (e) {
+    console.error("[日报AI评估] 失败:", e);
+  }
+
   return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
 }

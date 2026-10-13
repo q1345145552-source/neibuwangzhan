@@ -362,3 +362,88 @@ export async function compareRetell(noticeBody: string, retellZh: string): Promi
   if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
   return { conclusion: raw.trim() };
 }
+
+/** 日报质量评估结果 */
+export interface WorkReportAnalysis {
+  label: "优秀" | "良好" | "合格" | "敷衍" | "过短";
+  comment: string;
+}
+
+const WORK_REPORT_PROMPT = `你是湘泰内部管理系统的日报质量评估助手。请根据员工日报的内容（今日已完成、工作总结、明日计划、遇到的问题），给出一个质量标签和一句简评。
+
+五档质量标签：
+- 优秀：内容详实，工作项具体、有思考，总结和计划都到位。
+- 良好：内容较充实，工作项清楚，总结或计划基本到位。
+- 合格：内容一般，有写但比较空泛。
+- 敷衍：明显应付，内容空泛、缺少实质信息。
+- 过短：几乎没有有效内容，只有一两句甚至没有实质工作项。
+
+要求：
+1. 只输出一个 JSON 对象，字段固定为：
+   - label：只能是「优秀」「良好」「合格」「敷衍」「过短」之一
+   - comment：一句简评（中文，一句话，例如「内容充实」或「写得太空」）
+2. 不要输出任何其它文字，也不要包在 markdown 代码块里。`;
+
+/** 分析一份日报的质量：五档标签 + 一句简评（接同一个 DeepSeek 配置） */
+export async function analyzeWorkReport(input: {
+  completedItems: string[];
+  summary: string;
+  tomorrowPlan: string;
+  problems: string;
+}): Promise<WorkReportAnalysis> {
+  const { apiKey, apiBase, model } = getAiConfig();
+
+  const userContent = [
+    `今日已完成：`,
+    input.completedItems.length ? input.completedItems.map((s, i) => `${i + 1}. ${s}`).join("\n") : "（无）",
+    ``,
+    `工作总结：${input.summary || "（无）"}`,
+    `明日计划：${input.tomorrowPlan || "（无）"}`,
+    `遇到的问题：${input.problems || "（无）"}`,
+  ].join("\n");
+
+  const res = await fetch(apiBase, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: WORK_REPORT_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DeepSeek 调用失败（${res.status}）：${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json().catch(() => null);
+  const raw: unknown = data?.choices?.[0]?.message?.content;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("DeepSeek 返回内容为空");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const cleaned = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+    parsed = JSON.parse(cleaned);
+  }
+
+  const obj = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+  const labelRaw = toString(obj.label);
+  const label: WorkReportAnalysis["label"] =
+    labelRaw.includes("优秀") ? "优秀" :
+    labelRaw.includes("良好") ? "良好" :
+    labelRaw.includes("合格") ? "合格" :
+    labelRaw.includes("敷衍") ? "敷衍" :
+    labelRaw.includes("过短") ? "过短" : "合格";
+  return { label, comment: toString(obj.comment) || label };
+}

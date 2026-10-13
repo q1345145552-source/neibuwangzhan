@@ -4,6 +4,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokToday } from "@/lib/time";
 import { syncWorkReportReminders } from "@/lib/work-report-sync";
+import { analyzeWorkReport } from "@/lib/deepseek";
 
 // 曼谷日期往前推 n 天（纯日历运算）
 function bangkokDaysAgo(n: number): string {
@@ -88,10 +89,23 @@ export async function POST(req: NextRequest) {
 
   const isBackfill = date === yesterday ? 1 : 0;
   const relatedJson = parseRelatedObjects(related_objects);
+  const summaryText = String(summary || "").trim();
+  const planText = String(tomorrow_plan || "").trim();
+  const problemsText = String(problems || "").trim();
   const now = new Date().toISOString();
   const result = db.prepare(
     "INSERT INTO work_reports (employee_name, report_date, completed_items, summary, tomorrow_plan, problems, related_objects, status, is_backfill, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, '已提交', ?, ?)"
-  ).run(auth.name, date, JSON.stringify(items), String(summary || "").trim(), String(tomorrow_plan || "").trim(), String(problems || "").trim(), relatedJson, isBackfill, now);
+  ).run(auth.name, date, JSON.stringify(items), summaryText, planText, problemsText, relatedJson, isBackfill, now);
   logOperation(auth.name, "提交工作记录", "work_report", String(result.lastInsertRowid), date);
-  return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
+
+  // 提交后自动用 AI 评估质量（失败不阻断提交，标签留空）
+  const reportId = Number(result.lastInsertRowid);
+  try {
+    const analysis = await analyzeWorkReport({ completedItems: items, summary: summaryText, tomorrowPlan: planText, problems: problemsText });
+    db.prepare("UPDATE work_reports SET ai_label = ?, ai_comment = ? WHERE id = ?").run(analysis.label, analysis.comment, reportId);
+  } catch (e) {
+    console.error("[日报AI评估] 失败:", e);
+  }
+
+  return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(reportId), { status: 201 });
 }
