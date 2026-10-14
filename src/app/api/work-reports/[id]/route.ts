@@ -70,6 +70,16 @@ export async function PATCH(
     const comment = String(body.comment || "").trim();
     db.prepare("UPDATE work_reports SET boss_rating = ?, boss_comment = ?, updated_at = datetime('now') WHERE id = ?").run(rating, comment, id);
     logOperation(auth.name, "点评工作记录", "work_report", String(id), `${rating}星 ${comment}`);
+
+    // 通知被点评的员工（每次点评都通知，改了也通知）
+    try {
+      const parts = String(report.report_date || "").split("-").map(Number);
+      const monthDay = parts.length === 3 ? `${parts[1]}月${parts[2]}日` : report.report_date;
+      db.prepare(
+        "INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES ('日报点评', '老板点评了你的日报', ?, ?, ?, 'work_report')"
+      ).run(`老板点评了你的 ${monthDay} 工作记录，评了 ${rating} 星`, report.employee_name, String(id));
+    } catch {}
+
     return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
   }
 

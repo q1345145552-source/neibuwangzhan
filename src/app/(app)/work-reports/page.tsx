@@ -180,6 +180,7 @@ export default function WorkReportsPage() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewErr, setReviewErr] = useState("");
   const [reviewing, setReviewing] = useState(false);
+  const [reviewSaved, setReviewSaved] = useState(false);
 
   // 故事线（按业务对象看）
   const [storyOpen, setStoryOpen] = useState(false);
@@ -423,6 +424,8 @@ export default function WorkReportsPage() {
     if (ok) {
       setDetail((p) => (p ? { ...p, boss_rating: reviewRating, boss_comment: reviewComment } : p));
       setReviewErr("");
+      setReviewSaved(true);
+      setTimeout(() => setReviewSaved(false), 2500);
       refresh();
     }
   };
@@ -937,7 +940,10 @@ export default function WorkReportsPage() {
                   </div>
                   <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={2} placeholder="写一句点评" className="w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
                   {reviewErr && <p className="text-xs text-[var(--destructive)]">{reviewErr}</p>}
-                  <Button size="sm" onClick={submitReview} disabled={reviewing}>{reviewing ? "提交中…" : "保存点评"}</Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={submitReview} disabled={reviewing}>{reviewing ? "提交中…" : "保存点评"}</Button>
+                    {reviewSaved && <span className="inline-flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">✓ 已保存</span>}
+                  </div>
                 </div>
               ) : (
                 (detail.boss_rating > 0 || detail.boss_comment) && (
