@@ -7,7 +7,7 @@ import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, bangkokDateStr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X, ClipboardList } from "lucide-react";
+import { Plus, X, ClipboardList, ChevronDown } from "lucide-react";
 
 interface WorkReport {
   id: number;
@@ -154,6 +154,10 @@ export default function WorkReportsPage() {
   const [businessTypes, setBusinessTypes] = useState<{ id: number; name: string }[]>([]);
   const [orderResponsibleFilter, setOrderResponsibleFilter] = useState("");
   const [orderBizFilter, setOrderBizFilter] = useState("");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ order: true });
+  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
+  const [searchResults, setSearchResults] = useState<Record<string, AutoItem[]>>({});
+  const [searchLoading, setSearchLoading] = useState(false);
   const [formRelated, setFormRelated] = useState<RelatedObject[]>([]);
   const [formSummary, setFormSummary] = useState("");
   const [formPlan, setFormPlan] = useState("");
@@ -251,6 +255,9 @@ export default function WorkReportsPage() {
     setAutoGroups([]);
     setOrderResponsibleFilter("");
     setOrderBizFilter("");
+    setCollapsed({ order: true });
+    setSearchQueries({});
+    setSearchResults({});
     setFormRelated([]);
     setFormSummary("");
     setFormPlan("");
@@ -316,6 +323,9 @@ export default function WorkReportsPage() {
     }
     setAutoGroups(groups);
     setFormItems(strs.length ? strs : [""]);
+    setCollapsed({ order: true });
+    setSearchQueries({});
+    setSearchResults({});
     setFormRelated(parseRelated(r.related_objects));
     setFormSummary(r.summary || "");
     setFormPlan(r.tomorrow_plan || "");
@@ -333,6 +343,40 @@ export default function WorkReportsPage() {
   const updateItem = (i: number, v: string) => setFormItems((p) => p.map((it, idx) => (idx === i ? v : it)));
   const toggleAutoItem = (gType: string, itemId: string) => {
     setAutoGroups((prev) => prev.map((g) => (g.type === gType ? { ...g, items: g.items.map((i) => (i.id === itemId ? { ...i, checked: !i.checked } : i)) } : g)));
+  };
+
+  const toggleCollapse = (type: string) => setCollapsed((p) => ({ ...p, [type]: !p[type] }));
+
+  const doSearch = async (type: string, q: string) => {
+    const query = q.trim();
+    if (!query) { setSearchResults((p) => ({ ...p, [type]: [] })); return; }
+    setSearchLoading(true);
+    const res = await fetchWithAuth(`/api/work-reports/search?type=${type}&q=${encodeURIComponent(query)}`, { cache: "no-store" }).catch(() => null);
+    setSearchLoading(false);
+    if (res && res.ok) {
+      const data = await res.json().catch(() => []);
+      const items: AutoItem[] = (Array.isArray(data) ? data : []).map((i: any) => ({
+        type, id: String(i.id || ""), title: String(i.title || ""), subtitle: String(i.subtitle || ""), href: String(i.href || ""),
+        checked: true, responsible: typeof i.responsible === "string" ? i.responsible : "", businessType: typeof i.businessType === "string" ? i.businessType : "",
+      }));
+      setSearchResults((p) => ({ ...p, [type]: items }));
+    }
+  };
+
+  const onSearchChange = (type: string, q: string) => {
+    setSearchQueries((p) => ({ ...p, [type]: q }));
+    // 简单防抖：本地 setTimeout 即可
+    window.setTimeout(() => {
+      setSearchQueries((cur) => { if ((cur[type] || "") === q) doSearch(type, q); return cur; });
+    }, 300);
+  };
+
+  const addSearchItem = (type: string, item: AutoItem) => {
+    setAutoGroups((prev) => prev.map((g) => {
+      if (g.type !== type) return g;
+      if (g.items.some((i) => i.id === item.id)) return g; // 已存在不重复
+      return { ...g, items: [...g.items, item] };
+    }));
   };
 
   const changePickerType = (t: "project" | "customer" | "order") => {
@@ -647,39 +691,85 @@ export default function WorkReportsPage() {
               {/* 自动带出，分四类勾选 */}
               {autoGroups.map((g) => {
                 const isOrder = g.type === "order";
+                const canSearch = g.type === "order" || g.type === "todo" || g.type === "issue";
+                const isCollapsed = !!collapsed[g.type];
                 const items = isOrder ? filteredOrderItems : g.items;
+                const results = searchResults[g.type] || [];
+                const query = searchQueries[g.type] || "";
                 return (
-                  <div key={g.type} className="mt-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-medium text-[var(--muted-foreground)]">{g.label}（{items.length}）</p>
-                      {isOrder && (
-                        <div className="flex items-center gap-1.5">
-                          <select value={orderResponsibleFilter} onChange={(e) => setOrderResponsibleFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-xs outline-none focus:border-[var(--ring)]">
-                            <option value="">全部负责人</option>
-                            {responsibleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
-                          </select>
-                          <select value={orderBizFilter} onChange={(e) => setOrderBizFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-xs outline-none focus:border-[var(--ring)]">
-                            <option value="">全部业务线</option>
-                            {businessTypes.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-1 space-y-1">
-                      {items.map((item) => (
-                        <div key={item.id} className="flex items-start gap-2 rounded-md border border-[var(--border)] px-2.5 py-1.5">
-                          <input type="checkbox" checked={item.checked} onChange={() => toggleAutoItem(g.type, item.id)} className="mt-0.5 size-4 shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            {item.href ? (
-                              <Link href={item.href} className="text-sm text-[var(--foreground)] hover:text-[var(--primary)] hover:underline">{item.title}</Link>
-                            ) : (
-                              <span className="text-sm text-[var(--foreground)]">{item.title}</span>
+                  <div key={g.type} className="mt-2 rounded-lg border border-[var(--border)]">
+                    {/* 组标题，点击折叠/展开 */}
+                    <button type="button" onClick={() => toggleCollapse(g.type)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+                      <span className="text-xs font-medium text-[var(--foreground)]">{g.label}（{items.length}）</span>
+                      <ChevronDown className={cn("size-3.5 shrink-0 text-[var(--muted-foreground)] transition-transform", !isCollapsed && "rotate-180")} />
+                    </button>
+
+                    {!isCollapsed && (
+                      <div className="px-3 pb-2">
+                        {/* 搜索（订单/待办/工单） */}
+                        {canSearch && (
+                          <div className="mb-1.5">
+                            <input
+                              value={query}
+                              onChange={(e) => onSearchChange(g.type, e.target.value)}
+                              placeholder={g.type === "order" ? "搜索订单号或客户名" : g.type === "todo" ? "搜索待办内容" : "搜索工单"}
+                              className="h-8 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2.5 text-xs outline-none focus:border-[var(--ring)]"
+                            />
+                            {searchLoading && <p className="mt-1 text-[10px] text-[var(--muted-foreground)]">搜索中…</p>}
+                            {results.length > 0 && (
+                              <div className="mt-1 space-y-1">
+                                {results.map((item) => {
+                                  const added = g.items.some((i) => i.id === item.id);
+                                  return (
+                                    <div key={item.id} className="flex items-center justify-between gap-2 rounded border border-[var(--border)] px-2 py-1">
+                                      <div className="min-w-0 flex-1">
+                                        <span className="text-xs text-[var(--foreground)]">{item.title}</span>
+                                        {item.subtitle && <span className="ml-1 text-[10px] text-[var(--muted-foreground)]">{item.subtitle}</span>}
+                                      </div>
+                                      {added ? (
+                                        <span className="shrink-0 text-[10px] text-green-600">已添加</span>
+                                      ) : (
+                                        <Button size="xs" variant="outline" onClick={() => addSearchItem(g.type, item)}>添加</Button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
-                            {item.subtitle && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
                           </div>
+                        )}
+
+                        {/* 订单组筛选 */}
+                        {isOrder && (
+                          <div className="mb-1.5 flex items-center gap-1.5">
+                            <select value={orderResponsibleFilter} onChange={(e) => setOrderResponsibleFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-xs outline-none focus:border-[var(--ring)]">
+                              <option value="">全部负责人</option>
+                              {responsibleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                            <select value={orderBizFilter} onChange={(e) => setOrderBizFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-xs outline-none focus:border-[var(--ring)]">
+                              <option value="">全部业务线</option>
+                              {businessTypes.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+                            </select>
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
+                          {items.map((item) => (
+                            <div key={item.id} className="flex items-start gap-2 rounded-md border border-[var(--border)] px-2.5 py-1.5">
+                              <input type="checkbox" checked={item.checked} onChange={() => toggleAutoItem(g.type, item.id)} className="mt-0.5 size-4 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                {item.href ? (
+                                  <Link href={item.href} className="text-sm text-[var(--foreground)] hover:text-[var(--primary)] hover:underline">{item.title}</Link>
+                                ) : (
+                                  <span className="text-sm text-[var(--foreground)]">{item.title}</span>
+                                )}
+                                {item.subtitle && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
