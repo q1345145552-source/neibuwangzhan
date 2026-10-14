@@ -124,9 +124,17 @@ export default function VatPage() {
 
   // Customers
   const [customers, setCustomers] = useState<VatCustomer[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+
+  // 白名单：按公司名称模糊过滤（包含关键词即匹配，空则全部）
+  const filteredCustomers = useMemo(() => {
+    const kw = customerSearch.trim().toLowerCase();
+    if (!kw) return customers;
+    return customers.filter((c) => (c.company_name || "").toLowerCase().includes(kw));
+  }, [customers, customerSearch]);
 
   // Records
   const [records, setRecords] = useState<VatRecord[]>([]);
@@ -503,11 +511,19 @@ export default function VatPage() {
       {/* ---- 客户白名单 ---- */}
       {activeTab === "customers" && (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-medium">客户白名单</h2>
-            <Button size="sm" onClick={() => { setShowAddCustomer(true); setEditingCustomerId(null); setCustomerForm({ company_name: "", tax_id: "", contact: "", status: "启用" }); }}>
-              <Plus className="size-4 mr-1" />添加客户
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="搜索公司名称"
+                className="h-9 w-44 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-56"
+              />
+              <Button size="sm" onClick={() => { setShowAddCustomer(true); setEditingCustomerId(null); setCustomerForm({ company_name: "", tax_id: "", contact: "", status: "启用" }); }}>
+                <Plus className="size-4 mr-1" />添加客户
+              </Button>
+            </div>
           </div>
 
           {(showAddCustomer || editingCustomerId !== null) && (
@@ -552,9 +568,9 @@ export default function VatPage() {
                 </tr>
               </thead>
               <tbody>
-                {customers.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无客户数据</td></tr>
-                ) : customers.map(c => (
+                {filteredCustomers.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--muted-foreground)]">{customerSearch ? "无匹配客户" : "暂无客户数据"}</td></tr>
+                ) : filteredCustomers.map(c => (
                   <tr key={c.id} className="border-t">
                     <td className="px-4 py-3 font-medium cursor-pointer hover:text-[var(--primary)] hover:underline" onClick={() => setProfileCustomerId(c.id)}>{c.company_name}</td>
                     <td className="px-4 py-3 text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
@@ -573,9 +589,9 @@ export default function VatPage() {
             </table>
             {/* 手机端卡片 */}
             <div className="md:hidden flex flex-col gap-2 p-3">
-              {customers.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">暂无客户数据</p>
-              ) : customers.map(c => (
+              {filteredCustomers.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">{customerSearch ? "无匹配客户" : "暂无客户数据"}</p>
+              ) : filteredCustomers.map(c => (
                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium text-[var(--foreground)] cursor-pointer" onClick={() => setProfileCustomerId(c.id)}>{c.company_name}</span>
