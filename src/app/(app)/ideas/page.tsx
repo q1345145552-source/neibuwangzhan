@@ -26,6 +26,13 @@ interface Idea {
 
 const CATEGORIES = ["产品功能", "业务改进", "新业务", "其他"] as const;
 
+const TRANSITIONS: Record<string, Record<string, string>> = {
+  "待评估": { "已采纳": "adopt", "已拒绝": "reject" },
+  "已采纳": { "进行中": "start" },
+  "进行中": { "已实现": "complete" },
+  "已拒绝": { "待评估": "reopen" },
+};
+
 const STATUS_BADGE: Record<string, string> = {
   "待评估": "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   "已采纳": "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
@@ -58,13 +65,15 @@ export default function IdeasPage() {
   const [formErr, setFormErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // 老板处理：采纳 / 已实现
-  const [actionModal, setActionModal] = useState<{ id: number; type: "adopt" | "complete" } | null>(null);
+  // 老板处理：采纳 / 拒绝 / 已实现
+  const [actionModal, setActionModal] = useState<{ id: number; type: "adopt" | "reject" | "complete" } | null>(null);
   const [bonusAmount, setBonusAmount] = useState("");
   const [bonusCurrency, setBonusCurrency] = useState("THB");
   const [relatedFeature, setRelatedFeature] = useState("");
   const [actionErr, setActionErr] = useState("");
   const [acting, setActing] = useState(false);
+  const [draggedId, setDraggedId] = useState<number | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const load = () => {
     setLoading(true);
@@ -102,18 +111,20 @@ export default function IdeasPage() {
   const openComplete = (id: number) => { setRelatedFeature(""); setActionErr(""); setActionModal({ id, type: "complete" }); };
 
   const doAction = async (id: number, action: string, extra?: Record<string, unknown>) => {
+    if (!isAdmin || acting) return;
     setActing(true);
     const ok = await apiCall(`/api/ideas/${id}`, { method: "PATCH", body: { action, ...extra }, onError: (m) => setActionErr(m) });
     setActing(false);
     if (ok) { setActionModal(null); setActionErr(""); load(); }
   };
 
-  const confirmReject = async (id: number) => { if (!confirm("确定拒绝这个想法？")) return; await doAction(id, "reject"); };
+  const confirmReject = (id: number) => { setRejectionReason(""); setActionErr(""); setActionModal({ id, type: "reject" }); };
   const confirmStart = async (id: number) => { if (!confirm("确定推进到进行中？")) return; await doAction(id, "start"); };
 
   const submitAdopt = async () => {
     const amt = Number(bonusAmount);
-    if (!Number.isFinite(amt) || amt < 0) { setActionErr("请填写奖金金额"); return; }
+    if (!bonusAmount.trim() || !Number.isFinite(amt) || amt < 0) { setActionErr("请填写奖金金额"); return; }
+    if (!["THB", "CNY"].includes(bonusCurrency)) { setActionErr("请选择币种"); return; }
     await doAction(actionModal!.id, "adopt", { bonus_amount: amt, currency: bonusCurrency });
   };
 
@@ -121,6 +132,39 @@ export default function IdeasPage() {
     if (!relatedFeature.trim()) { setActionErr("请填写关联功能"); return; }
     await doAction(actionModal!.id, "complete", { related_feature: relatedFeature });
   };
+
+  const submitReject = async () => {
+    if (!rejectionReason.trim()) { setActionErr("请填写拒绝原因"); return; }
+    await doAction(actionModal!.id, "reject", { rejection_reason: rejectionReason.trim() });
+  };
+
+  const dropAction = (status: string) => {
+    const idea = ideas.find((item) => item.id === draggedId);
+    return isAdmin && !acting && !actionModal && idea ? TRANSITIONS[idea.status]?.[status] : undefined;
+  };
+
+  const handleDrop = (status: string) => {
+    const action = dropAction(status);
+    const id = draggedId;
+    setDraggedId(null);
+    if (!action || id === null) return;
+    if (action === "adopt") openAdopt(id);
+    else if (action === "reject") confirmReject(id);
+    else if (action === "complete") openComplete(id);
+    else void doAction(id, action);
+  };
+
+  const actionButtons = (idea: Idea) => isAdmin && (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {idea.status === "待评估" && <>
+        <Button size="xs" disabled={acting} onClick={() => openAdopt(idea.id)}>采纳</Button>
+        <Button size="xs" variant="outline" disabled={acting} onClick={() => confirmReject(idea.id)}>拒绝</Button>
+      </>}
+      {idea.status === "已采纳" && <Button size="xs" disabled={acting} onClick={() => confirmStart(idea.id)}>进行中</Button>}
+      {idea.status === "进行中" && <Button size="xs" disabled={acting} onClick={() => openComplete(idea.id)}>已实现</Button>}
+      {idea.status === "已拒绝" && <Button size="xs" variant="outline" disabled={acting} onClick={() => doAction(idea.id, "reopen")}>重新评估</Button>}
+    </div>
+  );
 
   const bonusLabel = (i: Idea) => (i.currency === "CNY" ? `¥${Number(i.bonus_amount).toLocaleString()}` : `฿${Number(i.bonus_amount).toLocaleString()}`);
 
@@ -141,6 +185,8 @@ export default function IdeasPage() {
         <Button size="sm" variant={view === "board" ? "default" : "outline"} aria-pressed={view === "board"} onClick={() => setView("board")}>看板</Button>
       </div>
 
+      {actionErr && !actionModal && <p role="alert" className="text-sm text-[var(--destructive)]">{actionErr}</p>}
+
       {loading ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
       ) : view === "board" ? (
@@ -156,14 +202,27 @@ export default function IdeasPage() {
           <div className="overflow-x-auto pb-2">
             <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${boardStatuses.length}, minmax(240px, 1fr))` }}>
               {boardStatuses.map((status) => (
-                <section key={status} data-idea-column={status} aria-label={status} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
+                <section key={status}
+                  onDragOver={(e) => { if (dropAction(status)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } else { e.dataTransfer.dropEffect = "none"; } }}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(status); }}
+                  data-idea-column={status} aria-label={status} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
                   <h2 className="mb-3 flex items-center justify-between gap-2 text-sm font-medium">
                     <span className={cn("rounded-full px-2 py-1", STATUS_BADGE[status])}>{status}</span>
                     <span className="text-[var(--muted-foreground)]">{groupedIdeas[status].length} 条</span>
                   </h2>
                   <div className="flex flex-col gap-3">
                     {groupedIdeas[status].map((idea) => (
-                      <article key={idea.id} className="min-w-0 break-words rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                      <article key={idea.id}
+                        draggable={isAdmin && !acting && !actionModal && !!TRANSITIONS[idea.status]}
+                        onDragStart={(e) => {
+                          if (!isAdmin || acting || actionModal || !TRANSITIONS[idea.status]) { e.preventDefault(); return; }
+                          e.dataTransfer.setData("text/plain", String(idea.id));
+                          e.dataTransfer.effectAllowed = "move";
+                          setDraggedId(idea.id);
+                          setActionErr("");
+                        }}
+                        onDragEnd={() => setDraggedId(null)}
+                        className="min-w-0 break-words rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
                         <h3 className="text-sm font-medium">{idea.title}</h3>
                         <span className="mt-2 inline-block rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-xs">{idea.category}</span>
                         <p className="mt-2 text-xs text-[var(--muted-foreground)]">来源：{idea.source}{idea.is_boss === 1 && "（老板）"}</p>
@@ -171,6 +230,7 @@ export default function IdeasPage() {
                         {status === "已采纳" && <p className="mt-2 text-xs font-medium text-amber-600">奖金 {bonusLabel(idea)}</p>}
                         {status === "已实现" && <p className="mt-2 text-xs">关联功能：{idea.related_feature || "未填写"}</p>}
                         {status === "已拒绝" && <p className="mt-2 whitespace-pre-wrap text-xs">拒绝原因：{idea.rejection_reason || "未填写"}</p>}
+                        {actionButtons(idea)}
                       </article>
                     ))}
                     {groupedIdeas[status].length === 0 && <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无想法</p>}
@@ -205,18 +265,7 @@ export default function IdeasPage() {
                   <span>·</span>
                   <span>{toThaiTime(i.created_at)}</span>
                 </div>
-                {isAdmin && (
-                  <div className="flex items-center gap-1.5">
-                    {i.status === "待评估" && (
-                      <>
-                        <Button size="xs" onClick={() => openAdopt(i.id)}>采纳</Button>
-                        <Button size="xs" variant="outline" onClick={() => confirmReject(i.id)}>拒绝</Button>
-                      </>
-                    )}
-                    {i.status === "已采纳" && <Button size="xs" onClick={() => confirmStart(i.id)}>进行中</Button>}
-                    {i.status === "进行中" && <Button size="xs" onClick={() => openComplete(i.id)}>已实现</Button>}
-                  </div>
-                )}
+                {actionButtons(i)}
               </div>
             </div>
           ))}
@@ -258,30 +307,35 @@ export default function IdeasPage() {
         </div>
       )}
 
-      {/* 老板处理弹窗：采纳 / 已实现 */}
+      {/* 老板处理弹窗：采纳 / 拒绝 / 已实现 */}
       {actionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setActionModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!acting) setActionModal(null); }}>
           <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
-              <h3 className="text-base font-semibold text-[var(--foreground)]">{actionModal.type === "adopt" ? "采纳想法" : "标记已实现"}</h3>
-              <button onClick={() => setActionModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              <h3 className="text-base font-semibold text-[var(--foreground)]">{actionModal.type === "adopt" ? "采纳想法" : actionModal.type === "reject" ? "拒绝想法" : "标记已实现"}</h3>
+              <button onClick={() => { if (!acting) setActionModal(null); }} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
 
             {actionModal.type === "adopt" ? (
               <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-medium">奖金金额</label>
+                    <label className="text-xs font-medium">采纳奖金金额 *</label>
                     <input type="number" value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} placeholder="0" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium">币种</label>
+                    <label className="text-xs font-medium">币种 *</label>
                     <select value={bonusCurrency} onChange={(e) => setBonusCurrency(e.target.value)} className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
                       <option value="THB">泰铢</option>
                       <option value="CNY">人民币</option>
                     </select>
                   </div>
                 </div>
+              </div>
+            ) : actionModal.type === "reject" ? (
+              <div className="mt-4">
+                <label className="text-xs font-medium">拒绝原因 *</label>
+                <textarea value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} rows={3} className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm" />
               </div>
             ) : (
               <div className="mt-4">
@@ -292,8 +346,8 @@ export default function IdeasPage() {
 
             {actionErr && <p className="mt-2 text-xs text-[var(--destructive)]">{actionErr}</p>}
             <div className="mt-4 flex gap-2">
-              <Button size="sm" onClick={actionModal.type === "adopt" ? submitAdopt : submitComplete} disabled={acting}>{acting ? "处理中…" : "确认"}</Button>
-              <Button variant="ghost" size="sm" onClick={() => setActionModal(null)}>取消</Button>
+              <Button size="sm" onClick={actionModal.type === "adopt" ? submitAdopt : actionModal.type === "reject" ? submitReject : submitComplete} disabled={acting}>{acting ? "处理中…" : "确认"}</Button>
+              <Button variant="ghost" size="sm" onClick={() => { if (!acting) setActionModal(null); }}>取消</Button>
             </div>
           </div>
         </div>

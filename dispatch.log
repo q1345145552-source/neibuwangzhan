@@ -7592,3 +7592,2462 @@ tokens used
 - `npx tsc --noEmit`、`npm run build` 均通过。构建使用临时 `JWT_SECRET`，未修改环境配置；仍有无关文件追踪警告。
 
 未执行任何 git 操作，已停止。
+[2026-10-15 01:52:58] === 第 2 轮完成并推送 ===
+[2026-10-15 01:52:59] === 第 3/3 轮 拖拽换状态 开始 ===
+Reading additional input from stdin...
+OpenAI Codex v0.162.1
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13bc2-b87e-7382-b1ce-bccfb640d6f1
+--------
+user
+以下是第 3 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+想法记录模块 加看板 第三轮 拖拽换状态
+
+看板视图里 老板可以拖拽卡片换状态 要卡死流转顺序 不能跳级
+
+拖拽规则：
+1. 待评估 只能拖到 已采纳 或 已拒绝
+2. 已采纳 只能拖到 进行中
+3. 进行中 只能拖到 已实现
+4. 已拒绝 可以拖回 待评估
+
+拖到某些列要弹窗填东西 填完确认才变状态：
+1. 拖到 已采纳：弹窗填 采纳奖金金额 + 币种（必填）
+2. 拖到 已拒绝：弹窗填 拒绝原因（必填）
+3. 拖到 已实现：弹窗填 关联功能（必填），实现奖金额和币种可以后补不强制
+4. 拖到 进行中 或拖回 待评估：直接变状态 不用填东西
+
+拖拽不能跳级 不符合流转规则的拖拽 直接不让放（或者放了弹个提示）
+
+电脑端用鼠标拖拽 手机端拖拽不好用的话 保留原来的按钮操作兜底
+
+就做这些 别的地方不要动
+
+改完你自己验证 拖拽按流转顺序不能跳级 拖到已采纳弹窗填奖金 拖到已拒绝弹窗填原因 拖到已实现弹窗填关联功能 已拒绝能拖回待评估 手机端按钮操作还能用 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+codex
+我先检查想法看板和现有状态操作，只修改本轮拖拽流转及弹窗；完成后运行你指定的类型检查和构建，不执行任何 git 操作。
+exec
+/bin/zsh -lc 'cat /Users/liuxiong/.codex/skills/test-driven-development/SKILL.md /Users/liuxiong/.codex/skills/verification-before-completion/SKILL.md' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+- Documents behavior (tests show how to use code)
+- Enables refactoring (change freely, tests catch breaks)
+
+"Pragmatic" shortcuts = debugging in production = slower.
+
+**"Tests after achieve the same goals - it's spirit not ritual"**
+
+No. Tests-after answer "What does this do?" Tests-first answer "What should this do?"
+
+Tests-after are biased by your implementation. You test what you built, not what's required. You verify remembered edge cases, not discovered ones.
+
+Tests-first force edge case discovery before implementing. Tests-after verify you remembered everything (you didn't).
+
+30 minutes of tests after ≠ TDD. You get coverage, lose proof tests work.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+| "I'll test after" | Tests passing immediately prove nothing. |
+| "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |
+| "Already manually tested" | Ad-hoc ≠ systematic. No record, can't re-run. |
+| "Deleting X hours is wasteful" | Sunk cost fallacy. Keeping unverified code is technical debt. |
+| "Keep as reference, write tests first" | You'll adapt it. That's testing after. Delete means delete. |
+| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
+| "Test hard = design unclear" | Listen to test. Hard to test = hard to use. |
+| "TDD will slow me down" | TDD faster than debugging. Pragmatic = test-first. |
+| "Manual test faster" | Manual doesn't prove edge cases. You'll re-test every change. |
+| "Existing code has no tests" | You're improving it. Add tests for existing code. |
+
+## Red Flags - STOP and Start Over
+
+- Code before test
+- Test after implementation
+- Test passes immediately
+- Can't explain why test failed
+- Tests added "later"
+- Rationalizing "just this once"
+- "I already manually tested it"
+- "Tests after achieve the same purpose"
+- "It's about spirit not ritual"
+- "Keep as reference" or "adapt existing code"
+- "Already spent X hours, deleting is wasteful"
+- "TDD is dogmatic, I'm being pragmatic"
+- "This is different because..."
+
+**All of these mean: Delete code. Start over with TDD.**
+
+## Example: Bug Fix
+
+**Bug:** Empty email accepted
+
+**RED**
+```typescript
+test('rejects empty email', async () => {
+  const result = await submitForm({ email: '' });
+  expect(result.error).toBe('Email required');
+});
+```
+
+**Verify RED**
+```bash
+$ npm test
+FAIL: expected 'Email required', got undefined
+```
+
+**GREEN**
+```typescript
+function submitForm(data: FormData) {
+  if (!data.email?.trim()) {
+    return { error: 'Email required' };
+  }
+  // ...
+}
+```
+
+**Verify GREEN**
+```bash
+$ npm test
+PASS
+```
+
+**REFACTOR**
+Extract validation for multiple fields if needed.
+
+## Verification Checklist
+
+Before marking work complete:
+
+- [ ] Every new function/method has a test
+- [ ] Watched each test fail before implementing
+- [ ] Each test failed for expected reason (feature missing, not typo)
+- [ ] Wrote minimal code to pass each test
+- [ ] All tests pass
+- [ ] Output pristine (no errors, warnings)
+- [ ] Tests use real code (mocks only if unavoidable)
+- [ ] Edge cases and errors covered
+
+Can't check all boxes? You skipped TDD. Start over.
+
+## When Stuck
+
+| Problem | Solution |
+|---------|----------|
+| Don't know how to test | Write wished-for API. Write assertion first. Ask your human partner. |
+| Test too complicated | Design too complicated. Simplify interface. |
+| Must mock everything | Code too coupled. Use dependency injection. |
+| Test setup huge | Extract helpers. Still complex? Simplify design. |
+
+## Debugging Integration
+
+Bug found? Write failing test reproducing it. Follow TDD cycle. Test proves fix and prevents regression.
+
+Never fix bugs without a test.
+
+## Testing Anti-Patterns
+
+When adding mocks or test utilities, read @testing-anti-patterns.md to avoid common pitfalls:
+- Testing mock behavior instead of real behavior
+- Adding test-only methods to production classes
+- Mocking without understanding dependencies
+
+## Final Rule
+
+```
+Production code → test exists and failed first
+Otherwise → not TDD
+```
+
+No exceptions without your human partner's permission.
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/zsh -lc "rg -n 'idea|想法|internal-system' /Users/liuxiong/.codex/memories/MEMORY.md; pwd; ls -a" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+/Users/liuxiong/Desktop/internal-system
+.
+..
+.claude
+.dispatch.lock
+.dockerignore
+.env.example
+.git
+.gitignore
+.next
+AGENTS.md
+BUGS-2.md
+BUGS-3.md
+BUGS-4.md
+BUGS-AGENCY.md
+BUGS.md
+CLAUDE.md
+DEPLOY.md
+DESIGN.md
+Dockerfile
+PRODUCT.md
+README.md
+backups
+components.json
+data.db
+data.db.backup_20260716
+data.db.backup_status
+dispatch.log
+dispatch.sh
+docker-compose.yml
+docs
+eslint.config.mjs
+next-env.d.ts
+next.config.mjs
+next.config.ts
+node_modules
+package-lock.json
+package.json
+postcss.config.mjs
+progress.txt
+prompts.json
+public
+push.sh
+scripts
+src
+start.sh
+tsconfig.json
+tsconfig.tsbuildinfo
+uploads
+verify.md
+
+mcp: codebase-memory-mcp/search_graph started
+mcp: codebase-memory-mcp/search_graph (failed)
+exec
+/bin/zsh -lc 'cat package.json; ls node_modules/next/dist/docs/01-app/03-api-reference/01-directives; find src -name AGENTS.md' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+{
+  "name": "internal-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "backup": "bash scripts/backup.sh",
+    "health": "node scripts/health-check.js",
+    "check:enums": "node scripts/check-enums.js",
+    "check:dup": "node scripts/check-duplicate-blocks.js",
+    "test:flows": "node scripts/test-flows.js",
+    "verify": "npm run check:enums && npm run check:dup && npm run test:flows && tsc --noEmit",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.11.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.22.0",
+    "next": "16.2.9",
+    "pdfkit": "^0.19.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.0",
+    "shadcn": "^4.12.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+index.md
+use-cache-private.md
+use-cache-remote.md
+use-cache.md
+use-client.md
+use-server.md
+
+exec
+/bin/zsh -lc "rg --files src scripts | rg 'idea|test'; cat node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-client.md" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+scripts/test-client-staff-only.mts
+scripts/test-flows.js
+scripts/test-commerce-trademark.mts
+scripts/test-progress-sync.cjs
+scripts/test-original-customer-robustness.cjs
+scripts/test-sync-ingest.mts
+scripts/test-commerce-imported-catalog.cjs
+scripts/test-route-helpers.mts
+scripts/test-commerce.mts
+scripts/test-access-workflow.mts
+scripts/test-commerce-cart.mts
+scripts/test-commerce-checkout-recovery-ui.cjs
+scripts/test-commerce-recovery-ui.cjs
+scripts/test-commerce-pending.mts
+scripts/test-password-enforcement.js
+scripts/test-progress-adversarial.cjs
+scripts/test-sync-public-steps.mts
+scripts/test-ideas-board.cjs
+scripts/test-legacy-check-schema.mts
+scripts/test-leave-options.mts
+scripts/test-sync-allocation-schema.mts
+scripts/test-ideas.cjs
+scripts/test-commerce-aftercare.mts
+scripts/test-original-customer-ui.cjs
+scripts/test-internal-task-boundary.mts
+scripts/test-sync-documents.mts
+scripts/test-access-regression.mts
+scripts/test-progress-startup.cjs
+scripts/test-commerce-time.cjs
+src/lib/use-latest.ts
+src/app/api/ideas/[id]/route.ts
+src/app/api/ideas/route.ts
+src/app/(app)/ideas/page.tsx
+---
+title: use client
+description: Learn how to use the use client directive to render a component on the client.
+---
+
+The `'use client'` directive declares an entry point for the components to be rendered on the **client side** and should be used when creating interactive user interfaces (UI) that require client-side JavaScript capabilities, such as state management, event handling, and access to browser APIs. This is a React feature.
+
+> **Good to know:**
+>
+> You do not need to add the `'use client'` directive to every file that contains Client Components. You only need to add it to the files whose components you want to render directly within Server Components. The `'use client'` directive defines the client-server [boundary](https://nextjs.org/docs/app/building-your-application/rendering#network-boundary), and the components exported from such a file serve as entry points to the client.
+
+## Usage
+
+To declare an entry point for the Client Components, add the `'use client'` directive **at the top of the file**, before any imports:
+
+```tsx filename="app/components/counter.tsx" highlight={1} switcher
+'use client'
+
+import { useState } from 'react'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+```jsx filename="app/components/counter.js" highlight={1} switcher
+'use client'
+
+import { useState } from 'react'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+When using the `'use client'` directive, the props of the Client Components must be [serializable](https://react.dev/reference/rsc/use-client#serializable-types). This means the props need to be in a format that React can serialize when sending data from the server to the client.
+
+```tsx filename="app/components/counter.tsx" highlight={4} switcher
+'use client'
+
+export default function Counter({
+  onClick /* ❌ Function is not serializable */,
+}) {
+  return (
+    <div>
+      <button onClick={onClick}>Increment</button>
+    </div>
+  )
+}
+```
+
+```jsx filename="app/components/counter.js" highlight={4} switcher
+'use client'
+
+export default function Counter({
+  onClick /* ❌ Function is not serializable */,
+}) {
+  return (
+    <div>
+      <button onClick={onClick}>Increment</button>
+    </div>
+  )
+}
+```
+
+## Nesting Client Components within Server Components
+
+Combining Server and Client Components allows you to build applications that are both performant and interactive:
+
+1. **Server Components**: Use for static content, data fetching, and SEO-friendly elements.
+2. **Client Components**: Use for interactive elements that require state, effects, or browser APIs.
+3. **Component composition**: Nest Client Components within Server Components as needed for a clear separation of server and client logic.
+
+In the following example:
+
+- `Header` is a Server Component handling static content.
+- `Counter` is a Client Component enabling interactivity within the page.
+
+```tsx filename="app/page.tsx" highlight={2,8} switcher
+import Header from './header'
+import Counter from './counter' // This is a Client Component
+
+export default function Page() {
+  return (
+    <div>
+      <Header />
+      <Counter />
+    </div>
+  )
+}
+```
+
+```jsx filename="app/page.js" highlight={2,8} switcher
+import Header from './header'
+import Counter from './counter' // This is a Client Component
+
+export default function Page() {
+  return (
+    <div>
+      <Header />
+      <Counter />
+    </div>
+  )
+}
+```
+
+## Reference
+
+See the [React documentation](https://react.dev/reference/rsc/use-client) for more information on `'use client'`.
+
+codex
+代码图中尚未索引这个项目，我会按项目规则回退到文件检查。本轮采用测试先行和完成前验证流程，重点检查流转限制、弹窗必填项及原有按钮兜底。
+exec
+/bin/zsh -lc "cat 'src/app/(app)/ideas/page.tsx'" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+"use client";
+
+import { useState, useEffect } from "react";
+import { fetchWithAuth } from "@/lib/api";
+import { apiCall } from "@/lib/api-call";
+import { useAuth } from "@/components/auth-provider";
+import { cn, toThaiTime } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Plus, X, Lightbulb } from "lucide-react";
+
+interface Idea {
+  id: number;
+  title: string;
+  content: string;
+  category: string;
+  source: string;
+  is_boss: number;
+  status: string;
+  bonus_amount: number;
+  currency: string;
+  related_feature: string;
+  rejection_reason: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const CATEGORIES = ["产品功能", "业务改进", "新业务", "其他"] as const;
+
+const STATUS_BADGE: Record<string, string> = {
+  "待评估": "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  "已采纳": "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  "已拒绝": "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  "进行中": "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  "已实现": "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+};
+
+export default function IdeasPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"list" | "board">("list");
+
+  const visibleIdeas = isAdmin ? ideas : ideas.filter((idea) => idea.is_boss === 0);
+  const boardStatuses = isAdmin
+    ? ["待评估", "已采纳", "进行中", "已实现", "已拒绝"]
+    : ["待评估", "已采纳", "进行中", "已实现"];
+  const statStatuses = ["待评估", "进行中", "已采纳", "已实现", "已拒绝"];
+  const groupedIdeas = Object.fromEntries(
+    statStatuses.map((status) => [status, visibleIdeas.filter((idea) => idea.status === status)])
+  );
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [formTitle, setFormTitle] = useState("");
+  const [formContent, setFormContent] = useState("");
+  const [formCategory, setFormCategory] = useState("产品功能");
+  const [formErr, setFormErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // 老板处理：采纳 / 已实现
+  const [actionModal, setActionModal] = useState<{ id: number; type: "adopt" | "complete" } | null>(null);
+  const [bonusAmount, setBonusAmount] = useState("");
+  const [bonusCurrency, setBonusCurrency] = useState("THB");
+  const [relatedFeature, setRelatedFeature] = useState("");
+  const [actionErr, setActionErr] = useState("");
+  const [acting, setActing] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    fetchWithAuth("/api/ideas", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setIdeas(Array.isArray(d) ? d : []))
+      .catch(() => setIdeas([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [user?.name]);
+
+  const openCreate = () => {
+    setFormTitle("");
+    setFormContent("");
+    setFormCategory("产品功能");
+    setFormErr("");
+    setFormOpen(true);
+  };
+
+  const submit = async () => {
+    if (!formTitle.trim()) { setFormErr("请填写标题"); return; }
+    if (!formContent.trim()) { setFormErr("请填写内容"); return; }
+    setSaving(true);
+    const ok = await apiCall("/api/ideas", {
+      method: "POST",
+      body: { title: formTitle, content: formContent, category: formCategory },
+      onError: (m) => setFormErr(m),
+    });
+    setSaving(false);
+    if (ok) { setFormOpen(false); setFormErr(""); load(); }
+  };
+
+  const openAdopt = (id: number) => { setBonusAmount(""); setBonusCurrency("THB"); setActionErr(""); setActionModal({ id, type: "adopt" }); };
+  const openComplete = (id: number) => { setRelatedFeature(""); setActionErr(""); setActionModal({ id, type: "complete" }); };
+
+  const doAction = async (id: number, action: string, extra?: Record<string, unknown>) => {
+    setActing(true);
+    const ok = await apiCall(`/api/ideas/${id}`, { method: "PATCH", body: { action, ...extra }, onError: (m) => setActionErr(m) });
+    setActing(false);
+    if (ok) { setActionModal(null); setActionErr(""); load(); }
+  };
+
+  const confirmReject = async (id: number) => { if (!confirm("确定拒绝这个想法？")) return; await doAction(id, "reject"); };
+  const confirmStart = async (id: number) => { if (!confirm("确定推进到进行中？")) return; await doAction(id, "start"); };
+
+  const submitAdopt = async () => {
+    const amt = Number(bonusAmount);
+    if (!Number.isFinite(amt) || amt < 0) { setActionErr("请填写奖金金额"); return; }
+    await doAction(actionModal!.id, "adopt", { bonus_amount: amt, currency: bonusCurrency });
+  };
+
+  const submitComplete = async () => {
+    if (!relatedFeature.trim()) { setActionErr("请填写关联功能"); return; }
+    await doAction(actionModal!.id, "complete", { related_feature: relatedFeature });
+  };
+
+  const bonusLabel = (i: Idea) => (i.currency === "CNY" ? `¥${Number(i.bonus_amount).toLocaleString()}` : `฿${Number(i.bonus_amount).toLocaleString()}`);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">想法记录</h1>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{isAdmin ? "记录你的好想法，也看看员工提的点子" : "有好点子就提出来"}</p>
+        </div>
+        <Button size="sm" onClick={openCreate} className="gap-1.5">
+          <Plus className="size-4" />{isAdmin ? "记想法" : "提点子"}
+        </Button>
+      </div>
+
+      <div role="group" aria-label="想法视图" className="flex gap-2">
+        <Button size="sm" variant={view === "list" ? "default" : "outline"} aria-pressed={view === "list"} onClick={() => setView("list")}>列表</Button>
+        <Button size="sm" variant={view === "board" ? "default" : "outline"} aria-pressed={view === "board"} onClick={() => setView("board")}>看板</Button>
+      </div>
+
+      {loading ? (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+      ) : view === "board" ? (
+        <div className="flex min-w-0 flex-col gap-4">
+          <div aria-label="想法统计" className="grid grid-cols-5 gap-2">
+            {statStatuses.map((status) => (
+              <div key={status} data-idea-stat={status} data-count={groupedIdeas[status].length} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3 text-center">
+                <div className="text-xs text-[var(--muted-foreground)]">{status}</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">{groupedIdeas[status].length}</div>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto pb-2">
+            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${boardStatuses.length}, minmax(240px, 1fr))` }}>
+              {boardStatuses.map((status) => (
+                <section key={status} data-idea-column={status} aria-label={status} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
+                  <h2 className="mb-3 flex items-center justify-between gap-2 text-sm font-medium">
+                    <span className={cn("rounded-full px-2 py-1", STATUS_BADGE[status])}>{status}</span>
+                    <span className="text-[var(--muted-foreground)]">{groupedIdeas[status].length} 条</span>
+                  </h2>
+                  <div className="flex flex-col gap-3">
+                    {groupedIdeas[status].map((idea) => (
+                      <article key={idea.id} className="min-w-0 break-words rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                        <h3 className="text-sm font-medium">{idea.title}</h3>
+                        <span className="mt-2 inline-block rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-xs">{idea.category}</span>
+                        <p className="mt-2 text-xs text-[var(--muted-foreground)]">来源：{idea.source}{idea.is_boss === 1 && "（老板）"}</p>
+                        <p className="mt-1 text-xs text-[var(--muted-foreground)]">{toThaiTime(idea.created_at)}</p>
+                        {status === "已采纳" && <p className="mt-2 text-xs font-medium text-amber-600">奖金 {bonusLabel(idea)}</p>}
+                        {status === "已实现" && <p className="mt-2 text-xs">关联功能：{idea.related_feature || "未填写"}</p>}
+                        {status === "已拒绝" && <p className="mt-2 whitespace-pre-wrap text-xs">拒绝原因：{idea.rejection_reason || "未填写"}</p>}
+                      </article>
+                    ))}
+                    {groupedIdeas[status].length === 0 && <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无想法</p>}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : visibleIdeas.length === 0 ? (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">还没有想法，点右上角记录/提一个</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {visibleIdeas.map((i) => (
+            <div key={i.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Lightbulb className="size-4 text-amber-500" />
+                <span className="text-sm font-medium text-[var(--foreground)]">{i.title}</span>
+                <span className="rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-xs text-[var(--foreground)]">{i.category}</span>
+                <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_BADGE[i.status] || "")}>{i.status}</span>
+                {i.status === "已采纳" && i.bonus_amount > 0 && (
+                  <span className="text-xs font-medium text-amber-600">奖金 {bonusLabel(i)}</span>
+                )}
+              </div>
+              {i.content && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{i.content}</p>}
+              {i.status === "已实现" && i.related_feature && (
+                <p className="mt-2 text-xs text-[var(--muted-foreground)]">关联功能：{i.related_feature}</p>
+              )}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                  <span>来源：{i.source}{i.is_boss === 1 && "（老板）"}</span>
+                  <span>·</span>
+                  <span>{toThaiTime(i.created_at)}</span>
+                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5">
+                    {i.status === "待评估" && (
+                      <>
+                        <Button size="xs" onClick={() => openAdopt(i.id)}>采纳</Button>
+                        <Button size="xs" variant="outline" onClick={() => confirmReject(i.id)}>拒绝</Button>
+                      </>
+                    )}
+                    {i.status === "已采纳" && <Button size="xs" onClick={() => confirmStart(i.id)}>进行中</Button>}
+                    {i.status === "进行中" && <Button size="xs" onClick={() => openComplete(i.id)}>已实现</Button>}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 录入弹窗 */}
+      {formOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setFormOpen(false)}>
+          <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-base font-semibold text-[var(--foreground)]">{isAdmin ? "记录想法" : "提交点子"}</h3>
+              <button onClick={() => setFormOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium">标题 <span className="text-[var(--destructive)]">*</span></label>
+                <input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="一句话说清这个想法" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">分类</label>
+                <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">内容 <span className="text-[var(--destructive)]">*</span></label>
+                <textarea value={formContent} onChange={(e) => setFormContent(e.target.value)} rows={5} placeholder="具体说说这个想法" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+            </div>
+
+            {formErr && <p className="mt-2 text-xs text-[var(--destructive)]">{formErr}</p>}
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" onClick={submit} disabled={saving}>{saving ? "提交中…" : "提交"}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setFormOpen(false)}>取消</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 老板处理弹窗：采纳 / 已实现 */}
+      {actionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setActionModal(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-base font-semibold text-[var(--foreground)]">{actionModal.type === "adopt" ? "采纳想法" : "标记已实现"}</h3>
+              <button onClick={() => setActionModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+            </div>
+
+            {actionModal.type === "adopt" ? (
+              <div className="mt-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium">奖金金额</label>
+                    <input type="number" value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} placeholder="0" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">币种</label>
+                    <select value={bonusCurrency} onChange={(e) => setBonusCurrency(e.target.value)} className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 text-sm outline-none focus:border-[var(--ring)]">
+                      <option value="THB">泰铢</option>
+                      <option value="CNY">人民币</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4">
+                <label className="text-xs font-medium">关联功能 <span className="text-[var(--destructive)]">*</span></label>
+                <input value={relatedFeature} onChange={(e) => setRelatedFeature(e.target.value)} placeholder="做成了哪个功能" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+              </div>
+            )}
+
+            {actionErr && <p className="mt-2 text-xs text-[var(--destructive)]">{actionErr}</p>}
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" onClick={actionModal.type === "adopt" ? submitAdopt : submitComplete} disabled={acting}>{acting ? "处理中…" : "确认"}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setActionModal(null)}>取消</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+exec
+/bin/zsh -lc "cat 'src/app/api/ideas/[id]/route.ts' scripts/test-ideas-board.cjs scripts/test-ideas.cjs" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+import { NextRequest, NextResponse } from "next/server";
+import { getDb, logOperation } from "@/lib/db";
+import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
+
+// PATCH /api/ideas/[id] — 老板处理想法：采纳/拒绝/重新打开/推进进行中/标已实现/补实现奖（仅老板）
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅老板可处理" }, { status: 403 });
+
+  const { id } = await params;
+  const db = getDb();
+  const idea = db.prepare("SELECT * FROM ideas WHERE id = ?").get(id) as any;
+  if (!idea) return NextResponse.json({ error: "想法不存在" }, { status: 404 });
+
+  const body = await readJson(req);
+  const { action } = body;
+
+  const getUpdated = () => db.prepare("SELECT * FROM ideas WHERE id = ?").get(id);
+
+  // 采纳：待评估 → 已采纳，填奖金金额 + 币种
+  if (action === "adopt") {
+    if (idea.status !== "待评估") return NextResponse.json({ error: "只有待评估的想法能采纳" }, { status: 400 });
+    const amt = Number(body.bonus_amount);
+    if (!Number.isFinite(amt) || amt < 0) return NextResponse.json({ error: "请填写奖金金额" }, { status: 400 });
+    const currency = body.currency === "CNY" ? "CNY" : "THB";
+    db.prepare("UPDATE ideas SET status = '已采纳', bonus_amount = ?, currency = ?, updated_at = datetime('now') WHERE id = ?").run(amt, currency, id);
+    logOperation(auth.name, "采纳想法", "idea", String(id), `奖金 ${amt}${currency}`);
+    return NextResponse.json(getUpdated());
+  }
+
+  // 拒绝：待评估 → 已拒绝
+  if (action === "reject") {
+    if (idea.status !== "待评估") return NextResponse.json({ error: "只有待评估的想法能拒绝" }, { status: 400 });
+    const reason = typeof body.rejection_reason === "string" ? body.rejection_reason.trim() : "";
+    if (!reason) return NextResponse.json({ error: "请填写拒绝原因" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '已拒绝', rejection_reason = ?, updated_at = datetime('now') WHERE id = ?").run(reason, id);
+    logOperation(auth.name, "拒绝想法", "idea", String(id));
+    return NextResponse.json(getUpdated());
+  }
+
+  // 已拒绝 → 待评估，清空此前拒绝原因
+  if (action === "reopen") {
+    if (idea.status !== "已拒绝") return NextResponse.json({ error: "只有已拒绝的想法能重新打开" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '待评估', rejection_reason = '', updated_at = datetime('now') WHERE id = ?").run(id);
+    logOperation(auth.name, "重新打开想法", "idea", String(id));
+    return NextResponse.json(getUpdated());
+  }
+
+  // 已采纳 → 进行中
+  if (action === "start") {
+    if (idea.status !== "已采纳") return NextResponse.json({ error: "只有已采纳的想法能推进进行中" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '进行中', updated_at = datetime('now') WHERE id = ?").run(id);
+    logOperation(auth.name, "想法进行中", "idea", String(id));
+    return NextResponse.json(getUpdated());
+  }
+
+  // 实现奖可随完成填写，也可在已实现后补填；填写时金额和币种须成对提供。
+  if (action === "complete" || action === "set_implementation_bonus") {
+    const completing = action === "complete";
+    if (idea.status !== (completing ? "进行中" : "已实现")) {
+      return NextResponse.json({ error: completing ? "只有进行中的想法能标已实现" : "只有已实现的想法能补实现奖" }, { status: 400 });
+    }
+    const rf = typeof body.related_feature === "string" ? body.related_feature.trim() : "";
+    if (completing && !rf) return NextResponse.json({ error: "请填写关联功能" }, { status: 400 });
+
+    const rawAmount = body.implementation_bonus_amount;
+    const rawCurrency = body.implementation_bonus_currency;
+    const isEmpty = (value: unknown) => value == null || (typeof value === "string" && !value.trim());
+    const hasBonus = !isEmpty(rawAmount) || !isEmpty(rawCurrency);
+    let amount: number | null = null;
+    let currency: string | null = null;
+    if (hasBonus || !completing) {
+      amount = Number(rawAmount);
+      if (isEmpty(rawAmount) || (typeof rawAmount !== "number" && typeof rawAmount !== "string") || !Number.isFinite(amount) || amount < 0) {
+        return NextResponse.json({ error: "请填写有效的实现奖金额（不小于零）" }, { status: 400 });
+      }
+      if (rawCurrency !== "THB" && rawCurrency !== "CNY") {
+        return NextResponse.json({ error: "请选择实现奖币种（THB/CNY）" }, { status: 400 });
+      }
+      currency = rawCurrency;
+    }
+
+    if (completing) {
+      db.prepare("UPDATE ideas SET status = '已实现', related_feature = ?, implementation_bonus_amount = ?, implementation_bonus_currency = ?, updated_at = datetime('now') WHERE id = ?").run(rf, amount, currency, id);
+      logOperation(auth.name, "想法已实现", "idea", String(id), rf);
+    } else {
+      db.prepare("UPDATE ideas SET implementation_bonus_amount = ?, implementation_bonus_currency = ?, updated_at = datetime('now') WHERE id = ?").run(amount, currency, id);
+      logOperation(auth.name, "补实现奖", "idea", String(id), `实现奖 ${amount}${currency}`);
+    }
+    return NextResponse.json(getUpdated());
+  }
+
+  return NextResponse.json({ error: "未知操作" }, { status: 400 });
+}
+// Render the real page with fixture data; exercise its view controls without touching app data.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const Module = require('node:module');
+const ts = require('typescript');
+const React = require('react');
+const { renderToStaticMarkup } = require('react-dom/server');
+const root = path.resolve(__dirname, '..');
+const statuses = ['待评估', '已采纳', '进行中', '已实现', '已拒绝'];
+const ideas = [0, 1].flatMap(is_boss => statuses.map((status, n) => ({ id: is_boss * 10 + n, title: `${is_boss ? '老板' : '同事'}${status}`, status, is_boss, category: '业务改进', source: is_boss ? '老板' : '同事', created_at: '2026-10-15 10:00:00', bonus_amount: 0, currency: 'CNY', related_feature: '关联功能A', rejection_reason: '拒绝原因A' })));
+let role = 'employee', state = [], cursor = 0;
+const originalLoad = Module._load;
+Module._load = function(name, ...args) {
+  if (name === 'react') return { ...React, useEffect() {}, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = Array.isArray(initial) ? ideas : initial === true ? false : initial; return [state[i], value => { state[i] = value; }]; } };
+  if (name === '@/components/auth-provider') return { useAuth: () => ({ user: { role, name: role } }) };
+  if (name === '@/lib/api') return { fetchWithAuth() {} };
+  if (name === '@/lib/api-call') return { apiCall() {} };
+  if (name === '@/lib/utils') return { cn: (...s) => s.join(' '), toThaiTime: s => s };
+  if (name === '@/components/ui/button') return { Button: ({ children, size, variant, ...props }) => React.createElement('button', props, children) };
+  return originalLoad.call(this, name, ...args);
+};
+const file = path.join(root, 'src/app/(app)/ideas/page.tsx');
+const mod = new Module(file, module); mod.filename = file; mod.paths = module.paths;
+mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, file);
+const Page = mod.exports.default;
+function render() { cursor = 0; return Page(); }
+function find(node, predicate) { if (!node || typeof node !== 'object') return; if (predicate(node)) return node; for (const child of React.Children.toArray(node.props?.children)) { const match = find(child, predicate); if (match) return match; } }
+for (role of ['employee', 'admin']) {
+  state = [];
+  let tree = render();
+  const toggle = find(tree, n => n.props?.children === '看板');
+  assert(toggle, '看板切换按钮存在'); toggle.props.onClick(); tree = render();
+  let html = renderToStaticMarkup(tree);
+  assert.equal((html.match(/data-idea-column=/g) || []).length, role === 'admin' ? 5 : 4);
+  for (const status of statuses) {
+    const stat = find(tree, n => n.props?.['data-idea-stat'] === status);
+    assert(stat, status + '统计存在');
+    assert.equal(stat.props['data-count'], role === 'admin' ? 2 : 1);
+  }
+  for (const status of role === 'admin' ? statuses : statuses.slice(0, 4)) {
+    const column = find(tree, n => n.props?.['data-idea-column'] === status);
+    const columnHtml = renderToStaticMarkup(column);
+    assert(columnHtml.includes('同事' + status));
+    assert(columnHtml.includes((role === 'admin' ? '2' : '1') + ' 条'));
+    for (const other of statuses.filter(value => value !== status)) assert(!columnHtml.includes('同事' + other));
+  }
+  assert(html.includes('奖金')); assert(html.includes('¥0')); assert(html.includes('关联功能A'));
+  assert(html.includes('业务改进')); assert(html.includes('来源：')); assert(html.includes('2026-10-15'));
+  assert.equal(html.includes('老板待评估'), role === 'admin');
+  assert.equal(html.includes('拒绝原因A'), role === 'admin');
+  find(tree, n => n.props?.children === '列表').props.onClick();
+  html = renderToStaticMarkup(render()); assert(!html.includes('data-idea-column'));
+  assert(html.includes('同事待评估')); assert.equal(html.includes('老板待评估'), role === 'admin');
+  state[0] = []; find(render(), n => n.props?.children === '看板').props.onClick();
+  tree = render(); html = renderToStaticMarkup(tree);
+  assert.equal((html.match(/data-idea-column=/g) || []).length, role === 'admin' ? 5 : 4);
+  for (const status of statuses) assert.equal(find(tree, n => n.props?.['data-idea-stat'] === status).props['data-count'], 0);
+  console.log('PASS', role, 'view switching, columns, counts, card fields, visibility and empty board');
+}
+// Run: node scripts/test-ideas.cjs (isolated SQLite databases; no application data).
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const Module = require('node:module');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '..');
+const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'ideas-test-'));
+Object.assign(process.env, { NODE_ENV: 'test', DB_PATH: path.join(fixture, 'test.db'), INTERNAL_APP_ROOT: fixture, JWT_SECRET: 'ideas-test-only-secret' });
+const resolve = Module._resolveFilename;
+Module._resolveFilename = function (name, ...args) {
+  return resolve.call(this, name.startsWith('@/') ? path.join(root, 'src', name.slice(2)) : name, ...args);
+};
+require.extensions['.ts'] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+}).outputText, filename);
+const Database = require('better-sqlite3');
+if (!process.argv.includes('--fresh')) {
+  require('../src/lib/db.ts').getDb().close();
+  delete require.cache[require.resolve('../src/lib/db.ts')];
+  const old = new Database(process.env.DB_PATH);
+  old.exec('DROP TABLE ideas');
+  const source = fs.readFileSync(path.join(root, 'src/lib/db.ts'), 'utf8');
+  const schema = source.match(/CREATE TABLE IF NOT EXISTS ideas \([\s\S]*?\n    \);/)[0]
+    .split('\n').filter(line => !/implementation_bonus_amount|implementation_bonus_currency|rejection_reason/.test(line)).join('\n');
+  old.exec(schema);
+  old.prepare("INSERT INTO ideas(title) VALUES ('existing')").run();
+  old.close();
+}
+const { getDb } = require('../src/lib/db.ts');
+const db = getDb();
+const { signToken } = require('../src/lib/auth.ts');
+const { PATCH } = require('../src/app/api/ideas/[id]/route.ts');
+const { GET } = require('../src/app/api/ideas/route.ts');
+const { NextRequest } = require('next/server');
+let failures = 0;
+async function test(name, fn) { try { await fn(); console.log('PASS', name); } catch (e) { failures++; console.error('FAIL', name, e.message); } }
+(async () => {
+  const tokens = {};
+  for (const role of ['admin', 'employee']) {
+    const id = Number(db.prepare('INSERT INTO employees(name,email,role,password,must_change_password) VALUES (?,?,?,?,0)').run(role, role+'@ideas.invalid',role,'unused').lastInsertRowid);
+    tokens[role] = await signToken({id,name:role,role,auth_version:0,must_change_password:0});
+  }
+  const create = (status='待评估') => Number(db.prepare('INSERT INTO ideas(title,status) VALUES (?,?)').run('test',status).lastInsertRowid);
+  const read = id => db.prepare('SELECT * FROM ideas WHERE id=?').get(id);
+  async function call(id, body, status=200, role='admin') {
+    const res = await PATCH(new NextRequest('http://localhost/api/ideas/'+id,{method:'PATCH',headers:{'content-type':'application/json',...(role?{authorization:'Bearer '+tokens[role]}:{})},body:JSON.stringify(body)}),{params:Promise.resolve({id:String(id)})});
+    assert.equal(res.status,status,JSON.stringify(await res.clone().json())); return res.json();
+  }
+  await test('list and board API visibility: employees see self and colleagues; admin sees all', async () => {
+    const ids = ['employee', 'colleague', 'admin'].map(source => Number(db.prepare('INSERT INTO ideas(title,source,is_boss) VALUES (?,?,?)').run(source, source, source === 'admin' ? 1 : 0).lastInsertRowid));
+    for (const role of ['employee', 'admin']) {
+      const res = await GET(new NextRequest('http://localhost/api/ideas', { headers: { authorization: 'Bearer ' + tokens[role] } }));
+      assert.equal(res.status, 200);
+      const rows = await res.json();
+      assert(rows.some(row => row.id === ids[0]));
+      assert(rows.some(row => row.id === ids[1]));
+      assert.equal(rows.some(row => row.id === ids[2]), role === 'admin');
+      if (role === 'employee') assert(rows.every(row => row.is_boss === 0));
+    }
+    const res = await GET(new NextRequest('http://localhost/api/ideas'));
+    assert.equal(res.status, 401);
+  });
+  await test('schema fields and existing rows', async()=>{const row=read(create()); for(const field of ['implementation_bonus_amount','implementation_bonus_currency','rejection_reason']) assert(field in row,field); assert.equal(row.implementation_bonus_amount,null); if(!process.argv.includes('--fresh')) assert.equal(read(1).title,'existing');});
+  await test('reject reason required and reopen clears it',async()=>{const id=create();for(const rejection_reason of [undefined,'','  ',12,{}]) await call(id,{action:'reject',rejection_reason},400);await call(id,{action:'reject',rejection_reason:'  暂不适合  '});assert.equal(read(id).rejection_reason,'暂不适合');assert.equal(read(id).status,'已拒绝');await call(id,{action:'reopen'});assert.equal(read(id).status,'待评估');assert.equal(read(id).rejection_reason,'');});
+  await test('complete requires feature but reward can be deferred',async()=>{const id=create('进行中');for(const related_feature of [undefined,' ',{}]) await call(id,{action:'complete',related_feature},400);await call(id,{action:'complete',related_feature:' 功能A '});assert.equal(read(id).related_feature,'功能A');assert.equal(read(id).implementation_bonus_amount,null);assert.equal(read(id).status,'已实现');});
+  await test('complete and supplement accept both currencies including zero',async()=>{for(const currency of ['THB','CNY']){const id=create('进行中');await call(id,{action:'complete',related_feature:'功能',implementation_bonus_amount:12.5,implementation_bonus_currency:currency});assert.equal(read(id).implementation_bonus_amount,12.5);assert.equal(read(id).implementation_bonus_currency,currency);await call(id,{action:'set_implementation_bonus',implementation_bonus_amount:0,implementation_bonus_currency:currency});assert.equal(read(id).implementation_bonus_amount,0);assert.equal(read(id).bonus_amount,0);assert.equal(read(id).related_feature,'功能');}});
+  await test('deferred reward persists',async()=>{const id=create('已实现');await call(id,{action:'set_implementation_bonus',implementation_bonus_amount:'100',implementation_bonus_currency:'THB'});assert.equal(read(id).implementation_bonus_amount,100);});
+  await test('invalid rewards do not mutate rows',async()=>{for(const action of ['complete','set_implementation_bonus'])for(const reward of [{implementation_bonus_amount:-1,implementation_bonus_currency:'THB'},{implementation_bonus_amount:true,implementation_bonus_currency:'THB'},{implementation_bonus_amount:'abc',implementation_bonus_currency:'THB'},{implementation_bonus_amount:1,implementation_bonus_currency:'USD'},{implementation_bonus_amount:1},{implementation_bonus_currency:'CNY'}]){const id=create(action==='complete'?'进行中':'已实现');const before=read(id);await call(id,{action,related_feature:'功能',...reward},400);assert.deepEqual(read(id),before);}await call(create('已实现'),{action:'set_implementation_bonus'},400);});
+  await test('state and permission guards',async()=>{for(const [action,allowed] of [['reject','待评估'],['reopen','已拒绝'],['complete','进行中'],['set_implementation_bonus','已实现']])for(const state of ['待评估','已拒绝','已采纳','进行中','已实现'])if(state!==allowed)await call(create(state),{action,rejection_reason:'原因',related_feature:'功能',implementation_bonus_amount:10,implementation_bonus_currency:'THB'},400);await call(create(),{action:'reject',rejection_reason:'原因'},401,null);await call(create(),{action:'reject',rejection_reason:'原因'},403,'employee');await call(999999,{action:'reopen'},404);});
+  await test('adopt and start unchanged',async()=>{const id=create();await call(id,{action:'adopt',bonus_amount:20,currency:'CNY'});await call(id,{action:'start'});assert.equal(read(id).status,'进行中');assert.equal(read(id).bonus_amount,20);});
+})().catch(e=>{failures++;console.error(e)}).finally(()=>{db.close();fs.rmSync(fixture,{recursive:true,force:true});process.exitCode=failures?1:0;});
+
+exec
+/bin/zsh -lc "cat node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md | head -65; cat > /tmp/create-ideas-test.py <<'PY'
+from pathlib import Path
+s=Path('scripts/test-ideas-board.cjs').read_text().split(\"for (role of ['employee', 'admin']) {\")[0]
+s=s.replace(\"let role = 'employee', state = [], cursor = 0;\", \"let role = 'admin', state = [], cursor = 0, calls = [];\" ).replace('apiCall() {}', 'async apiCall(url, options) { calls.push({ url, ...options }); return false; }')
+s+='''
+const event = () => ({ prevented: false, preventDefault() { this.prevented = true; }, dataTransfer: { setData() {}, effectAllowed: '', dropEffect: '' } });
+function board() { state = []; calls = []; find(render(), n => n.props?.children === '看板').props.onClick(); return render(); }
+function column(tree, status) { return find(tree, n => n.props?.['data-idea-column'] === status); }
+function card(tree, status) { return find(column(tree, status), n => n.type === 'article'); }
+function button(tree, label) { return find(tree, n => n.props?.children === label); }
+function drop(from, to) {
+  let tree = board(); const source = card(tree, from);
+  assert.equal(source.props.draggable, from "'!== '"'已实现');
+  source.props.onDragStart(event()); tree = render();
+  const target = column(tree, to), e = event(); target.props.onDragOver(e);
+  target.props.onDrop(event()); return e.prevented;
+}
+(async () => {
+  const allowed = { '待评估': ['已采纳', '已拒绝'], '已采纳': ['进行中'], '进行中': ['已实现'], '已拒绝': ['待评估'], '已实现': [] };
+  for (const from of statuses.filter(s => s "'!== '"'已实现')) for (const to of statuses) {
+    const valid = allowed[from].includes(to);
+    assert.equal(drop(from, to), valid, from + ' → ' + to);
+    if ("'!valid) { assert.equal(calls.length, 0); assert(!button(render(), '"'确认')); }
+  }
+  drop('待评估', '已采纳'); assert.equal(calls.length, 0);
+  await button(render(), '确认').props.onClick(); assert.equal(calls.length, 0, 'empty amount rejected');
+  find(render(), n => n.type === 'input' && n.props.type === 'number').props.onChange({ target: { value: '25' } });
+  await button(render(), '确认').props.onClick(); assert.deepEqual(calls[0].body, { action: 'adopt', bonus_amount: 25, currency: 'THB' });
+  drop('待评估', '已拒绝'); await button(render(), '确认').props.onClick(); assert.equal(calls.length, 0);
+  find(render(), n => n.type === 'textarea').props.onChange({ target: { value: '原因' } });
+  await button(render(), '确认').props.onClick(); assert.equal(calls[0].body.rejection_reason, '原因');
+  drop('进行中', '已实现'); await button(render(), '确认').props.onClick(); assert.equal(calls.length, 0);
+  find(render(), n => n.type === 'input' && n.props.placeholder === '做成了哪个功能').props.onChange({ target: { value: '功能A' } });
+  await button(render(), '确认').props.onClick(); assert.equal(calls[0].body.related_feature, '功能A');
+  assert.equal(calls[0].body.implementation_bonus_amount, undefined);
+  drop('已采纳', '进行中'); assert.equal(calls[0].body.action, 'start');
+  drop('已拒绝', '待评估'); assert.equal(calls[0].body.action, 'reopen');
+  drop('待评估', '已采纳'); button(render(), '取消').props.onClick(); assert.equal(calls.length, 0); assert("'!button(render(), '"'确认'));
+  let tree = board(); for (const label of ['采纳', '拒绝', '进行中', '已实现', '重新评估']) assert(button(tree, label), label + ' button fallback');
+  button(tree, '拒绝').props.onClick(); assert(button(render(), '确认'));
+  role = 'employee'; tree = board(); assert.equal(card(tree, '待评估').props.draggable, false); assert("'!button(tree, '"'采纳'));
+  console.log('PASS drag transition matrix, modal validation, cancellation, direct moves, button fallback and permissions');
+})().catch(e => { console.error(e); process.exitCode = 1; });
+'''
+Path('scripts/test-ideas-drag.cjs').write_text(s)
+PY
+python /tmp/create-ideas-test.py
+node scripts/test-ideas-drag.cjs" in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 0ms:
+---
+title: route.js
+description: API reference for the route.js special file.
+---
+
+Route Handlers allow you to create custom request handlers for a given route using the Web [Request](https://developer.mozilla.org/docs/Web/API/Request) and [Response](https://developer.mozilla.org/docs/Web/API/Response) APIs.
+
+```ts filename="route.ts" switcher
+export async function GET() {
+  return Response.json({ message: 'Hello World' })
+}
+```
+
+```js filename="route.js" switcher
+export async function GET() {
+  return Response.json({ message: 'Hello World' })
+}
+```
+
+## Reference
+
+### HTTP Methods
+
+A **route** file allows you to create custom request handlers for a given route. The following [HTTP methods](https://developer.mozilla.org/docs/Web/HTTP/Methods) are supported: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`.
+
+```ts filename="route.ts" switcher
+export async function GET(request: Request) {}
+
+export async function HEAD(request: Request) {}
+
+export async function POST(request: Request) {}
+
+export async function PUT(request: Request) {}
+
+export async function DELETE(request: Request) {}
+
+export async function PATCH(request: Request) {}
+
+// If `OPTIONS` is not defined, Next.js will automatically implement `OPTIONS` and set the appropriate Response `Allow` header depending on the other methods defined in the Route Handler.
+export async function OPTIONS(request: Request) {}
+```
+
+```js filename="route.js" switcher
+export async function GET(request) {}
+
+export async function HEAD(request) {}
+
+export async function POST(request) {}
+
+export async function PUT(request) {}
+
+export async function DELETE(request) {}
+
+export async function PATCH(request) {}
+
+// If `OPTIONS` is not defined, Next.js will automatically implement `OPTIONS` and set the appropriate Response `Allow` header depending on the other methods defined in the Route Handler.
+export async function OPTIONS(request) {}
+```
+
+### Parameters
+
+#### `request` (optional)
+
+The `request` object is a [NextRequest](/docs/app/api-reference/functions/next-request) object, which is an extension of the Web [Request](https://developer.mozilla.org/docs/Web/API/Request) API. `NextRequest` gives you further control over the incoming request, including easily accessing `cookies` and an extended, parsed, URL object `nextUrl`.
+
+zsh:47: command not found: python
+node:internal/modules/cjs/loader:1451
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/liuxiong/Desktop/internal-system/scripts/test-ideas-drag.cjs'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1448:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)
+    at Module._load (node:internal/modules/cjs/loader:1234:25)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v24.13.1
+
+exec
+/bin/zsh -lc 'python3 /tmp/create-ideas-test.py
+node scripts/test-ideas-drag.cjs' in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 117ms:
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ undefined
+- true
+
+    at drop (/Users/liuxiong/Desktop/internal-system/scripts/test-ideas-drag.cjs:37:10)
+    at /Users/liuxiong/Desktop/internal-system/scripts/test-ideas-drag.cjs:46:18
+    at Object.<anonymous> (/Users/liuxiong/Desktop/internal-system/scripts/test-ideas-drag.cjs:67:3)
+    at Module._compile (node:internal/modules/cjs/loader:1804:14)
+    at Object..js (node:internal/modules/cjs/loader:1936:10)
+    at Module.load (node:internal/modules/cjs/loader:1525:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1327:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+codex
+现有后端已限制流转顺序，并支持拒绝原因和重新评估；前端还没有拖拽，拒绝按钮也未传原因。另外，采纳金额留空目前会被当成 0，我会补齐这些校验，并在看板保留按钮操作。
+exec
+/bin/zsh -lc "cat > /tmp/edit-ideas.py <<'PY'
+from pathlib import Path
+p=Path('src/app/(app)/ideas/page.tsx');s=p.read_text()
+s=s.replace('const STATUS_BADGE', '''const TRANSITIONS: Record<string, Record<string, string>> = {
+  \"待评估\": { \"已采纳\": \"adopt\", \"已拒绝\": \"reject\" },
+  \"已采纳\": { \"进行中\": \"start\" },
+  \"进行中\": { \"已实现\": \"complete\" },
+  \"已拒绝\": { \"待评估\": \"reopen\" },
+};
+
+const STATUS_BADGE''')
+s=s.replace('// 老板处理：采纳 / 已实现','// 老板处理：采纳 / 拒绝 / 已实现').replace('type: \"adopt\" | \"complete\"','type: \"adopt\" | \"reject\" | \"complete\"')
+s=s.replace('  const [acting, setActing] = useState(false);','''  const [acting, setActing] = useState(false);
+  const [draggedId, setDraggedId] = useState<number | null>(null);
+  const [rejectionReason, setRejectionReason] = useState(\"\");''')
+s=s.replace('    setActing(true);','    if ("'!isAdmin || acting) return;'"\\n    setActing(true);')
+s=s.replace('  const confirmReject = async (id: number) => { if ("'!confirm("确定拒绝这个想法？")) return; await doAction(id, "reject"); };'"','  const confirmReject = (id: number) => { setRejectionReason(\"\"); setActionErr(\"\"); setActionModal({ id, type: \"reject\" }); };')
+s=s.replace('if ("'!Number.isFinite(amt) || amt < 0)'"', 'if ("'!bonusAmount.trim() || !Number.isFinite(amt) || amt < 0)'"').replace('    await doAction(actionModal"'!.id, "adopt",'"', '    if ("'!["THB", "CNY"].includes(bonusCurrency)) { setActionErr("请选择币种"); return; }'"\\n    await doAction(actionModal"'!.id, "adopt",'"')
+pos='  const bonusLabel ='
+insert='''  const submitReject = async () => {
+    if ("'!rejectionReason.trim()) { setActionErr("请填写拒绝原因"); return; }
+    await doAction(actionModal!.id, "reject", { rejection_reason: rejectionReason.trim() });
+  };
+
+  const dropAction = (status: string) => {
+    const idea = ideas.find((item) => item.id === draggedId);
+    return isAdmin && !acting && !actionModal && idea ? TRANSITIONS[idea.status]?.[status] : undefined;
+  };
+
+  const handleDrop = (status: string) => {
+    const action = dropAction(status);
+    const id = draggedId;
+    setDraggedId(null);
+    if (!action || id === null) return;
+    if (action === "adopt") openAdopt(id);
+    else if (action === "reject") confirmReject(id);
+    else if (action === "complete") openComplete(id);
+    else void doAction(id, action);
+  };
+
+  const actionButtons = (idea: Idea) => isAdmin && (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {idea.status === "待评估" && <>
+        <Button size="xs" disabled={acting} onClick={() => openAdopt(idea.id)}>采纳</Button>
+        <Button size="xs" variant="outline" disabled={acting} onClick={() => confirmReject(idea.id)}>拒绝</Button>
+      </>}
+      {idea.status === "已采纳" && <Button size="xs" disabled={acting} onClick={() => confirmStart(idea.id)}>进行中</Button>}
+      {idea.status === "进行中" && <Button size="xs" disabled={acting} onClick={() => openComplete(idea.id)}>已实现</Button>}
+      {idea.status === "已拒绝" && <Button size="xs" variant="outline" disabled={acting} onClick={() => doAction(idea.id, "reopen")}>重新评估</Button>}
+    </div>
+  );
+
+'"'''
+s=s.replace(pos,insert+pos)
+s=s.replace('      {loading ? (','      {actionErr && "'!actionModal && <p role="alert" className="text-sm text-[var(--destructive)]">{actionErr}</p>}'"\\n\\n      {loading ? (')
+s=s.replace('<section key={status} data-idea-column={status}', '''<section key={status}
+                  onDragOver={(e) => { if (dropAction(status)) { e.preventDefault(); e.dataTransfer.dropEffect = \"move\"; } else { e.dataTransfer.dropEffect = \"none\"; } }}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(status); }}
+                  data-idea-column={status}''')
+s=s.replace('<article key={idea.id} className=', '''<article key={idea.id}
+                        draggable={isAdmin && "'!acting && !actionModal && !!TRANSITIONS[idea.status]}
+                        onDragStart={(e) => {
+                          if (!isAdmin || acting || actionModal || !TRANSITIONS[idea.status]) { e.preventDefault(); return; }
+                          e.dataTransfer.setData("text/plain", String(idea.id));
+                          e.dataTransfer.effectAllowed = "move";
+                          setDraggedId(idea.id);
+                          setActionErr("");
+                        }}
+                        onDragEnd={() => setDraggedId(null)}
+                        className='"''')
+s=s.replace('                      </article>','                        {actionButtons(idea)}\\n                      </article>')
+a=s.index('                {isAdmin && (',s.index('visibleIdeas.map'));b=s.index('\\n              </div>',a)
+s=s[:a]+'                {actionButtons(i)}'+s[b:]
+s=s.replace('老板处理弹窗：采纳 / 已实现','老板处理弹窗：采纳 / 拒绝 / 已实现')
+s=s.replace('onClick={() => setActionModal(null)}','onClick={() => { if ("'!acting) setActionModal(null); }}'"')
+s=s.replace('actionModal.type === \"adopt\" ? \"采纳想法\" : \"标记已实现\"','actionModal.type === \"adopt\" ? \"采纳想法\" : actionModal.type === \"reject\" ? \"拒绝想法\" : \"标记已实现\"')
+s=s.replace('>奖金金额</label>','>采纳奖金金额 *</label>').replace('>币种</label>','>币种 *</label>')
+s=s.replace('''            ) : (
+              <div className=\"mt-4\">''','''            ) : actionModal.type === \"reject\" ? (
+              <div className=\"mt-4\">
+                <label className=\"text-xs font-medium\">拒绝原因 *</label>
+                <textarea value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} rows={3} className=\"mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm\" />
+              </div>
+            ) : (
+              <div className=\"mt-4\">''')
+s=s.replace('actionModal.type === \"adopt\" ? submitAdopt : submitComplete','actionModal.type === \"adopt\" ? submitAdopt : actionModal.type === \"reject\" ? submitReject : submitComplete')
+p.write_text(s)
+PY
+python3 /tmp/edit-ideas.py
+node scripts/test-ideas-drag.cjs
+node scripts/test-ideas-board.cjs" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 303ms:
+PASS drag transition matrix, modal validation, cancellation, direct moves, button fallback and permissions
+PASS employee view switching, columns, counts, card fields, visibility and empty board
+PASS admin view switching, columns, counts, card fields, visibility and empty board
+
+exec
+/bin/zsh -lc "python3 - <<'PY'
+from pathlib import Path
+p=Path('scripts/test-ideas.cjs');s=p.read_text();s=s.replace(\"  await test('adopt and start unchanged'\", \"\"\"  await test('adopt requires explicit amount and valid currency', async()=>{for(const fields of [{currency:'THB'},{bonus_amount:'',currency:'THB'},{bonus_amount:null,currency:'THB'},{bonus_amount:true,currency:'THB'},{bonus_amount:0},{bonus_amount:1,currency:'USD'}]){const id=create();const before=read(id);await call(id,{action:'adopt',...fields},400);assert.deepEqual(read(id),before);}});
+  await test('all transition guards', async()=>{for(const [action,allowed] of [['adopt','待评估'],['start','已采纳']])for(const status of ['待评估','已采纳','进行中','已实现','已拒绝'])if(status"'!==allowed)await call(create(status),{action,bonus_amount:0,currency:'"'THB'},400);});
+  await test('adopt and start unchanged'\"\"\");p.write_text(s)
+PY
+node scripts/test-ideas.cjs" in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 875ms:
+[DB] 已插入待分类业务线
+PASS list and board API visibility: employees see self and colleagues; admin sees all
+PASS schema fields and existing rows
+PASS reject reason required and reopen clears it
+PASS complete requires feature but reward can be deferred
+PASS complete and supplement accept both currencies including zero
+PASS deferred reward persists
+PASS invalid rewards do not mutate rows
+PASS state and permission guards
+FAIL adopt requires explicit amount and valid currency {"id":43,"title":"test","content":"","category":"产品功能","source":"","is_boss":0,"status":"已采纳","bonus_amount":0,"currency":"THB","related_feature":"","created_at":"2026-10-14 18:54:37","updated_at":"2026-10-14 18:54:37","implementation_bonus_amount":null,"implementation_bonus_currency":null,"rejection_reason":""}
+
+200 !== 400
+
+PASS all transition guards
+PASS adopt and start unchanged
+
+exec
+/bin/zsh -lc "python3 - <<'PY'
+from pathlib import Path
+p=Path('src/app/api/ideas/[id]/route.ts');s=p.read_text().replace('    const amt = Number(body.bonus_amount);\\n    if ("'!Number.isFinite(amt) || amt < 0)'"', '    const rawAmount = body.bonus_amount;\\n    const amt = Number(rawAmount);\\n    if ((typeof rawAmount "'!== "number" && typeof rawAmount !== "string") || (typeof rawAmount === "string" && !rawAmount.trim()) || !Number.isFinite(amt) || amt < 0)'"').replace('    const currency = body.currency === \"CNY\" ? \"CNY\" : \"THB\";', '    if (body.currency "'!== "CNY" && body.currency !== "THB") return NextResponse.json({ error: "请选择奖金币种（THB/CNY）" }, { status: 400 });'"\\n    const currency = body.currency;');p.write_text(s)
+PY
+node scripts/test-ideas.cjs
+node scripts/test-ideas-drag.cjs
+node scripts/test-ideas-board.cjs
+npx tsc --noEmit" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 2494ms:
+[DB] 已插入待分类业务线
+PASS list and board API visibility: employees see self and colleagues; admin sees all
+PASS schema fields and existing rows
+PASS reject reason required and reopen clears it
+PASS complete requires feature but reward can be deferred
+PASS complete and supplement accept both currencies including zero
+PASS deferred reward persists
+PASS invalid rewards do not mutate rows
+PASS state and permission guards
+PASS adopt requires explicit amount and valid currency
+PASS all transition guards
+PASS adopt and start unchanged
+PASS drag transition matrix, modal validation, cancellation, direct moves, button fallback and permissions
+PASS employee view switching, columns, counts, card fields, visibility and empty board
+PASS admin view switching, columns, counts, card fields, visibility and empty board
+
+codex
+拖拽事件测试已通过：合法流转可放下，跳级不会提交；三个弹窗的必填校验、取消不变状态、直接推进及拒绝后退回均通过。后端测试也确认了流转限制和实现奖可后补。正在运行类型检查和构建。
+exec
+/bin/zsh -lc 'npm run build' in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 5710ms:
+
+> internal-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+
+  Creating an optimized production build ...
+Turbopack build encountered 2 warnings:
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/instrumentation.js
+  [output]/.next/server/chunks/src_0xrgkd4._.js
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+✓ Compiled successfully in 4.8s
+  Skipping validation of types
+  Finished TypeScript config validation in 15ms ...
+  Collecting page data using 11 workers ...
+Error: 未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。
+    at module evaluation (.next/server/chunks/src_lib_auth_ts_1_aqh19._.js:1:22398)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/[turbopack]_runtime.js:877:12)
+    at Context.esmImport [as i] (.next/server/chunks/[turbopack]_runtime.js:281:20)
+    at module evaluation (.next/server/chunks/[root-of-the-server]__17ve7p9._.js:1:1899)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at instantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:882:12)
+    at getOrInstantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:895:12)
+    at Object.m (.next/server/chunks/[turbopack]_runtime.js:898:18)
+    at Object.<anonymous> (.next/server/app/api/announcements/[id]/retell/route.js:7:3)
+
+> Build error occurred
+Error: Failed to collect page data for /api/announcements/[id]/retell
+    at ignore-listed frames {
+  type: 'Error'
+}
+
+codex
+类型检查已通过。构建在加载阶段因当前环境未设置 `JWT_SECRET` 停止；我会使用仅本次验证有效的随机密钥重跑构建，不改项目配置。
+exec
+/bin/zsh -lc 'cat /Users/liuxiong/.codex/skills/systematic-debugging/SKILL.md' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+---
+name: systematic-debugging
+description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+---
+
+# Systematic Debugging
+
+## Overview
+
+Random fixes waste time and create new bugs. Quick patches mask underlying issues.
+
+**Core principle:** ALWAYS find root cause before attempting fixes. Symptom fixes are failure.
+
+**Violating the letter of this process is violating the spirit of debugging.**
+
+## The Iron Law
+
+```
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
+```
+
+If you haven't completed Phase 1, you cannot propose fixes.
+
+## When to Use
+
+Use for ANY technical issue:
+- Test failures
+- Bugs in production
+- Unexpected behavior
+- Performance problems
+- Build failures
+- Integration issues
+
+**Use this ESPECIALLY when:**
+- Under time pressure (emergencies make guessing tempting)
+- "Just one quick fix" seems obvious
+- You've already tried multiple fixes
+- Previous fix didn't work
+- You don't fully understand the issue
+
+**Don't skip when:**
+- Issue seems simple (simple bugs have root causes too)
+- You're in a hurry (rushing guarantees rework)
+- Manager wants it fixed NOW (systematic is faster than thrashing)
+
+## The Four Phases
+
+You MUST complete each phase before proceeding to the next.
+
+### Phase 1: Root Cause Investigation
+
+**BEFORE attempting ANY fix:**
+
+1. **Read Error Messages Carefully**
+   - Don't skip past errors or warnings
+   - They often contain the exact solution
+   - Read stack traces completely
+   - Note line numbers, file paths, error codes
+
+2. **Reproduce Consistently**
+   - Can you trigger it reliably?
+   - What are the exact steps?
+   - Does it happen every time?
+   - If not reproducible → gather more data, don't guess
+
+3. **Check Recent Changes**
+   - What changed that could cause this?
+   - Git diff, recent commits
+   - New dependencies, config changes
+   - Environmental differences
+
+4. **Gather Evidence in Multi-Component Systems**
+
+   **WHEN system has multiple components (CI → build → signing, API → service → database):**
+
+   **BEFORE proposing fixes, add diagnostic instrumentation:**
+   ```
+   For EACH component boundary:
+     - Log what data enters component
+     - Log what data exits component
+     - Verify environment/config propagation
+     - Check state at each layer
+
+   Run once to gather evidence showing WHERE it breaks
+   THEN analyze evidence to identify failing component
+   THEN investigate that specific component
+   ```
+
+   **Example (multi-layer system):**
+   ```bash
+   # Layer 1: Workflow
+   echo "=== Secrets available in workflow: ==="
+   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
+
+   # Layer 2: Build script
+   echo "=== Env vars in build script: ==="
+   env | grep IDENTITY || echo "IDENTITY not in environment"
+
+   # Layer 3: Signing script
+   echo "=== Keychain state: ==="
+   security list-keychains
+   security find-identity -v
+
+   # Layer 4: Actual signing
+   codesign --sign "$IDENTITY" --verbose=4 "$APP"
+   ```
+
+   **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
+
+5. **Trace Data Flow**
+
+   **WHEN error is deep in call stack:**
+
+   See `root-cause-tracing.md` in this directory for the complete backward tracing technique.
+
+   **Quick version:**
+   - Where does bad value originate?
+   - What called this with bad value?
+   - Keep tracing up until you find the source
+   - Fix at source, not at symptom
+
+### Phase 2: Pattern Analysis
+
+**Find the pattern before fixing:**
+
+1. **Find Working Examples**
+   - Locate similar working code in same codebase
+   - What works that's similar to what's broken?
+
+2. **Compare Against References**
+   - If implementing pattern, read reference implementation COMPLETELY
+   - Don't skim - read every line
+   - Understand the pattern fully before applying
+
+3. **Identify Differences**
+   - What's different between working and broken?
+   - List every difference, however small
+   - Don't assume "that can't matter"
+
+4. **Understand Dependencies**
+   - What other components does this need?
+   - What settings, config, environment?
+   - What assumptions does it make?
+
+### Phase 3: Hypothesis and Testing
+
+**Scientific method:**
+
+1. **Form Single Hypothesis**
+   - State clearly: "I think X is the root cause because Y"
+   - Write it down
+   - Be specific, not vague
+
+2. **Test Minimally**
+   - Make the SMALLEST possible change to test hypothesis
+   - One variable at a time
+   - Don't fix multiple things at once
+
+3. **Verify Before Continuing**
+   - Did it work? Yes → Phase 4
+   - Didn't work? Form NEW hypothesis
+   - DON'T add more fixes on top
+
+4. **When You Don't Know**
+   - Say "I don't understand X"
+   - Don't pretend to know
+   - Ask for help
+   - Research more
+
+### Phase 4: Implementation
+
+**Fix the root cause, not the symptom:**
+
+1. **Create Failing Test Case**
+   - Simplest possible reproduction
+   - Automated test if possible
+   - One-off test script if no framework
+   - MUST have before fixing
+   - Use the `superpowers:test-driven-development` skill for writing proper failing tests
+
+2. **Implement Single Fix**
+   - Address the root cause identified
+   - ONE change at a time
+   - No "while I'm here" improvements
+   - No bundled refactoring
+
+3. **Verify Fix**
+   - Test passes now?
+   - No other tests broken?
+   - Issue actually resolved?
+
+4. **If Fix Doesn't Work**
+   - STOP
+   - Count: How many fixes have you tried?
+   - If < 3: Return to Phase 1, re-analyze with new information
+   - **If ≥ 3: STOP and question the architecture (step 5 below)**
+   - DON'T attempt Fix #4 without architectural discussion
+
+5. **If 3+ Fixes Failed: Question Architecture**
+
+   **Pattern indicating architectural problem:**
+   - Each fix reveals new shared state/coupling/problem in different place
+   - Fixes require "massive refactoring" to implement
+   - Each fix creates new symptoms elsewhere
+
+   **STOP and question fundamentals:**
+   - Is this pattern fundamentally sound?
+   - Are we "sticking with it through sheer inertia"?
+   - Should we refactor architecture vs. continue fixing symptoms?
+
+   **Discuss with your human partner before attempting more fixes**
+
+   This is NOT a failed hypothesis - this is a wrong architecture.
+
+## Red Flags - STOP and Follow Process
+
+If you catch yourself thinking:
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "Add multiple changes, run tests"
+- "Skip the test, I'll manually verify"
+- "It's probably X, let me fix that"
+- "I don't fully understand but this might work"
+- "Pattern says X but I'll adapt it differently"
+- "Here are the main problems: [lists fixes without investigation]"
+- Proposing solutions before tracing data flow
+- **"One more fix attempt" (when already tried 2+)**
+- **Each fix reveals new problem in different place**
+
+**ALL of these mean: STOP. Return to Phase 1.**
+
+**If 3+ fixes failed:** Question the architecture (see Phase 4.5)
+
+## your human partner's Signals You're Doing It Wrong
+
+**Watch for these redirections:**
+- "Is that not happening?" - You assumed without verifying
+- "Will it show us...?" - You should have added evidence gathering
+- "Stop guessing" - You're proposing fixes without understanding
+- "Ultrathink this" - Question fundamentals, not just symptoms
+- "We're stuck?" (frustrated) - Your approach isn't working
+
+**When you see these:** STOP. Return to Phase 1.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
+| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
+| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
+| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
+| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
+| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
+| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
+| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question pattern, don't fix again. |
+
+## Quick Reference
+
+| Phase | Key Activities | Success Criteria |
+|-------|---------------|------------------|
+| **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
+| **2. Pattern** | Find working examples, compare | Identify differences |
+| **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
+| **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
+
+## When Process Reveals "No Root Cause"
+
+If systematic investigation reveals issue is truly environmental, timing-dependent, or external:
+
+1. You've completed the process
+2. Document what you investigated
+3. Implement appropriate handling (retry, timeout, error message)
+4. Add monitoring/logging for future investigation
+
+**But:** 95% of "no root cause" cases are incomplete investigation.
+
+## Supporting Techniques
+
+These techniques are part of systematic debugging and available in this directory:
+
+- **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
+- **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
+- **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
+
+**Related skills:**
+- **superpowers:test-driven-development** - For creating failing test case (Phase 4, Step 1)
+- **superpowers:verification-before-completion** - Verify fix worked before claiming success
+
+## Real-World Impact
+
+From debugging sessions:
+- Systematic approach: 15-30 minutes to fix
+- Random fixes approach: 2-3 hours of thrashing
+- First-time fix rate: 95% vs 40%
+- New bugs introduced: Near zero vs common
+
+exec
+/bin/zsh -lc "rg -n 'JWT_SECRET|DB_PATH|INTERNAL_APP_ROOT' src/lib/auth.ts src/lib/db.ts next.config.mjs" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+src/lib/auth.ts:5:const rawSecret = process.env.JWT_SECRET;
+src/lib/auth.ts:9:      "未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。"
+src/lib/auth.ts:12:  console.warn("[auth] 未设置 JWT_SECRET，当前使用开发环境默认密钥，仅供本地开发，切勿用于生产部署。");
+
+exec
+/bin/zsh -lc "node -e 'const {spawnSync}=require(\"node:child_process\"); const {randomBytes}=require(\"node:crypto\"); const result=spawnSync(\"npm\",[\"run\",\"build\"],{stdio:\"inherit\",env:{...process.env,JWT_SECRET:randomBytes(48).toString(\"hex\")}}); process.exit(result.status ?? 1);'" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 5578ms:
+
+> internal-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+
+  Creating an optimized production build ...
+Turbopack build encountered 1 warnings:
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+✓ Compiled successfully in 4.4s
+  Skipping validation of types
+  Finished TypeScript config validation in 19ms ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/224) ...
+  Generating static pages using 11 workers (56/224) 
+  Generating static pages using 11 workers (112/224) 
+  Generating static pages using 11 workers (168/224) 
+✓ Generating static pages using 11 workers (224/224) in 218ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /activity
+├ ○ /address-certification
+├ ○ /agency
+├ ○ /agency/contracts
+├ ○ /agency/factories
+├ ƒ /agency/factories/[id]
+├ ○ /agency/incubation
+├ ○ /agency/influencers
+├ ƒ /agency/influencers/[id]
+├ ○ /agency/influencers/new
+├ ○ /agency/influencers/tasks
+├ ƒ /agency/influencers/tasks/[id]
+├ ○ /announcements
+├ ƒ /api/activity/company-trend
+├ ƒ /api/activity/stats
+├ ƒ /api/activity/trend
+├ ƒ /api/agency/dashboard
+├ ƒ /api/agency/stats
+├ ƒ /api/agency/workload-details
+├ ƒ /api/announcements
+├ ƒ /api/announcements/[id]
+├ ƒ /api/announcements/[id]/ai-compare
+├ ƒ /api/announcements/[id]/recall
+├ ƒ /api/announcements/[id]/retell
+├ ƒ /api/announcements/[id]/review
+├ ƒ /api/announcements/[id]/to-rule
+├ ƒ /api/assets
+├ ƒ /api/assets/[id]
+├ ƒ /api/assets/[id]/view-log
+├ ƒ /api/assets/subcategories
+├ ƒ /api/assets/subcategories/[id]
+├ ƒ /api/attendance
+├ ƒ /api/attendance/anomaly
+├ ƒ /api/attendance/details
+├ ƒ /api/attendance/export
+├ ƒ /api/attendance/request
+├ ƒ /api/attendance/summaries
+├ ƒ /api/attendance/summary
+├ ƒ /api/attendance/today
+├ ƒ /api/audit-logs
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/me
+├ ƒ /api/business-types
+├ ƒ /api/chat
+├ ƒ /api/chat/contacts
+├ ƒ /api/chat/group-messages
+├ ƒ /api/chat/groups
+├ ƒ /api/chat/groups/disband
+├ ƒ /api/chat/groups/leave
+├ ƒ /api/chat/groups/members
+├ ƒ /api/chat/groups/mute
+├ ƒ /api/chat/groups/transfer
+├ ƒ /api/chat/monitor
+├ ƒ /api/chat/pins
+├ ƒ /api/chat/reactions
+├ ƒ /api/chat/recall
+├ ƒ /api/chat/search
+├ ƒ /api/chat/summary
+├ ƒ /api/chat/summary/board
+├ ƒ /api/chat/summary/employee
+├ ƒ /api/chat/translate
+├ ƒ /api/chat/typing
+├ ƒ /api/chat/unread-count
+├ ƒ /api/client-feedback/public
+├ ƒ /api/commerce/cart
+├ ƒ /api/commerce/imported-catalog
+├ ƒ /api/commerce/orders
+├ ƒ /api/commerce/orders/[id]
+├ ƒ /api/commerce/orders/[id]/adjustments
+├ ƒ /api/commerce/orders/[id]/cancellations
+├ ƒ /api/commerce/orders/[id]/cancellations/[cancellationId]/decision
+├ ƒ /api/commerce/orders/[id]/cancellations/[cancellationId]/withdraw
+├ ƒ /api/commerce/orders/[id]/payment
+├ ƒ /api/commerce/orders/[id]/refunds
+├ ƒ /api/commerce/orders/page
+├ ƒ /api/commerce/products
+├ ƒ /api/commerce/quote
+├ ƒ /api/contracts
+├ ƒ /api/customer-bridge/[...path]
+├ ƒ /api/customers
+├ ƒ /api/customers/[id]
+├ ƒ /api/dashboard/stats
+├ ƒ /api/discovery-tasks
+├ ƒ /api/discovery-tasks/[id]
+├ ƒ /api/discovery-tasks/[id]/influencers
+├ ƒ /api/discovery-tasks/stats
+├ ƒ /api/documents
+├ ƒ /api/email-stock
+├ ƒ /api/employee-info-changes
+├ ƒ /api/employees
+├ ƒ /api/employees/[id]/pdf
+├ ƒ /api/employees/avatar
+├ ƒ /api/employees/background
+├ ƒ /api/employees/demerits
+├ ƒ /api/employees/educations
+├ ƒ /api/employees/export
+├ ƒ /api/employees/files
+├ ƒ /api/employees/handover
+├ ƒ /api/employees/medical
+├ ƒ /api/employees/onboarding
+├ ƒ /api/employees/personal
+├ ƒ /api/employees/personal/followups
+├ ƒ /api/employees/personal/status
+├ ƒ /api/employees/records
+├ ƒ /api/employees/status-assessment
+├ ƒ /api/external/login
+├ ƒ /api/external/orders
+├ ƒ /api/external/orders/[id]
+├ ƒ /api/factories
+├ ƒ /api/factories/[id]
+├ ƒ /api/files/[filename]
+├ ƒ /api/finances
+├ ƒ /api/finances/pending-verify-count
+├ ƒ /api/ideas
+├ ƒ /api/ideas/[id]
+├ ƒ /api/influencers
+├ ƒ /api/influencers/[id]
+├ ƒ /api/influencers/[id]/certificates
+├ ƒ /api/influencers/[id]/certificates/[certId]
+├ ƒ /api/influencers/[id]/documents
+├ ƒ /api/influencers/[id]/factories
+├ ƒ /api/influencers/[id]/finances
+├ ƒ /api/influencers/[id]/start-phase
+├ ƒ /api/influencers/[id]/steps
+├ ƒ /api/influencers/[id]/steps/[stepId]/notes
+├ ƒ /api/influencers/[id]/steps/details
+├ ƒ /api/influencers/evaluations
+├ ƒ /api/influencers/evaluations/import
+├ ƒ /api/internal/client-feedback
+├ ƒ /api/internal/expiry-alerts
+├ ƒ /api/internal/points
+├ ƒ /api/internal/weekly-report
+├ ƒ /api/internal/workload
+├ ƒ /api/internal/workload-details
+├ ƒ /api/issues
+├ ƒ /api/issues/translate
+├ ƒ /api/leave
+├ ƒ /api/leave/analysis
+├ ƒ /api/leave/analyze
+├ ƒ /api/leave/analyze-batch
+├ ƒ /api/leave/annual-balance
+├ ƒ /api/leave/dashboard
+├ ƒ /api/leave/export
+├ ƒ /api/leave/medical-proof
+├ ƒ /api/logistics
+├ ƒ /api/logistics-script/categories
+├ ƒ /api/logistics-script/copy
+├ ƒ /api/logistics-script/feedback
+├ ƒ /api/logistics-script/pin
+├ ƒ /api/logistics-script/questions
+├ ƒ /api/logistics-script/reorder
+├ ƒ /api/logistics-script/scripts
+├ ƒ /api/logistics-script/tree
+├ ƒ /api/logistics/[id]
+├ ƒ /api/logistics/[id]/files
+├ ƒ /api/logistics/[id]/steps
+├ ƒ /api/logistics/[id]/steps/[stepId]/notes
+├ ƒ /api/meetings
+├ ƒ /api/meetings/[id]/reflections
+├ ƒ /api/meetings/[id]/reflections/[rid]
+├ ƒ /api/notifications
+├ ƒ /api/notifications/unread-count
+├ ƒ /api/orders
+├ ƒ /api/orders/[id]
+├ ƒ /api/orders/[id]/cancel-requests
+├ ƒ /api/orders/[id]/certificates
+├ ƒ /api/orders/[id]/documents
+├ ƒ /api/orders/[id]/feedback-token
+├ ƒ /api/orders/[id]/finances
+├ ƒ /api/orders/[id]/finances/verify
+├ ƒ /api/orders/[id]/steps
+├ ƒ /api/orders/[id]/steps/[stepId]/documents
+├ ƒ /api/orders/[id]/steps/[stepId]/documents/mark-uploaded
+├ ƒ /api/orders/[id]/steps/[stepId]/notes
+├ ƒ /api/orders/[id]/steps/details
+├ ƒ /api/orders/[id]/supplement-requests
+├ ƒ /api/payslips
+├ ƒ /api/payslips/export
+├ ƒ /api/payslips/flow
+├ ƒ /api/problems
+├ ƒ /api/problems/[id]
+├ ƒ /api/problems/[id]/attachments
+├ ƒ /api/problems/[id]/follow-ups
+├ ƒ /api/problems/stats
+├ ƒ /api/projects
+├ ƒ /api/projects/[id]
+├ ƒ /api/projects/[id]/progress
+├ ƒ /api/projects/[id]/summaries
+├ ƒ /api/projects/names
+├ ƒ /api/registrations
+├ ƒ /api/rules
+├ ƒ /api/rules/[id]/apply
+├ ƒ /api/rules/[id]/history
+├ ƒ /api/rules/[id]/update
+├ ƒ /api/scan-verifications
+├ ƒ /api/settings
+├ ƒ /api/shop-fees
+├ ƒ /api/shop-fees/[id]
+├ ƒ /api/shopee-order-items
+├ ƒ /api/shopee-orders
+├ ƒ /api/shopee-stores
+├ ƒ /api/sim-batches
+├ ƒ /api/sim-transactions
+├ ƒ /api/steps/assigned
+├ ƒ /api/sync/cancel-requests
+├ ƒ /api/sync/deliveries/[deliveryId]/file
+├ ƒ /api/sync/documents
+├ ƒ /api/sync/orders
+├ ƒ /api/tasks
+├ ƒ /api/templates
+├ ƒ /api/thai-holidays
+├ ƒ /api/todo-categories
+├ ƒ /api/todos
+├ ƒ /api/todos/[id]
+├ ƒ /api/todos/[id]/follow-ups
+├ ƒ /api/todos/[id]/seen
+├ ƒ /api/todos/stats
+├ ƒ /api/todos/unseen
+├ ƒ /api/upload
+├ ƒ /api/vat/customers
+├ ƒ /api/vat/customers/[id]/profile
+├ ƒ /api/vat/dashboard
+├ ƒ /api/vat/notify
+├ ƒ /api/vat/reconciliation
+├ ƒ /api/vat/records
+├ ƒ /api/vat/records/[id]
+├ ƒ /api/vat/records/[id]/documents
+├ ƒ /api/vat/records/[id]/feedback-token
+├ ƒ /api/vat/records/[id]/finances
+├ ƒ /api/vat/records/[id]/notes
+├ ƒ /api/vat/records/[id]/steps
+├ ƒ /api/vat/records/[id]/steps/[stepId]/documents
+├ ƒ /api/vat/records/[id]/steps/[stepId]/notes
+├ ƒ /api/vat/records/[id]/steps/details
+├ ƒ /api/vat/records/batch
+├ ƒ /api/vat/records/generate
+├ ƒ /api/vat/summary
+├ ƒ /api/wht/customers
+├ ƒ /api/wht/customers/[id]/profile
+├ ƒ /api/wht/reconciliation
+├ ƒ /api/wht/records
+├ ƒ /api/wht/records/[id]
+├ ƒ /api/wht/records/[id]/certificate
+├ ƒ /api/wht/records/[id]/documents
+├ ƒ /api/wht/records/[id]/notes
+├ ƒ /api/wht/records/[id]/steps
+├ ƒ /api/wht/records/[id]/steps/[stepId]/notes
+├ ƒ /api/wht/records/[id]/steps/details
+├ ƒ /api/wht/records/batch
+├ ƒ /api/wht/stats
+├ ƒ /api/wht/summary
+├ ƒ /api/work-reports
+├ ƒ /api/work-reports/[id]
+├ ƒ /api/work-reports/auto
+├ ƒ /api/work-reports/board
+├ ƒ /api/work-reports/search
+├ ƒ /api/work-reports/story
+├ ƒ /api/work-reports/story/summary
+├ ○ /assets
+├ ƒ /commerce
+├ ○ /company-registration
+├ ○ /customers
+├ ƒ /customers/[id]
+├ ○ /customs-clearance
+├ ○ /dld
+├ ○ /dld/site
+├ ○ /documents
+├ ○ /fda-certification
+├ ○ /fda-certification/agency
+├ ○ /fda-certification/cosmetics
+├ ○ /fda-certification/food
+├ ○ /fda-certification/hazard
+├ ○ /fda-certification/medical
+├ ƒ /feedback/[token]
+├ ○ /finance
+├ ○ /ideas
+├ ○ /internal
+├ ○ /internal/employees
+├ ○ /internal/leave
+├ ○ /internal/payslips
+├ ○ /internal/rewards
+├ ○ /internal/shopee
+├ ○ /internal/templates
+├ ○ /internal/weekly-report
+├ ○ /issues
+├ ○ /login
+├ ○ /logistics
+├ ƒ /logistics/[id]
+├ ○ /logistics/scripts
+├ ○ /mall-store
+├ ○ /mall-store/lazada
+├ ○ /mall-store/tiktok
+├ ○ /meetings
+├ ○ /messages
+├ ○ /nbtc
+├ ○ /notifications
+├ ○ /orders
+├ ƒ /orders/[id]
+├ ○ /orders/new
+├ ○ /problems
+├ ƒ /problems/[id]
+├ ○ /projects
+├ ƒ /projects/[id]
+├ ○ /rules
+├ ○ /settings
+├ ƒ /shop
+├ ○ /social-security
+├ ○ /tasks
+├ ○ /tisi
+├ ○ /todos
+├ ○ /trademark
+├ ○ /trademark/buy-r
+├ ○ /trademark/international
+├ ○ /vat
+├ ƒ /vat/[id]
+├ ○ /wht
+├ ƒ /wht/[id]
+├ ○ /work-reports
+└ ○ /work-visa
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+codex
+第三轮已完成，仅修改想法模块及相关测试：
+
+- 老板可拖拽换状态，禁止跳级。
+- 采纳必填金额和币种，拒绝必填原因，实现必填关联功能；实现奖可后补。
+- 进行中、拒绝退回待评估直接更新。
+- 保留列表及看板按钮，供手机端兜底。
+
+自动化交互和接口测试、`npx tsc --noEmit`、`npm run build` 均通过。构建使用临时 `JWT_SECRET`，仍有无关的文件追踪警告。未做手机真机测试，未执行任何 git 操作。
+tokens used
+48,535
+第三轮已完成，仅修改想法模块及相关测试：
+
+- 老板可拖拽换状态，禁止跳级。
+- 采纳必填金额和币种，拒绝必填原因，实现必填关联功能；实现奖可后补。
+- 进行中、拒绝退回待评估直接更新。
+- 保留列表及看板按钮，供手机端兜底。
+
+自动化交互和接口测试、`npx tsc --noEmit`、`npm run build` 均通过。构建使用临时 `JWT_SECRET`，仍有无关的文件追踪警告。未做手机真机测试，未执行任何 git 操作。

@@ -25,9 +25,11 @@ export async function PATCH(
   // 采纳：待评估 → 已采纳，填奖金金额 + 币种
   if (action === "adopt") {
     if (idea.status !== "待评估") return NextResponse.json({ error: "只有待评估的想法能采纳" }, { status: 400 });
-    const amt = Number(body.bonus_amount);
-    if (!Number.isFinite(amt) || amt < 0) return NextResponse.json({ error: "请填写奖金金额" }, { status: 400 });
-    const currency = body.currency === "CNY" ? "CNY" : "THB";
+    const rawAmount = body.bonus_amount;
+    const amt = Number(rawAmount);
+    if ((typeof rawAmount !== "number" && typeof rawAmount !== "string") || (typeof rawAmount === "string" && !rawAmount.trim()) || !Number.isFinite(amt) || amt < 0) return NextResponse.json({ error: "请填写奖金金额" }, { status: 400 });
+    if (body.currency !== "CNY" && body.currency !== "THB") return NextResponse.json({ error: "请选择奖金币种（THB/CNY）" }, { status: 400 });
+    const currency = body.currency;
     db.prepare("UPDATE ideas SET status = '已采纳', bonus_amount = ?, currency = ?, updated_at = datetime('now') WHERE id = ?").run(amt, currency, id);
     logOperation(auth.name, "采纳想法", "idea", String(id), `奖金 ${amt}${currency}`);
     return NextResponse.json(getUpdated());
