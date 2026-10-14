@@ -1083,12 +1083,24 @@ function initTables(database: Database.Database) {
       bonus_amount REAL DEFAULT 0,
       currency TEXT DEFAULT 'CNY',
       related_feature TEXT DEFAULT '',
+      implementation_bonus_amount REAL DEFAULT NULL,
+      implementation_bonus_currency TEXT DEFAULT NULL CHECK(implementation_bonus_currency IN ('THB','CNY')),
+      rejection_reason TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
     CREATE INDEX IF NOT EXISTS idx_ideas_is_boss ON ideas(is_boss);
   `);
+  const ideaColumns = new Set((database.pragma("table_info(ideas)") as { name: string }[]).map(column => column.name));
+  for (const [name, definition] of [
+    ["implementation_bonus_amount", "REAL DEFAULT NULL"],
+    ["implementation_bonus_currency", "TEXT DEFAULT NULL CHECK(implementation_bonus_currency IN ('THB','CNY'))"],
+    ["rejection_reason", "TEXT DEFAULT ''"],
+  ]) {
+    if (!ideaColumns.has(name)) database.exec(`ALTER TABLE ideas ADD COLUMN ${name} ${definition}`);
+  }
+
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (

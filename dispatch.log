@@ -2569,3 +2569,2915 @@ tokens used
 验证：`npx tsc --noEmit`、`npm run build` 均通过。构建需临时注入随机 `JWT_SECRET`，仍有原有文件追踪警告，未修改配置。
 
 未执行任何 git 操作。
+[2026-10-15 01:33:15] === 第 1 轮完成并推送 ===
+[2026-10-15 01:33:15] 全部 1 轮完成
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+   a1ffe88..4ab44e2  main       -> origin/main
+[2026-10-15 01:48:07] 检测到任务:进度 0 / 共 3 轮,开始执行
+[2026-10-15 01:48:07] === 第 1/3 轮 数据层和后端接口 开始 ===
+Reading additional input from stdin...
+OpenAI Codex v0.162.1
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13bbe-44be-79f2-b7e1-573a39aed07b
+--------
+user
+以下是第 1 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+想法记录模块 加看板 第一轮 数据层和后端接口
+
+给 ideas 表加几个新字段：
+1. 实现奖金额（想法真正做出来后给的奖金，可以后补）
+2. 实现奖币种（泰铢/人民币）
+3. 拒绝原因（老板拒绝想法时填的）
+
+后端 PATCH /api/ideas/[id] 接口扩展：
+1. reject 拒绝操作：要求填拒绝原因，存进拒绝原因字段
+2. complete 已实现操作：填关联功能（必填）+ 实现奖金额和币种（可以后补，不强制）
+3. 新增 reopen 操作：已拒绝的想法，重新打开回到待评估（拖回用），重新打开时把之前的拒绝原因清空
+4. 新增补实现奖操作：已实现的想法，后面补填实现奖金额和币种
+
+就做这些 别的地方不要动
+
+改完你自己验证 字段都加上了 接口这几个操作都能正常跑 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+codex
+我会只改 ideas 数据字段和指定的 PATCH 操作，验证接口行为后运行 `npx tsc --noEmit` 和 `npm run build`，不执行任何 git 操作。
+exec
+/bin/zsh -lc 'cat /Users/liuxiong/.codex/skills/test-driven-development/SKILL.md /Users/liuxiong/.codex/skills/verification-before-completion/SKILL.md' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+- Documents behavior (tests show how to use code)
+- Enables refactoring (change freely, tests catch breaks)
+
+"Pragmatic" shortcuts = debugging in production = slower.
+
+**"Tests after achieve the same goals - it's spirit not ritual"**
+
+No. Tests-after answer "What does this do?" Tests-first answer "What should this do?"
+
+Tests-after are biased by your implementation. You test what you built, not what's required. You verify remembered edge cases, not discovered ones.
+
+Tests-first force edge case discovery before implementing. Tests-after verify you remembered everything (you didn't).
+
+30 minutes of tests after ≠ TDD. You get coverage, lose proof tests work.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+| "I'll test after" | Tests passing immediately prove nothing. |
+| "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |
+| "Already manually tested" | Ad-hoc ≠ systematic. No record, can't re-run. |
+| "Deleting X hours is wasteful" | Sunk cost fallacy. Keeping unverified code is technical debt. |
+| "Keep as reference, write tests first" | You'll adapt it. That's testing after. Delete means delete. |
+| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
+| "Test hard = design unclear" | Listen to test. Hard to test = hard to use. |
+| "TDD will slow me down" | TDD faster than debugging. Pragmatic = test-first. |
+| "Manual test faster" | Manual doesn't prove edge cases. You'll re-test every change. |
+| "Existing code has no tests" | You're improving it. Add tests for existing code. |
+
+## Red Flags - STOP and Start Over
+
+- Code before test
+- Test after implementation
+- Test passes immediately
+- Can't explain why test failed
+- Tests added "later"
+- Rationalizing "just this once"
+- "I already manually tested it"
+- "Tests after achieve the same purpose"
+- "It's about spirit not ritual"
+- "Keep as reference" or "adapt existing code"
+- "Already spent X hours, deleting is wasteful"
+- "TDD is dogmatic, I'm being pragmatic"
+- "This is different because..."
+
+**All of these mean: Delete code. Start over with TDD.**
+
+## Example: Bug Fix
+
+**Bug:** Empty email accepted
+
+**RED**
+```typescript
+test('rejects empty email', async () => {
+  const result = await submitForm({ email: '' });
+  expect(result.error).toBe('Email required');
+});
+```
+
+**Verify RED**
+```bash
+$ npm test
+FAIL: expected 'Email required', got undefined
+```
+
+**GREEN**
+```typescript
+function submitForm(data: FormData) {
+  if (!data.email?.trim()) {
+    return { error: 'Email required' };
+  }
+  // ...
+}
+```
+
+**Verify GREEN**
+```bash
+$ npm test
+PASS
+```
+
+**REFACTOR**
+Extract validation for multiple fields if needed.
+
+## Verification Checklist
+
+Before marking work complete:
+
+- [ ] Every new function/method has a test
+- [ ] Watched each test fail before implementing
+- [ ] Each test failed for expected reason (feature missing, not typo)
+- [ ] Wrote minimal code to pass each test
+- [ ] All tests pass
+- [ ] Output pristine (no errors, warnings)
+- [ ] Tests use real code (mocks only if unavoidable)
+- [ ] Edge cases and errors covered
+
+Can't check all boxes? You skipped TDD. Start over.
+
+## When Stuck
+
+| Problem | Solution |
+|---------|----------|
+| Don't know how to test | Write wished-for API. Write assertion first. Ask your human partner. |
+| Test too complicated | Design too complicated. Simplify interface. |
+| Must mock everything | Code too coupled. Use dependency injection. |
+| Test setup huge | Extract helpers. Still complex? Simplify design. |
+
+## Debugging Integration
+
+Bug found? Write failing test reproducing it. Follow TDD cycle. Test proves fix and prevents regression.
+
+Never fix bugs without a test.
+
+## Testing Anti-Patterns
+
+When adding mocks or test utilities, read @testing-anti-patterns.md to avoid common pitfalls:
+- Testing mock behavior instead of real behavior
+- Adding test-only methods to production classes
+- Mocking without understanding dependencies
+
+## Final Rule
+
+```
+Production code → test exists and failed first
+Otherwise → not TDD
+```
+
+No exceptions without your human partner's permission.
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/zsh -lc "rg -n 'ideas|internal-system' /Users/liuxiong/.codex/memories/MEMORY.md; pwd; rg --files -g 'AGENTS.md' -g '*schema*' -g 'package.json' -g '*migration*' -g '*ideas*' -g '*test*' -g '"'!package-lock.json'"' -g '"'!node_modules'"'" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+/Users/liuxiong/Desktop/internal-system
+src/lib/use-latest.ts
+src/lib/sync-schema.ts
+src/lib/access-schema.ts
+src/lib/commerce-aftercare-schema.ts
+src/lib/commerce-schema.ts
+src/lib/legacy-check-schema.ts
+package.json
+scripts/test-client-staff-only.mts
+scripts/test-flows.js
+scripts/test-commerce-trademark.mts
+scripts/test-progress-sync.cjs
+scripts/test-original-customer-robustness.cjs
+scripts/test-sync-ingest.mts
+scripts/test-commerce-imported-catalog.cjs
+scripts/test-route-helpers.mts
+scripts/test-commerce.mts
+scripts/test-access-workflow.mts
+scripts/test-commerce-cart.mts
+scripts/test-commerce-checkout-recovery-ui.cjs
+scripts/test-commerce-recovery-ui.cjs
+scripts/test-commerce-pending.mts
+scripts/test-password-enforcement.js
+scripts/test-progress-adversarial.cjs
+scripts/test-sync-public-steps.mts
+scripts/test-legacy-check-schema.mts
+scripts/test-leave-options.mts
+scripts/test-sync-allocation-schema.mts
+scripts/test-commerce-aftercare.mts
+scripts/test-original-customer-ui.cjs
+scripts/test-internal-task-boundary.mts
+scripts/test-sync-documents.mts
+scripts/test-access-regression.mts
+scripts/test-progress-startup.cjs
+scripts/test-commerce-time.cjs
+AGENTS.md
+
+mcp: codebase-memory-mcp/search_graph started
+mcp: codebase-memory-mcp/search_graph (failed)
+exec
+/bin/zsh -lc 'cat package.json AGENTS.md; ls node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route*' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+{
+  "name": "internal-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "backup": "bash scripts/backup.sh",
+    "health": "node scripts/health-check.js",
+    "check:enums": "node scripts/check-enums.js",
+    "check:dup": "node scripts/check-duplicate-blocks.js",
+    "test:flows": "node scripts/test-flows.js",
+    "verify": "npm run check:enums && npm run check:dup && npm run test:flows && tsc --noEmit",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.11.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.22.0",
+    "next": "16.2.9",
+    "pdfkit": "^0.19.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.0",
+    "shadcn": "^4.12.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+<!-- BEGIN:nextjs-agent-rules -->
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+<!-- END:nextjs-agent-rules -->
+node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route-groups.md
+node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md
+
+exec
+/bin/zsh -lc "cat 'src/app/api/ideas/[id]/route.ts'; rg -n 'ideas|ALTER TABLE' src/lib/db.ts; cat scripts/test-leave-options.mts; cat node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+import { NextRequest, NextResponse } from "next/server";
+import { getDb, logOperation } from "@/lib/db";
+import { verifyAuth } from "@/lib/auth";
+import { readJson } from "@/lib/req";
+
+// PATCH /api/ideas/[id] — 老板处理想法：采纳/拒绝/推进进行中/标已实现（仅老板）
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (auth.role !== "admin") return NextResponse.json({ error: "仅老板可处理" }, { status: 403 });
+
+  const { id } = await params;
+  const db = getDb();
+  const idea = db.prepare("SELECT * FROM ideas WHERE id = ?").get(id) as any;
+  if (!idea) return NextResponse.json({ error: "想法不存在" }, { status: 404 });
+
+  const body = await readJson(req);
+  const { action } = body;
+
+  const getUpdated = () => db.prepare("SELECT * FROM ideas WHERE id = ?").get(id);
+
+  // 采纳：待评估 → 已采纳，填奖金金额 + 币种
+  if (action === "adopt") {
+    if (idea.status !== "待评估") return NextResponse.json({ error: "只有待评估的想法能采纳" }, { status: 400 });
+    const amt = Number(body.bonus_amount);
+    if (!Number.isFinite(amt) || amt < 0) return NextResponse.json({ error: "请填写奖金金额" }, { status: 400 });
+    const currency = body.currency === "CNY" ? "CNY" : "THB";
+    db.prepare("UPDATE ideas SET status = '已采纳', bonus_amount = ?, currency = ?, updated_at = datetime('now') WHERE id = ?").run(amt, currency, id);
+    logOperation(auth.name, "采纳想法", "idea", String(id), `奖金 ${amt}${currency}`);
+    return NextResponse.json(getUpdated());
+  }
+
+  // 拒绝：待评估 → 已拒绝
+  if (action === "reject") {
+    if (idea.status !== "待评估") return NextResponse.json({ error: "只有待评估的想法能拒绝" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '已拒绝', updated_at = datetime('now') WHERE id = ?").run(id);
+    logOperation(auth.name, "拒绝想法", "idea", String(id));
+    return NextResponse.json(getUpdated());
+  }
+
+  // 已采纳 → 进行中
+  if (action === "start") {
+    if (idea.status !== "已采纳") return NextResponse.json({ error: "只有已采纳的想法能推进进行中" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '进行中', updated_at = datetime('now') WHERE id = ?").run(id);
+    logOperation(auth.name, "想法进行中", "idea", String(id));
+    return NextResponse.json(getUpdated());
+  }
+
+  // 进行中 → 已实现，填关联功能
+  if (action === "complete") {
+    if (idea.status !== "进行中") return NextResponse.json({ error: "只有进行中的想法能标已实现" }, { status: 400 });
+    const rf = String(body.related_feature || "").trim();
+    if (!rf) return NextResponse.json({ error: "请填写关联功能" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '已实现', related_feature = ?, updated_at = datetime('now') WHERE id = ?").run(rf, id);
+    logOperation(auth.name, "想法已实现", "idea", String(id), rf);
+    return NextResponse.json(getUpdated());
+  }
+
+  return NextResponse.json({ error: "未知操作" }, { status: 400 });
+}
+110:        ALTER TABLE influencers_new RENAME TO influencers;
+221:        ALTER TABLE employees_status_new RENAME TO employees;
+956:  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN platform TEXT NOT NULL DEFAULT 'Shopee'"); } catch {}
+957:  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN source TEXT NOT NULL DEFAULT '自营'"); } catch {}
+958:  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN supplier TEXT DEFAULT ''"); } catch {}
+959:  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN cost REAL DEFAULT 0"); } catch {}
+960:  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN purchase_date TEXT DEFAULT ''"); } catch {}
+961:  try { database.exec("ALTER TABLE shopee_stores ADD COLUMN sell_price REAL DEFAULT 0"); } catch {}
+1075:    CREATE TABLE IF NOT EXISTS ideas (
+1089:    CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+1090:    CREATE INDEX IF NOT EXISTS idx_ideas_is_boss ON ideas(is_boss);
+1180:  try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_sessions TEXT DEFAULT ''"); } catch {}
+1181:  try { database.exec("ALTER TABLE contracts ADD COLUMN actual_live_duration TEXT DEFAULT ''"); } catch {}
+1182:  try { database.exec("ALTER TABLE contracts ADD COLUMN actual_video_count TEXT DEFAULT ''"); } catch {}
+1183:  try { database.exec("ALTER TABLE contracts ADD COLUMN created_by TEXT DEFAULT ''"); } catch {}
+1184:  try { database.exec("ALTER TABLE contracts ADD COLUMN deleted INTEGER DEFAULT 0"); } catch {}
+1185:  try { database.exec("ALTER TABLE contracts ADD COLUMN deleted_at TEXT"); } catch {}
+1186:  try { database.exec("ALTER TABLE contracts ADD COLUMN deleted_by TEXT DEFAULT ''"); } catch {}
+1396:  try { database.exec("ALTER TABLE work_reports ADD COLUMN related_objects TEXT NOT NULL DEFAULT '[]'"); } catch {}
+1398:  try { database.exec("ALTER TABLE work_reports ADD COLUMN ai_label TEXT DEFAULT ''"); } catch {}
+1399:  try { database.exec("ALTER TABLE work_reports ADD COLUMN ai_comment TEXT DEFAULT ''"); } catch {}
+1400:  try { database.exec("ALTER TABLE work_reports ADD COLUMN boss_rating INTEGER NOT NULL DEFAULT 0"); } catch {}
+1401:  try { database.exec("ALTER TABLE work_reports ADD COLUMN boss_comment TEXT DEFAULT ''"); } catch {}
+1402:  try { database.exec("ALTER TABLE work_reports ADD COLUMN risk_flag INTEGER NOT NULL DEFAULT 0"); } catch {}
+1403:  try { database.exec("ALTER TABLE work_reports ADD COLUMN risk_desc TEXT DEFAULT ''"); } catch {}
+1529:  try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_th TEXT DEFAULT ''"); } catch {}
+1530:  try { database.exec("ALTER TABLE announcement_recipients ADD COLUMN retell_zh TEXT DEFAULT ''"); } catch {}
+1532:  try { database.exec("ALTER TABLE announcements ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0"); } catch {}
+1534:  try { database.exec("ALTER TABLE announcements ADD COLUMN rule_id INTEGER DEFAULT NULL"); } catch {}
+1535:  try { database.exec("ALTER TABLE announcements ADD COLUMN converted_rule_id INTEGER DEFAULT NULL"); } catch {}
+1542:  try { database.exec("ALTER TABLE notifications ADD COLUMN hidden INTEGER DEFAULT 0"); } catch {}
+1580:  try { database.exec("ALTER TABLE leave_requests ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
+1581:  try { database.exec("ALTER TABLE leave_requests ADD COLUMN destination TEXT DEFAULT ''"); } catch {}
+1582:  try { database.exec("ALTER TABLE leave_requests ADD COLUMN rejection_reason TEXT DEFAULT ''"); } catch {}
+1583:  try { database.exec("ALTER TABLE leave_requests ADD COLUMN start_time TEXT DEFAULT '09:00'"); } catch {}
+1584:  try { database.exec("ALTER TABLE leave_requests ADD COLUMN end_time TEXT DEFAULT '17:00'"); } catch {}
+1682:  try { database.exec("ALTER TABLE client_feedback ADD COLUMN comment TEXT DEFAULT ''"); } catch {}
+1683:  try { database.exec("ALTER TABLE client_feedback ADD COLUMN overall INTEGER NOT NULL DEFAULT 3 CHECK(overall BETWEEN 1 AND 5)"); } catch {}
+1684:  try { database.exec("ALTER TABLE client_feedback ADD COLUMN attitude INTEGER NOT NULL DEFAULT 3 CHECK(attitude BETWEEN 1 AND 5)"); } catch {}
+1685:  try { database.exec("ALTER TABLE client_feedback ADD COLUMN speed INTEGER NOT NULL DEFAULT 3 CHECK(speed BETWEEN 1 AND 5)"); } catch {}
+1686:  try { database.exec("ALTER TABLE client_feedback ADD COLUMN professionalism INTEGER NOT NULL DEFAULT 3 CHECK(professionalism BETWEEN 1 AND 5)"); } catch {}
+1852:  try { database.exec("ALTER TABLE messages ADD COLUMN image_url TEXT DEFAULT ''"); } catch {}
+1853:  try { database.exec("ALTER TABLE messages ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+1854:  try { database.exec("ALTER TABLE messages ADD COLUMN recalled INTEGER DEFAULT 0"); } catch {}
+1855:  try { database.exec("ALTER TABLE messages ADD COLUMN reply_to INTEGER"); } catch {}
+1856:  try { database.exec("ALTER TABLE messages ADD COLUMN reply_preview TEXT DEFAULT ''"); } catch {}
+1859:  try { database.exec("ALTER TABLE chat_groups ADD COLUMN background TEXT DEFAULT ''"); } catch {}
+1860:  try { database.exec("ALTER TABLE chat_groups ADD COLUMN announcement TEXT DEFAULT ''"); } catch {}
+1861:  try { database.exec("ALTER TABLE chat_groups ADD COLUMN avatar TEXT DEFAULT ''"); } catch {}
+1864:  try { database.exec("ALTER TABLE group_members ADD COLUMN muted INTEGER DEFAULT 0"); } catch {}
+1967:  try { database.exec("ALTER TABLE employees ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"); addedMustChange = true; } catch {}
+1969:  try { database.exec("ALTER TABLE employees ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0"); } catch {}
+1970:  try { database.exec("ALTER TABLE employees ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"); } catch {}
+1971:  try { database.exec("ALTER TABLE employees ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"); } catch {}
+1972:  try { database.exec("ALTER TABLE employees ADD COLUMN status TEXT NOT NULL DEFAULT '在职' CHECK(status IN ('在职','离职','试用期','待离职','停薪留职'))"); } catch {}
+1973:  try { database.exec("ALTER TABLE employees ADD COLUMN avatar TEXT DEFAULT ''"); } catch {}
+1974:  try { database.exec("ALTER TABLE employees ADD COLUMN chat_background TEXT DEFAULT ''"); } catch {}
+1975:  try { database.exec("ALTER TABLE employees ADD COLUMN base_salary REAL DEFAULT 0"); } catch {}
+1976:  try { database.exec("ALTER TABLE employees ADD COLUMN diligence_bonus REAL"); } catch {}
+1977:  try { database.exec("ALTER TABLE employees ADD COLUMN skill_allowance REAL DEFAULT 0"); } catch {}
+1978:  try { database.exec("ALTER TABLE employees ADD COLUMN hire_date TEXT DEFAULT ''"); } catch {}
+1979:  try { database.exec("ALTER TABLE employees ADD COLUMN gender TEXT DEFAULT ''"); } catch {}
+1980:  try { database.exec("ALTER TABLE employees ADD COLUMN birth_date TEXT DEFAULT ''"); } catch {}
+1981:  try { database.exec("ALTER TABLE employees ADD COLUMN phone TEXT DEFAULT ''"); } catch {}
+1982:  try { database.exec("ALTER TABLE employees ADD COLUMN address TEXT DEFAULT ''"); } catch {}
+1983:  try { database.exec("ALTER TABLE employees ADD COLUMN id_number TEXT DEFAULT ''"); } catch {}
+1984:  try { database.exec("ALTER TABLE employees ADD COLUMN department TEXT DEFAULT ''"); } catch {}
+1985:  try { database.exec("ALTER TABLE employees ADD COLUMN position TEXT DEFAULT ''"); } catch {}
+1986:  try { database.exec("ALTER TABLE employees ADD COLUMN contract_term TEXT DEFAULT ''"); } catch {}
+1987:  try { database.exec("ALTER TABLE employees ADD COLUMN bank_name TEXT DEFAULT ''"); } catch {}
+1988:  try { database.exec("ALTER TABLE employees ADD COLUMN bank_account TEXT DEFAULT ''"); } catch {}
+1989:  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_name TEXT DEFAULT ''"); } catch {}
+1990:  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_phone TEXT DEFAULT ''"); } catch {}
+1991:  try { database.exec("ALTER TABLE employees ADD COLUMN emergency_relation TEXT DEFAULT ''"); } catch {}
+1992:  try { database.exec("ALTER TABLE employees ADD COLUMN education TEXT DEFAULT ''"); } catch {}
+1993:  try { database.exec("ALTER TABLE employees ADD COLUMN skills TEXT DEFAULT ''"); } catch {}
+1994:  try { database.exec("ALTER TABLE employees ADD COLUMN notes TEXT DEFAULT ''"); } catch {}
+1995:  try { database.exec("ALTER TABLE employees ADD COLUMN bazi TEXT DEFAULT ''"); } catch {}
+1996:  try { database.exec("ALTER TABLE employees ADD COLUMN fortune TEXT DEFAULT ''"); } catch {}
+1997:  try { database.exec("ALTER TABLE employees ADD COLUMN passport_number TEXT DEFAULT ''"); } catch {}
+1998:  try { database.exec("ALTER TABLE employees ADD COLUMN social_security_number TEXT DEFAULT ''"); } catch {}
+1999:  try { database.exec("ALTER TABLE employees ADD COLUMN tax_number TEXT DEFAULT ''"); } catch {}
+2000:  try { database.exec("ALTER TABLE employees ADD COLUMN work_permit_number TEXT DEFAULT ''"); } catch {}
+2001:  try { database.exec("ALTER TABLE employees ADD COLUMN work_permit_expiry TEXT DEFAULT ''"); } catch {}
+2002:  try { database.exec("ALTER TABLE employees ADD COLUMN visa_expiry TEXT DEFAULT ''"); } catch {}
+2003:  try { database.exec("ALTER TABLE employees ADD COLUMN resignation_date TEXT DEFAULT ''"); } catch {}
+2004:  try { database.exec("ALTER TABLE employees ADD COLUMN resignation_reason TEXT DEFAULT ''"); } catch {}
+2005:  try { database.exec("ALTER TABLE leave_ai_analyses ADD COLUMN detail TEXT DEFAULT ''"); } catch {}
+2006:  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN authorization TEXT DEFAULT ''"); } catch {}
+2007:  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN review_status TEXT DEFAULT '待核查'"); } catch {}
+2008:  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN review_reason TEXT DEFAULT ''"); } catch {}
+2009:  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN reviewed_by TEXT DEFAULT ''"); } catch {}
+2010:  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN reviewed_at TEXT DEFAULT ''"); } catch {}
+2011:  try { database.exec("ALTER TABLE leave_medical_proofs ADD COLUMN warning_sent INTEGER DEFAULT 0"); } catch {}
+2012:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN family_factors TEXT DEFAULT ''"); } catch {}
+2013:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN relationship_factors TEXT DEFAULT ''"); } catch {}
+2014:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN health_factors TEXT DEFAULT ''"); } catch {}
+2015:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN other_factors TEXT DEFAULT ''"); } catch {}
+2016:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN family_factor_remark TEXT DEFAULT ''"); } catch {}
+2017:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN relationship_factor_remark TEXT DEFAULT ''"); } catch {}
+2018:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN health_factor_remark TEXT DEFAULT ''"); } catch {}
+2019:  try { database.exec("ALTER TABLE employee_personal_notes ADD COLUMN other_factor_remark TEXT DEFAULT ''"); } catch {}
+2034:  try { database.exec("ALTER TABLE customers ADD COLUMN status_locked INTEGER NOT NULL DEFAULT 0"); } catch {}
+2042:  try { database.exec("ALTER TABLE feedback_tokens ADD COLUMN ref_type TEXT NOT NULL DEFAULT 'order'"); } catch {}
+2043:  try { database.exec("ALTER TABLE client_feedback ADD COLUMN ref_type TEXT NOT NULL DEFAULT 'order'"); } catch {}
+2148:  try { database.exec("ALTER TABLE vat_record_steps ADD COLUMN started_at TEXT"); } catch {}
+2149:  try { database.exec("ALTER TABLE vat_record_steps ADD COLUMN payment_status TEXT DEFAULT ''"); } catch {}
+2156:  try { database.exec("ALTER TABLE finances ADD COLUMN payment_method TEXT DEFAULT ''"); } catch {}
+2157:  try { database.exec("ALTER TABLE finances ADD COLUMN slip_number TEXT DEFAULT ''"); } catch {}
+2158:  try { database.exec("ALTER TABLE documents ADD COLUMN direction TEXT DEFAULT 'client_to_us' CHECK(direction IN ('client_to_us', 'us_to_client'))"); } catch {}
+2159:  try { database.exec("ALTER TABLE employees ADD COLUMN email TEXT DEFAULT ''"); } catch {}
+2160:  try { database.exec("ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee' CHECK(role IN ('admin','employee','client'))"); } catch {}
+2161:  try { database.exec("ALTER TABLE employees ADD COLUMN api_key TEXT DEFAULT ''"); } catch {}
+2162:  try { database.exec("ALTER TABLE attendance ADD COLUMN type TEXT DEFAULT '正常' CHECK(type IN ('正常','补签','请假'))"); } catch {}
+2163:  try { database.exec("ALTER TABLE attendance ADD COLUMN ip_address TEXT DEFAULT ''"); } catch {}
+2164:  try { database.exec("ALTER TABLE attendance ADD COLUMN user_agent TEXT DEFAULT ''"); } catch {}
+2165:  try { database.exec("ALTER TABLE attendance ADD COLUMN check_in_ip TEXT DEFAULT ''"); } catch {}
+2166:  try { database.exec("ALTER TABLE attendance ADD COLUMN check_out_ip TEXT DEFAULT ''"); } catch {}
+2167:  try { database.exec("ALTER TABLE attendance ADD COLUMN check_in_photo TEXT DEFAULT ''"); } catch {}
+2168:  try { database.exec("ALTER TABLE attendance ADD COLUMN check_out_photo TEXT DEFAULT ''"); } catch {}
+2169:  try { database.exec("ALTER TABLE attendance_requests ADD COLUMN photo TEXT DEFAULT ''"); } catch {}
+2170:  try { database.exec("ALTER TABLE employees ADD COLUMN password TEXT DEFAULT ''"); } catch {}
+2171:  try { database.exec("ALTER TABLE finances ADD COLUMN slip_file TEXT DEFAULT ''"); } catch {}
+2172:  try { database.exec("ALTER TABLE finances ADD COLUMN verify_by TEXT DEFAULT ''"); } catch {}
+2173:  try { database.exec("ALTER TABLE finances ADD COLUMN verify_at TEXT DEFAULT ''"); } catch {}
+2174:  try { database.exec("ALTER TABLE finances ADD COLUMN verify_note TEXT DEFAULT ''"); } catch {}
+2175:  try { database.exec("ALTER TABLE finances ADD COLUMN created_by TEXT DEFAULT ''"); } catch {}
+2176:  try { database.exec("ALTER TABLE documents ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
+2177:  try { database.exec("ALTER TABLE certificates ADD COLUMN file_url TEXT DEFAULT ''"); } catch {}
+2178:  try { database.exec("ALTER TABLE orders ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
+2179:  try { database.exec("ALTER TABLE finances ADD COLUMN currency TEXT DEFAULT 'CNY' CHECK(currency IN ('CNY','THB'))"); } catch {}
+2201:        ALTER TABLE documents_new RENAME TO documents;
+2206:  try { database.exec("ALTER TABLE orders ADD COLUMN trademark_name TEXT DEFAULT ''"); } catch {}
+2207:  try { database.exec("ALTER TABLE orders ADD COLUMN cancel_reason TEXT DEFAULT ''"); } catch {}
+2208:  try { database.exec("ALTER TABLE audit_logs ADD COLUMN old_value TEXT DEFAULT ''"); } catch {}
+2209:  try { database.exec("ALTER TABLE audit_logs ADD COLUMN new_value TEXT DEFAULT ''"); } catch {}
+2210:  try { database.exec("ALTER TABLE audit_logs ADD COLUMN field_name TEXT DEFAULT ''"); } catch {}
+2214:  try { database.exec("ALTER TABLE influencer_steps ADD COLUMN stop_reason TEXT DEFAULT ''"); } catch {}
+2215:  try { database.exec("ALTER TABLE order_steps ADD COLUMN started_at TEXT"); } catch {}
+2216:  try { database.exec("ALTER TABLE influencer_steps ADD COLUMN started_at TEXT"); } catch {}
+2217:  try { database.exec("ALTER TABLE influencers ADD COLUMN line_id TEXT DEFAULT ''"); } catch {}
+2218:  try { database.exec("ALTER TABLE influencers ADD COLUMN monthly_gmv TEXT DEFAULT ''"); } catch {}
+2219:  try { database.exec("ALTER TABLE influencers ADD COLUMN live_stream_ratio TEXT DEFAULT ''"); } catch {}
+2220:  try { database.exec("ALTER TABLE influencers ADD COLUMN contact_time TEXT DEFAULT ''"); } catch {}
+2221:  try { database.exec("ALTER TABLE influencers ADD COLUMN reply_status TEXT DEFAULT '待联系' CHECK(reply_status IN ('待联系','已联系','已回复','未回复','不回复'))"); } catch {}
+2222:  try { database.exec("ALTER TABLE influencers ADD COLUMN phase TEXT DEFAULT 'discovery'"); } catch {}
+2227:  try { database.exec("ALTER TABLE influencers ADD COLUMN discovery_task_id INTEGER REFERENCES discovery_tasks(id)"); } catch {}
+2228:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN gmv_amount TEXT DEFAULT ''"); } catch {}
+2229:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN gmv_tier TEXT DEFAULT ''"); } catch {}
+2230:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN gmv_score INTEGER DEFAULT 0"); } catch {}
+2231:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_duration_tier TEXT DEFAULT ''"); } catch {}
+2232:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_duration_score INTEGER DEFAULT 0"); } catch {}
+2233:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_frequency_tier TEXT DEFAULT ''"); } catch {}
+2234:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_frequency_score INTEGER DEFAULT 0"); } catch {}
+2235:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN professionalism_tier TEXT DEFAULT ''"); } catch {}
+2236:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN professionalism_score INTEGER DEFAULT 0"); } catch {}
+2237:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN total_score INTEGER DEFAULT 0"); } catch {}
+2238:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN final_rating TEXT DEFAULT ''"); } catch {}
+2239:  try { database.exec("ALTER TABLE influencer_evaluations ADD COLUMN live_gmv TEXT DEFAULT ''"); } catch {}
+2240:  try { database.exec("ALTER TABLE influencers ADD COLUMN code TEXT DEFAULT ''"); } catch {}
+2241:  try { database.exec("ALTER TABLE points_records ADD COLUMN status TEXT DEFAULT '有效' CHECK(status IN ('有效','已救回','已撤销'))"); } catch {}
+2242:  try { database.exec("ALTER TABLE points_records ADD COLUMN undone_by TEXT DEFAULT ''"); } catch {}
+2243:  try { database.exec("ALTER TABLE points_records ADD COLUMN undone_at TEXT DEFAULT ''"); } catch {}
+2244:  try { database.exec("ALTER TABLE issue_tickets ADD COLUMN resolve_screenshot TEXT DEFAULT ''"); } catch {}
+2245:  try { database.exec("ALTER TABLE issue_tickets ADD COLUMN description_zh TEXT DEFAULT ''"); } catch {}
+2246:  try { database.exec("ALTER TABLE customers ADD COLUMN claimed_by TEXT DEFAULT ''"); } catch {}
+2247:  try { database.exec("ALTER TABLE customers ADD COLUMN need_more_contact INTEGER NOT NULL DEFAULT 0"); } catch {}
+2248:  try { database.exec("ALTER TABLE customer_follow_ups ADD COLUMN images TEXT NOT NULL DEFAULT '[]'"); } catch {}
+2249:  try { database.exec("ALTER TABLE wht_records ADD COLUMN amount REAL DEFAULT 0"); } catch {}
+2360:      database.exec(`ALTER TABLE ${table} ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`);
+2365:  if (!whtColumns.has("income_amount")) database.exec("ALTER TABLE wht_records ADD COLUMN income_amount REAL NOT NULL DEFAULT 0");
+2366:  if (!whtColumns.has("tax_rate")) database.exec("ALTER TABLE wht_records ADD COLUMN tax_rate REAL NOT NULL DEFAULT 3");
+2492:  try { database.exec("ALTER TABLE logistics_script_categories ADD COLUMN updated_by TEXT DEFAULT ''"); } catch {}
+2493:  try { database.exec("ALTER TABLE logistics_script_categories ADD COLUMN updated_at TEXT DEFAULT ''"); } catch {}
+2494:  try { database.exec("ALTER TABLE logistics_script_questions ADD COLUMN updated_by TEXT DEFAULT ''"); } catch {}
+2495:  try { database.exec("ALTER TABLE logistics_script_questions ADD COLUMN updated_at TEXT DEFAULT ''"); } catch {}
+2496:  try { database.exec("ALTER TABLE logistics_scripts ADD COLUMN updated_by TEXT DEFAULT ''"); } catch {}
+2497:  try { database.exec("ALTER TABLE logistics_scripts ADD COLUMN updated_at TEXT DEFAULT ''"); } catch {}
+2500:  try { database.exec("ALTER TABLE shipping_steps ADD COLUMN started_at TEXT"); } catch {}
+2655:  try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
+2657:  try { database.exec("ALTER TABLE todos ADD COLUMN category_id INTEGER DEFAULT NULL"); } catch {}
+2691:  try { database.exec("ALTER TABLE payslips ADD COLUMN social_security REAL DEFAULT 0"); } catch {}
+2692:  try { database.exec("ALTER TABLE payslips ADD COLUMN late_deduction REAL DEFAULT 0"); } catch {}
+2693:  try { database.exec("ALTER TABLE payslips ADD COLUMN personal_leave_deduction REAL DEFAULT 0"); } catch {}
+2694:  try { database.exec("ALTER TABLE payslips ADD COLUMN sick_leave_deduction REAL DEFAULT 0"); } catch {}
+2695:  try { database.exec("ALTER TABLE payslips ADD COLUMN absence_deduction REAL DEFAULT 0"); } catch {}
+2696:  try { database.exec("ALTER TABLE payslips ADD COLUMN merit_income REAL DEFAULT 0"); } catch {}
+2697:  try { database.exec("ALTER TABLE payslips ADD COLUMN demerit_deduction REAL DEFAULT 0"); } catch {}
+2698:  try { database.exec("ALTER TABLE payslips ADD COLUMN withholding_tax REAL DEFAULT 0"); } catch {}
+2699:  try { database.exec("ALTER TABLE payslips ADD COLUMN status TEXT DEFAULT '草稿' CHECK(status IN ('草稿','待确认','已确认','已发放','打回'))"); } catch {}
+2700:  try { database.exec("ALTER TABLE payslips ADD COLUMN reject_reason TEXT DEFAULT ''"); } catch {}
+2701:  try { database.exec("ALTER TABLE payslips ADD COLUMN summary TEXT DEFAULT '{}'"); } catch {}
+2724:  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN early_details TEXT DEFAULT '[]'"); } catch {}
+2725:  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN work_hours REAL DEFAULT 0"); } catch {}
+2726:  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN absence_days REAL DEFAULT 0"); } catch {}
+2727:  try { database.exec("ALTER TABLE attendance_summaries ADD COLUMN expected_days REAL DEFAULT 0"); } catch {}
+2730:  try { database.exec("ALTER TABLE problems ADD COLUMN source TEXT NOT NULL DEFAULT '客户反馈'"); } catch {}
+2731:  try { database.exec("ALTER TABLE problems ADD COLUMN customer_requirement TEXT DEFAULT ''"); } catch {}
+2732:  try { database.exec("ALTER TABLE problems ADD COLUMN deadline TEXT DEFAULT ''"); } catch {}
+2733:  try { database.exec("ALTER TABLE problems ADD COLUMN resolve_note TEXT DEFAULT ''"); } catch {}
+2734:  try { database.exec("ALTER TABLE problems ADD COLUMN resolved_at TEXT DEFAULT ''"); } catch {}
+2735:  try { database.exec("ALTER TABLE problems ADD COLUMN suspend_reason TEXT DEFAULT ''"); } catch {}
+2736:  try { database.exec("ALTER TABLE problems ADD COLUMN order_id TEXT DEFAULT ''"); } catch {}
+2738:  try { database.exec("ALTER TABLE todos ADD COLUMN completed_at TEXT DEFAULT ''"); } catch {}
+2741:  try { database.exec("ALTER TABLE todos ADD COLUMN seen_at TEXT DEFAULT ''"); addedTodoSeenAt = true; } catch {}
+2746:  try { database.exec("ALTER TABLE project_summaries ADD COLUMN conclusion TEXT DEFAULT ''"); } catch {}
+2747:  try { database.exec("ALTER TABLE project_summaries ADD COLUMN lesson TEXT DEFAULT ''"); } catch {}
+2748:  try { database.exec("ALTER TABLE project_summaries ADD COLUMN adjustment TEXT DEFAULT ''"); } catch {}
+2753:        ALTER TABLE problems RENAME TO problems_old;
+2849:    if (!columns.has('attempts')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+2850:    if (!columns.has('next_attempt_at')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN next_attempt_at TEXT');
+2851:    if (!columns.has('last_error')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN last_error TEXT');
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {fileURLToPath} from 'node:url';import {NextRequest} from 'next/server';
+const T=path.dirname(fileURLToPath(import.meta.url));const fixture=fs.mkdtempSync('/tmp/xt-leave-regression-');process.env.DB_PATH=path.join(fixture,'synthetic.db');process.env.JWT_SECRET='only-synthetic-positive-jwt';Object.assign(process.env,{NODE_ENV:'test'});delete process.env.CUSTOMER_SYNC_URL;delete process.env.SYNC_SECRET;process.chdir(fixture);fs.mkdirSync('uploads');globalThis.fetch=async()=>{throw new Error('NETWORK_DISABLED')};
+const mod=(p:string)=>import(path.join(process.env.INTERNAL_SOURCE_ROOT || path.dirname(T),'src',p));const {getDb}=await mod('lib/db.ts');const {signToken}=await mod('lib/auth.ts');const db=getDb();const identities:any={};
+for(const [role,name,actual] of [['client','BUYER_A','client'],['staff','WORKER_A','employee'],['admin','ADMIN_A','admin']]){const id=Number(db.prepare('INSERT INTO employees(name,email,role,password,must_change_password,auth_version) VALUES (?,?,?,?,0,0)').run(name,`${role}@synthetic.invalid`,actual,'unused').lastInsertRowid);identities[role]={id,name,role:actual,token:await signToken({id,name,role:actual,auth_version:0,must_change_password:0})};}
+const ctx=(id:string,stepId?:number)=>({params:Promise.resolve({id,stepId:stepId?.toString()})});const calls:any[]=[];const results:any[]=[];
+async function call(p:string,method:string,role:string|null,body?:any,context?:any,query=''){const r=await mod(`app/api/${p}/route.ts`);const res=await r[method](new NextRequest(`http://127.0.0.1/api/${p}${query}`,{method,headers:{...(role?{authorization:`Bearer ${identities[role].token}`}:{ }),'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})}),context);const text=await res.text();let output:any;try{output=JSON.parse(text)}catch{output=text}const x={p,method,role,input:body,params:context?await context.params:null,status:res.status,output};calls.push(x);return x;}
+async function test(name:string,fn:()=>Promise<any>){try{const detail=await fn();results.push({name,status:'PASS',detail});}catch(e){results.push({name,status:'FAIL',error:String(e),stack:(e as Error).stack});}console.log(JSON.stringify(results.at(-1)));}
+
+await test('all six UI and schema leave options accepted by actual API',async()=>{const schema=db.prepare("SELECT sql FROM sqlite_master WHERE name='leave_requests'").get().sql;const output=[];for(const leave_type of ['事假','病假','年假','调休','法定假日','其他']){const result=await call('leave','POST','staff',{leave_type,start_date:'2026-09-15',end_date:'2026-09-15',reason:'synthetic review'});assert.equal(result.status,201);assert(schema.includes(`'${leave_type}'`));output.push({type:leave_type,status:result.status,body:result.output});}return{classification:'REGRESSION_PASS',output};});
+await test('overdue leave notification still works despite stale enum registration',async()=>{db.prepare("UPDATE leave_requests SET created_at='2026-01-01 00:00:00' WHERE employee_name='WORKER_A'").run();const before=db.prepare("SELECT count(*) n FROM notifications WHERE type='leave_overdue'").get().n;const r=await call('leave','GET','admin');assert.equal(r.status,200);const after=db.prepare("SELECT count(*) n FROM notifications WHERE type='leave_overdue'").get().n;assert(after>before);return{status:200,createdOverdueNotifications:after-before,classification:'PASS_CONTROL_STALE_ENUM_NOT_ACTUAL_FAILURE_ON_THIS_PATH'};});
+await test('invalid leave type rejected without inserting a row',async()=>{const before=db.prepare('SELECT count(*) n FROM leave_requests').get().n;const r=await call('leave','POST','staff',{leave_type:'NOT_A_TYPE',start_date:'2026-09-15',end_date:'2026-09-15',reason:'test'});assert.equal(r.status,400);assert.equal(db.prepare('SELECT count(*) n FROM leave_requests').get().n,before)});
+fs.writeFileSync(path.join(process.env.EVIDENCE_DIR||T,'enum-dynamic-results.json'),JSON.stringify({fixture,results,calls},null,2));console.log(`POSITIVE SUMMARY ${results.filter(r=>r.status==='PASS').length} passed / ${results.filter(r=>r.status==='FAIL').length} failed; ${calls.length} handler calls`);db.close();if(results.some(r=>r.status==='FAIL'))process.exitCode=1;
+---
+title: route.js
+description: API reference for the route.js special file.
+---
+
+Route Handlers allow you to create custom request handlers for a given route using the Web [Request](https://developer.mozilla.org/docs/Web/API/Request) and [Response](https://developer.mozilla.org/docs/Web/API/Response) APIs.
+
+```ts filename="route.ts" switcher
+export async function GET() {
+  return Response.json({ message: 'Hello World' })
+}
+```
+
+```js filename="route.js" switcher
+export async function GET() {
+  return Response.json({ message: 'Hello World' })
+}
+```
+
+## Reference
+
+### HTTP Methods
+
+A **route** file allows you to create custom request handlers for a given route. The following [HTTP methods](https://developer.mozilla.org/docs/Web/HTTP/Methods) are supported: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`.
+
+```ts filename="route.ts" switcher
+export async function GET(request: Request) {}
+
+export async function HEAD(request: Request) {}
+
+export async function POST(request: Request) {}
+
+export async function PUT(request: Request) {}
+
+export async function DELETE(request: Request) {}
+
+export async function PATCH(request: Request) {}
+
+// If `OPTIONS` is not defined, Next.js will automatically implement `OPTIONS` and set the appropriate Response `Allow` header depending on the other methods defined in the Route Handler.
+export async function OPTIONS(request: Request) {}
+```
+
+```js filename="route.js" switcher
+export async function GET(request) {}
+
+export async function HEAD(request) {}
+
+export async function POST(request) {}
+
+export async function PUT(request) {}
+
+export async function DELETE(request) {}
+
+export async function PATCH(request) {}
+
+// If `OPTIONS` is not defined, Next.js will automatically implement `OPTIONS` and set the appropriate Response `Allow` header depending on the other methods defined in the Route Handler.
+export async function OPTIONS(request) {}
+```
+
+### Parameters
+
+#### `request` (optional)
+
+The `request` object is a [NextRequest](/docs/app/api-reference/functions/next-request) object, which is an extension of the Web [Request](https://developer.mozilla.org/docs/Web/API/Request) API. `NextRequest` gives you further control over the incoming request, including easily accessing `cookies` and an extended, parsed, URL object `nextUrl`.
+
+```ts filename="route.ts" switcher
+import type { NextRequest } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const url = request.nextUrl
+}
+```
+
+```js filename="route.js" switcher
+export async function GET(request) {
+  const url = request.nextUrl
+}
+```
+
+#### `context` (optional)
+
+- **`params`**: a promise that resolves to an object containing the [dynamic route parameters](/docs/app/api-reference/file-conventions/dynamic-routes) for the current route.
+
+```ts filename="app/dashboard/[team]/route.ts" switcher
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ team: string }> }
+) {
+  const { team } = await params
+}
+```
+
+```js filename="app/dashboard/[team]/route.js" switcher
+export async function GET(request, { params }) {
+  const { team } = await params
+}
+```
+
+| Example                          | URL            | `params`                           |
+| -------------------------------- | -------------- | ---------------------------------- |
+| `app/dashboard/[team]/route.js`  | `/dashboard/1` | `Promise<{ team: '1' }>`           |
+| `app/shop/[tag]/[item]/route.js` | `/shop/1/2`    | `Promise<{ tag: '1', item: '2' }>` |
+| `app/blog/[...slug]/route.js`    | `/blog/1/2`    | `Promise<{ slug: ['1', '2'] }>`    |
+
+### Route Context Helper
+
+You can type the Route Handler context using `RouteContext` to get strongly typed `params` from a route literal. `RouteContext` is a globally available helper.
+
+```ts filename="app/users/[id]/route.ts"
+import type { NextRequest } from 'next/server'
+
+export async function GET(_req: NextRequest, ctx: RouteContext<'/users/[id]'>) {
+  const { id } = await ctx.params
+  return Response.json({ id })
+}
+```
+
+> **Good to know**
+>
+> - Types are generated during `next dev`, `next build` or `next typegen`.
+> - After type generation, the `RouteContext` helper is globally available. It doesn't need to be imported.
+
+## Examples
+
+### Cookies
+
+You can read or set cookies with [`cookies`](/docs/app/api-reference/functions/cookies) from `next/headers`.
+
+```ts filename="route.ts" switcher
+import { cookies } from 'next/headers'
+
+export async function GET(request: NextRequest) {
+  const cookieStore = await cookies()
+
+  const a = cookieStore.get('a')
+  const b = cookieStore.set('b', '1')
+  const c = cookieStore.delete('c')
+}
+```
+
+```js filename="route.js" switcher
+import { cookies } from 'next/headers'
+
+export async function GET(request) {
+  const cookieStore = await cookies()
+
+  const a = cookieStore.get('a')
+  const b = cookieStore.set('b', '1')
+  const c = cookieStore.delete('c')
+}
+```
+
+Alternatively, you can return a new `Response` using the [`Set-Cookie`](https://developer.mozilla.org/docs/Web/HTTP/Headers/Set-Cookie) header.
+
+```ts filename="app/api/route.ts" switcher
+import { cookies } from 'next/headers'
+
+export async function GET(request: Request) {
+  const cookieStore = await cookies()
+  const token = cookieStore.get('token')
+
+  return new Response('Hello, Next.js!', {
+    status: 200,
+    headers: { 'Set-Cookie': `token=${token.value}` },
+  })
+}
+```
+
+```js filename="app/api/route.js" switcher
+import { cookies } from 'next/headers'
+
+export async function GET(request) {
+  const cookieStore = await cookies()
+  const token = cookieStore.get('token')
+
+  return new Response('Hello, Next.js!', {
+    status: 200,
+    headers: { 'Set-Cookie': `token=${token.value}` },
+  })
+}
+```
+
+You can also use the underlying Web APIs to read cookies from the request ([`NextRequest`](/docs/app/api-reference/functions/next-request)):
+
+```ts filename="app/api/route.ts" switcher
+import { type NextRequest } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const token = request.cookies.get('token')
+}
+```
+
+```js filename="app/api/route.js" switcher
+export async function GET(request) {
+  const token = request.cookies.get('token')
+}
+```
+
+### Headers
+
+You can read headers with [`headers`](/docs/app/api-reference/functions/headers) from `next/headers`.
+
+```ts filename="route.ts" switcher
+import { headers } from 'next/headers'
+import type { NextRequest } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const headersList = await headers()
+  const referer = headersList.get('referer')
+}
+```
+
+```js filename="route.js" switcher
+import { headers } from 'next/headers'
+
+export async function GET(request) {
+  const headersList = await headers()
+  const referer = headersList.get('referer')
+}
+```
+
+This `headers` instance is read-only. To set headers, you need to return a new `Response` with new `headers`.
+
+```ts filename="app/api/route.ts" switcher
+import { headers } from 'next/headers'
+
+export async function GET(request: Request) {
+  const headersList = await headers()
+  const referer = headersList.get('referer')
+
+  return new Response('Hello, Next.js!', {
+    status: 200,
+    headers: { referer: referer },
+  })
+}
+```
+
+```js filename="app/api/route.js" switcher
+import { headers } from 'next/headers'
+
+export async function GET(request) {
+  const headersList = await headers()
+  const referer = headersList.get('referer')
+
+  return new Response('Hello, Next.js!', {
+    status: 200,
+    headers: { referer: referer },
+  })
+}
+```
+
+You can also use the underlying Web APIs to read headers from the request ([`NextRequest`](/docs/app/api-reference/functions/next-request)):
+
+```ts filename="app/api/route.ts" switcher
+import { type NextRequest } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers)
+}
+```
+
+```js filename="app/api/route.js" switcher
+export async function GET(request) {
+  const requestHeaders = new Headers(request.headers)
+}
+```
+
+### Revalidating Cached Data
+
+You can [revalidate cached data](/docs/app/guides/incremental-static-regeneration) using the `revalidate` route segment config option.
+
+```ts filename="app/posts/route.ts" switcher
+export const revalidate = 60
+
+export async function GET() {
+  const data = await fetch('https://api.vercel.app/blog')
+  const posts = await data.json()
+
+  return Response.json(posts)
+}
+```
+
+```js filename="app/posts/route.js" switcher
+export const revalidate = 60
+
+export async function GET() {
+  const data = await fetch('https://api.vercel.app/blog')
+  const posts = await data.json()
+
+  return Response.json(posts)
+}
+```
+
+### Redirects
+
+```ts filename="app/api/route.ts" switcher
+import { redirect } from 'next/navigation'
+
+export async function GET(request: Request) {
+  redirect('https://nextjs.org/')
+}
+```
+
+```js filename="app/api/route.js" switcher
+import { redirect } from 'next/navigation'
+
+export async function GET(request) {
+  redirect('https://nextjs.org/')
+}
+```
+
+### Dynamic Route Segments
+
+Route Handlers can use [Dynamic Segments](/docs/app/api-reference/file-conventions/dynamic-routes) to create request handlers from dynamic data.
+
+```ts filename="app/items/[slug]/route.ts" switcher
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  const { slug } = await params // 'a', 'b', or 'c'
+}
+```
+
+```js filename="app/items/[slug]/route.js" switcher
+export async function GET(request, { params }) {
+  const { slug } = await params // 'a', 'b', or 'c'
+}
+```
+
+| Route                       | Example URL | `params`                 |
+| --------------------------- | ----------- | ------------------------ |
+| `app/items/[slug]/route.js` | `/items/a`  | `Promise<{ slug: 'a' }>` |
+| `app/items/[slug]/route.js` | `/items/b`  | `Promise<{ slug: 'b' }>` |
+| `app/items/[slug]/route.js` | `/items/c`  | `Promise<{ slug: 'c' }>` |
+
+#### Static Generation with `generateStaticParams`
+
+You can use [`generateStaticParams`](/docs/app/api-reference/functions/generate-static-params) with dynamic Route Handlers to statically generate responses at build time for specified params, while handling other params dynamically at request time.
+
+When using [Cache Components](/docs/app/getting-started/caching), you can combine `generateStaticParams` with `use cache` to enable data caching for both prerendered and runtime params.
+
+See the [generateStaticParams with Route Handlers](/docs/app/api-reference/functions/generate-static-params#with-route-handlers) documentation for examples and details.
+
+### URL Query Parameters
+
+The request object passed to the Route Handler is a `NextRequest` instance, which includes [some additional convenience methods](/docs/app/api-reference/functions/next-request#nexturl), such as those for more easily handling query parameters.
+
+```ts filename="app/api/search/route.ts" switcher
+import { type NextRequest } from 'next/server'
+
+export function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams
+  const query = searchParams.get('query')
+  // query is "hello" for /api/search?query=hello
+}
+```
+
+```js filename="app/api/search/route.js" switcher
+export function GET(request) {
+  const searchParams = request.nextUrl.searchParams
+  const query = searchParams.get('query')
+  // query is "hello" for /api/search?query=hello
+}
+```
+
+### Streaming
+
+Streaming is commonly used in combination with Large Language Models (LLMs), such as OpenAI, for AI-generated content. Learn more about the [AI SDK](https://sdk.vercel.ai/docs/introduction).
+
+```ts filename="app/api/chat/route.ts" switcher
+import { openai } from '@ai-sdk/openai'
+import { StreamingTextResponse, streamText } from 'ai'
+
+export async function POST(req: Request) {
+  const { messages } = await req.json()
+  const result = await streamText({
+    model: openai('gpt-4-turbo'),
+    messages,
+  })
+
+  return new StreamingTextResponse(result.toAIStream())
+}
+```
+
+```js filename="app/api/chat/route.js" switcher
+import { openai } from '@ai-sdk/openai'
+import { StreamingTextResponse, streamText } from 'ai'
+
+export async function POST(req) {
+  const { messages } = await req.json()
+  const result = await streamText({
+    model: openai('gpt-4-turbo'),
+    messages,
+  })
+
+  return new StreamingTextResponse(result.toAIStream())
+}
+```
+
+These abstractions use the Web APIs to create a stream. You can also use the underlying Web APIs directly.
+
+```ts filename="app/api/route.ts" switcher
+// https://developer.mozilla.org/docs/Web/API/ReadableStream#convert_async_iterator_to_stream
+function iteratorToStream(iterator: any) {
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await iterator.next()
+
+      if (done) {
+        controller.close()
+      } else {
+        controller.enqueue(value)
+      }
+    },
+  })
+}
+
+function sleep(time: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, time)
+  })
+}
+
+const encoder = new TextEncoder()
+
+async function* makeIterator() {
+  yield encoder.encode('<p>One</p>')
+  await sleep(200)
+  yield encoder.encode('<p>Two</p>')
+  await sleep(200)
+  yield encoder.encode('<p>Three</p>')
+}
+
+export async function GET() {
+  const iterator = makeIterator()
+  const stream = iteratorToStream(iterator)
+
+  return new Response(stream)
+}
+```
+
+```js filename="app/api/route.js" switcher
+// https://developer.mozilla.org/docs/Web/API/ReadableStream#convert_async_iterator_to_stream
+function iteratorToStream(iterator) {
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await iterator.next()
+
+      if (done) {
+        controller.close()
+      } else {
+        controller.enqueue(value)
+      }
+    },
+  })
+}
+
+function sleep(time) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, time)
+  })
+}
+
+const encoder = new TextEncoder()
+
+async function* makeIterator() {
+  yield encoder.encode('<p>One</p>')
+  await sleep(200)
+  yield encoder.encode('<p>Two</p>')
+  await sleep(200)
+  yield encoder.encode('<p>Three</p>')
+}
+
+export async function GET() {
+  const iterator = makeIterator()
+  const stream = iteratorToStream(iterator)
+
+  return new Response(stream)
+}
+```
+
+### Request Body
+
+You can read the `Request` body using the standard Web API methods:
+
+```ts filename="app/items/route.ts" switcher
+export async function POST(request: Request) {
+  const res = await request.json()
+  return Response.json({ res })
+}
+```
+
+```js filename="app/items/route.js" switcher
+export async function POST(request) {
+  const res = await request.json()
+  return Response.json({ res })
+}
+```
+
+### Request Body FormData
+
+You can read the `FormData` using the `request.formData()` function:
+
+```ts filename="app/items/route.ts" switcher
+export async function POST(request: Request) {
+  const formData = await request.formData()
+  const name = formData.get('name')
+  const email = formData.get('email')
+  return Response.json({ name, email })
+}
+```
+
+```js filename="app/items/route.js" switcher
+export async function POST(request) {
+  const formData = await request.formData()
+  const name = formData.get('name')
+  const email = formData.get('email')
+  return Response.json({ name, email })
+}
+```
+
+Since `formData` data are all strings, you may want to use [`zod-form-data`](https://www.npmjs.com/zod-form-data) to validate the request and retrieve data in the format you prefer (e.g. `number`).
+
+### CORS
+
+You can set CORS headers for a specific Route Handler using the standard Web API methods:
+
+```ts filename="app/api/route.ts" switcher
+export async function GET(request: Request) {
+  return new Response('Hello, Next.js!', {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  })
+}
+```
+
+```js filename="app/api/route.js" switcher
+export async function GET(request) {
+  return new Response('Hello, Next.js!', {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  })
+}
+```
+
+> **Good to know**:
+>
+> - To add CORS headers to multiple Route Handlers, you can use [Proxy](/docs/app/api-reference/file-conventions/proxy#cors) or the [`next.config.js` file](/docs/app/api-reference/config/next-config-js/headers#cors).
+
+### Webhooks
+
+You can use a Route Handler to receive webhooks from third-party services:
+
+```ts filename="app/api/route.ts" switcher
+export async function POST(request: Request) {
+  try {
+    const text = await request.text()
+    // Process the webhook payload
+  } catch (error) {
+    return new Response(`Webhook error: ${error.message}`, {
+      status: 400,
+    })
+  }
+
+  return new Response('Success!', {
+    status: 200,
+  })
+}
+```
+
+```js filename="app/api/route.js" switcher
+export async function POST(request) {
+  try {
+    const text = await request.text()
+    // Process the webhook payload
+  } catch (error) {
+    return new Response(`Webhook error: ${error.message}`, {
+      status: 400,
+    })
+  }
+
+  return new Response('Success!', {
+    status: 200,
+  })
+}
+```
+
+Notably, unlike API Routes with the Pages Router, you do not need to use `bodyParser` to use any additional configuration.
+
+### Non-UI Responses
+
+You can use Route Handlers to return non-UI content. Note that [`sitemap.xml`](/docs/app/api-reference/file-conventions/metadata/sitemap#generating-a-sitemap-using-code-js-ts), [`robots.txt`](/docs/app/api-reference/file-conventions/metadata/robots#generate-a-robots-file), [`app icons`](/docs/app/api-reference/file-conventions/metadata/app-icons#generate-icons-using-code-js-ts-tsx), and [open graph images](/docs/app/api-reference/file-conventions/metadata/opengraph-image) all have built-in support.
+
+```ts filename="app/rss.xml/route.ts" switcher
+export async function GET() {
+  return new Response(
+    `<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+
+<channel>
+  <title>Next.js Documentation</title>
+  <link>https://nextjs.org/docs</link>
+  <description>The React Framework for the Web</description>
+</channel>
+
+</rss>`,
+    {
+      headers: {
+        'Content-Type': 'text/xml',
+      },
+    }
+  )
+}
+```
+
+```js filename="app/rss.xml/route.js" switcher
+export async function GET() {
+  return new Response(`<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+
+<channel>
+  <title>Next.js Documentation</title>
+  <link>https://nextjs.org/docs</link>
+  <description>The React Framework for the Web</description>
+</channel>
+
+</rss>`)
+}
+```
+
+### Segment Config Options
+
+Route Handlers use the same [route segment configuration](/docs/app/api-reference/file-conventions/route-segment-config) as pages and layouts.
+
+```ts filename="app/items/route.ts" switcher
+export const dynamic = 'auto'
+export const dynamicParams = true
+export const revalidate = false
+export const fetchCache = 'auto'
+export const runtime = 'nodejs'
+export const preferredRegion = 'auto'
+```
+
+```js filename="app/items/route.js" switcher
+export const dynamic = 'auto'
+export const dynamicParams = true
+export const revalidate = false
+export const fetchCache = 'auto'
+export const runtime = 'nodejs'
+export const preferredRegion = 'auto'
+```
+
+See the [API reference](/docs/app/api-reference/file-conventions/route-segment-config) for more details.
+
+## Version History
+
+| Version      | Changes                                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------------------- |
+| `v15.0.0-RC` | `context.params` is now a promise. A [codemod](/docs/app/guides/upgrading/codemods#150) is available |
+| `v15.0.0-RC` | The default caching for `GET` handlers was changed from static to dynamic                            |
+| `v13.2.0`    | Route Handlers are introduced.                                                                       |
+
+codex
+知识图谱里没有当前项目的索引，我已改用本地文件检查。会按测试驱动和完成前验证技能执行，重点覆盖拒绝原因必填、重新打开清空原因、实现奖可后补，以及旧数据库字段升级。
+exec
+/bin/zsh -lc "sed -n '1,65p' src/lib/db.ts; sed -n '1065,1105p' src/lib/db.ts; cat scripts/test-leave-options.mts; cat scripts/test-route-helpers.mts; cat src/lib/req.ts" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+import Database from "better-sqlite3";
+import bcrypt from "bcryptjs";
+import { initializeSyncSchema } from "./sync-schema";
+import { ensureAccessSchema } from "./access-schema";
+import { expandLegacyCheck } from "./legacy-check-schema";
+import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
+import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
+
+import { databasePath } from "./runtime-config.cjs";
+import { openChecked } from "./database-policy.cjs";
+
+let db: Database.Database;
+
+export function getDb(): Database.Database {
+  if (!db) {
+    // Validate the source read-only before opening a writable connection. A failed call
+    // leaves no cached handle; repeated calls face the same missing/empty/identity guard.
+    const database = openChecked(databasePath, "internal", process.env.ALLOW_EMPTY_DB === "1" || process.env.NODE_ENV === "test");
+    try {
+      database.pragma("journal_mode = DELETE");
+      database.pragma("foreign_keys = ON");
+      initTables(database);
+      seedData(database);
+      migrateInfluencersCheck(database);
+      migrateEmployeeStatusCheck(database);
+      ensureAccessSchema(database);
+      if (commercePilotEnabled()) ensureCommerceSchema(database);
+    } catch (error) {
+      database.close();
+      throw error;
+    }
+
+    db = database;
+  }
+  return db;
+}
+
+// 共享状态列表 — 所有建表/迁移统一使用此常量
+const INFLUENCER_STATUS_LIST = "'待提交','待评估','已评估','已推荐给老板','不推荐','已联系','签约中','已签约','品牌孵化中','已完成','已停止','已入池','不签约'";
+
+// influencers_new 的列顺序（迁移时按名字逐列搬运，不依赖顺序）
+const INFLUENCER_COLUMNS = [
+  "id", "name", "tiktok_link", "category", "contact", "contact_phone", "line_id",
+  "monthly_gmv", "live_stream_ratio", "contact_time", "reply_status", "followers",
+  "avg_views", "gmv_range", "notes", "status", "created_by", "created_at",
+  "updated_at", "phase", "discovery_task_id", "code",
+] as const;
+
+const INFLUENCER_REPLY_STATUSES = ["待联系", "已联系", "已回复", "未回复", "不回复"];
+
+/**
+ * 运行时迁移：让 influencers 表的 CHECK 约束跟上 INFLUENCER_STATUS_LIST。
+ *
+ * 两个已修的坑：
+ * 1. 触发条件原本硬编码判断 '待提交' / '不签约' 两个字符串，以后往状态列表里加新状态
+ *    不会触发重建 → 新状态被旧 CHECK 拒绝，接口直接 500。现在改成比对完整列表。
+ * 2. 搬运数据原本用 `INSERT INTO influencers_new SELECT * FROM influencers`，
+ *    依赖两张表的列顺序完全一致。实测线上表的 code 在第 6 位、新表在最后一位，
+ *    一旦触发会有 17 个字段整体错位（达人编号写进电话字段…）。
+ *    现在改成显式列名，并且只搬两张表都有的列。
+ */
+let influencersCheckMigrated = false;
+function migrateInfluencersCheck(database: Database.Database) {
+  if (influencersCheckMigrated) return;
+  influencersCheckMigrated = true;
+      review_note TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_shop_fees_status ON shop_fees(status);
+    CREATE INDEX IF NOT EXISTS idx_shop_fees_type ON shop_fees(fee_type);
+  `);
+
+  // 想法记录（好点子）：老板记想法、员工提点子
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ideas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT DEFAULT '',
+      category TEXT NOT NULL DEFAULT '产品功能' CHECK(category IN ('产品功能','业务改进','新业务','其他')),
+      source TEXT DEFAULT '',
+      is_boss INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT '待评估' CHECK(status IN ('待评估','已采纳','已拒绝','进行中','已实现')),
+      bonus_amount REAL DEFAULT 0,
+      currency TEXT DEFAULT 'CNY',
+      related_feature TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+    CREATE INDEX IF NOT EXISTS idx_ideas_is_boss ON ideas(is_boss);
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor TEXT DEFAULT '',
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT DEFAULT '',
+      detail TEXT DEFAULT '',
+      old_value TEXT DEFAULT '',
+      new_value TEXT DEFAULT '',
+      field_name TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {fileURLToPath} from 'node:url';import {NextRequest} from 'next/server';
+const T=path.dirname(fileURLToPath(import.meta.url));const fixture=fs.mkdtempSync('/tmp/xt-leave-regression-');process.env.DB_PATH=path.join(fixture,'synthetic.db');process.env.JWT_SECRET='only-synthetic-positive-jwt';Object.assign(process.env,{NODE_ENV:'test'});delete process.env.CUSTOMER_SYNC_URL;delete process.env.SYNC_SECRET;process.chdir(fixture);fs.mkdirSync('uploads');globalThis.fetch=async()=>{throw new Error('NETWORK_DISABLED')};
+const mod=(p:string)=>import(path.join(process.env.INTERNAL_SOURCE_ROOT || path.dirname(T),'src',p));const {getDb}=await mod('lib/db.ts');const {signToken}=await mod('lib/auth.ts');const db=getDb();const identities:any={};
+for(const [role,name,actual] of [['client','BUYER_A','client'],['staff','WORKER_A','employee'],['admin','ADMIN_A','admin']]){const id=Number(db.prepare('INSERT INTO employees(name,email,role,password,must_change_password,auth_version) VALUES (?,?,?,?,0,0)').run(name,`${role}@synthetic.invalid`,actual,'unused').lastInsertRowid);identities[role]={id,name,role:actual,token:await signToken({id,name,role:actual,auth_version:0,must_change_password:0})};}
+const ctx=(id:string,stepId?:number)=>({params:Promise.resolve({id,stepId:stepId?.toString()})});const calls:any[]=[];const results:any[]=[];
+async function call(p:string,method:string,role:string|null,body?:any,context?:any,query=''){const r=await mod(`app/api/${p}/route.ts`);const res=await r[method](new NextRequest(`http://127.0.0.1/api/${p}${query}`,{method,headers:{...(role?{authorization:`Bearer ${identities[role].token}`}:{ }),'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})}),context);const text=await res.text();let output:any;try{output=JSON.parse(text)}catch{output=text}const x={p,method,role,input:body,params:context?await context.params:null,status:res.status,output};calls.push(x);return x;}
+async function test(name:string,fn:()=>Promise<any>){try{const detail=await fn();results.push({name,status:'PASS',detail});}catch(e){results.push({name,status:'FAIL',error:String(e),stack:(e as Error).stack});}console.log(JSON.stringify(results.at(-1)));}
+
+await test('all six UI and schema leave options accepted by actual API',async()=>{const schema=db.prepare("SELECT sql FROM sqlite_master WHERE name='leave_requests'").get().sql;const output=[];for(const leave_type of ['事假','病假','年假','调休','法定假日','其他']){const result=await call('leave','POST','staff',{leave_type,start_date:'2026-09-15',end_date:'2026-09-15',reason:'synthetic review'});assert.equal(result.status,201);assert(schema.includes(`'${leave_type}'`));output.push({type:leave_type,status:result.status,body:result.output});}return{classification:'REGRESSION_PASS',output};});
+await test('overdue leave notification still works despite stale enum registration',async()=>{db.prepare("UPDATE leave_requests SET created_at='2026-01-01 00:00:00' WHERE employee_name='WORKER_A'").run();const before=db.prepare("SELECT count(*) n FROM notifications WHERE type='leave_overdue'").get().n;const r=await call('leave','GET','admin');assert.equal(r.status,200);const after=db.prepare("SELECT count(*) n FROM notifications WHERE type='leave_overdue'").get().n;assert(after>before);return{status:200,createdOverdueNotifications:after-before,classification:'PASS_CONTROL_STALE_ENUM_NOT_ACTUAL_FAILURE_ON_THIS_PATH'};});
+await test('invalid leave type rejected without inserting a row',async()=>{const before=db.prepare('SELECT count(*) n FROM leave_requests').get().n;const r=await call('leave','POST','staff',{leave_type:'NOT_A_TYPE',start_date:'2026-09-15',end_date:'2026-09-15',reason:'test'});assert.equal(r.status,400);assert.equal(db.prepare('SELECT count(*) n FROM leave_requests').get().n,before)});
+fs.writeFileSync(path.join(process.env.EVIDENCE_DIR||T,'enum-dynamic-results.json'),JSON.stringify({fixture,results,calls},null,2));console.log(`POSITIVE SUMMARY ${results.filter(r=>r.status==='PASS').length} passed / ${results.filter(r=>r.status==='FAIL').length} failed; ${calls.length} handler calls`);db.close();if(results.some(r=>r.status==='FAIL'))process.exitCode=1;
+/** Route export fix regression: real handlers, JWT, SQLite; no password or tax policy changes. */
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';import {NextRequest} from 'next/server';
+const root=path.resolve(process.env.ROUTE_HELPER_SOURCE_ROOT || path.join(path.dirname(fileURLToPath(import.meta.url)),'..'));
+const evidence=process.env.ROUTE_HELPER_RECORD_DIR!;assert(path.isAbsolute(evidence));fs.mkdirSync(evidence,{recursive:true});
+const fixture=fs.mkdtempSync('/tmp/xt-route-helpers-');Object.assign(process.env,{DB_PATH:path.join(fixture,'synthetic.db'),NODE_ENV:'test',ALLOW_EMPTY_DB:'1',JWT_SECRET:'synthetic-route-helper-regression'});delete process.env.SYNC_SECRET;delete process.env.CUSTOMER_SYNC_URL;process.chdir(fixture);globalThis.fetch=async()=>{throw Error('NETWORK_DISABLED')};
+const mod=(p:string)=>import(path.join(root,'src',p));const db=(await mod('lib/db.ts')).getDb();
+const auth=await mod('lib/auth.ts');const bcrypt=(await import('bcryptjs')).default;
+const password='Original123!';const employee=Number(db.prepare("INSERT INTO employees(name,email,role,password,must_change_password,auth_version) VALUES('Fixture','helpers@example.invalid','employee',?,0,0)").run(await bcrypt.hash(password,10)).lastInsertRowid);
+const token=await auth.signToken({id:employee,name:'Fixture',role:'employee',auth_version:0,must_change_password:0});
+const calls:any[]=[],results:any[]=[];
+const req=(p:string,method:string,body:any)=>new NextRequest('http://127.0.0.1'+p,{method,headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(body)});
+async function call(p:string,method:string,body:any,id?:number){const route=await mod('app/api/'+p+'/route.ts');const r=await route[method](req('/api/'+p,method,body),{params:Promise.resolve({id:String(id)})});const value=await r.json();const out={path:p,method,input:body,id,status:r.status,body:value};calls.push(out);return out}
+async function test(name:string,fn:()=>Promise<any>){try{results.push({name,status:'PASS',detail:await fn()})}catch(error){results.push({name,status:'FAIL',error:String(error)})}console.log(JSON.stringify(results.at(-1)))}
+const routes=['auth/change-password','vat/records/[id]','wht/records'];
+const hashes:Record<string,string>={};for(const p of routes){const full=path.join(root,'src/app/api',p,'route.ts');hashes[full]=createHash('sha256').update(fs.readFileSync(full)).digest('hex')}
+const policy=fs.existsSync(path.join(root,'src/lib/password-policy.ts'))?await mod('lib/password-policy.ts'):await mod('app/api/auth/change-password/route.ts');
+const vat=fs.existsSync(path.join(root,'src/lib/vat-reconciliation.ts'))?await mod('lib/vat-reconciliation.ts'):await mod('app/api/vat/records/[id]/route.ts');
+const wht=fs.existsSync(path.join(root,'src/lib/wht-templates.ts'))?await mod('lib/wht-templates.ts'):await mod('app/api/wht/records/route.ts');
+await test('route modules export only supported handlers/config',async()=>{const legal=new Set(['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','dynamic','dynamicParams','revalidate','fetchCache','runtime','preferredRegion','maxDuration','generateStaticParams','config']);const invalid:any[]=[];for(const p of routes){for(const name of Object.keys(await mod('app/api/'+p+'/route.ts')))if(!legal.has(name))invalid.push({route:p,name})}assert.deepEqual(invalid,[]);return{routes:3}});
+await test('password boundary results preserve exact existing messages',async()=>{const cases:any[]=[[null,'请输入新密码'],[123,'请输入新密码'],['','请输入新密码'],['1234567','新密码至少 8 位'],['password','这个密码太常见了，换一个'],['a'.repeat(8),'新密码需要包含数字或符号'],['8'.repeat(8),'新密码不能全是数字'],['Xiang2026!',null],['中'.repeat(24),null],['中'.repeat(25),'新密码不能超过 72 字节（中文通常每个字占 3 字节）'],['a'.repeat(71)+'!',null],['a'.repeat(72)+'!','新密码不能超过 72 字节（中文通常每个字占 3 字节）']];for(const [input,expected]of cases)assert.equal(policy.validatePassword(input),expected);assert.equal(policy.validatePassword('Original123!','Original123!'),'新密码不能和当前密码相同');return{cases:13}});
+await test('VAT helper sums month and keeps paid value in every update',async()=>{const id=Number(db.prepare("INSERT INTO vat_customers(company_name,tax_id) VALUES('Synthetic VAT','VAT-FIXTURE')").run().lastInsertRowid);db.prepare("INSERT INTO vat_records(customer_id,year_month,amount) VALUES(?,'2026-09',100),(?,'2026-09',25),(?,'2026-10',999)").run(id,id,id);vat.syncVatReconciliation(db,id,'2026-09');const read=()=>db.prepare("SELECT tax_payable,tax_paid,tax_unpaid FROM vat_reconciliation WHERE customer_id=? AND year_month='2026-09'").get(id);assert.deepEqual(read(),{tax_payable:125,tax_paid:0,tax_unpaid:125});db.prepare("UPDATE vat_reconciliation SET tax_paid=100 WHERE customer_id=?").run(id);db.prepare("UPDATE vat_records SET amount=40 WHERE customer_id=? AND year_month='2026-09'").run(id);vat.syncVatReconciliation(db,id,'2026-09');assert.deepEqual(read(),{tax_payable:80,tax_paid:100,tax_unpaid:0});const record=db.prepare("SELECT id FROM vat_records WHERE customer_id=? AND year_month='2026-09' LIMIT 1").get(id);const changed=await call('vat/records/[id]','PATCH',{amount:80},record.id);assert.equal(changed.status,200);assert.deepEqual(read(),{tax_payable:120,tax_paid:100,tax_unpaid:20});return{created:125,updated:80,paidPreserved:100,handlerUpdated:120}});
+await test('WHT accepted subtypes and their seeded workflow do not change',async()=>{assert.deepEqual(wht.WHT_SUBTYPES,['ภ.ง.ด.1','ภ.ง.ด.53']);const id=Number(db.prepare("INSERT INTO wht_customers(company_name,tax_id) VALUES('Synthetic WHT','WHT-FIXTURE')").run().lastInsertRowid);for(const [subtype,count]of [['ภ.ง.ด.1',6],['ภ.ง.ด.53',7]]as const){const r=await call('wht/records','POST',{customer_id:id,year_month:'2026-09',subtype});assert.equal(r.status,201);const steps=db.prepare('SELECT step_name,assignee,status FROM wht_record_steps WHERE record_id=? ORDER BY step_order').all(r.body.id);assert.equal(steps.length,count);assert.equal(steps[0].assignee,'Eve');if(subtype==='ภ.ง.ด.1')assert.equal(steps[2].status,'已跳过');assert.equal((await call('wht/records','POST',{customer_id:id,year_month:'2026-09',subtype})).status,409)}const before=db.prepare('SELECT count(*) n FROM wht_records').get().n;assert.equal((await call('wht/records','POST',{customer_id:id,year_month:'2026-10',subtype:'invalid'})).status,400);assert.equal((await call('wht/records','POST',{action:'generate',month:'2026-10',subtype:'invalid'})).status,400);assert.equal(db.prepare('SELECT count(*) n FROM wht_records').get().n,before);return{subtypes:2,steps:[6,7],duplicates:409,invalid:400}});
+await test('password HTTP policy and reset session semantics remain unchanged',async()=>{const initial=db.prepare('SELECT password,auth_version,must_change_password FROM employees WHERE id=?').get(employee);for(const input of [{current_password:password,new_password:'short'},{current_password:password,new_password:password},{current_password:password,new_password:'中'.repeat(25)}]){assert.equal((await call('auth/change-password','POST',input)).status,400);assert.deepEqual(db.prepare('SELECT password,auth_version,must_change_password FROM employees WHERE id=?').get(employee),initial)}assert.equal((await call('auth/change-password','POST',{current_password:'Wrong123!',new_password:'FreshPassword12!'})).status,401);const ok=await call('auth/change-password','POST',{current_password:password,new_password:'FreshPassword12!'});assert.equal(ok.status,200);const changed=db.prepare('SELECT password,auth_version,must_change_password FROM employees WHERE id=?').get(employee);assert(await bcrypt.compare('FreshPassword12!',changed.password));assert.equal(changed.auth_version,1);assert.equal(changed.must_change_password,0);assert.equal(await auth.verifyToken(token),null);return{changed:200,oldTokenRevoked:true,forcedPolicyUnchanged:true}});
+fs.writeFileSync(path.join(evidence,'results.json'),JSON.stringify({root,fixture,hashes,results,calls},null,2));db.close();const failed=results.filter(r=>r.status==='FAIL').length;console.log(`ROUTE HELPERS ${results.length-failed} passed / ${failed} failed`);if(failed)process.exitCode=1;
+import { NextRequest } from "next/server";
+
+/**
+ * 安全读取请求体 JSON。
+ *
+ * 直接 `await req.json()` 在请求体为空或不是合法 JSON 时会抛异常，
+ * Next.js 把它变成一个没有任何说明的 500——客户端很难判断是自己发错了还是服务端挂了。
+ * 这里统一返回空对象，让后续的字段校验去给出 400 和具体原因。
+ */
+// 返回类型保持和原来的 `await req.json()` 一致（any），
+// 这样替换调用点时不会引入一堆类型报错；字段校验仍由各路由自己做。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function readJson(req: NextRequest): Promise<any> {
+  try {
+    const body = await req.json();
+    return body && typeof body === "object" ? body : {};
+  } catch {
+    return {};
+  }
+}
+
+exec
+/bin/zsh -lc "node -v; ls node_modules/.bin/tsx; cat src/lib/runtime-config.cjs | head -65; sed -n '1,65p' src/lib/auth.ts" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+v24.13.1
+ls: node_modules/.bin/tsx: No such file or directory
+// Next and direct DB/backup entrypoints share one environment and root-relative path.
+const path = require('node:path');
+const { loadEnvConfig } = require('@next/env');
+// Next bundles this file under .next; process.cwd() is the deployed project root.
+const projectRoot = path.resolve(process.env.INTERNAL_APP_ROOT || process.cwd());
+loadEnvConfig(projectRoot, process.env.NODE_ENV !== 'production');
+const databasePath = path.resolve(projectRoot, process.env.DB_PATH || 'data.db');
+module.exports = { databasePath };
+import { SignJWT, jwtVerify } from "jose";
+import { NextRequest } from "next/server";
+import { getDb } from "./db";
+
+const rawSecret = process.env.JWT_SECRET;
+if (!rawSecret) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。"
+    );
+  }
+  console.warn("[auth] 未设置 JWT_SECRET，当前使用开发环境默认密钥，仅供本地开发，切勿用于生产部署。");
+}
+const secret = new TextEncoder().encode(rawSecret || "xiangtai-internal-secret-key-2026-dev-only");
+
+export interface TokenPayload {
+  id: number;
+  name: string;
+  role: string;
+  authVersion: number;
+  passwordChangeRequired: boolean;
+}
+
+export interface TokenUser {
+  id: number;
+  name: string;
+  role: string;
+  auth_version: number;
+  must_change_password: number;
+}
+
+interface VerifyOptions {
+  allowPasswordChangeRequired?: boolean;
+}
+
+interface SignTokenOptions {
+  remember?: boolean;
+}
+
+export async function signToken(user: TokenUser, options: SignTokenOptions = {}): Promise<string> {
+  // 强制改密凭证只用于完成改密；普通会话 12 小时，记住我延长到 30 天。
+  const expiresIn = user.must_change_password === 1 ? "24h" : options.remember ? "30d" : "12h";
+  return new SignJWT({
+    id: user.id,
+    name: user.name,
+    role: user.role,
+    authVersion: user.auth_version,
+    passwordChangeRequired: user.must_change_password === 1,
+  } as unknown as Record<string, unknown>)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(secret);
+}
+
+export async function verifyToken(token: string, options: VerifyOptions = {}): Promise<TokenPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    const tokenPayload = payload as unknown as TokenPayload;
+    if (!Number.isInteger(tokenPayload.id) || !Number.isInteger(tokenPayload.authVersion)) return null;
+
+    // JWT 只证明它由本系统签发；账号当前是否还能使用，必须以数据库为准。
+    const user = getDb().prepare(
+      "SELECT name, role, must_change_password, auth_version, status FROM employees WHERE id = ?"
+    ).get(tokenPayload.id) as {
+
+exec
+/bin/zsh -lc "cat > scripts/test-ideas.cjs <<'EOF'
+// Run: node scripts/test-ideas.cjs (isolated SQLite databases; no application data).
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const Module = require('node:module');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '..');
+const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'ideas-test-'));
+Object.assign(process.env, { NODE_ENV: 'test', DB_PATH: path.join(fixture, 'test.db'), INTERNAL_APP_ROOT: fixture, JWT_SECRET: 'ideas-test-only-secret' });
+const resolve = Module._resolveFilename;
+Module._resolveFilename = function (name, ...args) {
+  return resolve.call(this, name.startsWith('@/') ? path.join(root, 'src', name.slice(2)) : name, ...args);
+};
+require.extensions['.ts'] = (mod, filename) => mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+}).outputText, filename);
+const Database = require('better-sqlite3');
+if ("'!process.argv.includes('"'--fresh')) {
+  const old = new Database(process.env.DB_PATH);
+  const source = fs.readFileSync(path.join(root, 'src/lib/db.ts'), 'utf8');
+  const schema = source.match(/CREATE TABLE IF NOT EXISTS ideas \\([\\s\\S]*?\\n    \\);/)[0]
+    .split('\\n').filter(line => "'!/implementation_bonus_amount|implementation_bonus_currency|rejection_reason/.test(line)).join('"'\\n');
+  old.exec(schema);
+  old.prepare(\"INSERT INTO ideas(title) VALUES ('existing')\").run();
+  old.close();
+}
+const { getDb } = require('../src/lib/db.ts');
+const db = getDb();
+const { signToken } = require('../src/lib/auth.ts');
+const { PATCH } = require('../src/app/api/ideas/[id]/route.ts');
+const { NextRequest } = require('next/server');
+let failures = 0;
+async function test(name, fn) { try { await fn(); console.log('PASS', name); } catch (e) { failures++; console.error('FAIL', name, e.message); } }
+(async () => {
+  const tokens = {};
+  for (const role of ['admin', 'employee']) {
+    const id = Number(db.prepare('INSERT INTO employees(name,email,role,password,must_change_password) VALUES (?,?,?,?,0)').run(role, role+'@ideas.invalid',role,'unused').lastInsertRowid);
+    tokens[role] = await signToken({id,name:role,role,auth_version:0,must_change_password:0});
+  }
+  const create = (status='待评估') => Number(db.prepare('INSERT INTO ideas(title,status) VALUES (?,?)').run('test',status).lastInsertRowid);
+  const read = id => db.prepare('SELECT * FROM ideas WHERE id=?').get(id);
+  async function call(id, body, status=200, role='admin') {
+    const res = await PATCH(new NextRequest('http://localhost/api/ideas/'+id,{method:'PATCH',headers:{'content-type':'application/json',...(role?{authorization:'Bearer '+tokens[role]}:{})},body:JSON.stringify(body)}),{params:Promise.resolve({id:String(id)})});
+    assert.equal(res.status,status,JSON.stringify(await res.clone().json())); return res.json();
+  }
+  await test('schema fields and existing rows', async()=>{const row=read(create()); for(const field of ['implementation_bonus_amount','implementation_bonus_currency','rejection_reason']) assert(field in row,field); assert.equal(row.implementation_bonus_amount,null); if("'!process.argv.includes('"'--fresh')) assert.equal(read(1).title,'existing');});
+  await test('reject reason required and reopen clears it',async()=>{const id=create();for(const rejection_reason of [undefined,'','  ',12,{}]) await call(id,{action:'reject',rejection_reason},400);await call(id,{action:'reject',rejection_reason:'  暂不适合  '});assert.equal(read(id).rejection_reason,'暂不适合');assert.equal(read(id).status,'已拒绝');await call(id,{action:'reopen'});assert.equal(read(id).status,'待评估');assert.equal(read(id).rejection_reason,'');});
+  await test('complete requires feature but reward can be deferred',async()=>{const id=create('进行中');for(const related_feature of [undefined,' ',{}]) await call(id,{action:'complete',related_feature},400);await call(id,{action:'complete',related_feature:' 功能A '});assert.equal(read(id).related_feature,'功能A');assert.equal(read(id).implementation_bonus_amount,null);assert.equal(read(id).status,'已实现');});
+  await test('complete and supplement accept both currencies including zero',async()=>{for(const currency of ['THB','CNY']){const id=create('进行中');await call(id,{action:'complete',related_feature:'功能',implementation_bonus_amount:12.5,implementation_bonus_currency:currency});assert.equal(read(id).implementation_bonus_amount,12.5);assert.equal(read(id).implementation_bonus_currency,currency);await call(id,{action:'set_implementation_bonus',implementation_bonus_amount:0,implementation_bonus_currency:currency});assert.equal(read(id).implementation_bonus_amount,0);assert.equal(read(id).bonus_amount,0);assert.equal(read(id).related_feature,'功能');}});
+  await test('deferred reward persists',async()=>{const id=create('已实现');await call(id,{action:'set_implementation_bonus',implementation_bonus_amount:'100',implementation_bonus_currency:'THB'});assert.equal(read(id).implementation_bonus_amount,100);});
+  await test('invalid rewards do not mutate rows',async()=>{for(const action of ['complete','set_implementation_bonus'])for(const reward of [{implementation_bonus_amount:-1,implementation_bonus_currency:'THB'},{implementation_bonus_amount:true,implementation_bonus_currency:'THB'},{implementation_bonus_amount:'abc',implementation_bonus_currency:'THB'},{implementation_bonus_amount:1,implementation_bonus_currency:'USD'},{implementation_bonus_amount:1},{implementation_bonus_currency:'CNY'}]){const id=create(action==='complete'?'进行中':'已实现');const before=read(id);await call(id,{action,related_feature:'功能',...reward},400);assert.deepEqual(read(id),before);}await call(create('已实现'),{action:'set_implementation_bonus'},400);});
+  await test('state and permission guards',async()=>{for(const [action,allowed] of [['reject','待评估'],['reopen','已拒绝'],['complete','进行中'],['set_implementation_bonus','已实现']])for(const state of ['待评估','已拒绝','已采纳','进行中','已实现'])if(state"'!==allowed)await call(create(state),{action,rejection_reason:'"'原因',related_feature:'功能',implementation_bonus_amount:10,implementation_bonus_currency:'THB'},400);await call(create(),{action:'reject',rejection_reason:'原因'},401,null);await call(create(),{action:'reject',rejection_reason:'原因'},403,'employee');await call(999999,{action:'reopen'},404);});
+  await test('adopt and start unchanged',async()=>{const id=create();await call(id,{action:'adopt',bonus_amount:20,currency:'CNY'});await call(id,{action:'start'});assert.equal(read(id).status,'进行中');assert.equal(read(id).bonus_amount,20);});
+})().catch(e=>{failures++;console.error(e)}).finally(()=>{db.close();fs.rmSync(fixture,{recursive:true,force:true});process.exitCode=failures?1:0;});
+EOF
+node scripts/test-ideas.cjs" in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 109ms:
+/Users/liuxiong/Desktop/internal-system/src/lib/database-policy.cjs:18
+    if (required.some(column => !columns.has(column))) throw new Error(`DB_IDENTITY_MISMATCH: ${kind}.${table}`);
+                                                       ^
+
+Error: DB_IDENTITY_MISMATCH: internal.employees
+    at validate (/Users/liuxiong/Desktop/internal-system/src/lib/database-policy.cjs:18:62)
+    at preflight (/Users/liuxiong/Desktop/internal-system/src/lib/database-policy.cjs:37:24)
+    at openChecked (/Users/liuxiong/Desktop/internal-system/src/lib/database-policy.cjs:43:17)
+    at getDb (/Users/liuxiong/Desktop/internal-system/src/lib/db.ts:33:64)
+    at Object.<anonymous> (/Users/liuxiong/Desktop/internal-system/scripts/test-ideas.cjs:29:12)
+    at Module._compile (node:internal/modules/cjs/loader:1804:14)
+    at Object..js (node:internal/modules/cjs/loader:1936:10)
+    at Module.load (node:internal/modules/cjs/loader:1525:32)
+    at Module._load (node:internal/modules/cjs/loader:1327:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+
+Node.js v24.13.1
+
+exec
+/bin/zsh -lc 'cat src/lib/database-policy.cjs | head -50' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+// Shared DB identity / no-create preflight. Keep both repositories byte-identical.
+const fs = require('node:fs');
+const path = require('node:path');
+const Database = require('better-sqlite3');
+const IDENTITIES = {
+  client: { users: ['id','email','password','role'], products: ['id','sku_code','price'], orders: ['id','order_no','user_id','price'], invoices: ['id','order_id','amount'] },
+  internal: { employees: ['id','name','role','password'], business_types: ['id','name'], orders: ['id','customer_name','business_type_id'], order_steps: ['id','order_id','step_name'] },
+};
+function validate(database, kind) {
+  const identity = IDENTITIES[kind];
+  if (!identity) throw new Error('Unknown database identity');
+  const result = database.pragma('quick_check', { simple: true });
+  if (result !== 'ok') throw new Error(`DB_INVALID: integrity check failed (${kind})`);
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+  if (tables.length === 0) return false;
+  for (const [table, required] of Object.entries(identity)) {
+    const columns = new Set(database.prepare(`PRAGMA table_info("${table}")`).all().map(row => row.name));
+    if (required.some(column => !columns.has(column))) throw new Error(`DB_IDENTITY_MISMATCH: ${kind}.${table}`);
+  }
+  return true;
+}
+function preflight(filename, kind, allowEmpty = false) {
+  if (!path.isAbsolute(filename)) throw new Error('DB_PATH must resolve to an absolute path');
+  if (!fs.existsSync(filename)) {
+    if (allowEmpty) return { existing: false, initialize: true };
+    throw new Error(`DB_SOURCE_MISSING: ${filename}; verify the mount/path or explicitly initialize with ALLOW_EMPTY_DB=1`);
+  }
+  const stat = fs.statSync(filename);
+  if (!stat.isFile()) throw new Error(`DB_INVALID: not a regular file: ${filename}`);
+  if (stat.size === 0) {
+    if (allowEmpty) return { existing: true, initialize: true };
+    throw new Error(`DB_EMPTY: ${filename}; restore the real database or explicitly initialize with ALLOW_EMPTY_DB=1`);
+  }
+  let probe;
+  try {
+    probe = new Database(filename, { readonly: true, fileMustExist: true });
+    const identified = validate(probe, kind);
+    if (!identified && !allowEmpty) throw new Error(`DB_EMPTY: ${filename}`);
+    return { existing: true, initialize: !identified };
+  } finally { if (probe) probe.close(); }
+}
+function openChecked(filename, kind, allowEmpty = false) {
+  const state = preflight(filename, kind, allowEmpty);
+  // fileMustExist also closes the missing-file race between preflight and open.
+  const database = new Database(filename, { fileMustExist: !state.initialize });
+  try {
+    const identified = validate(database, kind);
+    if (!identified && !state.initialize) throw new Error(`DB_EMPTY: ${filename}`);
+    return database;
+  } catch (error) { database.close(); throw error; }
+
+exec
+/bin/zsh -lc "python3 - <<'PY'
+p='scripts/test-ideas.cjs'
+s=open(p).read().replace(\"  const old = new Database(process.env.DB_PATH);\", \"  require('../src/lib/db.ts').getDb().close();\\n  delete require.cache[require.resolve('../src/lib/db.ts')];\\n  const old = new Database(process.env.DB_PATH);\\n  old.exec('DROP TABLE ideas');\")
+open(p,'w').write(s)
+PY
+node scripts/test-ideas.cjs" in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 921ms:
+[DB] 已插入待分类业务线
+FAIL schema fields and existing rows implementation_bonus_amount
+FAIL reject reason required and reopen clears it {"id":3,"title":"test","content":"","category":"产品功能","source":"","is_boss":0,"status":"已拒绝","bonus_amount":0,"currency":"CNY","related_feature":"","created_at":"2026-10-14 18:49:19","updated_at":"2026-10-14 18:49:19"}
+
+200 !== 400
+
+FAIL complete requires feature but reward can be deferred {"id":4,"title":"test","content":"","category":"产品功能","source":"","is_boss":0,"status":"已实现","bonus_amount":0,"currency":"CNY","related_feature":"[object Object]","created_at":"2026-10-14 18:49:19","updated_at":"2026-10-14 18:49:19"}
+
+200 !== 400
+
+FAIL complete and supplement accept both currencies including zero Expected values to be strictly equal:
++ actual - expected
+
++ undefined
+- 12.5
+
+FAIL deferred reward persists {"error":"未知操作"}
+
+400 !== 200
+
+FAIL invalid rewards do not mutate rows {"id":7,"title":"test","content":"","category":"产品功能","source":"","is_boss":0,"status":"已实现","bonus_amount":0,"currency":"CNY","related_feature":"功能","created_at":"2026-10-14 18:49:19","updated_at":"2026-10-14 18:49:19"}
+
+200 !== 400
+
+PASS state and permission guards
+PASS adopt and start unchanged
+
+exec
+/bin/zsh -lc "python3 - <<'PY'
+p='src/lib/db.ts';s=open(p).read();s=s.replace(\"      related_feature TEXT DEFAULT '',\\n\", \"      related_feature TEXT DEFAULT '',\\n      implementation_bonus_amount REAL DEFAULT NULL,\\n      implementation_bonus_currency TEXT DEFAULT NULL CHECK(implementation_bonus_currency IN ('THB','CNY')),\\n      rejection_reason TEXT DEFAULT '',\\n\",1)
+needle='    CREATE INDEX IF NOT EXISTS idx_ideas_is_boss ON ideas(is_boss);\\n  "'`);'"'
+s=s.replace(needle,needle+'''
+  const ideaColumns = new Set((database.pragma(\"table_info(ideas)\") as { name: string }[]).map(column => column.name));
+  for (const [name, definition] of [
+    [\"implementation_bonus_amount\", \"REAL DEFAULT NULL\"],
+    [\"implementation_bonus_currency\", \"TEXT DEFAULT NULL CHECK(implementation_bonus_currency IN ('THB','CNY'))\"],
+    [\"rejection_reason\", \"TEXT DEFAULT ''\"],
+  ]) {
+    if ("'!ideaColumns.has(name)) database.exec(`ALTER TABLE ideas ADD COLUMN ${name} ${definition}`);
+  }
+'"''');open(p,'w').write(s)
+p='src/app/api/ideas/[id]/route.ts';s=open(p).read().replace('采纳/拒绝/推进进行中/标已实现','采纳/拒绝/重新打开/推进进行中/标已实现/补实现奖')
+s=s.replace('    db.prepare(\"UPDATE ideas SET status = \\'已拒绝\\', updated_at = datetime(\\'now\\') WHERE id = ?\").run(id);','''    const reason = typeof body.rejection_reason === \"string\" ? body.rejection_reason.trim() : \"\";
+    if ("'!reason) return NextResponse.json({ error: "请填写拒绝原因" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '"'已拒绝', rejection_reason = ?, updated_at = datetime('now') WHERE id = ?\").run(reason, id);''')
+s=s.replace('  // 已采纳 → 进行中','''  // 已拒绝 → 待评估，清空此前拒绝原因
+  if (action === \"reopen\") {
+    if (idea.status "'!== "已拒绝") return NextResponse.json({ error: "只有已拒绝的想法能重新打开" }, { status: 400 });
+    db.prepare("UPDATE ideas SET status = '"'待评估', rejection_reason = '', updated_at = datetime('now') WHERE id = ?\").run(id);
+    logOperation(auth.name, \"重新打开想法\", \"idea\", String(id));
+    return NextResponse.json(getUpdated());
+  }
+
+  // 已采纳 → 进行中''')
+start=s.index('  // 进行中 → 已实现');end=s.index('  return NextResponse.json({ error: \"未知操作\"',start)
+s=s[:start]+'''  // 实现奖可随完成填写，也可在已实现后补填；填写时金额和币种须成对提供。
+  if (action === \"complete\" || action === \"set_implementation_bonus\") {
+    const completing = action === \"complete\";
+    if (idea.status "'!== (completing ? "进行中" : "已实现")) {
+      return NextResponse.json({ error: completing ? "只有进行中的想法能标已实现" : "只有已实现的想法能补实现奖" }, { status: 400 });
+    }
+    const rf = typeof body.related_feature === "string" ? body.related_feature.trim() : "";
+    if (completing && !rf) return NextResponse.json({ error: "请填写关联功能" }, { status: 400 });
+
+    const rawAmount = body.implementation_bonus_amount;
+    const rawCurrency = body.implementation_bonus_currency;
+    const isEmpty = (value: unknown) => value == null || (typeof value === "string" && !value.trim());
+    const hasBonus = !isEmpty(rawAmount) || !isEmpty(rawCurrency);
+    let amount: number | null = null;
+    let currency: string | null = null;
+    if (hasBonus || !completing) {
+      amount = Number(rawAmount);
+      if (isEmpty(rawAmount) || (typeof rawAmount !== "number" && typeof rawAmount !== "string") || !Number.isFinite(amount) || amount < 0) {
+        return NextResponse.json({ error: "请填写有效的实现奖金额（不小于零）" }, { status: 400 });
+      }
+      if (rawCurrency !== "THB" && rawCurrency !== "CNY") {
+        return NextResponse.json({ error: "请选择实现奖币种（THB/CNY）" }, { status: 400 });
+      }
+      currency = rawCurrency;
+    }
+
+    if (completing) {
+      db.prepare("UPDATE ideas SET status = '"'已实现', related_feature = ?, implementation_bonus_amount = ?, implementation_bonus_currency = ?, updated_at = datetime('now') WHERE id = ?\").run(rf, amount, currency, id);
+      logOperation(auth.name, \"想法已实现\", \"idea\", String(id), rf);
+    } else {
+      db.prepare(\"UPDATE ideas SET implementation_bonus_amount = ?, implementation_bonus_currency = ?, updated_at = datetime('now') WHERE id = ?\").run(amount, currency, id);
+      logOperation(auth.name, \"补实现奖\", \"idea\", String(id), "'`实现奖 ${amount}${currency}`);
+    }
+    return NextResponse.json(getUpdated());
+  }
+
+'"'''+s[end:];open(p,'w').write(s)
+PY
+node scripts/test-ideas.cjs
+node scripts/test-ideas.cjs --fresh" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 1708ms:
+[DB] 已插入待分类业务线
+PASS schema fields and existing rows
+PASS reject reason required and reopen clears it
+PASS complete requires feature but reward can be deferred
+PASS complete and supplement accept both currencies including zero
+PASS deferred reward persists
+PASS invalid rewards do not mutate rows
+PASS state and permission guards
+PASS adopt and start unchanged
+[DB] 已插入待分类业务线
+PASS schema fields and existing rows
+PASS reject reason required and reopen clears it
+PASS complete requires feature but reward can be deferred
+PASS complete and supplement accept both currencies including zero
+PASS deferred reward persists
+PASS invalid rewards do not mutate rows
+PASS state and permission guards
+PASS adopt and start unchanged
+
+codex
+字段和四个操作已实现，新库及旧库升级场景的接口测试均通过。补实现奖操作名为 `set_implementation_bonus`；完成时可以不填实现奖，填写时金额和币种需一起提供。现在运行你要求的 TypeScript 检查和生产构建。
+exec
+/bin/zsh -lc 'npx tsc --noEmit' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 1451ms:
+exec
+/bin/zsh -lc 'npm run build' in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 5711ms:
+
+> internal-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+
+  Creating an optimized production build ...
+Turbopack build encountered 1 warnings:
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+✓ Compiled successfully in 4.7s
+  Skipping validation of types
+  Finished TypeScript config validation in 11ms ...
+  Collecting page data using 11 workers ...
+Error: 未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。
+    at module evaluation (.next/server/chunks/src_lib_auth_ts_1_aqh19._.js:1:22398)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/[turbopack]_runtime.js:877:12)
+    at Context.esmImport [as i] (.next/server/chunks/[turbopack]_runtime.js:281:20)
+    at module evaluation (.next/server/chunks/[root-of-the-server]__0-50jw7._.js:1:4138)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at instantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:882:12)
+    at getOrInstantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:895:12)
+    at Object.m (.next/server/chunks/[turbopack]_runtime.js:898:18)
+    at Object.<anonymous> (.next/server/app/api/activity/stats/route.js:7:3)
+Error: 未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。
+    at module evaluation (.next/server/chunks/src_lib_auth_ts_1_aqh19._.js:1:22398)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/[turbopack]_runtime.js:877:12)
+    at Context.esmImport [as i] (.next/server/chunks/[turbopack]_runtime.js:281:20)
+    at module evaluation (.next/server/chunks/[root-of-the-server]__1ur5h2i._.js:1:1745)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at instantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:882:12)
+    at getOrInstantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:895:12)
+    at Object.m (.next/server/chunks/[turbopack]_runtime.js:898:18)
+    at Object.<anonymous> (.next/server/app/api/agency/stats/route.js:7:3)
+
+> Build error occurred
+Error: Failed to collect page data for /api/activity/stats
+    at ignore-listed frames {
+  type: 'Error'
+}
+
+exec
+/bin/zsh -lc 'cat /Users/liuxiong/.codex/skills/systematic-debugging/SKILL.md' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+---
+name: systematic-debugging
+description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+---
+
+# Systematic Debugging
+
+## Overview
+
+Random fixes waste time and create new bugs. Quick patches mask underlying issues.
+
+**Core principle:** ALWAYS find root cause before attempting fixes. Symptom fixes are failure.
+
+**Violating the letter of this process is violating the spirit of debugging.**
+
+## The Iron Law
+
+```
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
+```
+
+If you haven't completed Phase 1, you cannot propose fixes.
+
+## When to Use
+
+Use for ANY technical issue:
+- Test failures
+- Bugs in production
+- Unexpected behavior
+- Performance problems
+- Build failures
+- Integration issues
+
+**Use this ESPECIALLY when:**
+- Under time pressure (emergencies make guessing tempting)
+- "Just one quick fix" seems obvious
+- You've already tried multiple fixes
+- Previous fix didn't work
+- You don't fully understand the issue
+
+**Don't skip when:**
+- Issue seems simple (simple bugs have root causes too)
+- You're in a hurry (rushing guarantees rework)
+- Manager wants it fixed NOW (systematic is faster than thrashing)
+
+## The Four Phases
+
+You MUST complete each phase before proceeding to the next.
+
+### Phase 1: Root Cause Investigation
+
+**BEFORE attempting ANY fix:**
+
+1. **Read Error Messages Carefully**
+   - Don't skip past errors or warnings
+   - They often contain the exact solution
+   - Read stack traces completely
+   - Note line numbers, file paths, error codes
+
+2. **Reproduce Consistently**
+   - Can you trigger it reliably?
+   - What are the exact steps?
+   - Does it happen every time?
+   - If not reproducible → gather more data, don't guess
+
+3. **Check Recent Changes**
+   - What changed that could cause this?
+   - Git diff, recent commits
+   - New dependencies, config changes
+   - Environmental differences
+
+4. **Gather Evidence in Multi-Component Systems**
+
+   **WHEN system has multiple components (CI → build → signing, API → service → database):**
+
+   **BEFORE proposing fixes, add diagnostic instrumentation:**
+   ```
+   For EACH component boundary:
+     - Log what data enters component
+     - Log what data exits component
+     - Verify environment/config propagation
+     - Check state at each layer
+
+   Run once to gather evidence showing WHERE it breaks
+   THEN analyze evidence to identify failing component
+   THEN investigate that specific component
+   ```
+
+   **Example (multi-layer system):**
+   ```bash
+   # Layer 1: Workflow
+   echo "=== Secrets available in workflow: ==="
+   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
+
+   # Layer 2: Build script
+   echo "=== Env vars in build script: ==="
+   env | grep IDENTITY || echo "IDENTITY not in environment"
+
+   # Layer 3: Signing script
+   echo "=== Keychain state: ==="
+   security list-keychains
+   security find-identity -v
+
+   # Layer 4: Actual signing
+   codesign --sign "$IDENTITY" --verbose=4 "$APP"
+   ```
+
+   **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
+
+5. **Trace Data Flow**
+
+   **WHEN error is deep in call stack:**
+
+   See `root-cause-tracing.md` in this directory for the complete backward tracing technique.
+
+   **Quick version:**
+   - Where does bad value originate?
+   - What called this with bad value?
+   - Keep tracing up until you find the source
+   - Fix at source, not at symptom
+
+### Phase 2: Pattern Analysis
+
+**Find the pattern before fixing:**
+
+1. **Find Working Examples**
+   - Locate similar working code in same codebase
+   - What works that's similar to what's broken?
+
+2. **Compare Against References**
+   - If implementing pattern, read reference implementation COMPLETELY
+   - Don't skim - read every line
+   - Understand the pattern fully before applying
+
+3. **Identify Differences**
+   - What's different between working and broken?
+   - List every difference, however small
+   - Don't assume "that can't matter"
+
+4. **Understand Dependencies**
+   - What other components does this need?
+   - What settings, config, environment?
+   - What assumptions does it make?
+
+### Phase 3: Hypothesis and Testing
+
+**Scientific method:**
+
+1. **Form Single Hypothesis**
+   - State clearly: "I think X is the root cause because Y"
+   - Write it down
+   - Be specific, not vague
+
+2. **Test Minimally**
+   - Make the SMALLEST possible change to test hypothesis
+   - One variable at a time
+   - Don't fix multiple things at once
+
+3. **Verify Before Continuing**
+   - Did it work? Yes → Phase 4
+   - Didn't work? Form NEW hypothesis
+   - DON'T add more fixes on top
+
+4. **When You Don't Know**
+   - Say "I don't understand X"
+   - Don't pretend to know
+   - Ask for help
+   - Research more
+
+### Phase 4: Implementation
+
+**Fix the root cause, not the symptom:**
+
+1. **Create Failing Test Case**
+   - Simplest possible reproduction
+   - Automated test if possible
+   - One-off test script if no framework
+   - MUST have before fixing
+   - Use the `superpowers:test-driven-development` skill for writing proper failing tests
+
+2. **Implement Single Fix**
+   - Address the root cause identified
+   - ONE change at a time
+   - No "while I'm here" improvements
+   - No bundled refactoring
+
+3. **Verify Fix**
+   - Test passes now?
+   - No other tests broken?
+   - Issue actually resolved?
+
+4. **If Fix Doesn't Work**
+   - STOP
+   - Count: How many fixes have you tried?
+   - If < 3: Return to Phase 1, re-analyze with new information
+   - **If ≥ 3: STOP and question the architecture (step 5 below)**
+   - DON'T attempt Fix #4 without architectural discussion
+
+5. **If 3+ Fixes Failed: Question Architecture**
+
+   **Pattern indicating architectural problem:**
+   - Each fix reveals new shared state/coupling/problem in different place
+   - Fixes require "massive refactoring" to implement
+   - Each fix creates new symptoms elsewhere
+
+   **STOP and question fundamentals:**
+   - Is this pattern fundamentally sound?
+   - Are we "sticking with it through sheer inertia"?
+   - Should we refactor architecture vs. continue fixing symptoms?
+
+   **Discuss with your human partner before attempting more fixes**
+
+   This is NOT a failed hypothesis - this is a wrong architecture.
+
+## Red Flags - STOP and Follow Process
+
+If you catch yourself thinking:
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "Add multiple changes, run tests"
+- "Skip the test, I'll manually verify"
+- "It's probably X, let me fix that"
+- "I don't fully understand but this might work"
+- "Pattern says X but I'll adapt it differently"
+- "Here are the main problems: [lists fixes without investigation]"
+- Proposing solutions before tracing data flow
+- **"One more fix attempt" (when already tried 2+)**
+- **Each fix reveals new problem in different place**
+
+**ALL of these mean: STOP. Return to Phase 1.**
+
+**If 3+ fixes failed:** Question the architecture (see Phase 4.5)
+
+## your human partner's Signals You're Doing It Wrong
+
+**Watch for these redirections:**
+- "Is that not happening?" - You assumed without verifying
+- "Will it show us...?" - You should have added evidence gathering
+- "Stop guessing" - You're proposing fixes without understanding
+- "Ultrathink this" - Question fundamentals, not just symptoms
+- "We're stuck?" (frustrated) - Your approach isn't working
+
+**When you see these:** STOP. Return to Phase 1.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
+| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
+| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
+| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
+| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
+| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
+| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
+| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question pattern, don't fix again. |
+
+## Quick Reference
+
+| Phase | Key Activities | Success Criteria |
+|-------|---------------|------------------|
+| **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
+| **2. Pattern** | Find working examples, compare | Identify differences |
+| **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
+| **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
+
+## When Process Reveals "No Root Cause"
+
+If systematic investigation reveals issue is truly environmental, timing-dependent, or external:
+
+1. You've completed the process
+2. Document what you investigated
+3. Implement appropriate handling (retry, timeout, error message)
+4. Add monitoring/logging for future investigation
+
+**But:** 95% of "no root cause" cases are incomplete investigation.
+
+## Supporting Techniques
+
+These techniques are part of systematic debugging and available in this directory:
+
+- **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
+- **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
+- **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
+
+**Related skills:**
+- **superpowers:test-driven-development** - For creating failing test case (Phase 4, Step 1)
+- **superpowers:verification-before-completion** - Verify fix worked before claiming success
+
+## Real-World Impact
+
+From debugging sessions:
+- Systematic approach: 15-30 minutes to fix
+- Random fixes approach: 2-3 hours of thrashing
+- First-time fix rate: 95% vs 40%
+- New bugs introduced: Near zero vs common
+
+codex
+TypeScript 检查已通过。构建在收集页面数据时因环境缺少 `JWT_SECRET` 失败；按系统化排错技能确认，这是现有生产认证检查的要求。我会仅为本次构建注入临时随机密钥后重跑，不修改认证代码或配置文件。
+exec
+/bin/zsh -lc "node -e 'const {spawnSync}=require(\"node:child_process\");const result=spawnSync(\"npm\",[\"run\",\"build\"],{stdio:\"inherit\",env:{...process.env,JWT_SECRET:require(\"node:crypto\").randomBytes(48).toString(\"hex\")}});process.exit(result.status??1)'" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 5759ms:
+
+> internal-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+
+  Creating an optimized production build ...
+Turbopack build encountered 2 warnings:
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/instrumentation.js
+  [output]/.next/server/chunks/src_0xrgkd4._.js
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+✓ Compiled successfully in 4.6s
+  Skipping validation of types
+  Finished TypeScript config validation in 10ms ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/224) ...
+  Generating static pages using 11 workers (56/224) 
+  Generating static pages using 11 workers (112/224) 
+  Generating static pages using 11 workers (168/224) 
+✓ Generating static pages using 11 workers (224/224) in 207ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /activity
+├ ○ /address-certification
+├ ○ /agency
+├ ○ /agency/contracts
+├ ○ /agency/factories
+├ ƒ /agency/factories/[id]
+├ ○ /agency/incubation
+├ ○ /agency/influencers
+├ ƒ /agency/influencers/[id]
+├ ○ /agency/influencers/new
+├ ○ /agency/influencers/tasks
+├ ƒ /agency/influencers/tasks/[id]
+├ ○ /announcements
+├ ƒ /api/activity/company-trend
+├ ƒ /api/activity/stats
+├ ƒ /api/activity/trend
+├ ƒ /api/agency/dashboard
+├ ƒ /api/agency/stats
+├ ƒ /api/agency/workload-details
+├ ƒ /api/announcements
+├ ƒ /api/announcements/[id]
+├ ƒ /api/announcements/[id]/ai-compare
+├ ƒ /api/announcements/[id]/recall
+├ ƒ /api/announcements/[id]/retell
+├ ƒ /api/announcements/[id]/review
+├ ƒ /api/announcements/[id]/to-rule
+├ ƒ /api/assets
+├ ƒ /api/assets/[id]
+├ ƒ /api/assets/[id]/view-log
+├ ƒ /api/assets/subcategories
+├ ƒ /api/assets/subcategories/[id]
+├ ƒ /api/attendance
+├ ƒ /api/attendance/anomaly
+├ ƒ /api/attendance/details
+├ ƒ /api/attendance/export
+├ ƒ /api/attendance/request
+├ ƒ /api/attendance/summaries
+├ ƒ /api/attendance/summary
+├ ƒ /api/attendance/today
+├ ƒ /api/audit-logs
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/me
+├ ƒ /api/business-types
+├ ƒ /api/chat
+├ ƒ /api/chat/contacts
+├ ƒ /api/chat/group-messages
+├ ƒ /api/chat/groups
+├ ƒ /api/chat/groups/disband
+├ ƒ /api/chat/groups/leave
+├ ƒ /api/chat/groups/members
+├ ƒ /api/chat/groups/mute
+├ ƒ /api/chat/groups/transfer
+├ ƒ /api/chat/monitor
+├ ƒ /api/chat/pins
+├ ƒ /api/chat/reactions
+├ ƒ /api/chat/recall
+├ ƒ /api/chat/search
+├ ƒ /api/chat/summary
+├ ƒ /api/chat/summary/board
+├ ƒ /api/chat/summary/employee
+├ ƒ /api/chat/translate
+├ ƒ /api/chat/typing
+├ ƒ /api/chat/unread-count
+├ ƒ /api/client-feedback/public
+├ ƒ /api/commerce/cart
+├ ƒ /api/commerce/imported-catalog
+├ ƒ /api/commerce/orders
+├ ƒ /api/commerce/orders/[id]
+├ ƒ /api/commerce/orders/[id]/adjustments
+├ ƒ /api/commerce/orders/[id]/cancellations
+├ ƒ /api/commerce/orders/[id]/cancellations/[cancellationId]/decision
+├ ƒ /api/commerce/orders/[id]/cancellations/[cancellationId]/withdraw
+├ ƒ /api/commerce/orders/[id]/payment
+├ ƒ /api/commerce/orders/[id]/refunds
+├ ƒ /api/commerce/orders/page
+├ ƒ /api/commerce/products
+├ ƒ /api/commerce/quote
+├ ƒ /api/contracts
+├ ƒ /api/customer-bridge/[...path]
+├ ƒ /api/customers
+├ ƒ /api/customers/[id]
+├ ƒ /api/dashboard/stats
+├ ƒ /api/discovery-tasks
+├ ƒ /api/discovery-tasks/[id]
+├ ƒ /api/discovery-tasks/[id]/influencers
+├ ƒ /api/discovery-tasks/stats
+├ ƒ /api/documents
+├ ƒ /api/email-stock
+├ ƒ /api/employee-info-changes
+├ ƒ /api/employees
+├ ƒ /api/employees/[id]/pdf
+├ ƒ /api/employees/avatar
+├ ƒ /api/employees/background
+├ ƒ /api/employees/demerits
+├ ƒ /api/employees/educations
+├ ƒ /api/employees/export
+├ ƒ /api/employees/files
+├ ƒ /api/employees/handover
+├ ƒ /api/employees/medical
+├ ƒ /api/employees/onboarding
+├ ƒ /api/employees/personal
+├ ƒ /api/employees/personal/followups
+├ ƒ /api/employees/personal/status
+├ ƒ /api/employees/records
+├ ƒ /api/employees/status-assessment
+├ ƒ /api/external/login
+├ ƒ /api/external/orders
+├ ƒ /api/external/orders/[id]
+├ ƒ /api/factories
+├ ƒ /api/factories/[id]
+├ ƒ /api/files/[filename]
+├ ƒ /api/finances
+├ ƒ /api/finances/pending-verify-count
+├ ƒ /api/ideas
+├ ƒ /api/ideas/[id]
+├ ƒ /api/influencers
+├ ƒ /api/influencers/[id]
+├ ƒ /api/influencers/[id]/certificates
+├ ƒ /api/influencers/[id]/certificates/[certId]
+├ ƒ /api/influencers/[id]/documents
+├ ƒ /api/influencers/[id]/factories
+├ ƒ /api/influencers/[id]/finances
+├ ƒ /api/influencers/[id]/start-phase
+├ ƒ /api/influencers/[id]/steps
+├ ƒ /api/influencers/[id]/steps/[stepId]/notes
+├ ƒ /api/influencers/[id]/steps/details
+├ ƒ /api/influencers/evaluations
+├ ƒ /api/influencers/evaluations/import
+├ ƒ /api/internal/client-feedback
+├ ƒ /api/internal/expiry-alerts
+├ ƒ /api/internal/points
+├ ƒ /api/internal/weekly-report
+├ ƒ /api/internal/workload
+├ ƒ /api/internal/workload-details
+├ ƒ /api/issues
+├ ƒ /api/issues/translate
+├ ƒ /api/leave
+├ ƒ /api/leave/analysis
+├ ƒ /api/leave/analyze
+├ ƒ /api/leave/analyze-batch
+├ ƒ /api/leave/annual-balance
+├ ƒ /api/leave/dashboard
+├ ƒ /api/leave/export
+├ ƒ /api/leave/medical-proof
+├ ƒ /api/logistics
+├ ƒ /api/logistics-script/categories
+├ ƒ /api/logistics-script/copy
+├ ƒ /api/logistics-script/feedback
+├ ƒ /api/logistics-script/pin
+├ ƒ /api/logistics-script/questions
+├ ƒ /api/logistics-script/reorder
+├ ƒ /api/logistics-script/scripts
+├ ƒ /api/logistics-script/tree
+├ ƒ /api/logistics/[id]
+├ ƒ /api/logistics/[id]/files
+├ ƒ /api/logistics/[id]/steps
+├ ƒ /api/logistics/[id]/steps/[stepId]/notes
+├ ƒ /api/meetings
+├ ƒ /api/meetings/[id]/reflections
+├ ƒ /api/meetings/[id]/reflections/[rid]
+├ ƒ /api/notifications
+├ ƒ /api/notifications/unread-count
+├ ƒ /api/orders
+├ ƒ /api/orders/[id]
+├ ƒ /api/orders/[id]/cancel-requests
+├ ƒ /api/orders/[id]/certificates
+├ ƒ /api/orders/[id]/documents
+├ ƒ /api/orders/[id]/feedback-token
+├ ƒ /api/orders/[id]/finances
+├ ƒ /api/orders/[id]/finances/verify
+├ ƒ /api/orders/[id]/steps
+├ ƒ /api/orders/[id]/steps/[stepId]/documents
+├ ƒ /api/orders/[id]/steps/[stepId]/documents/mark-uploaded
+├ ƒ /api/orders/[id]/steps/[stepId]/notes
+├ ƒ /api/orders/[id]/steps/details
+├ ƒ /api/orders/[id]/supplement-requests
+├ ƒ /api/payslips
+├ ƒ /api/payslips/export
+├ ƒ /api/payslips/flow
+├ ƒ /api/problems
+├ ƒ /api/problems/[id]
+├ ƒ /api/problems/[id]/attachments
+├ ƒ /api/problems/[id]/follow-ups
+├ ƒ /api/problems/stats
+├ ƒ /api/projects
+├ ƒ /api/projects/[id]
+├ ƒ /api/projects/[id]/progress
+├ ƒ /api/projects/[id]/summaries
+├ ƒ /api/projects/names
+├ ƒ /api/registrations
+├ ƒ /api/rules
+├ ƒ /api/rules/[id]/apply
+├ ƒ /api/rules/[id]/history
+├ ƒ /api/rules/[id]/update
+├ ƒ /api/scan-verifications
+├ ƒ /api/settings
+├ ƒ /api/shop-fees
+├ ƒ /api/shop-fees/[id]
+├ ƒ /api/shopee-order-items
+├ ƒ /api/shopee-orders
+├ ƒ /api/shopee-stores
+├ ƒ /api/sim-batches
+├ ƒ /api/sim-transactions
+├ ƒ /api/steps/assigned
+├ ƒ /api/sync/cancel-requests
+├ ƒ /api/sync/deliveries/[deliveryId]/file
+├ ƒ /api/sync/documents
+├ ƒ /api/sync/orders
+├ ƒ /api/tasks
+├ ƒ /api/templates
+├ ƒ /api/thai-holidays
+├ ƒ /api/todo-categories
+├ ƒ /api/todos
+├ ƒ /api/todos/[id]
+├ ƒ /api/todos/[id]/follow-ups
+├ ƒ /api/todos/[id]/seen
+├ ƒ /api/todos/stats
+├ ƒ /api/todos/unseen
+├ ƒ /api/upload
+├ ƒ /api/vat/customers
+├ ƒ /api/vat/customers/[id]/profile
+├ ƒ /api/vat/dashboard
+├ ƒ /api/vat/notify
+├ ƒ /api/vat/reconciliation
+├ ƒ /api/vat/records
+├ ƒ /api/vat/records/[id]
+├ ƒ /api/vat/records/[id]/documents
+├ ƒ /api/vat/records/[id]/feedback-token
+├ ƒ /api/vat/records/[id]/finances
+├ ƒ /api/vat/records/[id]/notes
+├ ƒ /api/vat/records/[id]/steps
+├ ƒ /api/vat/records/[id]/steps/[stepId]/documents
+├ ƒ /api/vat/records/[id]/steps/[stepId]/notes
+├ ƒ /api/vat/records/[id]/steps/details
+├ ƒ /api/vat/records/batch
+├ ƒ /api/vat/records/generate
+├ ƒ /api/vat/summary
+├ ƒ /api/wht/customers
+├ ƒ /api/wht/customers/[id]/profile
+├ ƒ /api/wht/reconciliation
+├ ƒ /api/wht/records
+├ ƒ /api/wht/records/[id]
+├ ƒ /api/wht/records/[id]/certificate
+├ ƒ /api/wht/records/[id]/documents
+├ ƒ /api/wht/records/[id]/notes
+├ ƒ /api/wht/records/[id]/steps
+├ ƒ /api/wht/records/[id]/steps/[stepId]/notes
+├ ƒ /api/wht/records/[id]/steps/details
+├ ƒ /api/wht/records/batch
+├ ƒ /api/wht/stats
+├ ƒ /api/wht/summary
+├ ƒ /api/work-reports
+├ ƒ /api/work-reports/[id]
+├ ƒ /api/work-reports/auto
+├ ƒ /api/work-reports/board
+├ ƒ /api/work-reports/search
+├ ƒ /api/work-reports/story
+├ ƒ /api/work-reports/story/summary
+├ ○ /assets
+├ ƒ /commerce
+├ ○ /company-registration
+├ ○ /customers
+├ ƒ /customers/[id]
+├ ○ /customs-clearance
+├ ○ /dld
+├ ○ /dld/site
+├ ○ /documents
+├ ○ /fda-certification
+├ ○ /fda-certification/agency
+├ ○ /fda-certification/cosmetics
+├ ○ /fda-certification/food
+├ ○ /fda-certification/hazard
+├ ○ /fda-certification/medical
+├ ƒ /feedback/[token]
+├ ○ /finance
+├ ○ /ideas
+├ ○ /internal
+├ ○ /internal/employees
+├ ○ /internal/leave
+├ ○ /internal/payslips
+├ ○ /internal/rewards
+├ ○ /internal/shopee
+├ ○ /internal/templates
+├ ○ /internal/weekly-report
+├ ○ /issues
+├ ○ /login
+├ ○ /logistics
+├ ƒ /logistics/[id]
+├ ○ /logistics/scripts
+├ ○ /mall-store
+├ ○ /mall-store/lazada
+├ ○ /mall-store/tiktok
+├ ○ /meetings
+├ ○ /messages
+├ ○ /nbtc
+├ ○ /notifications
+├ ○ /orders
+├ ƒ /orders/[id]
+├ ○ /orders/new
+├ ○ /problems
+├ ƒ /problems/[id]
+├ ○ /projects
+├ ƒ /projects/[id]
+├ ○ /rules
+├ ○ /settings
+├ ƒ /shop
+├ ○ /social-security
+├ ○ /tasks
+├ ○ /tisi
+├ ○ /todos
+├ ○ /trademark
+├ ○ /trademark/buy-r
+├ ○ /trademark/international
+├ ○ /vat
+├ ƒ /vat/[id]
+├ ○ /wht
+├ ƒ /wht/[id]
+├ ○ /work-reports
+└ ○ /work-visa
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+codex
+第 1 轮已完成，仅修改数据层、指定接口及相关测试，未执行任何 git 操作。
+
+- 新增字段：`implementation_bonus_amount`、`implementation_bonus_currency`、`rejection_reason`，支持旧库自动补字段。
+- `reject`：拒绝原因必填。
+- `complete`：关联功能必填，实现奖可后补。
+- `reopen`：已拒绝 → 待评估，并清空拒绝原因。
+- `set_implementation_bonus`：为已实现想法补填金额和币种（THB/CNY）。
+
+验证通过：新旧库共 16 组测试、`npx tsc --noEmit`、`npm run build`。构建时临时注入了环境缺少的 `JWT_SECRET`，未修改配置；仍有与本次改动无关的文件追踪警告。
+tokens used
+49,146
+第 1 轮已完成，仅修改数据层、指定接口及相关测试，未执行任何 git 操作。
+
+- 新增字段：`implementation_bonus_amount`、`implementation_bonus_currency`、`rejection_reason`，支持旧库自动补字段。
+- `reject`：拒绝原因必填。
+- `complete`：关联功能必填，实现奖可后补。
+- `reopen`：已拒绝 → 待评估，并清空拒绝原因。
+- `set_implementation_bonus`：为已实现想法补填金额和币种（THB/CNY）。
+
+验证通过：新旧库共 16 组测试、`npx tsc --noEmit`、`npm run build`。构建时临时注入了环境缺少的 `JWT_SECRET`，未修改配置；仍有与本次改动无关的文件追踪警告。
