@@ -1,0 +1,2571 @@
+[2026-10-15 00:56:13] 已配置 origin
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+ * [new branch]      main       -> origin/main
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+   c7541d2..1b3bf22  main       -> origin/main
+[2026-10-15 01:23:30] 检测到任务:进度 0 / 共 1 轮,开始执行
+[2026-10-15 01:23:30] === 第 1/1 轮 白名单加名称模糊搜索 开始 ===
+Reading additional input from stdin...
+2026-10-14T18:23:31.166659Z ERROR codex_models_manager::manager: failed to load models cache: missing field `supports_parallel_tool_calls` at line 139 column 5
+OpenAI Codex v0.147.0
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13ba7-bf53-7e10-9283-9c63dd40ad33
+--------
+user
+以下是第 1 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+在 WHT 预扣税页面的 客户白名单 这个 tab 里 加一个搜索框
+输入关键词 按公司名称 模糊搜索
+不用完全匹配 只要公司名称里包含输入的关键词就算匹配
+搜索框放白名单列表上方 和新增客户按钮放一起
+输入的时候 实时过滤下面的客户列表
+清空搜索框 显示全部客户
+电脑端和手机端都要能用
+
+注意 这个页面的 申报记录 那边已经有一个搜索框和 searchText 状态 你不要动它
+白名单的搜索要用一个新的独立的状态 比如 customerSearch 和现有的 searchText 区分开
+只动 客户白名单 这个 tab 别的地方不要动
+
+改完你自己验证 输入关键词能过滤客户列表 模糊匹配包含关键词就显示 清空恢复全部 申报记录那边的搜索不受影响 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+warning: Model metadata for `gpt-6-astra` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+[2026-10-15 01:23:34] 第 1 轮 codex 失败(exit=1),停止
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+[2026-10-15 01:25:41] 检测到任务:进度 0 / 共 1 轮,开始执行
+[2026-10-15 01:25:41] === 第 1/1 轮 白名单加名称模糊搜索 开始 ===
+Reading additional input from stdin...
+2026-10-14T18:25:41.641474Z ERROR codex_models_manager::manager: failed to load models cache: missing field `supports_parallel_tool_calls` at line 139 column 5
+OpenAI Codex v0.147.0
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13ba9-bcad-72f3-83f0-5a4ffd485da9
+--------
+user
+以下是第 1 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+在 WHT 预扣税页面的 客户白名单 这个 tab 里 加一个搜索框
+输入关键词 按公司名称 模糊搜索
+不用完全匹配 只要公司名称里包含输入的关键词就算匹配
+搜索框放白名单列表上方 和新增客户按钮放一起
+输入的时候 实时过滤下面的客户列表
+清空搜索框 显示全部客户
+电脑端和手机端都要能用
+
+注意 这个页面的 申报记录 那边已经有一个搜索框和 searchText 状态 你不要动它
+白名单的搜索要用一个新的独立的状态 比如 customerSearch 和现有的 searchText 区分开
+只动 客户白名单 这个 tab 别的地方不要动
+
+改完你自己验证 输入关键词能过滤客户列表 模糊匹配包含关键词就显示 清空恢复全部 申报记录那边的搜索不受影响 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+warning: Model metadata for `gpt-6-astra` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+[2026-10-15 01:25:44] 第 1 轮 codex 失败(exit=1),停止
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+[2026-10-15 01:27:51] 检测到任务:进度 0 / 共 1 轮,开始执行
+[2026-10-15 01:27:51] === 第 1/1 轮 白名单加名称模糊搜索 开始 ===
+Reading additional input from stdin...
+2026-10-14T18:27:51.993973Z ERROR codex_models_manager::manager: failed to load models cache: missing field `supports_parallel_tool_calls` at line 139 column 5
+OpenAI Codex v0.147.0
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13bab-ba16-7e21-a15c-6eae9d880d8e
+--------
+user
+以下是第 1 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+在 WHT 预扣税页面的 客户白名单 这个 tab 里 加一个搜索框
+输入关键词 按公司名称 模糊搜索
+不用完全匹配 只要公司名称里包含输入的关键词就算匹配
+搜索框放白名单列表上方 和新增客户按钮放一起
+输入的时候 实时过滤下面的客户列表
+清空搜索框 显示全部客户
+电脑端和手机端都要能用
+
+注意 这个页面的 申报记录 那边已经有一个搜索框和 searchText 状态 你不要动它
+白名单的搜索要用一个新的独立的状态 比如 customerSearch 和现有的 searchText 区分开
+只动 客户白名单 这个 tab 别的地方不要动
+
+改完你自己验证 输入关键词能过滤客户列表 模糊匹配包含关键词就显示 清空恢复全部 申报记录那边的搜索不受影响 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+warning: Model metadata for `gpt-6-astra` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+[2026-10-15 01:27:54] 第 1 轮 codex 失败(exit=1),停止
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+[2026-10-15 01:30:02] 检测到任务:进度 0 / 共 1 轮,开始执行
+[2026-10-15 01:30:02] === 第 1/1 轮 白名单加名称模糊搜索 开始 ===
+Reading additional input from stdin...
+2026-10-14T18:30:02.584093Z ERROR codex_models_manager::manager: failed to load models cache: missing field `supports_parallel_tool_calls` at line 139 column 5
+OpenAI Codex v0.147.0
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13bad-b831-76b1-a951-97a11993d365
+--------
+user
+以下是第 1 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+在 WHT 预扣税页面的 客户白名单 这个 tab 里 加一个搜索框
+输入关键词 按公司名称 模糊搜索
+不用完全匹配 只要公司名称里包含输入的关键词就算匹配
+搜索框放白名单列表上方 和新增客户按钮放一起
+输入的时候 实时过滤下面的客户列表
+清空搜索框 显示全部客户
+电脑端和手机端都要能用
+
+注意 这个页面的 申报记录 那边已经有一个搜索框和 searchText 状态 你不要动它
+白名单的搜索要用一个新的独立的状态 比如 customerSearch 和现有的 searchText 区分开
+只动 客户白名单 这个 tab 别的地方不要动
+
+改完你自己验证 输入关键词能过滤客户列表 模糊匹配包含关键词就显示 清空恢复全部 申报记录那边的搜索不受影响 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+warning: Model metadata for `gpt-6-astra` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."}}
+[2026-10-15 01:30:05] 第 1 轮 codex 失败(exit=1),停止
+From github.com:q1345145552-source/neibuwangzhan
+ * branch            main       -> FETCH_HEAD
+[2026-10-15 01:30:49] 检测到任务:进度 0 / 共 1 轮,开始执行
+[2026-10-15 01:30:49] === 第 1/1 轮 白名单加名称模糊搜索 开始 ===
+Reading additional input from stdin...
+OpenAI Codex v0.162.1
+--------
+workdir: /Users/liuxiong/Desktop/internal-system
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: low
+reasoning summaries: none
+session id: 01a13bae-6dbe-7ce1-b900-042ca8d8cb57
+--------
+user
+以下是第 1 轮任务,只做这一轮要求的事,别动其他无关代码:
+
+在 WHT 预扣税页面的 客户白名单 这个 tab 里 加一个搜索框
+输入关键词 按公司名称 模糊搜索
+不用完全匹配 只要公司名称里包含输入的关键词就算匹配
+搜索框放白名单列表上方 和新增客户按钮放一起
+输入的时候 实时过滤下面的客户列表
+清空搜索框 显示全部客户
+电脑端和手机端都要能用
+
+注意 这个页面的 申报记录 那边已经有一个搜索框和 searchText 状态 你不要动它
+白名单的搜索要用一个新的独立的状态 比如 customerSearch 和现有的 searchText 区分开
+只动 客户白名单 这个 tab 别的地方不要动
+
+改完你自己验证 输入关键词能过滤客户列表 模糊匹配包含关键词就显示 清空恢复全部 申报记录那边的搜索不受影响 编译通过再回复我
+
+改完代码后,自己跑 npx tsc --noEmit 和 npm run build 验证,报错就自己修,直到编译通过。改完并验证通过后就停下来,不要执行任何 git 操作。
+codex
+我会只修改“客户白名单” tab，使用独立的搜索状态，并验证实时包含匹配、清空恢复和申报记录搜索互不影响。完成后运行你指定的两项编译检查，不执行任何 git 操作。
+
+exec
+/bin/zsh -lc 'cat /Users/liuxiong/.codex/skills/test-driven-development/SKILL.md /Users/liuxiong/.codex/skills/verification-before-completion/SKILL.md' in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+---
+name: test-driven-development
+description: Use when implementing any feature or bugfix, before writing implementation code
+---
+
+# Test-Driven Development (TDD)
+
+## Overview
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+**Violating the letter of the rules is violating the spirit of the rules.**
+
+## When to Use
+
+**Always:**
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions (ask your human partner):**
+- Throwaway prototypes
+- Generated code
+- Configuration files
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+## The Iron Law
+
+```
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+```
+
+Write code before the test? Delete it. Start over.
+
+**No exceptions:**
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Don't look at it
+- Delete means delete
+
+Implement fresh from tests. Period.
+
+## Red-Green-Refactor
+
+```dot
+digraph tdd_cycle {
+    rankdir=LR;
+    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Verify fails\ncorrectly", shape=diamond];
+    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    verify_green [label="Verify passes\nAll green", shape=diamond];
+    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
+    next [label="Next", shape=ellipse];
+
+    red -> verify_red;
+    verify_red -> green [label="yes"];
+    verify_red -> red [label="wrong\nfailure"];
+    green -> verify_green;
+    verify_green -> refactor [label="yes"];
+    verify_green -> green [label="no"];
+    refactor -> verify_green [label="stay\ngreen"];
+    verify_green -> next;
+    next -> red;
+}
+```
+
+### RED - Write Failing Test
+
+Write one minimal test showing what should happen.
+
+<Good>
+```typescript
+test('retries failed operations 3 times', async () => {
+  let attempts = 0;
+  const operation = () => {
+    attempts++;
+    if (attempts < 3) throw new Error('fail');
+    return 'success';
+  };
+
+  const result = await retryOperation(operation);
+
+  expect(result).toBe('success');
+  expect(attempts).toBe(3);
+});
+```
+Clear name, tests real behavior, one thing
+</Good>
+
+<Bad>
+```typescript
+test('retry works', async () => {
+  const mock = jest.fn()
+    .mockRejectedValueOnce(new Error())
+    .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce('success');
+  await retryOperation(mock);
+  expect(mock).toHaveBeenCalledTimes(3);
+});
+```
+Vague name, tests mock not code
+</Bad>
+
+**Requirements:**
+- One behavior
+- Clear name
+- Real code (no mocks unless unavoidable)
+
+### Verify RED - Watch It Fail
+
+**MANDATORY. Never skip.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test fails (not errors)
+- Failure message is expected
+- Fails because feature missing (not typos)
+
+**Test passes?** You're testing existing behavior. Fix test.
+
+**Test errors?** Fix error, re-run until it fails correctly.
+
+### GREEN - Minimal Code
+
+Write simplest code to pass the test.
+
+<Good>
+```typescript
+async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === 2) throw e;
+    }
+  }
+  throw new Error('unreachable');
+}
+```
+Just enough to pass
+</Good>
+
+<Bad>
+```typescript
+async function retryOperation<T>(
+  fn: () => Promise<T>,
+  options?: {
+    maxRetries?: number;
+    backoff?: 'linear' | 'exponential';
+    onRetry?: (attempt: number) => void;
+  }
+): Promise<T> {
+  // YAGNI
+}
+```
+Over-engineered
+</Bad>
+
+Don't add features, refactor other code, or "improve" beyond the test.
+
+### Verify GREEN - Watch It Pass
+
+**MANDATORY.**
+
+```bash
+npm test path/to/test.test.ts
+```
+
+Confirm:
+- Test passes
+- Other tests still pass
+- Output pristine (no errors, warnings)
+
+**Test fails?** Fix code, not test.
+
+**Other tests fail?** Fix now.
+
+### REFACTOR - Clean Up
+
+After green only:
+- Remove duplication
+- Improve names
+- Extract helpers
+
+Keep tests green. Don't add behavior.
+
+### Repeat
+
+Next failing test for next feature.
+
+## Good Tests
+
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
+| **Clear** | Name describes behavior | `test('test1')` |
+| **Shows intent** | Demonstrates desired API | Obscures what code should do |
+
+## Why Order Matters
+
+**"I'll write tests after to verify it works"**
+
+Tests written after code pass immediately. Passing immediately proves nothing:
+- Might test wrong thing
+- Might test implementation, not behavior
+- Might miss edge cases you forgot
+- You never saw it catch the bug
+
+Test-first forces you to see the test fail, proving it actually tests something.
+
+**"I already manually tested all the edge cases"**
+
+Manual testing is ad-hoc. You think you tested everything but:
+- No record of what you tested
+- Can't re-run when code changes
+- Easy to forget cases under pressure
+- "It worked when I tried it" ≠ comprehensive
+
+Automated tests are systematic. They run the same way every time.
+
+**"Deleting X hours of work is wasteful"**
+
+Sunk cost fallacy. The time is already gone. Your choice now:
+- Delete and rewrite with TDD (X more hours, high confidence)
+- Keep it and add tests after (30 min, low confidence, likely bugs)
+
+The "waste" is keeping code you can't trust. Working code without real tests is technical debt.
+
+**"TDD is dogmatic, being pragmatic means adapting"**
+
+TDD IS pragmatic:
+- Finds bugs before commit (faster than debugging after)
+- Prevents regressions (tests catch breaks immediately)
+- Documents behavior (tests show how to use code)
+- Enables refactoring (change freely, tests catch breaks)
+
+"Pragmatic" shortcuts = debugging in production = slower.
+
+**"Tests after achieve the same goals - it's spirit not ritual"**
+
+No. Tests-after answer "What does this do?" Tests-first answer "What should this do?"
+
+Tests-after are biased by your implementation. You test what you built, not what's required. You verify remembered edge cases, not discovered ones.
+
+Tests-first force edge case discovery before implementing. Tests-after verify you remembered everything (you didn't).
+
+30 minutes of tests after ≠ TDD. You get coverage, lose proof tests work.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
+| "I'll test after" | Tests passing immediately prove nothing. |
+| "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |
+| "Already manually tested" | Ad-hoc ≠ systematic. No record, can't re-run. |
+| "Deleting X hours is wasteful" | Sunk cost fallacy. Keeping unverified code is technical debt. |
+| "Keep as reference, write tests first" | You'll adapt it. That's testing after. Delete means delete. |
+| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
+| "Test hard = design unclear" | Listen to test. Hard to test = hard to use. |
+| "TDD will slow me down" | TDD faster than debugging. Pragmatic = test-first. |
+| "Manual test faster" | Manual doesn't prove edge cases. You'll re-test every change. |
+| "Existing code has no tests" | You're improving it. Add tests for existing code. |
+
+## Red Flags - STOP and Start Over
+
+- Code before test
+- Test after implementation
+- Test passes immediately
+- Can't explain why test failed
+- Tests added "later"
+- Rationalizing "just this once"
+- "I already manually tested it"
+- "Tests after achieve the same purpose"
+- "It's about spirit not ritual"
+- "Keep as reference" or "adapt existing code"
+- "Already spent X hours, deleting is wasteful"
+- "TDD is dogmatic, I'm being pragmatic"
+- "This is different because..."
+
+**All of these mean: Delete code. Start over with TDD.**
+
+## Example: Bug Fix
+
+**Bug:** Empty email accepted
+
+**RED**
+```typescript
+test('rejects empty email', async () => {
+  const result = await submitForm({ email: '' });
+  expect(result.error).toBe('Email required');
+});
+```
+
+**Verify RED**
+```bash
+$ npm test
+FAIL: expected 'Email required', got undefined
+```
+
+**GREEN**
+```typescript
+function submitForm(data: FormData) {
+  if (!data.email?.trim()) {
+    return { error: 'Email required' };
+  }
+  // ...
+}
+```
+
+**Verify GREEN**
+```bash
+$ npm test
+PASS
+```
+
+**REFACTOR**
+Extract validation for multiple fields if needed.
+
+## Verification Checklist
+
+Before marking work complete:
+
+- [ ] Every new function/method has a test
+- [ ] Watched each test fail before implementing
+- [ ] Each test failed for expected reason (feature missing, not typo)
+- [ ] Wrote minimal code to pass each test
+- [ ] All tests pass
+- [ ] Output pristine (no errors, warnings)
+- [ ] Tests use real code (mocks only if unavoidable)
+- [ ] Edge cases and errors covered
+
+Can't check all boxes? You skipped TDD. Start over.
+
+## When Stuck
+
+| Problem | Solution |
+|---------|----------|
+| Don't know how to test | Write wished-for API. Write assertion first. Ask your human partner. |
+| Test too complicated | Design too complicated. Simplify interface. |
+| Must mock everything | Code too coupled. Use dependency injection. |
+| Test setup huge | Extract helpers. Still complex? Simplify design. |
+
+## Debugging Integration
+
+Bug found? Write failing test reproducing it. Follow TDD cycle. Test proves fix and prevents regression.
+
+Never fix bugs without a test.
+
+## Testing Anti-Patterns
+
+When adding mocks or test utilities, read @testing-anti-patterns.md to avoid common pitfalls:
+- Testing mock behavior instead of real behavior
+- Adding test-only methods to production classes
+- Mocking without understanding dependencies
+
+## Final Rule
+
+```
+Production code → test exists and failed first
+Otherwise → not TDD
+```
+
+No exceptions without your human partner's permission.
+---
+name: verification-before-completion
+description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+---
+
+# Verification Before Completion
+
+## Overview
+
+Claiming work is complete without verification is dishonesty, not efficiency.
+
+**Core principle:** Evidence before claims, always.
+
+**Violating the letter of this rule is violating the spirit of this rule.**
+
+## The Iron Law
+
+```
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+```
+
+If you haven't run the verification command in this message, you cannot claim it passes.
+
+## The Gate Function
+
+```
+BEFORE claiming any status or expressing satisfaction:
+
+1. IDENTIFY: What command proves this claim?
+2. RUN: Execute the FULL command (fresh, complete)
+3. READ: Full output, check exit code, count failures
+4. VERIFY: Does output confirm the claim?
+   - If NO: State actual status with evidence
+   - If YES: State claim WITH evidence
+5. ONLY THEN: Make the claim
+
+Skip any step = lying, not verifying
+```
+
+## Common Failures
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
+| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
+| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
+| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
+| Regression test works | Red-green cycle verified | Test passes once |
+| Agent completed | VCS diff shows changes | Agent reports "success" |
+| Requirements met | Line-by-line checklist | Tests passing |
+
+## Red Flags - STOP
+
+- Using "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
+- About to commit/push/PR without verification
+- Trusting agent success reports
+- Relying on partial verification
+- Thinking "just this once"
+- Tired and wanting work over
+- **ANY wording implying success without having run verification**
+
+## Rationalization Prevention
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Just this once" | No exceptions |
+| "Linter passed" | Linter ≠ compiler |
+| "Agent said success" | Verify independently |
+| "I'm tired" | Exhaustion ≠ excuse |
+| "Partial check is enough" | Partial proves nothing |
+| "Different words so rule doesn't apply" | Spirit over letter |
+
+## Key Patterns
+
+**Tests:**
+```
+✅ [Run test command] [See: 34/34 pass] "All tests pass"
+❌ "Should pass now" / "Looks correct"
+```
+
+**Regression tests (TDD Red-Green):**
+```
+✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
+❌ "I've written a regression test" (without red-green verification)
+```
+
+**Build:**
+```
+✅ [Run build] [See: exit 0] "Build passes"
+❌ "Linter passed" (linter doesn't check compilation)
+```
+
+**Requirements:**
+```
+✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
+❌ "Tests pass, phase complete"
+```
+
+**Agent delegation:**
+```
+✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
+❌ Trust agent report
+```
+
+## Why This Matters
+
+From 24 failure memories:
+- your human partner said "I don't believe you" - trust broken
+- Undefined functions shipped - would crash
+- Missing requirements shipped - incomplete features
+- Time wasted on false completion → redirect → rework
+- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+
+## When To Apply
+
+**ALWAYS before:**
+- ANY variation of success/completion claims
+- ANY expression of satisfaction
+- ANY positive statement about work state
+- Committing, PR creation, task completion
+- Moving to next task
+- Delegating to agents
+
+**Rule applies to:**
+- Exact phrases
+- Paraphrases and synonyms
+- Implications of success
+- ANY communication suggesting completion/correctness
+
+## The Bottom Line
+
+**No shortcuts for verification.**
+
+Run the command. Read the output. THEN claim the result.
+
+This is non-negotiable.
+
+exec
+/bin/zsh -lc "rg -n 'WHT|白名单|internal-system' /Users/liuxiong/.codex/memories/MEMORY.md" in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 0ms:
+mcp: codebase-memory-mcp/search_graph started
+mcp: codebase-memory-mcp/search_graph (failed)
+exec
+/bin/zsh -lc "cat package.json; rg --files -g AGENTS.md -g '*client*' node_modules/next/dist/docs/01-app/03-api-reference/01-directives" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+{
+  "name": "internal-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "backup": "bash scripts/backup.sh",
+    "health": "node scripts/health-check.js",
+    "check:enums": "node scripts/check-enums.js",
+    "check:dup": "node scripts/check-duplicate-blocks.js",
+    "test:flows": "node scripts/test-flows.js",
+    "verify": "npm run check:enums && npm run check:dup && npm run test:flows && tsc --noEmit",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.11.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.22.0",
+    "next": "16.2.9",
+    "pdfkit": "^0.19.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.0",
+    "shadcn": "^4.12.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-client.md
+
+exec
+/bin/zsh -lc "rg -n '客户白名单|searchText' app src; cat node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-client.md; find . -name AGENTS.md -not -path './node_modules/*' -not -path './.next/*'" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 945ms:
+rg: app: No such file or directory (os error 2)
+src/app/(app)/vat/page.tsx:40:  { key: "customers", label: "客户白名单", icon: Users },
+src/app/(app)/vat/page.tsx:511:      {/* ---- 客户白名单 ---- */}
+src/app/(app)/vat/page.tsx:515:            <h2 className="text-lg font-medium">客户白名单</h2>
+src/app/(app)/wht/page.tsx:19:  { key: "customers", label: "客户白名单" },
+src/app/(app)/wht/page.tsx:120:  const [searchText, setSearchText] = useState("");
+src/app/(app)/wht/page.tsx:190:    if (searchText) params.set("search", searchText);
+src/app/(app)/wht/page.tsx:199:  }, [activeTab, searchText, filterSubtype, filterProgress, filterMonthFrom, filterMonthTo, currentPage]);
+src/app/(app)/wht/page.tsx:218:  }, [activeTab, searchText, filterSubtype, filterProgress, filterMonthFrom, filterMonthTo, currentPage, loadRecords]);
+src/app/(app)/wht/page.tsx:263:      if (searchText) params.set("search", searchText);
+src/app/(app)/wht/page.tsx:278:  }, [searchText, filterSubtype, filterProgress, filterMonthFrom, filterMonthTo, historyPage]);
+src/app/(app)/wht/page.tsx:586:      {/* ---- 客户白名单 ---- */}
+src/app/(app)/wht/page.tsx:590:            <h2 className="text-lg font-medium">客户白名单</h2>
+src/app/(app)/wht/page.tsx:729:                <input type="text" placeholder="搜索公司名称..." value={searchText}
+src/app/(app)/wht/page.tsx:912:              <input type="text" placeholder="搜索公司名称..." value={searchText}
+---
+title: use client
+description: Learn how to use the use client directive to render a component on the client.
+---
+
+The `'use client'` directive declares an entry point for the components to be rendered on the **client side** and should be used when creating interactive user interfaces (UI) that require client-side JavaScript capabilities, such as state management, event handling, and access to browser APIs. This is a React feature.
+
+> **Good to know:**
+>
+> You do not need to add the `'use client'` directive to every file that contains Client Components. You only need to add it to the files whose components you want to render directly within Server Components. The `'use client'` directive defines the client-server [boundary](https://nextjs.org/docs/app/building-your-application/rendering#network-boundary), and the components exported from such a file serve as entry points to the client.
+
+## Usage
+
+To declare an entry point for the Client Components, add the `'use client'` directive **at the top of the file**, before any imports:
+
+```tsx filename="app/components/counter.tsx" highlight={1} switcher
+'use client'
+
+import { useState } from 'react'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+```jsx filename="app/components/counter.js" highlight={1} switcher
+'use client'
+
+import { useState } from 'react'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+When using the `'use client'` directive, the props of the Client Components must be [serializable](https://react.dev/reference/rsc/use-client#serializable-types). This means the props need to be in a format that React can serialize when sending data from the server to the client.
+
+```tsx filename="app/components/counter.tsx" highlight={4} switcher
+'use client'
+
+export default function Counter({
+  onClick /* ❌ Function is not serializable */,
+}) {
+  return (
+    <div>
+      <button onClick={onClick}>Increment</button>
+    </div>
+  )
+}
+```
+
+```jsx filename="app/components/counter.js" highlight={4} switcher
+'use client'
+
+export default function Counter({
+  onClick /* ❌ Function is not serializable */,
+}) {
+  return (
+    <div>
+      <button onClick={onClick}>Increment</button>
+    </div>
+  )
+}
+```
+
+## Nesting Client Components within Server Components
+
+Combining Server and Client Components allows you to build applications that are both performant and interactive:
+
+1. **Server Components**: Use for static content, data fetching, and SEO-friendly elements.
+2. **Client Components**: Use for interactive elements that require state, effects, or browser APIs.
+3. **Component composition**: Nest Client Components within Server Components as needed for a clear separation of server and client logic.
+
+In the following example:
+
+- `Header` is a Server Component handling static content.
+- `Counter` is a Client Component enabling interactivity within the page.
+
+```tsx filename="app/page.tsx" highlight={2,8} switcher
+import Header from './header'
+import Counter from './counter' // This is a Client Component
+
+export default function Page() {
+  return (
+    <div>
+      <Header />
+      <Counter />
+    </div>
+  )
+}
+```
+
+```jsx filename="app/page.js" highlight={2,8} switcher
+import Header from './header'
+import Counter from './counter' // This is a Client Component
+
+export default function Page() {
+  return (
+    <div>
+      <Header />
+      <Counter />
+    </div>
+  )
+}
+```
+
+## Reference
+
+See the [React documentation](https://react.dev/reference/rsc/use-client) for more information on `'use client'`.
+./AGENTS.md
+
+exec
+/bin/zsh -lc "sed -n '1,180p' 'src/app/(app)/wht/page.tsx'; sed -n '580,730p' 'src/app/(app)/wht/page.tsx'" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { fetchWithAuth } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { WhtCustomerProfile } from "@/components/wht-customer-profile";
+import {
+  Plus, Save, X, Edit3, Trash2, RefreshCw, ChevronDown, ChevronRight, Check, FileDown, Search, ChevronLeft, AlertTriangle, Clock, Upload, Download, FileSpreadsheet,
+} from "lucide-react";
+
+const STATUS_OPTIONS = ["启用", "暂停", "已终止"] as const;
+const SUBTYPES = ["ภ.ง.ด.1", "ภ.ง.ด.53"] as const;
+const PROGRESS_OPTIONS = ["", "归档", "未归档"] as const;
+
+const tabs = [
+  { key: "customers", label: "客户白名单" },
+  { key: "wht1", label: "ภ.ง.ด.1" },
+  { key: "wht53", label: "ภ.ง.ด.53" },
+  { key: "history", label: "历史查询" },
+  { key: "reconciliation", label: "对账表" },
+  { key: "summary", label: "年度汇总" },
+];
+
+interface WhtCustomer { id: number; company_name: string; tax_id: string; contact: string; status: string; }
+interface WhtRecord { id: number; customer_id: number; year_month: string; subtype: string; progress: string; company_name: string; tax_id: string; customer_status: string; reminded?: number; }
+interface WhtStep { id: number; record_id: number; step_order: number; step_name: string; status: string; assignee: string; }
+interface WhtDashboardStats { month: string; stats: Record<string, { totalCustomers: number; completedSteps: number; archived: number; totalSteps: number }>; }
+
+// WHT deadline: 15th of next month
+// Current day > 10th of deadline month → yellow; > 12th → red (penalty risk)
+function getWarningLevel(progress: string, yearMonth: string): { level: "green" | "yellow" | "red"; label: string } {
+  if (progress === "归档") return { level: "green", label: "已完成" };
+  const [y, m] = yearMonth.split("-").map(Number);
+  if (!y || !m) return { level: "green", label: "正常" };
+  const deadlineMonth = m === 12 ? 1 : m + 1;
+  const deadlineYear = m === 12 ? y + 1 : y;
+  const now = new Date();
+  const currentDay = now.getDate();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  if (currentYear > deadlineYear || (currentYear === deadlineYear && currentMonth > deadlineMonth)) {
+    return { level: "red", label: "已逾期" };
+  }
+  if (currentYear === deadlineYear && currentMonth === deadlineMonth) {
+    if (currentDay > 12) return { level: "red", label: "逾期风险" };
+    if (currentDay > 10) return { level: "yellow", label: "即将逾期" };
+    return { level: "green", label: "正常" };
+  }
+  return { level: "green", label: "未到期" };
+}
+
+const warningRowStyle: Record<string, string> = {
+  green: "",
+  yellow: "border-l-4 border-l-amber-400 bg-amber-50/30",
+  red: "border-l-4 border-l-red-400 bg-red-50/30",
+};
+
+const warningBadgeStyle: Record<string, string> = {
+  green: "",
+  yellow: "bg-amber-100 text-amber-800",
+  red: "bg-red-100 text-red-800",
+};
+
+// Inline editable cell for reconciliation
+function EditableCell({ id, field, value, onUpdate }: { id: number; field: string; value: number; onUpdate: (id: number, field: string, value: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [temp, setTemp] = useState(value);
+  
+  if (!editing) {
+    return (
+      <span className="cursor-pointer hover:text-[var(--primary)]" onClick={() => { setTemp(value); setEditing(true); }}>
+        {field === "tax_unpaid" && value > 0 ? <span className="text-red-500 font-medium">฿{value.toLocaleString()}</span> : `฿${value.toLocaleString()}`}
+      </span>
+    );
+  }
+  
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        type="number"
+        value={temp}
+        onChange={e => setTemp(Number(e.target.value))}
+        className="w-20 h-7 rounded border px-2 text-xs outline-none focus:border-[var(--ring)]"
+        autoFocus
+        onKeyDown={e => {
+          if (e.key === "Enter") { onUpdate(id, field, temp); setEditing(false); }
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <button onClick={() => { onUpdate(id, field, temp); setEditing(false); }} className="text-[var(--success)] text-xs"><Check className="size-3" /></button>
+      <button onClick={() => setEditing(false)} className="text-[var(--muted-foreground)] text-xs"><X className="size-3" /></button>
+    </span>
+  );
+}
+
+
+export default function WhtPage() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState("customers");
+  const [loading, setLoading] = useState(false);
+
+  // Customers
+  const [customers, setCustomers] = useState<WhtCustomer[]>([]);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+  const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+
+  // Records
+  const [records, setRecords] = useState<WhtRecord[]>([]);
+  const [recordMonth, setRecordMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [expandedRecord, setExpandedRecord] = useState<number | null>(null);
+  const [stepsMap, setStepsMap] = useState<Record<number, WhtStep[]>>({});
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Filters
+  const [searchText, setSearchText] = useState("");
+  const [filterSubtype, setFilterSubtype] = useState("");
+  const [filterProgress, setFilterProgress] = useState("");
+  const [filterMonthFrom, setFilterMonthFrom] = useState("");
+  const [filterMonthTo, setFilterMonthTo] = useState("");
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+
+  // Batch
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [profileCustomerId, setProfileCustomerId] = useState<number | null>(null);
+  const [singleGenOpen, setSingleGenOpen] = useState(false);
+  const [singleCustomerId, setSingleCustomerId] = useState<number | "">("");
+  const [singleGenLoading, setSingleGenLoading] = useState(false);
+  const [deleteRecordTarget, setDeleteRecordTarget] = useState<WhtRecord | null>(null);
+  const [deletingRecordId, setDeletingRecordId] = useState<number | null>(null);
+  const [deleteRecordErr, setDeleteRecordErr] = useState("");
+
+  // Import
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+
+  // History
+  const [historyRecords, setHistoryRecords] = useState<WhtRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+
+  // Reconciliation
+  const [reconMonth, setReconMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [reconciliations, setReconciliations] = useState<any[]>([]);
+
+  // Summary
+  const [summaryYear, setSummaryYear] = useState(new Date().getFullYear().toString());
+  const [summaryData, setSummaryData] = useState<{ year: string; customers: any[]; grand: any } | null>(null);
+
+
+  // Error
+  const [error, setError] = useState("");
+  const [dashboardStats, setDashboardStats] = useState<WhtDashboardStats | null>(null);
+
+  const loadCustomers = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/wht/customers");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      const data = await res.json();
+      setCustomers(Array.isArray(data) ? data : []);
+    } catch {}
+  }, []);
+
+  useEffect(() => { loadCustomers(); }, [loadCustomers]);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/wht/stats');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+              activeTab === tab.key ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ---- 客户白名单 ---- */}
+      {activeTab === "customers" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">客户白名单</h2>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                <FileSpreadsheet className="size-4" />下载模板
+              </Button>
+              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors">
+                <Upload className="size-4" />{importingCsv ? "导入中..." : "批量导入"}
+                <input type="file" accept=".csv" onChange={handleImportCsv} className="hidden" disabled={importingCsv} />
+              </label>
+              <Button size="sm" onClick={() => { setShowAddCustomer(true); setEditingCustomerId(null); setCustomerForm({ company_name: "", tax_id: "", contact: "", status: "启用" }); }}>
+                <Plus className="size-4 mr-1" />添加客户
+              </Button>
+            </div>
+          </div>
+
+          {(showAddCustomer || editingCustomerId !== null) && (
+            <div className="rounded-lg border bg-[var(--card)] p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">公司名称 *</label>
+                  <input type="text" value={customerForm.company_name} onChange={e => setCustomerForm(p => ({ ...p, company_name: e.target.value }))}
+                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">税号</label>
+                  <input type="text" value={customerForm.tax_id} onChange={e => setCustomerForm(p => ({ ...p, tax_id: e.target.value }))}
+                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm font-mono outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">联系方式</label>
+                  <input type="text" value={customerForm.contact} onChange={e => setCustomerForm(p => ({ ...p, contact: e.target.value }))}
+                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--muted-foreground)]">状态</label>
+                  <select value={customerForm.status} onChange={e => setCustomerForm(p => ({ ...p, status: e.target.value }))}
+                    className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]">
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => { setShowAddCustomer(false); setEditingCustomerId(null); }}><X className="size-3.5 mr-1" />取消</Button>
+                <Button size="sm" onClick={() => editingCustomerId ? handleUpdateCustomer(editingCustomerId) : handleAddCustomer()} disabled={loading}>
+                  <Save className="size-3.5 mr-1" />{editingCustomerId ? "保存修改" : "确认添加"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full text-sm hidden md:table">
+              <thead className="bg-[var(--muted)]">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">税号</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">联系方式</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-[var(--muted-foreground)]">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map(c => (
+                  <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                    <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+                    <td className="px-4 py-3">{c.contact || "—"}</td>
+                    <td className="px-4 py-3">
+                        <span className={statusBadge(c.status)}>{c.status}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setProfileCustomerId(c.id); }}
+                          className="ml-2 text-[0.6rem] text-[var(--muted-foreground)] hover:text-[var(--primary)] underline">
+                          画像
+                        </button>
+                      </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="icon-xs" variant="ghost" onClick={() => startEdit(c)}><Edit3 className="size-3" /></Button>
+                        <Button size="icon-xs" variant="ghost" onClick={() => handleDeleteCustomer(c.id)} className="text-[var(--destructive)]"><Trash2 className="size-3" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {/* 手机端卡片 */}
+            <div className="md:hidden flex flex-col gap-2 p-3">
+              {customers.map(c => (
+                <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+                    <span className={statusBadge(c.status)}>{c.status}</span>
+                  </div>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">税号</span><span className="font-mono text-xs">{c.tax_id || "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">联系方式</span><span>{c.contact || "—"}</span></div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-1">
+                    <Button size="icon-xs" variant="ghost" onClick={() => setProfileCustomerId(c.id)} className="text-xs text-[var(--muted-foreground)]">画像</Button>
+                    <Button size="icon-xs" variant="ghost" onClick={() => startEdit(c)}><Edit3 className="size-3" /></Button>
+                    <Button size="icon-xs" variant="ghost" onClick={() => handleDeleteCustomer(c.id)} className="text-[var(--destructive)]"><Trash2 className="size-3" /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- ภ.ง.ด.1 / ภ.ง.ด.53 ---- */}
+      {(activeTab === "wht1" || activeTab === "wht53") && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              {records.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] cursor-pointer select-none">
+                  <input type="checkbox" checked={selectedIds.length === records.length && records.length > 0}
+                    onChange={toggleSelectAll} className="size-4 rounded border-[var(--border)] cursor-pointer accent-[var(--primary)]" />
+                  全选
+                </label>
+              )}
+              <h2 className="text-lg font-medium">{activeTab === "wht1" ? "ภ.ง.ด.1 员工工资扣税" : "ภ.ง.ด.53 服务费代扣税"}</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="month" value={recordMonth} onChange={e => setRecordMonth(e.target.value)}
+                className="rounded border px-3 py-2 text-sm" />
+              <Button size="sm" onClick={handleGenerate} disabled={loading} className="gap-1.5">
+                <Plus className="size-3.5" />批量生成当月记录
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setSingleGenOpen(true); setError(""); }} className="gap-1.5">
+                <Plus className="size-3.5" />单个生成
+              </Button>
+            </div>
+          </div>
+
+          {/* Search & Filters */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-[var(--muted-foreground)]" />
+                <input type="text" placeholder="搜索公司名称..." value={searchText}
+                  onChange={e => setSearchText(e.target.value)}
+
+codex
+已确认白名单有电脑端表格和手机端卡片，两处会共用过滤结果。代码图中尚未索引此项目，因此已回退到源码定位；我会按验证技能要求检查交互逻辑和编译结果，保留原有 `searchText` 代码不变。
+
+exec
+/bin/zsh -lc "cp 'src/app/(app)/wht/page.tsx' /tmp/wht-page-before.tsx" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+apply patch
+patch: completed
+/Users/liuxiong/Desktop/internal-system/src/app/(app)/wht/page.tsx
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+exec
+/bin/zsh -lc "cat > /tmp/verify-wht-search.cjs <<'EOF'
+const fs = require('fs');
+const ts = require(process.cwd() + '/node_modules/typescript');
+const vm = require('vm');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('src/app/(app)/wht/page.tsx', 'utf8');
+const before = fs.readFileSync('/tmp/wht-page-before.tsx', 'utf8');
+const marker = '      {/* ---- ภ.ง.ด.1 / ภ.ง.ด.53 ---- */}';
+assert.equal(source.slice(source.indexOf(marker)), before.slice(before.indexOf(marker)), 'Other tabs unchanged');
+assert.deepEqual(source.split('\\n').filter(l => /searchText|setSearchText/.test(l)), before.split('\\n').filter(l => /searchText|setSearchText/.test(l)));
+const data = [{id:1,company_name:'上海贸易有限公司'}, {id:2,company_name:'北京科技公司'}, {id:3,company_name:'Thai Trading Ltd'}];
+const state = [];
+let cursor = 0;
+const react = {useState(initial) { const i = cursor++; if ("'!(i in state)) state[i] = Array.isArray(initial) && i === 2 ? data : initial; return [state[i], value => state[i] = typeof value === '"'function' ? value(state[i]) : value]; }, useEffect(){}, useCallback(fn){return fn;}};
+const jsx = (type, props) => ({type, props});
+const sandbox = {exports:{}, require(name) { if(name==='react') return react; if(name==='react/jsx-runtime') return {jsx,jsxs:jsx}; if(name==='next/navigation') return {useRouter:()=>({})}; return new Proxy({}, {get:(_,key)=>key==='cn' ? (...args)=>args.join(' ') : key}); }};
+vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,sandbox);
+function nodes(node, out=[]) { if(Array.isArray(node)) node.forEach(n=>nodes(n,out)); else if(node && typeof node==='object') {out.push(node); nodes(node.props?.children,out);} return out; }
+function render(){cursor=0;return nodes(sandbox.exports.default());}
+function verify(term, expected) { let tree=render(); const input=tree.find(n=>n.props?.['aria-label']==='搜索白名单公司名称'); assert.ok(input); input.props.onChange({target:{value:term}}); tree=render(); const names=tree.filter(n=>['td','span'].includes(n.type)&&data.some(c=>c.company_name===n.props.children)).map(n=>n.props.children); assert.deepEqual(names,[...expected,...expected], 'Desktop and mobile: '+term); }
+verify('',data.map(c=>c.company_name));
+verify('贸易',['上海贸易有限公司']);
+verify('科技',['北京科技公司']);
+verify('TRADING',['Thai Trading Ltd']);
+verify('不存在',[]);
+verify('',data.map(c=>c.company_name));
+console.log('PASS: real component rendering and input handlers; desktop/mobile substring matching, no matches, clearing; other tabs/searchText unchanged.');
+EOF
+node /tmp/verify-wht-search.cjs
+npx tsc --noEmit" in /Users/liuxiong/Desktop/internal-system
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+ succeeded in 6527ms:
+PASS: real component rendering and input handlers; desktop/mobile substring matching, no matches, clearing; other tabs/searchText unchanged.
+
+exec
+/bin/zsh -lc 'npm run build' in /Users/liuxiong/Desktop/internal-system
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+ exited 1 in 6137ms:
+
+> internal-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+
+  Creating an optimized production build ...
+Turbopack build encountered 1 warnings:
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+✓ Compiled successfully in 5.1s
+  Skipping validation of types
+  Finished TypeScript config validation in 14ms ...
+  Collecting page data using 11 workers ...
+Error: 未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。
+    at module evaluation (.next/server/chunks/src_lib_auth_ts_1_aqh19._.js:1:22398)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at getOrInstantiateModuleFromParent (.next/server/chunks/[turbopack]_runtime.js:877:12)
+    at Context.esmImport [as i] (.next/server/chunks/[turbopack]_runtime.js:281:20)
+    at module evaluation (.next/server/chunks/[root-of-the-server]__1k2xdac._.js:1:4138)
+    at instantiateModule (.next/server/chunks/[turbopack]_runtime.js:853:9)
+    at instantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:882:12)
+    at getOrInstantiateRuntimeModule (.next/server/chunks/[turbopack]_runtime.js:895:12)
+    at Object.m (.next/server/chunks/[turbopack]_runtime.js:898:18)
+    at Object.<anonymous> (.next/server/app/api/activity/trend/route.js:7:3)
+
+> Build error occurred
+Error: Failed to collect page data for /api/activity/trend
+    at ignore-listed frames {
+  type: 'Error'
+}
+
+codex
+组件交互验证已通过：输入公司名称的一部分可实时过滤，电脑端表格和手机端卡片结果一致，清空后恢复全部；也确认了其他 tab 和原有 `searchText` 代码未变。`npx tsc --noEmit` 已通过，正在等待生产构建完成。
+
+exec
+/bin/zsh -lc "diff -u /tmp/wht-page-before.tsx 'src/app/(app)/wht/page.tsx'" in /Users/liuxiong/Desktop/internal-system
+ exited 1 in 0ms:
+--- /tmp/wht-page-before.tsx	2026-10-15 01:31:54
++++ src/app/(app)/wht/page.tsx	2026-10-15 01:31:54
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+exec
+/bin/zsh -lc "cat /Users/liuxiong/.codex/skills/systematic-debugging/SKILL.md; rg -n 'JWT_SECRET|生产环境禁止' src/lib/auth.ts" in /Users/liuxiong/Desktop/internal-system
+ succeeded in 0ms:
+---
+name: systematic-debugging
+description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+---
+
+# Systematic Debugging
+
+## Overview
+
+Random fixes waste time and create new bugs. Quick patches mask underlying issues.
+
+**Core principle:** ALWAYS find root cause before attempting fixes. Symptom fixes are failure.
+
+**Violating the letter of this process is violating the spirit of debugging.**
+
+## The Iron Law
+
+```
+NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
+```
+
+If you haven't completed Phase 1, you cannot propose fixes.
+
+## When to Use
+
+Use for ANY technical issue:
+- Test failures
+- Bugs in production
+- Unexpected behavior
+- Performance problems
+- Build failures
+- Integration issues
+
+**Use this ESPECIALLY when:**
+- Under time pressure (emergencies make guessing tempting)
+- "Just one quick fix" seems obvious
+- You've already tried multiple fixes
+- Previous fix didn't work
+- You don't fully understand the issue
+
+**Don't skip when:**
+- Issue seems simple (simple bugs have root causes too)
+- You're in a hurry (rushing guarantees rework)
+- Manager wants it fixed NOW (systematic is faster than thrashing)
+
+## The Four Phases
+
+You MUST complete each phase before proceeding to the next.
+
+### Phase 1: Root Cause Investigation
+
+**BEFORE attempting ANY fix:**
+
+1. **Read Error Messages Carefully**
+   - Don't skip past errors or warnings
+   - They often contain the exact solution
+   - Read stack traces completely
+   - Note line numbers, file paths, error codes
+
+2. **Reproduce Consistently**
+   - Can you trigger it reliably?
+   - What are the exact steps?
+   - Does it happen every time?
+   - If not reproducible → gather more data, don't guess
+
+3. **Check Recent Changes**
+   - What changed that could cause this?
+   - Git diff, recent commits
+   - New dependencies, config changes
+   - Environmental differences
+
+4. **Gather Evidence in Multi-Component Systems**
+
+   **WHEN system has multiple components (CI → build → signing, API → service → database):**
+
+   **BEFORE proposing fixes, add diagnostic instrumentation:**
+   ```
+   For EACH component boundary:
+     - Log what data enters component
+     - Log what data exits component
+     - Verify environment/config propagation
+     - Check state at each layer
+
+   Run once to gather evidence showing WHERE it breaks
+   THEN analyze evidence to identify failing component
+   THEN investigate that specific component
+   ```
+
+   **Example (multi-layer system):**
+   ```bash
+   # Layer 1: Workflow
+   echo "=== Secrets available in workflow: ==="
+   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
+
+   # Layer 2: Build script
+   echo "=== Env vars in build script: ==="
+   env | grep IDENTITY || echo "IDENTITY not in environment"
+
+   # Layer 3: Signing script
+   echo "=== Keychain state: ==="
+   security list-keychains
+   security find-identity -v
+
+   # Layer 4: Actual signing
+   codesign --sign "$IDENTITY" --verbose=4 "$APP"
+   ```
+
+   **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
+
+5. **Trace Data Flow**
+
+   **WHEN error is deep in call stack:**
+
+   See `root-cause-tracing.md` in this directory for the complete backward tracing technique.
+
+   **Quick version:**
+   - Where does bad value originate?
+   - What called this with bad value?
+   - Keep tracing up until you find the source
+   - Fix at source, not at symptom
+
+### Phase 2: Pattern Analysis
+
+**Find the pattern before fixing:**
+
+1. **Find Working Examples**
+   - Locate similar working code in same codebase
+   - What works that's similar to what's broken?
+
+2. **Compare Against References**
+   - If implementing pattern, read reference implementation COMPLETELY
+   - Don't skim - read every line
+   - Understand the pattern fully before applying
+
+3. **Identify Differences**
+   - What's different between working and broken?
+   - List every difference, however small
+   - Don't assume "that can't matter"
+
+4. **Understand Dependencies**
+   - What other components does this need?
+   - What settings, config, environment?
+   - What assumptions does it make?
+
+### Phase 3: Hypothesis and Testing
+
+**Scientific method:**
+
+1. **Form Single Hypothesis**
+   - State clearly: "I think X is the root cause because Y"
+   - Write it down
+   - Be specific, not vague
+
+2. **Test Minimally**
+   - Make the SMALLEST possible change to test hypothesis
+   - One variable at a time
+   - Don't fix multiple things at once
+
+3. **Verify Before Continuing**
+   - Did it work? Yes → Phase 4
+   - Didn't work? Form NEW hypothesis
+   - DON'T add more fixes on top
+
+4. **When You Don't Know**
+   - Say "I don't understand X"
+   - Don't pretend to know
+   - Ask for help
+   - Research more
+
+### Phase 4: Implementation
+
+**Fix the root cause, not the symptom:**
+
+1. **Create Failing Test Case**
+   - Simplest possible reproduction
+   - Automated test if possible
+   - One-off test script if no framework
+   - MUST have before fixing
+   - Use the `superpowers:test-driven-development` skill for writing proper failing tests
+
+2. **Implement Single Fix**
+   - Address the root cause identified
+   - ONE change at a time
+   - No "while I'm here" improvements
+   - No bundled refactoring
+
+3. **Verify Fix**
+   - Test passes now?
+   - No other tests broken?
+   - Issue actually resolved?
+
+4. **If Fix Doesn't Work**
+   - STOP
+   - Count: How many fixes have you tried?
+   - If < 3: Return to Phase 1, re-analyze with new information
+   - **If ≥ 3: STOP and question the architecture (step 5 below)**
+   - DON'T attempt Fix #4 without architectural discussion
+
+5. **If 3+ Fixes Failed: Question Architecture**
+
+   **Pattern indicating architectural problem:**
+   - Each fix reveals new shared state/coupling/problem in different place
+   - Fixes require "massive refactoring" to implement
+   - Each fix creates new symptoms elsewhere
+
+   **STOP and question fundamentals:**
+   - Is this pattern fundamentally sound?
+   - Are we "sticking with it through sheer inertia"?
+   - Should we refactor architecture vs. continue fixing symptoms?
+
+   **Discuss with your human partner before attempting more fixes**
+
+   This is NOT a failed hypothesis - this is a wrong architecture.
+
+## Red Flags - STOP and Follow Process
+
+If you catch yourself thinking:
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "Add multiple changes, run tests"
+- "Skip the test, I'll manually verify"
+- "It's probably X, let me fix that"
+- "I don't fully understand but this might work"
+- "Pattern says X but I'll adapt it differently"
+- "Here are the main problems: [lists fixes without investigation]"
+- Proposing solutions before tracing data flow
+- **"One more fix attempt" (when already tried 2+)**
+- **Each fix reveals new problem in different place**
+
+**ALL of these mean: STOP. Return to Phase 1.**
+
+**If 3+ fixes failed:** Question the architecture (see Phase 4.5)
+
+## your human partner's Signals You're Doing It Wrong
+
+**Watch for these redirections:**
+- "Is that not happening?" - You assumed without verifying
+- "Will it show us...?" - You should have added evidence gathering
+- "Stop guessing" - You're proposing fixes without understanding
+- "Ultrathink this" - Question fundamentals, not just symptoms
+- "We're stuck?" (frustrated) - Your approach isn't working
+
+**When you see these:** STOP. Return to Phase 1.
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
+| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
+| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
+| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
+| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
+| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
+| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
+| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question pattern, don't fix again. |
+
+## Quick Reference
+
+| Phase | Key Activities | Success Criteria |
+|-------|---------------|------------------|
+| **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
+| **2. Pattern** | Find working examples, compare | Identify differences |
+| **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
+| **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
+
+## When Process Reveals "No Root Cause"
+
+If systematic investigation reveals issue is truly environmental, timing-dependent, or external:
+
+1. You've completed the process
+2. Document what you investigated
+3. Implement appropriate handling (retry, timeout, error message)
+4. Add monitoring/logging for future investigation
+
+**But:** 95% of "no root cause" cases are incomplete investigation.
+
+## Supporting Techniques
+
+These techniques are part of systematic debugging and available in this directory:
+
+- **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
+- **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
+- **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
+
+**Related skills:**
+- **superpowers:test-driven-development** - For creating failing test case (Phase 4, Step 1)
+- **superpowers:verification-before-completion** - Verify fix worked before claiming success
+
+## Real-World Impact
+
+From debugging sessions:
+- Systematic approach: 15-30 minutes to fix
+- Random fixes approach: 2-3 hours of thrashing
+- First-time fix rate: 95% vs 40%
+- New bugs introduced: Near zero vs common
+5:const rawSecret = process.env.JWT_SECRET;
+9:      "未设置 JWT_SECRET 环境变量：生产环境禁止使用默认密钥启动，请在部署环境中设置一个足够随机的 JWT_SECRET。"
+12:  console.warn("[auth] 未设置 JWT_SECRET，当前使用开发环境默认密钥，仅供本地开发，切勿用于生产部署。");
+
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+codex
+构建在收集页面数据时因环境缺少 `JWT_SECRET` 失败，代码编译已成功。按排错技能确认原因后，我会仅为验证进程注入临时随机密钥重跑，不修改认证代码或项目配置。
+
+exec
+/bin/zsh -lc "node -e 'const {spawnSync}=require(\"node:child_process\"); const result=spawnSync(\"npm\",[\"run\",\"build\"],{stdio:\"inherit\",env:{...process.env,JWT_SECRET:require(\"node:crypto\").randomBytes(48).toString(\"hex\")}}); process.exit(result.status ?? 1)'" in /Users/liuxiong/Desktop/internal-system
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+ succeeded in 5725ms:
+
+> internal-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+
+  Creating an optimized production build ...
+Turbopack build encountered 2 warnings:
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+./next.config.mjs
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Output asset trace:
+  [output]/.next/server/instrumentation.js
+  [output]/.next/server/chunks/src_0xrgkd4._.js
+
+Import trace:
+  App Route:
+    ./next.config.mjs
+    ./src/app/api/files/[filename]/route.ts
+
+
+✓ Compiled successfully in 4.5s
+  Skipping validation of types
+  Finished TypeScript config validation in 5ms ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/224) ...
+  Generating static pages using 11 workers (56/224) 
+  Generating static pages using 11 workers (112/224) 
+  Generating static pages using 11 workers (168/224) 
+✓ Generating static pages using 11 workers (224/224) in 207ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /activity
+├ ○ /address-certification
+├ ○ /agency
+├ ○ /agency/contracts
+├ ○ /agency/factories
+├ ƒ /agency/factories/[id]
+├ ○ /agency/incubation
+├ ○ /agency/influencers
+├ ƒ /agency/influencers/[id]
+├ ○ /agency/influencers/new
+├ ○ /agency/influencers/tasks
+├ ƒ /agency/influencers/tasks/[id]
+├ ○ /announcements
+├ ƒ /api/activity/company-trend
+├ ƒ /api/activity/stats
+├ ƒ /api/activity/trend
+├ ƒ /api/agency/dashboard
+├ ƒ /api/agency/stats
+├ ƒ /api/agency/workload-details
+├ ƒ /api/announcements
+├ ƒ /api/announcements/[id]
+├ ƒ /api/announcements/[id]/ai-compare
+├ ƒ /api/announcements/[id]/recall
+├ ƒ /api/announcements/[id]/retell
+├ ƒ /api/announcements/[id]/review
+├ ƒ /api/announcements/[id]/to-rule
+├ ƒ /api/assets
+├ ƒ /api/assets/[id]
+├ ƒ /api/assets/[id]/view-log
+├ ƒ /api/assets/subcategories
+├ ƒ /api/assets/subcategories/[id]
+├ ƒ /api/attendance
+├ ƒ /api/attendance/anomaly
+├ ƒ /api/attendance/details
+├ ƒ /api/attendance/export
+├ ƒ /api/attendance/request
+├ ƒ /api/attendance/summaries
+├ ƒ /api/attendance/summary
+├ ƒ /api/attendance/today
+├ ƒ /api/audit-logs
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/me
+├ ƒ /api/business-types
+├ ƒ /api/chat
+├ ƒ /api/chat/contacts
+├ ƒ /api/chat/group-messages
+├ ƒ /api/chat/groups
+├ ƒ /api/chat/groups/disband
+├ ƒ /api/chat/groups/leave
+├ ƒ /api/chat/groups/members
+├ ƒ /api/chat/groups/mute
+├ ƒ /api/chat/groups/transfer
+├ ƒ /api/chat/monitor
+├ ƒ /api/chat/pins
+├ ƒ /api/chat/reactions
+├ ƒ /api/chat/recall
+├ ƒ /api/chat/search
+├ ƒ /api/chat/summary
+├ ƒ /api/chat/summary/board
+├ ƒ /api/chat/summary/employee
+├ ƒ /api/chat/translate
+├ ƒ /api/chat/typing
+├ ƒ /api/chat/unread-count
+├ ƒ /api/client-feedback/public
+├ ƒ /api/commerce/cart
+├ ƒ /api/commerce/imported-catalog
+├ ƒ /api/commerce/orders
+├ ƒ /api/commerce/orders/[id]
+├ ƒ /api/commerce/orders/[id]/adjustments
+├ ƒ /api/commerce/orders/[id]/cancellations
+├ ƒ /api/commerce/orders/[id]/cancellations/[cancellationId]/decision
+├ ƒ /api/commerce/orders/[id]/cancellations/[cancellationId]/withdraw
+├ ƒ /api/commerce/orders/[id]/payment
+├ ƒ /api/commerce/orders/[id]/refunds
+├ ƒ /api/commerce/orders/page
+├ ƒ /api/commerce/products
+├ ƒ /api/commerce/quote
+├ ƒ /api/contracts
+├ ƒ /api/customer-bridge/[...path]
+├ ƒ /api/customers
+├ ƒ /api/customers/[id]
+├ ƒ /api/dashboard/stats
+├ ƒ /api/discovery-tasks
+├ ƒ /api/discovery-tasks/[id]
+├ ƒ /api/discovery-tasks/[id]/influencers
+├ ƒ /api/discovery-tasks/stats
+├ ƒ /api/documents
+├ ƒ /api/email-stock
+├ ƒ /api/employee-info-changes
+├ ƒ /api/employees
+├ ƒ /api/employees/[id]/pdf
+├ ƒ /api/employees/avatar
+├ ƒ /api/employees/background
+├ ƒ /api/employees/demerits
+├ ƒ /api/employees/educations
+├ ƒ /api/employees/export
+├ ƒ /api/employees/files
+├ ƒ /api/employees/handover
+├ ƒ /api/employees/medical
+├ ƒ /api/employees/onboarding
+├ ƒ /api/employees/personal
+├ ƒ /api/employees/personal/followups
+├ ƒ /api/employees/personal/status
+├ ƒ /api/employees/records
+├ ƒ /api/employees/status-assessment
+├ ƒ /api/external/login
+├ ƒ /api/external/orders
+├ ƒ /api/external/orders/[id]
+├ ƒ /api/factories
+├ ƒ /api/factories/[id]
+├ ƒ /api/files/[filename]
+├ ƒ /api/finances
+├ ƒ /api/finances/pending-verify-count
+├ ƒ /api/ideas
+├ ƒ /api/ideas/[id]
+├ ƒ /api/influencers
+├ ƒ /api/influencers/[id]
+├ ƒ /api/influencers/[id]/certificates
+├ ƒ /api/influencers/[id]/certificates/[certId]
+├ ƒ /api/influencers/[id]/documents
+├ ƒ /api/influencers/[id]/factories
+├ ƒ /api/influencers/[id]/finances
+├ ƒ /api/influencers/[id]/start-phase
+├ ƒ /api/influencers/[id]/steps
+├ ƒ /api/influencers/[id]/steps/[stepId]/notes
+├ ƒ /api/influencers/[id]/steps/details
+├ ƒ /api/influencers/evaluations
+├ ƒ /api/influencers/evaluations/import
+├ ƒ /api/internal/client-feedback
+├ ƒ /api/internal/expiry-alerts
+├ ƒ /api/internal/points
+├ ƒ /api/internal/weekly-report
+├ ƒ /api/internal/workload
+├ ƒ /api/internal/workload-details
+├ ƒ /api/issues
+├ ƒ /api/issues/translate
+├ ƒ /api/leave
+├ ƒ /api/leave/analysis
+├ ƒ /api/leave/analyze
+├ ƒ /api/leave/analyze-batch
+├ ƒ /api/leave/annual-balance
+├ ƒ /api/leave/dashboard
+├ ƒ /api/leave/export
+├ ƒ /api/leave/medical-proof
+├ ƒ /api/logistics
+├ ƒ /api/logistics-script/categories
+├ ƒ /api/logistics-script/copy
+├ ƒ /api/logistics-script/feedback
+├ ƒ /api/logistics-script/pin
+├ ƒ /api/logistics-script/questions
+├ ƒ /api/logistics-script/reorder
+├ ƒ /api/logistics-script/scripts
+├ ƒ /api/logistics-script/tree
+├ ƒ /api/logistics/[id]
+├ ƒ /api/logistics/[id]/files
+├ ƒ /api/logistics/[id]/steps
+├ ƒ /api/logistics/[id]/steps/[stepId]/notes
+├ ƒ /api/meetings
+├ ƒ /api/meetings/[id]/reflections
+├ ƒ /api/meetings/[id]/reflections/[rid]
+├ ƒ /api/notifications
+├ ƒ /api/notifications/unread-count
+├ ƒ /api/orders
+├ ƒ /api/orders/[id]
+├ ƒ /api/orders/[id]/cancel-requests
+├ ƒ /api/orders/[id]/certificates
+├ ƒ /api/orders/[id]/documents
+├ ƒ /api/orders/[id]/feedback-token
+├ ƒ /api/orders/[id]/finances
+├ ƒ /api/orders/[id]/finances/verify
+├ ƒ /api/orders/[id]/steps
+├ ƒ /api/orders/[id]/steps/[stepId]/documents
+├ ƒ /api/orders/[id]/steps/[stepId]/documents/mark-uploaded
+├ ƒ /api/orders/[id]/steps/[stepId]/notes
+├ ƒ /api/orders/[id]/steps/details
+├ ƒ /api/orders/[id]/supplement-requests
+├ ƒ /api/payslips
+├ ƒ /api/payslips/export
+├ ƒ /api/payslips/flow
+├ ƒ /api/problems
+├ ƒ /api/problems/[id]
+├ ƒ /api/problems/[id]/attachments
+├ ƒ /api/problems/[id]/follow-ups
+├ ƒ /api/problems/stats
+├ ƒ /api/projects
+├ ƒ /api/projects/[id]
+├ ƒ /api/projects/[id]/progress
+├ ƒ /api/projects/[id]/summaries
+├ ƒ /api/projects/names
+├ ƒ /api/registrations
+├ ƒ /api/rules
+├ ƒ /api/rules/[id]/apply
+├ ƒ /api/rules/[id]/history
+├ ƒ /api/rules/[id]/update
+├ ƒ /api/scan-verifications
+├ ƒ /api/settings
+├ ƒ /api/shop-fees
+├ ƒ /api/shop-fees/[id]
+├ ƒ /api/shopee-order-items
+├ ƒ /api/shopee-orders
+├ ƒ /api/shopee-stores
+├ ƒ /api/sim-batches
+├ ƒ /api/sim-transactions
+├ ƒ /api/steps/assigned
+├ ƒ /api/sync/cancel-requests
+├ ƒ /api/sync/deliveries/[deliveryId]/file
+├ ƒ /api/sync/documents
+├ ƒ /api/sync/orders
+├ ƒ /api/tasks
+├ ƒ /api/templates
+├ ƒ /api/thai-holidays
+├ ƒ /api/todo-categories
+├ ƒ /api/todos
+├ ƒ /api/todos/[id]
+├ ƒ /api/todos/[id]/follow-ups
+├ ƒ /api/todos/[id]/seen
+├ ƒ /api/todos/stats
+├ ƒ /api/todos/unseen
+├ ƒ /api/upload
+├ ƒ /api/vat/customers
+├ ƒ /api/vat/customers/[id]/profile
+├ ƒ /api/vat/dashboard
+├ ƒ /api/vat/notify
+├ ƒ /api/vat/reconciliation
+├ ƒ /api/vat/records
+├ ƒ /api/vat/records/[id]
+├ ƒ /api/vat/records/[id]/documents
+├ ƒ /api/vat/records/[id]/feedback-token
+├ ƒ /api/vat/records/[id]/finances
+├ ƒ /api/vat/records/[id]/notes
+├ ƒ /api/vat/records/[id]/steps
+├ ƒ /api/vat/records/[id]/steps/[stepId]/documents
+├ ƒ /api/vat/records/[id]/steps/[stepId]/notes
+├ ƒ /api/vat/records/[id]/steps/details
+├ ƒ /api/vat/records/batch
+├ ƒ /api/vat/records/generate
+├ ƒ /api/vat/summary
+├ ƒ /api/wht/customers
+├ ƒ /api/wht/customers/[id]/profile
+├ ƒ /api/wht/reconciliation
+├ ƒ /api/wht/records
+├ ƒ /api/wht/records/[id]
+├ ƒ /api/wht/records/[id]/certificate
+├ ƒ /api/wht/records/[id]/documents
+├ ƒ /api/wht/records/[id]/notes
+├ ƒ /api/wht/records/[id]/steps
+├ ƒ /api/wht/records/[id]/steps/[stepId]/notes
+├ ƒ /api/wht/records/[id]/steps/details
+├ ƒ /api/wht/records/batch
+├ ƒ /api/wht/stats
+├ ƒ /api/wht/summary
+├ ƒ /api/work-reports
+├ ƒ /api/work-reports/[id]
+├ ƒ /api/work-reports/auto
+├ ƒ /api/work-reports/board
+├ ƒ /api/work-reports/search
+├ ƒ /api/work-reports/story
+├ ƒ /api/work-reports/story/summary
+├ ○ /assets
+├ ƒ /commerce
+├ ○ /company-registration
+├ ○ /customers
+├ ƒ /customers/[id]
+├ ○ /customs-clearance
+├ ○ /dld
+├ ○ /dld/site
+├ ○ /documents
+├ ○ /fda-certification
+├ ○ /fda-certification/agency
+├ ○ /fda-certification/cosmetics
+├ ○ /fda-certification/food
+├ ○ /fda-certification/hazard
+├ ○ /fda-certification/medical
+├ ƒ /feedback/[token]
+├ ○ /finance
+├ ○ /ideas
+├ ○ /internal
+├ ○ /internal/employees
+├ ○ /internal/leave
+├ ○ /internal/payslips
+├ ○ /internal/rewards
+├ ○ /internal/shopee
+├ ○ /internal/templates
+├ ○ /internal/weekly-report
+├ ○ /issues
+├ ○ /login
+├ ○ /logistics
+├ ƒ /logistics/[id]
+├ ○ /logistics/scripts
+├ ○ /mall-store
+├ ○ /mall-store/lazada
+├ ○ /mall-store/tiktok
+├ ○ /meetings
+├ ○ /messages
+├ ○ /nbtc
+├ ○ /notifications
+├ ○ /orders
+├ ƒ /orders/[id]
+├ ○ /orders/new
+├ ○ /problems
+├ ƒ /problems/[id]
+├ ○ /projects
+├ ƒ /projects/[id]
+├ ○ /rules
+├ ○ /settings
+├ ƒ /shop
+├ ○ /social-security
+├ ○ /tasks
+├ ○ /tisi
+├ ○ /todos
+├ ○ /trademark
+├ ○ /trademark/buy-r
+├ ○ /trademark/international
+├ ○ /vat
+├ ƒ /vat/[id]
+├ ○ /wht
+├ ƒ /wht/[id]
+├ ○ /work-reports
+└ ○ /work-visa
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+codex
+已完成，仅修改 WHT 客户白名单相关代码：
+
+- 搜索框与添加客户按钮放在列表上方，支持电脑和手机布局。
+- 使用独立 `customerSearch`，按公司名称实时包含匹配，清空恢复全部。
+- 已通过组件交互验证，原有 `searchText` 和其他 tab 代码未改动。
+
+验证：`npx tsc --noEmit`、`npm run build` 均通过。构建需临时注入随机 `JWT_SECRET`，仍有原有文件追踪警告，未修改配置。
+
+未执行任何 git 操作。
+diff --git a/src/app/(app)/wht/page.tsx b/src/app/(app)/wht/page.tsx
+index 4b9a5cca89aa8d1dfbeb7bf4961dccd6d34fddab..34f0642444625b41c63d6c6db0bddf44fa1a37ed
+--- a/src/app/(app)/wht/page.tsx
++++ b/src/app/(app)/wht/page.tsx
+@@ -105,6 +105,10 @@
+ 
+   // Customers
+   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
++  const [customerSearch, setCustomerSearch] = useState("");
++  const filteredCustomers = customers.filter(c =>
++    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
++  );
+   const [showAddCustomer, setShowAddCustomer] = useState(false);
+   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
+@@ -586,9 +590,12 @@
+       {/* ---- 客户白名单 ---- */}
+       {activeTab === "customers" && (
+         <div className="flex flex-col gap-4">
+-          <div className="flex items-center justify-between">
++          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+             <h2 className="text-lg font-medium">客户白名单</h2>
+-            <div className="flex items-center gap-2">
++            <div className="flex flex-wrap items-center gap-2">
++              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
++                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
++                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
+               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
+                 <FileSpreadsheet className="size-4" />下载模板
+               </Button>
+@@ -649,7 +656,7 @@
+                 </tr>
+               </thead>
+               <tbody>
+-                {customers.map(c => (
++                {filteredCustomers.map(c => (
+                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
+                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
+                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
+@@ -673,7 +680,7 @@
+             </table>
+             {/* 手机端卡片 */}
+             <div className="md:hidden flex flex-col gap-2 p-3">
+-              {customers.map(c => (
++              {filteredCustomers.map(c => (
+                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                   <div className="flex items-center justify-between gap-2">
+                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
+
+tokens used
+34,138
+已完成，仅修改 WHT 客户白名单相关代码：
+
+- 搜索框与添加客户按钮放在列表上方，支持电脑和手机布局。
+- 使用独立 `customerSearch`，按公司名称实时包含匹配，清空恢复全部。
+- 已通过组件交互验证，原有 `searchText` 和其他 tab 代码未改动。
+
+验证：`npx tsc --noEmit`、`npm run build` 均通过。构建需临时注入随机 `JWT_SECRET`，仍有原有文件追踪警告，未修改配置。
+
+未执行任何 git 操作。

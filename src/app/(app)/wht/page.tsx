@@ -105,6 +105,10 @@ export default function WhtPage() {
 
   // Customers
   const [customers, setCustomers] = useState<WhtCustomer[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const filteredCustomers = customers.filter(c =>
+    c.company_name.toLowerCase().includes(customerSearch.toLowerCase())
+  );
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
   const [customerForm, setCustomerForm] = useState({ company_name: "", tax_id: "", contact: "", status: "启用" as string });
@@ -586,9 +590,12 @@ export default function WhtPage() {
       {/* ---- 客户白名单 ---- */}
       {activeTab === "customers" && (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-lg font-medium">客户白名单</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="search" placeholder="搜索公司名称..." aria-label="搜索白名单公司名称"
+                value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+                className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-60" />
               <Button size="sm" variant="outline" onClick={handleDownloadTemplate} className="gap-1.5">
                 <FileSpreadsheet className="size-4" />下载模板
               </Button>
@@ -649,7 +656,7 @@ export default function WhtPage() {
                 </tr>
               </thead>
               <tbody>
-                {customers.map(c => (
+                {filteredCustomers.map(c => (
                   <tr key={c.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]/30">
                     <td className="px-4 py-3 font-medium">{c.company_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--muted-foreground)]">{c.tax_id || "—"}</td>
@@ -673,7 +680,7 @@ export default function WhtPage() {
             </table>
             {/* 手机端卡片 */}
             <div className="md:hidden flex flex-col gap-2 p-3">
-              {customers.map(c => (
+              {filteredCustomers.map(c => (
                 <div key={c.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium text-[var(--foreground)]">{c.company_name}</span>
