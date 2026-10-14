@@ -89,6 +89,12 @@ function relatedTypeLabel(t: string): string {
   return t === "project" ? "项目" : t === "customer" ? "客户" : "订单";
 }
 
+function relatedObjectHref(type: string, id: string): string {
+  if (type === "project") return `/projects/${id}`;
+  if (type === "customer") return `/customers/${id}`;
+  return `/orders/${id}`;
+}
+
 function mapObjects(type: string, d: unknown): PickObject[] {
   const arr: any[] = Array.isArray(d) ? d : [];
   return arr
@@ -868,7 +874,7 @@ export default function WorkReportsPage() {
                   {parseItems(detail.completed_items).map((it, i) => (
                     <li key={i} className="flex gap-2"><span className="text-[var(--muted-foreground)]">{i + 1}.</span>
                       {it.href ? (
-                        <Link href={it.href} className="break-words text-[var(--primary)] hover:underline">{it.text}</Link>
+                        <a href={it.href} target="_blank" rel="noreferrer" className="break-words text-[var(--primary)] hover:underline">{it.text}</a>
                       ) : (
                         <span className="break-words">{it.text}</span>
                       )}
@@ -899,10 +905,10 @@ export default function WorkReportsPage() {
                   <p className="text-xs font-medium text-[var(--muted-foreground)]">关联业务对象</p>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {parseRelated(detail.related_objects).map((r, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/30 px-2 py-1 text-xs text-[var(--foreground)]">
+                      <a key={i} href={relatedObjectHref(r.type, r.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/30 px-2 py-1 text-xs text-[var(--foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]">
                         <span className="text-[var(--muted-foreground)]">{relatedTypeLabel(r.type)}</span>
                         <span className="max-w-[200px] truncate">{r.name}</span>
-                      </span>
+                      </a>
                     ))}
                   </div>
                 </div>
