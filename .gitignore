@@ -53,3 +53,7 @@ uploads/
 .claude/
 
 deploy_ssh.py
+
+# codex 调度产物
+dispatch.log
+.dispatch.lock
