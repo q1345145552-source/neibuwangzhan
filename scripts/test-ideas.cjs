@@ -32,6 +32,7 @@ const { getDb } = require('../src/lib/db.ts');
 const db = getDb();
 const { signToken } = require('../src/lib/auth.ts');
 const { PATCH } = require('../src/app/api/ideas/[id]/route.ts');
+const { GET } = require('../src/app/api/ideas/route.ts');
 const { NextRequest } = require('next/server');
 let failures = 0;
 async function test(name, fn) { try { await fn(); console.log('PASS', name); } catch (e) { failures++; console.error('FAIL', name, e.message); } }
@@ -47,6 +48,20 @@ async function test(name, fn) { try { await fn(); console.log('PASS', name); } c
     const res = await PATCH(new NextRequest('http://localhost/api/ideas/'+id,{method:'PATCH',headers:{'content-type':'application/json',...(role?{authorization:'Bearer '+tokens[role]}:{})},body:JSON.stringify(body)}),{params:Promise.resolve({id:String(id)})});
     assert.equal(res.status,status,JSON.stringify(await res.clone().json())); return res.json();
   }
+  await test('list and board API visibility: employees see self and colleagues; admin sees all', async () => {
+    const ids = ['employee', 'colleague', 'admin'].map(source => Number(db.prepare('INSERT INTO ideas(title,source,is_boss) VALUES (?,?,?)').run(source, source, source === 'admin' ? 1 : 0).lastInsertRowid));
+    for (const role of ['employee', 'admin']) {
+      const res = await GET(new NextRequest('http://localhost/api/ideas', { headers: { authorization: 'Bearer ' + tokens[role] } }));
+      assert.equal(res.status, 200);
+      const rows = await res.json();
+      assert(rows.some(row => row.id === ids[0]));
+      assert(rows.some(row => row.id === ids[1]));
+      assert.equal(rows.some(row => row.id === ids[2]), role === 'admin');
+      if (role === 'employee') assert(rows.every(row => row.is_boss === 0));
+    }
+    const res = await GET(new NextRequest('http://localhost/api/ideas'));
+    assert.equal(res.status, 401);
+  });
   await test('schema fields and existing rows', async()=>{const row=read(create()); for(const field of ['implementation_bonus_amount','implementation_bonus_currency','rejection_reason']) assert(field in row,field); assert.equal(row.implementation_bonus_amount,null); if(!process.argv.includes('--fresh')) assert.equal(read(1).title,'existing');});
   await test('reject reason required and reopen clears it',async()=>{const id=create();for(const rejection_reason of [undefined,'','  ',12,{}]) await call(id,{action:'reject',rejection_reason},400);await call(id,{action:'reject',rejection_reason:'  暂不适合  '});assert.equal(read(id).rejection_reason,'暂不适合');assert.equal(read(id).status,'已拒绝');await call(id,{action:'reopen'});assert.equal(read(id).status,'待评估');assert.equal(read(id).rejection_reason,'');});
   await test('complete requires feature but reward can be deferred',async()=>{const id=create('进行中');for(const related_feature of [undefined,' ',{}]) await call(id,{action:'complete',related_feature},400);await call(id,{action:'complete',related_feature:' 功能A '});assert.equal(read(id).related_feature,'功能A');assert.equal(read(id).implementation_bonus_amount,null);assert.equal(read(id).status,'已实现');});

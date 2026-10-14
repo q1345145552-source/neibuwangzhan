@@ -19,6 +19,7 @@ interface Idea {
   bonus_amount: number;
   currency: string;
   related_feature: string;
+  rejection_reason: string;
   created_at: string;
   updated_at: string;
 }
@@ -39,6 +40,16 @@ export default function IdeasPage() {
 
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"list" | "board">("list");
+
+  const visibleIdeas = isAdmin ? ideas : ideas.filter((idea) => idea.is_boss === 0);
+  const boardStatuses = isAdmin
+    ? ["待评估", "已采纳", "进行中", "已实现", "已拒绝"]
+    : ["待评估", "已采纳", "进行中", "已实现"];
+  const statStatuses = ["待评估", "进行中", "已采纳", "已实现", "已拒绝"];
+  const groupedIdeas = Object.fromEntries(
+    statStatuses.map((status) => [status, visibleIdeas.filter((idea) => idea.status === status)])
+  );
 
   const [formOpen, setFormOpen] = useState(false);
   const [formTitle, setFormTitle] = useState("");
@@ -125,13 +136,55 @@ export default function IdeasPage() {
         </Button>
       </div>
 
+      <div role="group" aria-label="想法视图" className="flex gap-2">
+        <Button size="sm" variant={view === "list" ? "default" : "outline"} aria-pressed={view === "list"} onClick={() => setView("list")}>列表</Button>
+        <Button size="sm" variant={view === "board" ? "default" : "outline"} aria-pressed={view === "board"} onClick={() => setView("board")}>看板</Button>
+      </div>
+
       {loading ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
-      ) : ideas.length === 0 ? (
+      ) : view === "board" ? (
+        <div className="flex min-w-0 flex-col gap-4">
+          <div aria-label="想法统计" className="grid grid-cols-5 gap-2">
+            {statStatuses.map((status) => (
+              <div key={status} data-idea-stat={status} data-count={groupedIdeas[status].length} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3 text-center">
+                <div className="text-xs text-[var(--muted-foreground)]">{status}</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">{groupedIdeas[status].length}</div>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto pb-2">
+            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${boardStatuses.length}, minmax(240px, 1fr))` }}>
+              {boardStatuses.map((status) => (
+                <section key={status} data-idea-column={status} aria-label={status} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
+                  <h2 className="mb-3 flex items-center justify-between gap-2 text-sm font-medium">
+                    <span className={cn("rounded-full px-2 py-1", STATUS_BADGE[status])}>{status}</span>
+                    <span className="text-[var(--muted-foreground)]">{groupedIdeas[status].length} 条</span>
+                  </h2>
+                  <div className="flex flex-col gap-3">
+                    {groupedIdeas[status].map((idea) => (
+                      <article key={idea.id} className="min-w-0 break-words rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                        <h3 className="text-sm font-medium">{idea.title}</h3>
+                        <span className="mt-2 inline-block rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-xs">{idea.category}</span>
+                        <p className="mt-2 text-xs text-[var(--muted-foreground)]">来源：{idea.source}{idea.is_boss === 1 && "（老板）"}</p>
+                        <p className="mt-1 text-xs text-[var(--muted-foreground)]">{toThaiTime(idea.created_at)}</p>
+                        {status === "已采纳" && <p className="mt-2 text-xs font-medium text-amber-600">奖金 {bonusLabel(idea)}</p>}
+                        {status === "已实现" && <p className="mt-2 text-xs">关联功能：{idea.related_feature || "未填写"}</p>}
+                        {status === "已拒绝" && <p className="mt-2 whitespace-pre-wrap text-xs">拒绝原因：{idea.rejection_reason || "未填写"}</p>}
+                      </article>
+                    ))}
+                    {groupedIdeas[status].length === 0 && <p className="py-6 text-center text-xs text-[var(--muted-foreground)]">暂无想法</p>}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : visibleIdeas.length === 0 ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">还没有想法，点右上角记录/提一个</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {ideas.map((i) => (
+          {visibleIdeas.map((i) => (
             <div key={i.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Lightbulb className="size-4 text-amber-500" />
