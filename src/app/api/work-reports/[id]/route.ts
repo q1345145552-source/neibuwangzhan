@@ -97,7 +97,7 @@ export async function PATCH(
   const problemsText = String(problems || "").trim();
   const now = new Date().toISOString();
   db.prepare(
-    "UPDATE work_reports SET completed_items = ?, summary = ?, tomorrow_plan = ?, problems = ?, related_objects = ?, status = '已提交', submitted_at = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE work_reports SET completed_items = ?, summary = ?, tomorrow_plan = ?, problems = ?, related_objects = ?, completed_items_zh = '', summary_zh = '', tomorrow_plan_zh = '', problems_zh = '', status = '已提交', submitted_at = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(JSON.stringify(items), summaryText, planText, problemsText, relatedJson, now, id);
   logOperation(auth.name, "重新提交工作记录", "work_report", String(id), String(report.report_date));
 

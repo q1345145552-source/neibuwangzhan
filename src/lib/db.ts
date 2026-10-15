@@ -1383,9 +1383,13 @@ function initTables(database: Database.Database) {
       employee_name TEXT NOT NULL,
       report_date TEXT NOT NULL,
       completed_items TEXT NOT NULL DEFAULT '[]',
+      completed_items_zh TEXT NOT NULL DEFAULT '',
       summary TEXT DEFAULT '',
+      summary_zh TEXT NOT NULL DEFAULT '',
       tomorrow_plan TEXT DEFAULT '',
+      tomorrow_plan_zh TEXT NOT NULL DEFAULT '',
       problems TEXT DEFAULT '',
+      problems_zh TEXT NOT NULL DEFAULT '',
       related_objects TEXT NOT NULL DEFAULT '[]',
       ai_label TEXT DEFAULT '',
       ai_comment TEXT DEFAULT '',
@@ -1405,6 +1409,12 @@ function initTables(database: Database.Database) {
   `);
 
   // 工作记录迁移：关联业务对象（项目/客户/订单）
+  const workReportColumns = database.prepare("PRAGMA table_info(work_reports)").all() as { name: string }[];
+  for (const column of ["completed_items_zh", "summary_zh", "tomorrow_plan_zh", "problems_zh"]) {
+    if (!workReportColumns.some((existing) => existing.name === column)) {
+      database.exec(`ALTER TABLE work_reports ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
   try { database.exec("ALTER TABLE work_reports ADD COLUMN related_objects TEXT NOT NULL DEFAULT '[]'"); } catch {}
   // 工作记录迁移：AI 质量标签/简评 + 老板星级/点评
   try { database.exec("ALTER TABLE work_reports ADD COLUMN ai_label TEXT DEFAULT ''"); } catch {}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
@@ -14,9 +14,13 @@ interface WorkReport {
   employee_name: string;
   report_date: string;
   completed_items: string;
+  completed_items_zh: string;
   summary: string;
+  summary_zh: string;
   tomorrow_plan: string;
+  tomorrow_plan_zh: string;
   problems: string;
+  problems_zh: string;
   related_objects: string;
   ai_label: string;
   ai_comment: string;
@@ -39,6 +43,63 @@ interface BoardRow { name: string; report: WorkReport | null; }
 type DayStatus = "已提交" | "补交" | "未提交" | "退回";
 
 interface ParsedItem { text: string; href?: string; }
+
+const translationLabels = {
+  completed_items: "今日已完成",
+  summary: "工作总结",
+  tomorrow_plan: "明日计划",
+  problems: "遇到的问题",
+} as const;
+type TranslationField = keyof typeof translationLabels;
+
+function ReportTranslation({ report, field, onTranslated, children }: {
+  report: WorkReport;
+  field: TranslationField;
+  onTranslated: (id: number, field: TranslationField, value: string) => void;
+  children: ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const cached = report[`${field}_zh`];
+  const translate = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetchWithAuth(`/api/work-reports/${report.id}/translate`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ field }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "翻译失败，请重试");
+      onTranslated(report.id, field, data[`${field}_zh`]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "翻译失败，请重试");
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-[var(--muted-foreground)]">{translationLabels[field]}</p>
+        {!cached && (
+          <Button size="sm" variant="outline" onClick={translate} disabled={busy} aria-label={`${translationLabels[field]} AI 翻译`}>
+            {busy ? "翻译中…" : "AI 翻译"}
+          </Button>
+        )}
+      </div>
+      {children}
+      {error && <p role="alert" className="mt-1 break-words text-xs text-[var(--destructive)]">{error}</p>}
+      {cached && (
+        <div className="mt-2 min-w-0 rounded-lg border border-blue-200/60 bg-blue-50/60 p-2.5 dark:border-blue-400/20 dark:bg-blue-950/30">
+          <p className="text-xs font-medium text-blue-600 dark:text-blue-300">AI 中文翻译</p>
+          {field === "completed_items" ? (
+            <ol className="mt-1 space-y-1">
+              {parseItems(cached).map((item, index) => <li key={index} className="whitespace-pre-wrap break-words">{index + 1}. {item.text}</li>)}
+            </ol>
+          ) : <p className="mt-1 whitespace-pre-wrap break-words">{cached}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function parseItems(s: string): ParsedItem[] {
   try {
@@ -194,6 +255,13 @@ export default function WorkReportsPage() {
   const [storyObjects, setStoryObjects] = useState<PickObject[]>([]);
   const [storyObjectId, setStoryObjectId] = useState("");
   const [timeline, setTimeline] = useState<WorkReport[]>([]);
+  const onTranslated = (id: number, field: TranslationField, value: string) => {
+    const update = (report: WorkReport) => report.id === id ? { ...report, [`${field}_zh`]: value } : report;
+    setDetail((report) => report ? update(report) : report);
+    setReports((rows) => rows.map(update));
+    setBoard((rows) => rows.map((row) => ({ ...row, report: row.report ? update(row.report) : null })));
+    setTimeline((rows) => rows.map(update));
+  };
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [storySummary, setStorySummary] = useState("");
   const [summarizing, setSummarizing] = useState(false);
@@ -868,8 +936,7 @@ export default function WorkReportsPage() {
             </div>
 
             <div className="mt-4 space-y-3 text-sm">
-              <div>
-                <p className="text-xs font-medium text-[var(--muted-foreground)]">今日已完成</p>
+              <ReportTranslation key={`${detail.id}-completed_items`} report={detail} field="completed_items" onTranslated={onTranslated}>
                 <ul className="mt-1 space-y-1">
                   {parseItems(detail.completed_items).map((it, i) => (
                     <li key={i} className="flex gap-2"><span className="text-[var(--muted-foreground)]">{i + 1}.</span>
@@ -881,7 +948,7 @@ export default function WorkReportsPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </ReportTranslation>
               {detail.ai_label && (
                 <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3">
                   <div className="flex items-center gap-2">
@@ -914,22 +981,19 @@ export default function WorkReportsPage() {
                 </div>
               )}
               {detail.summary && (
-                <div>
-                  <p className="text-xs font-medium text-[var(--muted-foreground)]">工作总结</p>
+                <ReportTranslation key={`${detail.id}-summary`} report={detail} field="summary" onTranslated={onTranslated}>
                   <p className="mt-1 whitespace-pre-wrap break-words">{detail.summary}</p>
-                </div>
+                </ReportTranslation>
               )}
               {detail.tomorrow_plan && (
-                <div>
-                  <p className="text-xs font-medium text-[var(--muted-foreground)]">明日计划</p>
+                <ReportTranslation key={`${detail.id}-tomorrow_plan`} report={detail} field="tomorrow_plan" onTranslated={onTranslated}>
                   <p className="mt-1 whitespace-pre-wrap break-words">{detail.tomorrow_plan}</p>
-                </div>
+                </ReportTranslation>
               )}
               {detail.problems && (
-                <div>
-                  <p className="text-xs font-medium text-[var(--muted-foreground)]">遇到的问题</p>
+                <ReportTranslation key={`${detail.id}-problems`} report={detail} field="problems" onTranslated={onTranslated}>
                   <p className="mt-1 whitespace-pre-wrap break-words">{detail.problems}</p>
-                </div>
+                </ReportTranslation>
               )}
               <p className="text-xs text-[var(--muted-foreground)]">提交时间：{toThaiTime(detail.submitted_at) || "—"}</p>
             </div>
