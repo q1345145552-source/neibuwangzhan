@@ -46,6 +46,11 @@ export async function PATCH(
     values.push(notes);
   }
   if (assignee !== undefined) {
+    // 经办人只能是员工：客户账号的名字不收（合作方等非账号名字照旧可以填）
+    if (assignee && db.prepare("SELECT 1 FROM employees WHERE name = ? AND role = 'client'").get(assignee)
+      && !db.prepare("SELECT 1 FROM employees WHERE name = ? AND role IN ('admin','employee')").get(assignee)) {
+      return NextResponse.json({ error: "经办人只能选员工" }, { status: 400 });
+    }
     updates.push("assignee = ?");
     values.push(assignee);
   }
@@ -112,6 +117,8 @@ export async function PATCH(
   if (assignee !== undefined && oldAssignee !== assignee) {
     logOperation(auth.name, "修改负责人", "step", String(step_id), `${(step as { step_name: string }).step_name}: ${oldAssignee} → ${assignee}`, oldAssignee, assignee, "assignee");
   }
-  logOperation(auth.name || "系统", `更新步骤:${status || "已撤回"}`, "step", String(step_id), `订单:${id}`);
+  // 没改状态时原来写成「更新步骤:已撤回」，员工动态和自动日报会误读成撤回：只改经办人的已有「修改负责人」那条，不再重复记
+  if (status !== undefined) logOperation(auth.name || "系统", `更新步骤:${status}`, "step", String(step_id), `订单:${id}`);
+  else if (notes !== undefined || approval_status !== undefined || submission_count !== undefined) logOperation(auth.name || "系统", "更新步骤:修改内容", "step", String(step_id), `订单:${id}`);
   return NextResponse.json(result.step);
 }

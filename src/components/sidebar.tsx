@@ -50,6 +50,8 @@ import {
   CalendarClock,
   Vault,
   Lightbulb,
+  Timer,
+  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -115,14 +117,21 @@ const internalNav = [
   { name: "奖惩制度", href: "/internal/rewards", icon: Star },
   { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
   { name: "模板库", href: "/internal/templates", icon: Layers },
+  // 只有管理员能看（2026-10-15，第 1 期只读）
+  { name: "办理月报", href: "/internal/handling-report", icon: Timer },
 ];
 
 const utilityNav = [
   { name: "任务看板", href: "/tasks", icon: CheckSquare },
   { name: "文档管理", href: "/documents", icon: FileText },
   { name: "费用管理", href: "/finance", icon: DollarSign },
+  { name: "流程设置", href: "/workflows", icon: Workflow },
   { name: "设置", href: "/settings", icon: Settings },
 ];
+
+/** 只有管理员能看到的菜单项 */
+const ADMIN_ONLY_NAV = new Set(["办理月报", "流程设置"]);
+const forRole = (items: typeof internalNav, role?: string) => role === "admin" ? items : items.filter((n) => !ADMIN_ONLY_NAV.has(n.name));
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -311,12 +320,12 @@ export function Sidebar() {
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">内部管理</span>
         </div>
-        <NavSection items={internalNav} pathname={pathname} onClose={close} />
+        <NavSection items={forRole(internalNav, user?.role)} pathname={pathname} onClose={close} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">工具</span>
         </div>
-        <NavSection items={utilityNav} pathname={pathname} onClose={close} badgeMap={{ "费用管理": finPendingVerifyCount }} />
+        <NavSection items={forRole(utilityNav, user?.role)} pathname={pathname} onClose={close} badgeMap={{ "费用管理": finPendingVerifyCount }} />
       </nav>
 
       <div className="border-t border-[var(--sidebar-border)] px-5 py-3">

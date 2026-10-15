@@ -128,6 +128,11 @@ function buildPublicNameIndex(): PublicNameIndex {
   }
   return { byTemplate, byName, byTail, claimed };
 }
+/** 这一整套步骤是否在上面已审核的模板里（流程设置只读页用来标「客户看到的名字已核对」） */
+export function isReviewedStepTemplate(names: readonly string[]): boolean {
+  const index = publicNameIndex ??= buildPublicNameIndex();
+  return index.byTemplate.has(JSON.stringify(names));
+}
 export function publicStepNames(names: readonly string[]): string[] {
   const index = publicNameIndex ??= buildPublicNameIndex();
   const whole = index.byTemplate.get(JSON.stringify(names));

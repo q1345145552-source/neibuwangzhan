@@ -859,16 +859,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             ) : (
               <div className="flex flex-col gap-0">
                 {steps.map((step, i) => {
+                  const hasPlanConfirm = steps.find(s => s.step_order === 1)?.step_name === "方案确认";
+                  const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0);
                   const notes = stepNotes[step.id] || [];
                   const sd = stepDocs[step.id] || [];
                   const uploadedCount = sd.filter((d: { status?: string; uploaded?: boolean }) => d.status === "uploaded").length;
                   const docs = getStepDocs(order.business_type_id, order.sub_service_type);
-                  // 湘泰地址订单在第4、5位插入了两个额外步骤，模板配置按"基础步骤序号"存储，
-                  // 湘泰地址订单：换算回基础序号匹配文件清单
+                  // 模板资料按「基础步骤序号」存。只有整单都没有资料记录的老单才回退到模板（7 月中起建单就把资料写进数据库了，
+                  // 新单某步没资料就是真的没有，不能再去模板里拿别的步骤的）。
+                  // 9-11 起的单第一步是「方案确认」，序号要减 1 才对得上；湘泰地址另插的两步：老单在第 4、5 步，有方案确认的单在第 5、6 步。
                   const isXiangtai = order.business_type_id === 7 && order.address_type === "xiangtai";
-                  const baseOrder = isXiangtai
-                    ? (step.step_order === 4 || step.step_order === 5 ? -1 : step.step_order > 5 ? step.step_order - 2 : step.step_order)
-                    : step.step_order;
+                  const ownOrder = step.step_order - (hasPlanConfirm ? 1 : 0);
+                  const baseOrder = orderHasStepDocs || (hasPlanConfirm && step.step_order === 1)
+                    ? -1
+                    : isXiangtai
+                      ? (ownOrder === 4 || ownOrder === 5 ? -1 : ownOrder > 5 ? ownOrder - 2 : ownOrder)
+                      : ownOrder;
                   const expanded = expandedSteps[step.id] || false;
                   const hasDocs = !!(docs[baseOrder]?.length);
                   const hasNotes = notes.length > 0;
@@ -935,12 +941,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               </button>
                             ) : null
                           )}
+                          {/* 模板没预设经办人的步骤（如「等待官方审核」「拿证」）原来没有入口指派，这里补上 */}
+                          {!step.assignee && !isClient && step.status !== "已完成" && editingAssigneeStepId !== step.id && (
+                            <button onClick={() => setEditingAssigneeStepId(step.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:underline cursor-pointer">
+                              + 指派经办人
+                            </button>
+                          )}
                           {editingAssigneeStepId === step.id && (
                             <select
                               value={step.assignee}
                               onChange={async (e) => {
                                 const newAssignee = e.target.value;
-                                if (newAssignee === step.assignee) { setEditingAssigneeStepId(null); return; }
+                                if (!newAssignee || newAssignee === step.assignee) { setEditingAssigneeStepId(null); return; }
                                 try {
                                   await updateStep(id, step.id, { assignee: newAssignee });
                                   setEditingAssigneeStepId(null);
@@ -951,7 +963,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               autoFocus
                               className="rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]"
                             >
-                              {employees.map(emp => (
+                              {!step.assignee && <option value="" disabled>选择经办人</option>}
+                              {/* 合作方（如 Next）、离职员工不在下拉里：放一个占位项，否则受控下拉会把第一个人显示成已选、选不中 */}
+                              {step.assignee && !employees.some(emp => emp.role !== "client" && emp.name === step.assignee) && <option value={step.assignee} disabled>{step.assignee}</option>}
+                              {employees.filter(emp => emp.role !== "client").map(emp => (
                                 <option key={emp.id} value={emp.name}>{emp.name}</option>
                               ))}
                             </select>
