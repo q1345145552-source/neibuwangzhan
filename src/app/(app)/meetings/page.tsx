@@ -28,6 +28,7 @@ interface Reflection {
   meeting_id: number;
   employee_name: string;
   content: string;
+  content_zh: string;
   images: string;
   status: string;
   created_at: string;
@@ -35,6 +36,41 @@ interface Reflection {
 }
 
 interface EmpOption { id: number; name: string; }
+
+function ReflectionTranslation({ reflection, onTranslated }: {
+  reflection: Reflection;
+  onTranslated: (id: number, content: string) => void;
+}) {
+  const [translating, setTranslating] = useState(false);
+  const [error, setError] = useState("");
+  const translate = async () => {
+    setTranslating(true);
+    setError("");
+    try {
+      const res = await fetchWithAuth(`/api/meetings/reflections/${reflection.id}/translate`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "翻译失败，请重试");
+      onTranslated(reflection.id, data.content_zh);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "翻译失败，请重试");
+    } finally {
+      setTranslating(false);
+    }
+  };
+  return reflection.content_zh ? (
+    <div className="mt-2 min-w-0 rounded-lg border border-blue-200/60 bg-blue-50/60 p-2.5 dark:border-blue-400/20 dark:bg-blue-950/30">
+      <p className="text-xs font-medium text-blue-600 dark:text-blue-300">AI 中文翻译</p>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{reflection.content_zh}</p>
+    </div>
+  ) : (
+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+      <Button size="sm" variant="outline" onClick={translate} disabled={translating || !reflection.content.trim()}>
+        {translating ? "翻译中…" : "AI 翻译"}
+      </Button>
+      {error && <p role="alert" className="min-w-0 break-words text-xs text-[var(--destructive)]">{error}</p>}
+    </div>
+  );
+}
 
 function parseList(s: string): string[] {
   try { const a = JSON.parse(s || "[]"); return Array.isArray(a) ? a.map((x) => String(x)) : []; } catch { return []; }
@@ -70,6 +106,9 @@ export default function MeetingsPage() {
   const [detailMeeting, setDetailMeeting] = useState<Meeting | null>(null);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [refLoading, setRefLoading] = useState(false);
+  const onTranslated = (id: number, content: string) => {
+    setReflections((rows) => rows.map((row) => row.id === id ? { ...row, content_zh: content } : row));
+  };
 
   // 心得表单（提交/重交）
   const [rfOpen, setRfOpen] = useState(false);
@@ -325,6 +364,7 @@ export default function MeetingsPage() {
                                 {statusBadge(r.status)}
                               </div>
                               {r.content && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
+                              <ReflectionTranslation reflection={r} onTranslated={onTranslated} />
                               {parseList(r.images).length > 0 && (
                                 <div className="mt-1.5 flex flex-wrap gap-2">
                                   {parseList(r.images).map((img, i) => (
@@ -362,6 +402,7 @@ export default function MeetingsPage() {
                           {statusBadge(r.status)}
                         </div>
                         {r.content && <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
+                        <ReflectionTranslation reflection={r} onTranslated={onTranslated} />
                         {parseList(r.images).length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {parseList(r.images).map((img, i) => (

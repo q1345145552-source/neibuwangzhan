@@ -1451,6 +1451,7 @@ function initTables(database: Database.Database) {
       meeting_id INTEGER NOT NULL,
       employee_name TEXT NOT NULL,
       content TEXT NOT NULL DEFAULT '',
+      content_zh TEXT NOT NULL DEFAULT '',
       images TEXT NOT NULL DEFAULT '[]',
       status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
       created_at TEXT DEFAULT (datetime('now')),
@@ -1459,6 +1460,10 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_meeting_reflections_meeting ON meeting_reflections(meeting_id);
     CREATE INDEX IF NOT EXISTS idx_meeting_reflections_employee ON meeting_reflections(employee_name);
   `);
+  const reflectionColumns = database.prepare("PRAGMA table_info(meeting_reflections)").all() as { name: string }[];
+  if (!reflectionColumns.some((column) => column.name === "content_zh")) {
+    database.exec("ALTER TABLE meeting_reflections ADD COLUMN content_zh TEXT NOT NULL DEFAULT ''");
+  }
 
   // 会议提醒去重表：同一员工 + 同一场会议 + 同类提醒（下午催交通知 / 第二天补交待办）只生成一次
   database.exec(`

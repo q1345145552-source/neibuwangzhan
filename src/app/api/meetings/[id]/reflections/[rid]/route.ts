@@ -47,7 +47,7 @@ export async function PATCH(
   const imgUrls = [...new Set(parseList(images))];
 
   db.prepare(
-    "UPDATE meeting_reflections SET content = ?, images = ?, status = '已提交', updated_at = datetime('now') WHERE id = ?"
+    "UPDATE meeting_reflections SET content = ?, content_zh = '', images = ?, status = '已提交', updated_at = datetime('now') WHERE id = ?"
   ).run(String(content).trim(), JSON.stringify(imgUrls), reflection.id);
   logOperation(auth.name, "重新提交会议心得", "meeting_reflection", String(reflection.id));
   return NextResponse.json(db.prepare("SELECT * FROM meeting_reflections WHERE id = ?").get(reflection.id));
