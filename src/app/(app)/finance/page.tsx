@@ -11,6 +11,9 @@ import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
 const statusLabels: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款" };
+// 10-13 核对功能上线前录的收入有的是 pending（页面显示「待付」）：一律当待核对，老板点一下核对就行（2026-10-15）
+const isWaitingIncome = (r: { type: string; status: string }) => r.type === "income" && (r.status === "待核对" || r.status === "pending");
+const rowStatusLabel = (r: { type: string; status: string }) => isWaitingIncome(r) ? "待核对" : statusLabels[r.status] || r.status;
 const statusClass: Record<string, string> = {
   paid: "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
   unpaid: "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -129,7 +132,7 @@ export default function FinancePage() {
   const filtered = useMemo(() => {
     let result = [...monthFiltered];
     if (pendingOnly) {
-      result = result.filter((r: FinanceRecord) => r.type === "income" && r.status === "待核对");
+      result = result.filter((r: FinanceRecord) => isWaitingIncome(r));
     }
     if (search) {
       const s = search.toLowerCase();
@@ -149,7 +152,7 @@ export default function FinancePage() {
 
   // 待核对收入数量（给「待核对」标签带数字）
   const pendingVerifyCount = useMemo(
-    () => allFinances.filter((r: FinanceRecord) => r.type === "income" && r.status === "待核对").length,
+    () => allFinances.filter((r: FinanceRecord) => isWaitingIncome(r)).length,
     [allFinances]
   );
 
@@ -178,7 +181,7 @@ export default function FinancePage() {
     [filtered]
   );
   const totalPendingVerify = useMemo(
-    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "income" && r.status === "待核对")),
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => isWaitingIncome(r))),
     [filtered]
   );
   const totalNotReceived = useMemo(
@@ -262,7 +265,7 @@ export default function FinancePage() {
   };
 
   // 可核对：待核对 或 未到账 的收入（点击打开核对详情）
-  const isVerifyable = (r: FinanceRecord) => r.type === "income" && (r.status === "待核对" || r.status === "未到账");
+  const isVerifyable = (r: FinanceRecord) => isWaitingIncome(r) || (r.type === "income" && r.status === "未到账");
 
   // 打开收入核对详情
   const openVerify = (r: FinanceRecord) => {
@@ -518,7 +521,7 @@ export default function FinancePage() {
                       <td className="px-4 py-2.5 font-mono tabular-nums">{r.currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>
                       <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">{r.currency === "THB" ? "泰铢" : "人民币"}</td>
                       <td className="px-4 py-2.5">
-                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{statusLabels[r.status] || r.status}</span>
+                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{rowStatusLabel(r)}</span>
                       </td>
                       <td className="px-4 py-2.5 max-w-[200px] truncate">{r.description || "-"}</td>
                       <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at) || "-"}</td>
@@ -650,7 +653,7 @@ export default function FinancePage() {
                     <td className="px-4 py-3 font-mono tabular-nums">{(r as { currency?: string }).currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>
-                        {statusLabels[r.status] || r.status}
+                        {rowStatusLabel(r)}
                       </span>
                     </td>
                     <td className="px-4 py-3 max-w-[200px] truncate">{r.description || "-"}</td>
@@ -674,7 +677,7 @@ export default function FinancePage() {
                   <span className="font-mono tabular-nums text-sm">{(r as { currency?: string }).currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{statusLabels[r.status] || r.status}</span>
+                  <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs", statusClass[r.status] || "bg-[var(--muted)]")}>{rowStatusLabel(r)}</span>
                   <span className="text-xs text-[var(--muted-foreground)]">{toThaiDate(r.created_at) || "-"}</span>
                 </div>
                 <div className="mt-2 space-y-1.5 text-sm">

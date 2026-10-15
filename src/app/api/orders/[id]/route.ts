@@ -105,6 +105,23 @@ export async function PATCH(
     }
   }
 
+  // 非改派的普通编辑：改业务线、具体服务或地址类型时步骤不会跟着换，单子会跑到别的业务线列表里、步骤却还是原来那套。
+  // 只在新组合的流程步骤和这张单现有步骤完全一样时放行（比如给没选具体服务的老单补选同一套流程的服务），否则拦下（2026-10-15）
+  if (!reassign) {
+    const cur = existing as { business_type_id: number; sub_service_type?: string | null; address_type?: string | null };
+    const nextBt = body.business_type_id !== undefined ? Number(body.business_type_id) : Number(cur.business_type_id);
+    const nextSub = body.sub_service_type !== undefined ? String(body.sub_service_type || "") : String(cur.sub_service_type || "");
+    const nextAddr = body.address_type !== undefined ? String(body.address_type || "client") : String(cur.address_type || "client");
+    const changed = nextBt !== Number(cur.business_type_id) || nextSub !== String(cur.sub_service_type || "") || nextAddr !== String(cur.address_type || "client");
+    if (changed) {
+      const stepNames = (db.prepare("SELECT step_name FROM order_steps WHERE order_id = ? ORDER BY step_order, id").all(id) as { step_name: string }[]).map(r => r.step_name);
+      const sameFlow = stepNames.length > 0 && JSON.stringify(getOrderStepsWithDocs(nextBt, nextSub || undefined, nextAddr).map(st => st.name)) === JSON.stringify(stepNames);
+      if (stepNames.length > 0 && !sameFlow) {
+        return NextResponse.json({ error: "建单后不能改业务线、子类型或地址类型（步骤不会跟着换）。建错了请取消这张单，重新建一张。" }, { status: 409 });
+      }
+    }
+  }
+
   const fields: string[] = [];
   const values: unknown[] = [];
 
@@ -217,6 +234,13 @@ export async function DELETE(
   if (synchronized) {
     return NextResponse.json({ error: "同步订单请使用取消操作，保留来源台账与账单关联" }, { status: 409 });
   }
+  // 核对过的收入员工删不了（2026-10-15），删整张单也一样：有已到账/未到账收入的单只有管理员能删，删时记下带走的钱
+  const settled = db.prepare("SELECT amount, currency, status FROM finances WHERE order_id = ? AND type = 'income' AND status IN ('paid','未到账')").all(id) as { amount: number; currency: string | null; status: string }[];
+  if (settled.length && auth.role !== "admin") {
+    return NextResponse.json({ error: "这张单有核对过的收入，只有管理员能删" }, { status: 403 });
+  }
+  const incomeNote = (db.prepare("SELECT type, amount, currency, status FROM finances WHERE order_id = ? AND type = 'income'").all(id) as { amount: number; currency: string | null; status: string }[])
+    .map(f => `${f.amount} ${(f.currency || "CNY") === "THB" ? "泰铢" : "人民币"}（${f.status}）`).join("、");
 
   db.transaction(() => {
     db.prepare("DELETE FROM step_notes WHERE order_id = ?").run(id);
@@ -229,6 +253,6 @@ export async function DELETE(
     db.prepare("DELETE FROM orders WHERE id = ?").run(id);
   })();
 
-  logOperation(auth.name, "删除订单", "order", id);
+  logOperation(auth.name, "删除订单", "order", id, incomeNote ? `带走收入：${incomeNote}` : undefined);
   return NextResponse.json({ success: true });
 }

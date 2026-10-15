@@ -31,7 +31,7 @@ const COMPANY_REG = "公司注册";
 const CANCELLED = "客户取消";
 const DONE = "已完成";
 
-type OrderRow = { id: string; customer_name: string; business_type_id: number; sub_service_type: string | null; address_type: string | null; status: string; created_at: string };
+type OrderRow = { id: string; customer_name: string; business_type_id: number; sub_service_type: string | null; address_type: string | null; status: string; created_at: string; responsible_person: string | null };
 type StepRow = { id: number; order_id: string; step_name: string; step_order: number; status: string; assignee: string | null; started_at: string | null; completed_at: string | null; created_at: string | null };
 
 /** 库里时间两种写法混存：「YYYY-MM-DD HH:MM:SS」（UTC）和 ISO（带 Z） */
@@ -96,7 +96,7 @@ export type HandlingReport = {
 };
 
 export function buildHandlingReport(db: Database.Database, month: string, now: Date): HandlingReport {
-  const orders = db.prepare("SELECT id, customer_name, business_type_id, sub_service_type, address_type, status, created_at FROM orders").all() as OrderRow[];
+  const orders = db.prepare("SELECT id, customer_name, business_type_id, sub_service_type, address_type, status, created_at, responsible_person FROM orders").all() as OrderRow[];
   const steps = db.prepare("SELECT id, order_id, step_name, step_order, status, assignee, started_at, completed_at, created_at FROM order_steps ORDER BY order_id, step_order, id").all() as StepRow[];
   const btName = new Map((db.prepare("SELECT id, name FROM business_types").all() as { id: number; name: string }[]).map(b => [b.id, b.name]));
   const staff = (db.prepare("SELECT name, status FROM employees WHERE role IN ('admin','employee') AND name <> ''").all() as { name: string; status: string }[]);
@@ -215,7 +215,9 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
       const since = roundStart(s) || prevDone || parseDbTime(o.created_at);
       const stayed = since ? workDays(since, now, holidays) : 0;
       const external = isExternalWait(s.step_name);
-      const rawNames = (s.assignee || "").split(/[\/、,，]/).map(x => x.trim()).filter(Boolean);
+      // 步骤没写经办人的算订单负责人的（与「我的环节」同一口径，2026-10-15）；负责人也没填才算「未指定」
+      const split = (v: string | null) => (v || "").split(/[\/、,，]/).map(x => x.trim()).filter(Boolean);
+      const rawNames = split(s.assignee).length ? split(s.assignee) : split(o.responsible_person);
       if (external) bump("外部等待（等官方、等平台、等客户）", "external", s, stayed);
       else if (!rawNames.length) bump("未指定", "unassigned", s, stayed);
       else for (const raw of rawNames) {
@@ -228,7 +230,7 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
       const base = baseline.get(keyOf(groupOf(o), s.step_name));
       const normal = base && base.length >= MIN_SAMPLES ? median(base) : null;
       if (normal != null && stayed > normal * OVERDUE_FACTOR && stayed >= 1) {
-        overdue.push({ orderId: o.id, customer: o.customer_name, group: groupOf(o), step: s.step_name, assignee: s.assignee || "", external, stayedDays: round1(stayed)!, normalDays: round1(normal)! });
+        overdue.push({ orderId: o.id, customer: o.customer_name, group: groupOf(o), step: s.step_name, assignee: (s.assignee || "").trim() || ((o.responsible_person || "").trim() ? `负责人：${(o.responsible_person || "").trim()}` : ""), external, stayedDays: round1(stayed)!, normalDays: round1(normal)! });
       }
     }
   }

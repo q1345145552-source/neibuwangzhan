@@ -200,7 +200,7 @@ await test("account downgrade, disabled pilot, template ID drift and repeated ad
   process.env.COMMERCE_PILOT_ENABLED="1";
 });
 await test("legacy manual order still creates, bills cost/income, edits steps, deletes normally",async()=>{
-  const legacy=await call("orders","POST","staff",{customer_name:"LEGACY FIXTURE",business_type_id:1,total_amount:100},"",201);
+  const legacy=await call("orders","POST","staff",{customer_name:"LEGACY FIXTURE",business_type_id:1,sub_service_type:"company-reg",total_amount:100},"",201);
   await call("orders/[id]/finances","POST","staff",{type:"income",amount:100},String(legacy.id),201);
   await call("orders/[id]","PATCH","staff",{total_amount:120},String(legacy.id),200);
   await call("orders/[id]","DELETE","staff",undefined,String(legacy.id),200);

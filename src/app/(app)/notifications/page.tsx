@@ -6,6 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
+import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
 
 interface Notice {
   id: number;
@@ -32,14 +33,17 @@ const TYPE_META: Record<string, { label: string; icon: typeof Ticket; href: (n: 
 
 // 客户站同步来的订单提醒（type 为空，按标题认，见 lib/notification-types.ts）：点开进对应订单，找不到单就进订单列表
 const orderHref = (n: Notice) => (n.order_id ? `/orders/${n.order_id}` : "/orders");
-const CUSTOMER_SITE_META: Record<string, { label: string; icon: typeof Ticket; href: (n: Notice) => string }> = {
+// 键用 CUSTOMER_SITE_ALERT_TITLES 的类型：以后加了新提醒标题忘了配这里，类型检查直接报错（10-15 漏过一次）
+const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { label: string; icon: typeof Ticket; href: (n: Notice) => string }> = {
   客户站新订单: { label: "客户站", icon: ShoppingCart, href: orderHref },
   待分类订单待领取: { label: "客户站", icon: ShoppingCart, href: orderHref },
   客户提交了资料: { label: "客户站", icon: FileText, href: orderHref },
   客户申请取消: { label: "客户站", icon: XCircle, href: orderHref },
+  商城新订单: { label: "商城", icon: ShoppingCart, href: orderHref },
+  客户站同步失败: { label: "客户站", icon: XCircle, href: orderHref },
 };
 const metaOf = (n: Notice) =>
-  TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title] : undefined);
+  TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
 
 export default function NotificationsPage() {
   const { user } = useAuth();

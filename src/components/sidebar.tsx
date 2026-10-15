@@ -34,6 +34,7 @@ import {
   Briefcase,
   Calculator,
   Package,
+  Inbox,
   Truck,
   AlertCircle,
   ListTodo,
@@ -73,6 +74,9 @@ const navigation = [
 ];
 
 const businessLines = [
+  // 2026-10-15：订单总表和待分类领取队列原来只能从首页「总订单」卡片进
+  { name: "订单管理", href: "/orders", icon: Package },
+  { name: "待分类（待领取）", href: "/orders/unclassified", icon: Inbox },
   { name: "公司注册", href: "/company-registration", icon: Building2 },
   { name: "工作签证", href: "/work-visa", icon: Briefcase },
   { name: "社保开户", href: "/social-security", icon: Shield },
@@ -135,6 +139,7 @@ const forRole = (items: typeof internalNav, role?: string) => role === "admin" ?
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  if (href === "/orders") return pathname.startsWith("/orders") && !pathname.startsWith("/orders/unclassified");
   if (href === "/agency") return pathname === "/agency";
   if (href === "/logistics") return pathname.startsWith("/logistics") && !pathname.startsWith("/logistics/scripts");
   if (href === "/internal") return pathname === "/internal";
@@ -184,6 +189,7 @@ export function Sidebar() {
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [notifUnreadCount, setNotifUnreadCount] = useState(0);
   const [finPendingVerifyCount, setFinPendingVerifyCount] = useState(0);
+  const [unclassifiedCount, setUnclassifiedCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
 
   // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
@@ -237,6 +243,24 @@ export function Sidebar() {
     };
     fetchUnread();
     const interval = setInterval(fetchUnread, 3000); // poll every 3s
+    return () => clearInterval(interval);
+  }, [user?.name, user?.role]);
+
+  // 待分类（待领取）角标：还没人认领的待分类单，每 15 秒轮询（客户账号不轮询）
+  useEffect(() => {
+    if (!user?.name || user.role === "client") return;
+    const fetchCount = () => {
+      const token = getStoredAuthToken();
+      if (!token) return;
+      fetch("/api/orders/unclassified-count", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.count === "number") setUnclassifiedCount(d.count); })
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 15000);
     return () => clearInterval(interval);
   }, [user?.name, user?.role]);
 
@@ -301,7 +325,7 @@ export function Sidebar() {
 
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">业务线</span>
         </div>
-        <NavSection items={businessLines} pathname={pathname} onClose={close} />
+        <NavSection items={businessLines} pathname={pathname} onClose={close} badgeMap={{ "待分类（待领取）": unclassifiedCount }} />
 
         {agencyEnabled && (
           <>

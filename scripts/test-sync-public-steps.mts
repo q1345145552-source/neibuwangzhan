@@ -275,9 +275,11 @@ async function main() {
     assert.equal(published.length, steps.length);
     assert(!published.includes('办理事项'), JSON.stringify(published));
     for (const name of published) assert(!internalMarkers.test(name), name);
+    // 2026-10-15 起：改派过一次后再改业务线不再当普通编辑放行（步骤不会跟着换），直接拦下，也不会第二次重建流程
     const again = await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('商标'), sub_service_type: 'tm-reg' });
-    assert.equal(again.status, 200);
-    assert.equal(stepsOf(o.orderId).length, steps.length, 'second change is a plain edit, no second regeneration');
+    assert.equal(again.status, 409, JSON.stringify(again.body));
+    assert.equal(stepsOf(o.orderId).length, steps.length, 'second change does not regenerate');
+    assert.equal(orderRow(o.orderId).business_type_id, btId('FDA认证'));
   });
   await test('reassign guards: started 办理并交付, cancelled order', async () => {
     const started = await order('TAX-008');
@@ -301,10 +303,14 @@ async function main() {
     assert.equal((await edit(n.orderId, { ...formOf(n.orderId), business_type_id: btId('NBTC'), sub_service_type: '' })).status, 200);
     assert.equal(stepsOf(n.orderId).length, 2 + getOrderStepsWithDocs(btId('NBTC'), '', 'client').length - 1);
   });
-  await test('ordinary edits of non-待分类 synced orders are unchanged', async () => {
+  await test('ordinary edits of non-待分类 synced orders never regenerate; moving the business line is refused', async () => {
     const o = await order('COM-001');
     const before = stepsOf(o.orderId).length;
-    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('商标') })).status, 200);
+    const bt = orderRow(o.orderId).business_type_id;
+    // 2026-10-15：改业务线步骤不会跟着换，拦下（409）；原样保存照常
+    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('商标') })).status, 409);
+    assert.equal(orderRow(o.orderId).business_type_id, bt);
+    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), description: 'note' })).status, 200);
     assert.equal(stepsOf(o.orderId).length, before);
   });
   await test('internal shop 待分类 workflow still passes its hash lock', async () => {

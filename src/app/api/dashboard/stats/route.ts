@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { listMySteps } from "@/lib/my-steps";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -14,15 +15,12 @@ export async function GET(req: NextRequest) {
   const completed = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = '已完成'").get() as { c: number }).c;
   const canceled = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = '客户取消'").get() as { c: number }).c;
 
-  // 今日待办：当前用户名下所有未完成的步骤数（LIKE 匹配多负责人格式）
+  // 今日待办：我名下现在就能动手的环节（前一步已做完、单子没取消；没写经办人的步骤算订单负责人的），与「我的环节」同一口径
   const userName = auth.name || "";
-  const likeUser = `%${userName}%`;
   let todayTodos = 0;
   if (userName) {
     try {
-      todayTodos = (db.prepare(
-        "SELECT COUNT(*) as c FROM order_steps WHERE assignee LIKE ? AND status NOT IN ('已完成','已停止')"
-      ).get(likeUser) as { c: number })?.c || 0;
+      todayTodos = listMySteps(db, userName).filter((s) => s.can_start).length;
     } catch {
       todayTodos = 0;
     }

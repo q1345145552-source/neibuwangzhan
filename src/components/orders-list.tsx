@@ -1,0 +1,249 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { Plus, Search, ArrowUpDown, Trash2, Download } from "lucide-react";
+import { fetchOrders, fetchBusinessTypes, deleteOrder } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
+import { statusClass, statusLabels } from "@/lib/api";
+import type { Order, BusinessType } from "@/lib/api";
+import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
+import { exportToExcel, type ExportColumn } from "@/lib/export";
+import { bangkokDateStr } from "@/lib/time";
+
+/** 订单管理列表；unclassifiedOnly 时只列「待分类」业务线（侧栏「待分类（待领取）」，2026-10-15） */
+export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: boolean }) {
+  const searchParams = useSearchParams();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
+  const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "all");
+  const [businessFilter, setBusinessFilter] = useState("all");
+  const [sortField, setSortField] = useState<"total_amount" | "created_at" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+    async function run() {
+      try {
+        const types: BusinessType[] = await fetchBusinessTypes().catch(() => []);
+        if (ignore) return;
+        setBusinessTypes(types);
+        const params: { business_type_id?: number; status?: string } = {};
+        if (unclassifiedOnly) {
+          const bt = types.find((b) => b.name === "待分类");
+          if (!bt) { setOrders([]); return; }
+          params.business_type_id = bt.id;
+        } else if (businessFilter && businessFilter !== "all") params.business_type_id = Number(businessFilter);
+        if (statusFilter && statusFilter !== "all") params.status = statusFilter;
+        const data = await fetchOrders(params);
+        if (!ignore) setOrders(data);
+      } catch (err) {
+        console.error("Orders load error:", err);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    run();
+    return () => { ignore = true; };
+  }, [businessFilter, statusFilter, unclassifiedOnly]);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setErrorMsg(null);
+    try {
+      await deleteOrder(deleteTarget.id);
+      setOrders(prev => prev.filter(o => o.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("删除订单失败:", err);
+      setErrorMsg(err instanceof Error ? err.message : "删除失败，请重试");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const filtered = search
+    ? orders.filter((o) =>
+        o.id.toLowerCase().includes(search.toLowerCase()) ||
+        o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+        (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : orders;
+
+  const sorted = sortField
+    ? [...filtered].sort((a, b) => {
+        const va = sortField === "total_amount" ? a.total_amount : new Date(a.created_at).getTime();
+        const vb = sortField === "total_amount" ? b.total_amount : new Date(b.created_at).getTime();
+        return sortDir === "asc" ? va - vb : vb - va;
+      })
+    : filtered;
+
+  const toggleSort = (field: "total_amount" | "created_at") => {
+    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortField(field); setSortDir("desc"); }
+  };
+
+  const handleExport = () => {
+    const filtered_ = search
+      ? orders.filter((o) =>
+          o.id.toLowerCase().includes(search.toLowerCase()) ||
+          o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+          (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
+        )
+      : orders;
+    const cols: ExportColumn<Order>[] = [
+      { header: "订单编号", key: "id", width: 16 },
+      { header: "客户名称", key: "customer_name" },
+      { header: "业务类型", render: (r) => businessTypes.find(b => b.id === r.business_type_id)?.name || "—" },
+      { header: "商标名称", render: (r) => r.trademark_name || "—" },
+      { header: "金额", render: (r) => formatCurrency(r.total_amount) },
+      { header: "状态", render: (r) => statusLabels[r.status] || r.status },
+      { header: "创建时间", render: (r) => toThaiTime(r.created_at) },
+    ];
+    exportToExcel(filtered_, cols, `订单列表_${bangkokDateStr()}`);
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Row 1: Title + new order button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{unclassifiedOnly ? "待分类（待领取）" : "订单管理"}</h1>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{loading ? "加载中..." : unclassifiedOnly
+            ? `一共 ${orders.length} 条，其中 ${orders.filter((o) => !(o.responsible_person || "").trim() && o.status !== "客户取消" && o.status !== "已完成").length} 条还没人领。点进订单，在「编辑」里填上负责人就是认领，再改派到对应业务线。`
+            : `一共 ${orders.length} 条，搜一下更快`}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleExport} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium transition-all hover:bg-[var(--muted)]">
+            <Download className="size-3.5" />导出
+          </button>
+          <Link href="/orders/new" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+            <Plus className="size-3.5" aria-hidden="true" />新建订单
+          </Link>
+        </div>
+      </div>
+
+      {/* Row 2: Search bar — full width */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+          <input
+            ref={searchInputRef}
+            placeholder="输入订单号或客户名称快速搜索..."
+            aria-label="搜索订单"
+            onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInputRef.current?.value || ""); } }}
+            className="h-10 w-full pl-9 pr-3 text-sm rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          />
+        </div>
+        <button
+          onClick={() => setSearch(searchInputRef.current?.value || "")}
+          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] transition-colors"
+        >
+          <Search className="size-3.5" />搜索
+        </button>
+      </div>
+
+      {/* Row 3: Status + business filter + sort */}
+      <div className="flex flex-wrap items-center gap-3">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="按状态筛选" className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+          <option value="all">全部状态</option>
+          <option value="待处理">待处理</option>
+          <option value="进行中">进行中</option>
+          <option value="已完成">已完成</option>
+          <option value="已逾期">已逾期</option>
+          <option value="客户取消">客户取消</option>
+        </select>
+        {!unclassifiedOnly && (
+        <select value={businessFilter} onChange={(e) => setBusinessFilter(e.target.value)} aria-label="按业务线筛选" className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+          <option value="all">全部业务线</option>
+          {businessTypes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        )}
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border)]">
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">订单号</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">商标名称</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">客户</th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">负责人</th>
+              <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)] tracking-wide" aria-sort={sortField === "total_amount" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" className="inline-flex cursor-pointer items-center gap-1 select-none focus-visible:outline-none focus-visible:underline" onClick={() => toggleSort("total_amount")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSort("total_amount"); } }}>
+                  金额<ArrowUpDown className="size-3" />
+                </button>
+              </th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-sm:hidden" aria-sort={sortField === "created_at" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" className="inline-flex cursor-pointer items-center gap-1 select-none focus-visible:outline-none focus-visible:underline" onClick={() => toggleSort("created_at")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSort("created_at"); } }}>
+                  日期<ArrowUpDown className="size-3" />
+                </button>
+              </th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">状态</th>
+              {user?.role !== "client" && <th className="py-3 px-4 text-center text-xs font-medium text-[var(--muted-foreground)] tracking-wide w-16">操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((order) => (
+              <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
+                <td className="py-3 px-4">
+                  <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
+                </td>
+                <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>
+                <td className="py-3 px-4 max-md:hidden">
+                  <div className="font-medium text-[var(--foreground)]">{order.customer_name}</div>
+                </td>
+                <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{(order.responsible_person || "").trim() || <span className="text-xs text-[var(--destructive)]">没人负责</span>}</td>
+                <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>
+                <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
+                <td className="py-3 px-4">
+                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
+                </td>
+                {user?.role !== "client" && (
+                  <td className="py-3 px-4 text-center">
+                    <button
+                      onClick={() => setDeleteTarget({ id: order.id, name: order.customer_name })}
+                      className="inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors"
+                      title="删除订单"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!loading && sorted.length === 0 && <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">没有匹配的订单</div>}
+      </div>
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteTarget(null)}>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[var(--foreground)]">确认删除</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              确定要删除订单 <span className="font-mono font-medium text-[var(--foreground)]">{deleteTarget.id}</span>（{deleteTarget.name}）吗？此操作会同时删除所有关联的步骤、文档、费用和证书，且不可恢复。
+            </p>
+            {errorMsg && <p className="mt-3 text-sm text-[var(--destructive)]">{errorMsg}</p>}
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors disabled:opacity-50">取消</button>
+              <button onClick={handleConfirmDelete} disabled={deleting} className="rounded-lg bg-[var(--destructive)] px-4 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_oklch,var(--destructive),var(--foreground)_20%)] transition-colors disabled:opacity-50">
+                {deleting ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -447,7 +447,7 @@ export async function deleteOrder(id: string) {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("删除订单失败");
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error || "删除订单失败");
   return res.json();
 }
 
@@ -542,7 +542,7 @@ export async function updateFinance(orderId: string, financeId: number, data: Pa
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ finance_id: financeId, ...data }),
   });
-  if (!res.ok) throw new Error("更新费用失败");
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error || "更新费用失败");
   return res.json() as Promise<Finance>;
 }
 
@@ -552,7 +552,7 @@ export async function deleteFinance(orderId: string, financeId: number) {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ finance_id: financeId }),
   });
-  if (!res.ok) throw new Error("删除费用失败");
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error || "删除费用失败");
   return res.json();
 }
 

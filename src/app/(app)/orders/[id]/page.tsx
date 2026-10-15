@@ -18,7 +18,6 @@ import { getStepDocs, subServices } from "@/lib/constants";
 const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
-import { bangkokDateStr } from "@/lib/time";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 
 const stepStatusClass: Record<string, string> = {
@@ -32,16 +31,17 @@ const stepStatusClass: Record<string, string> = {
 function financeStatusText(f: Finance): string {
   if (f.type === "income") {
     if (f.status === "paid") return "已到账";
-    if (f.status === "待核对") return "待核对";
+    // 核对上线前录的 pending 收入也等老板核对（2026-10-15）
+    if (f.status === "待核对" || f.status === "pending") return "待核对";
     if (f.status === "未到账") return "未到账";
-    return f.status === "pending" ? "待付" : "已取消";
+    return "已取消";
   }
   return f.status === "paid" ? "已付" : f.status === "pending" ? "待付" : "已取消";
 }
 function financeStatusClass(f: Finance): string {
   if (f.type === "income") {
     if (f.status === "paid") return "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]";
-    if (f.status === "待核对") return "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]";
+    if (f.status === "待核对" || f.status === "pending") return "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]";
     if (f.status === "未到账") return "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]";
     return "bg-[var(--muted)] text-[var(--muted-foreground)]";
   }
@@ -159,6 +159,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   })();
   const [newDocName, setNewDocName] = useState("");
   const [newCertNo, setNewCertNo] = useState("");
+  // 签发、到期日照证书填；不再自动填「今天签发、一年后到期」，那是假日期，到期提醒会跟着错（2026-10-15）
+  const [newCertIssue, setNewCertIssue] = useState("");
+  const [newCertExpiry, setNewCertExpiry] = useState("");
   const [editingCertId, setEditingCertId] = useState<number | null>(null);
   const [editCertFields, setEditCertFields] = useState<Partial<Certificate>>({});
   // Finances form
@@ -372,11 +375,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 费用保存
   const handleSaveFinance = async (financeId: number) => {
     try {
-      await updateFinance(id, financeId, editFinanceFields);
+      const current = finances.find(f => f.id === financeId);
+      // 收入的状态只走老板核对，编辑时不提交；支出只认已付/待付/已取消（收入改成支出时默认待付）
+      const { status, ...rest } = editFinanceFields;
+      const nextType = editFinanceFields.type || current?.type;
+      const expenseStatus = status && ["paid", "pending", "cancelled"].includes(status) ? status : "pending";
+      await updateFinance(id, financeId, nextType === "expense" ? { ...rest, status: expenseStatus } : rest);
       setEditingFinanceId(null);
       setEditFinanceFields({});
       reload();
-    } catch (e) { console.error("[订单] 保存费用失败", e); setError("保存费用失败"); }
+    } catch (e) { console.error("[订单] 保存费用失败", e); setError(e instanceof Error ? e.message : "保存费用失败"); }
   };
 
   // 费用删除
@@ -387,7 +395,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteFinance(id, deleteFinanceTarget);
       setDeleteFinanceTarget(null);
       reload();
-    } catch (e) { console.error("[订单] 删除费用失败", e); setError("删除费用失败"); setDeletingFinance(false); setDeleteFinanceTarget(null); }
+    } catch (e) { console.error("[订单] 删除费用失败", e); setError(e instanceof Error ? e.message : "删除费用失败"); setDeletingFinance(false); setDeleteFinanceTarget(null); }
   };
 
   // 证书删除
@@ -738,9 +746,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       const backToUnclassified = businessTypes.find(b => b.id === businessTypeId)?.name === "待分类";
                       return { ...prev, business_type_id: businessTypeId, sub_service_type: backToUnclassified ? UNCLASSIFIED_SUB : "", address_type: "client" };
                     });
-                  }} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                  }} disabled={order.sub_service_type !== UNCLASSIFIED_SUB && steps.length > 0} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] disabled:opacity-60">
                     {businessTypes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
+                  {/* 建单后改业务线步骤不会跟着换（2026-10-15）；待分类单走上面的改派 */}
+                  {order.sub_service_type !== UNCLASSIFIED_SUB && steps.length > 0 && <p className="mt-1 text-[0.65rem] text-[var(--muted-foreground)]">建单后不能改业务线，建错了请取消这张单重新建</p>}
                 </div>
                 {(() => {
                   const target = order.sub_service_type === UNCLASSIFIED_SUB
@@ -837,11 +847,27 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             )}
             {(() => {
-              const pendingCount = finances.filter(f => f.status === "pending").length;
-              const totalFinCount = finances.length;
-              if (totalFinCount === 0) return <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">付款：暂无记录</p>;
-              const allPaid = pendingCount === 0;
-              return <p className={cn("mt-1.5 text-xs", allPaid ? "text-[var(--success)]" : "text-[var(--warning)]")}>付款：已付 {totalFinCount - pendingCount}/{totalFinCount}，待付 {pendingCount} 项</p>;
+              // 收款只算老板核对过「已到账」的收入；待核对、未到账单独列出，不算已收（2026-10-15）
+              const incomes = finances.filter(f => f.type === "income" && !f.commerce_refund);
+              if (incomes.length === 0) return <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">收款：还没记收入</p>;
+              const cur = order.currency || "CNY";
+              const sumOf = (list: Finance[]) => list.reduce((n, f) => n + Number(f.amount || 0), 0);
+              const arrivedRows = incomes.filter(f => f.status === "paid");
+              const arrived = sumOf(arrivedRows.filter(f => (f.currency || "CNY") === cur));
+              const otherCur = cur === "CNY" ? "THB" : "CNY";
+              const arrivedOther = sumOf(arrivedRows.filter(f => (f.currency || "CNY") === otherCur));
+              const waiting = incomes.filter(f => f.status === "待核对" || f.status === "pending").length;
+              const missing = incomes.filter(f => f.status === "未到账").length;
+              const due = Number(order.total_amount) || 0;
+              const short = due > 0 ? Math.max(0, Math.round((due - arrived) * 100) / 100) : 0;
+              const parts = [`已到账 ${formatCurrency(arrived, cur)}`];
+              if (arrivedOther > 0) parts.push(`另有 ${formatCurrency(arrivedOther, otherCur)}`);
+              // 商城单可能有减免，订单金额是原价：收没收够以商城账单为准，这里不比（2026-10-15）
+              if (due > 0 && !isNativeCommerce) parts.push(short > 0 ? `订单 ${formatCurrency(due, cur)}，还差 ${formatCurrency(short, cur)}` : `订单 ${formatCurrency(due, cur)}，已收够`);
+              if (waiting) parts.push(`${waiting} 笔待核对`);
+              if (missing) parts.push(`${missing} 笔未到账`);
+              const ok = (due === 0 || short === 0 || isNativeCommerce) && !waiting && !missing;
+              return <p className={cn("mt-1.5 text-xs", ok ? "text-[var(--success)]" : "text-[var(--warning)]")}>收款：{parts.join("，")}</p>;
             })()}
             {/* 人员耗时汇总 — see personHours computed above */}
             {personEntries.length > 0 && (
@@ -943,9 +969,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           )}
                           {/* 模板没预设经办人的步骤（如「等待官方审核」「拿证」）原来没有入口指派，这里补上 */}
                           {!step.assignee && !isClient && step.status !== "已完成" && editingAssigneeStepId !== step.id && (
-                            <button onClick={() => setEditingAssigneeStepId(step.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:underline cursor-pointer">
-                              + 指派经办人
-                            </button>
+                            <>
+                              {/* 没写经办人的步骤算这张单负责人的，会出现在负责人的「我的环节」里（2026-10-15） */}
+                              {(order.responsible_person || "").trim() && <span className="text-xs text-[var(--muted-foreground)]" title="这一步没写经办人，算这张单负责人的">负责人：{order.responsible_person}</span>}
+                              <button onClick={() => setEditingAssigneeStepId(step.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:underline cursor-pointer">
+                                + 指派经办人
+                              </button>
+                            </>
                           )}
                           {editingAssigneeStepId === step.id && (
                             <select
@@ -1172,10 +1202,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
           {!isClient && sidebarTab === "finances" && (() => {
               const toTHB = (amount: number, cur?: string) => cur === "CNY" ? amount * (exchangeRate || 1) : amount;
-              const totalIncomeRaw = finances.filter(f => f.type === "income").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              // 收入只把核对过「已到账」的算进收入，待核对单列；支出照旧（2026-10-15）
+              const totalIncomeRaw = finances.filter(f => f.type === "income" && f.status === "paid").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const waitingIncomeRaw = finances.filter(f => f.type === "income" && (f.status === "待核对" || f.status === "pending")).reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const totalExpenseRaw = finances.filter(f => f.type === "expense").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
-              const pendingPayRaw = finances.filter(f => f.status === "pending").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const pendingPayRaw = finances.filter(f => f.type === "expense" && f.status === "pending").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const totalIncome = Math.round(totalIncomeRaw);
+              const waitingIncome = Math.round(waitingIncomeRaw);
               const totalExpense = Math.round(totalExpenseRaw);
               const pendingPay = Math.round(pendingPayRaw);
               return (
@@ -1202,17 +1235,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <span className="text-[0.65rem] text-[var(--muted-foreground)] ml-auto">全部折合泰铢</span>
               </div>
               {finances.length > 0 && (
-                <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="mb-4 grid grid-cols-2 gap-2">
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] px-3 py-2 text-center">
-                    <p className="text-[0.6rem] text-[var(--success)]">总收入</p>
+                    <p className="text-[0.6rem] text-[var(--success)]">已到账收入</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">฿{totalIncome.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] px-3 py-2 text-center">
+                    <p className="text-[0.6rem] text-[var(--warning)]">待核对收入</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">฿{waitingIncome.toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--destructive)]">总支出</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--destructive)]">฿{totalExpense.toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] px-3 py-2 text-center">
-                    <p className="text-[0.6rem] text-[var(--warning)]">待付余额</p>
+                    <p className="text-[0.6rem] text-[var(--warning)]">待付支出</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">฿{pendingPay.toLocaleString()}</p>
                   </div>
                 </div>
@@ -1220,22 +1257,29 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </>}
               {finances.length === 0 ? <p className="py-4 text-center text-xs text-[var(--muted-foreground)]">暂无费用记录</p> : (
                 <ul className="flex flex-col gap-2">
-                  {finances.map((f) => (
+                  {finances.map((f) => {
+                    // 核对过的收入（含核对上线前就记成已付的老记录）：员工只能补描述/付款方式/流水号，金额币种类型只有管理员能改
+                    const moneyLocked = f.type === "income" && (f.status === "paid" || f.status === "未到账") && user?.role !== "admin";
+                    return (
                     <li key={f.id} className="rounded-md p-2 transition-colors hover:bg-[var(--secondary)]">
                       {editingFinanceId === f.id ? (
                         <div className="space-y-1.5">
                           <div className="flex gap-1.5">
-                            <select disabled={isNativeCommerce} value={editFinanceFields.type || f.type} onChange={(e) => setEditFinanceFields(p => ({ ...p, type: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                            <select disabled={isNativeCommerce || moneyLocked} value={editFinanceFields.type || f.type} onChange={(e) => setEditFinanceFields(p => ({ ...p, type: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
                               {!isNativeCommerce && <option value="income">收入</option>}
                               <option value="expense">支出</option>
                             </select>
-                            <input type="number" value={editFinanceFields.amount ?? f.amount} onChange={(e) => setEditFinanceFields(p => ({ ...p, amount: Number(e.target.value) }))} className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                            <select value={editFinanceFields.status || f.status} onChange={(e) => setEditFinanceFields(p => ({ ...p, status: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                            <input type="number" disabled={moneyLocked} value={editFinanceFields.amount ?? f.amount} onChange={(e) => setEditFinanceFields(p => ({ ...p, amount: Number(e.target.value) }))} className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)] disabled:opacity-60" />
+                            {(editFinanceFields.type || f.type) === "income" ? (
+                              <span className={cn("inline-flex items-center rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium", financeStatusClass({ ...f, type: "income", status: f.type === "income" ? f.status : "待核对" }))} title="收入到没到账在「费用管理」→「待核对」里核对">{f.type === "income" ? financeStatusText(f) : "待核对"}</span>
+                            ) : (
+                            <select value={editFinanceFields.status && f.type === "expense" ? editFinanceFields.status : f.type === "expense" ? f.status : "pending"} onChange={(e) => setEditFinanceFields(p => ({ ...p, status: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
                               <option value="paid">已付</option>
                               <option value="pending">待付</option>
                               <option value="cancelled">已取消</option>
                             </select>
-                            <select value={editFinanceFields.currency || f.currency || "CNY"} onChange={(e) => setEditFinanceFields(p => ({ ...p, currency: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                            )}
+                            <select disabled={moneyLocked} value={editFinanceFields.currency || f.currency || "CNY"} onChange={(e) => setEditFinanceFields(p => ({ ...p, currency: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)] disabled:opacity-60">
                               <option value="CNY">¥</option>
                               <option value="THB">฿</option>
                             </select>
@@ -1280,7 +1324,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         </>
                       )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
               {!isClient && (
@@ -1479,7 +1524,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {!isClient && (<>
                 <div className="mt-3 flex gap-2">
                   <input placeholder="证书编号…" value={newCertNo} onChange={(e) => { setNewCertNo(e.target.value); setCertErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <button onClick={async () => { if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; } setCertErrorMsg(""); try { await addCertificate(id, { certificate_number: newCertNo, issue_date: bangkokDateStr(), expiry_date: (() => { const d = new Date(Date.now() + 365*86400000); return d.toISOString().slice(0,10); })(), file_url: certFileUrl }); setNewCertNo(""); setCertFileUrl(""); setCertFileName(""); reload(); } catch (err) { console.error("添加证书失败:", err); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]"><Plus className="size-3" /></button>
+                  <button onClick={async () => { if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; } if (newCertIssue && newCertExpiry && newCertExpiry < newCertIssue) { setCertErrorMsg("到期日不能早于签发日"); return; } setCertErrorMsg(""); try { await addCertificate(id, { certificate_number: newCertNo, issue_date: newCertIssue, expiry_date: newCertExpiry, file_url: certFileUrl }); setNewCertNo(""); setNewCertIssue(""); setNewCertExpiry(""); setCertFileUrl(""); setCertFileName(""); reload(); } catch (err) { console.error("添加证书失败:", err); setCertErrorMsg(err instanceof Error ? err.message : "添加证书失败"); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]" title="添加证书"><Plus className="size-3" /></button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center text-xs text-[var(--muted-foreground)]">
+                  <label className="flex items-center gap-1">签发<input type="date" value={newCertIssue} onChange={(e) => { setNewCertIssue(e.target.value); setCertErrorMsg(""); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]" /></label>
+                  <label className="flex items-center gap-1">到期<input type="date" value={newCertExpiry} onChange={(e) => { setNewCertExpiry(e.target.value); setCertErrorMsg(""); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]" /></label>
+                  <span>照证书上的填；没有到期日就空着</span>
                 </div>
                 <div className="flex gap-1.5 items-center"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : "选择证书文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setCertFileUrl(data.url); } catch (err) { console.error("证书上传失败:", err); setCertErrorMsg("文件上传失败"); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px]">{certFileName}</span>}</div>
                 </>

@@ -22,7 +22,6 @@ export default function NewOrderPage() {
   const [appliedBizName, setAppliedBizName] = useState<string | null>(null);
   const [customerPool, setCustomerPool] = useState<{id:number;company_name:string;industry:string;handler_name:string;owner_name:string}[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-  const [customerSearch, setCustomerSearch] = useState("");
   const [form, setForm] = useState({
     business_type_id: "",
     customer_name: "",
@@ -63,14 +62,14 @@ export default function NewOrderPage() {
     const { name, value } = e.target;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
-      // 切换业务线时，清空子类型（除非从 URL 自动填充）
+      // 切换业务线时，清空子类型（除非从 URL 自动填充；只有一种可选时直接选上）
       if (name === "business_type_id" && value !== prev.business_type_id) {
         const urlSub = searchParams.get("sub");
         const newSubs = subServices[Number(value)] || [];
         if (urlSub && newSubs.some(s => s.key === urlSub)) {
           next.sub_service_type = urlSub;
         } else {
-          next.sub_service_type = "";
+          next.sub_service_type = newSubs.length === 1 ? newSubs[0].key : "";
         }
       }
       return next;
@@ -82,6 +81,8 @@ export default function NewOrderPage() {
     setError("");
     if (!form.customer_name.trim()) { setError("客户名不能为空"); return; }
     if (!form.business_type_id) { setError("请选择业务线"); return; }
+    // 有具体服务的业务线必须选一个：不选会套成通用流程（如 FDA 不选就是通用 5 步），建完改不了（2026-10-15）
+    if (availableSubServices.length > 0 && !form.sub_service_type) { setError("请选择子类型"); return; }
     setLoading(true);
     try {
       await createOrder({
@@ -129,7 +130,7 @@ export default function NewOrderPage() {
           {availableSubServices.length > 0 && (
           <div className="flex flex-col gap-2">
             <Label htmlFor="sub_service_type" className="text-sm font-medium">子类型</Label>
-            <select id="sub_service_type" name="sub_service_type" value={form.sub_service_type} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+            <select id="sub_service_type" name="sub_service_type" value={form.sub_service_type} onChange={handleChange} required className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
               <option value="">请选择子类型</option>
               {availableSubServices.map((s: { key: string; label: string }) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
@@ -162,7 +163,8 @@ export default function NewOrderPage() {
             {showCustomerDropdown && customerPool.length > 0 && (
               <div className="absolute top-[72px] left-0 right-0 z-30 rounded-lg border border-[var(--border)] bg-[var(--background)] shadow-xl max-h-48 overflow-y-auto">
                 {customerPool
-                  .filter(c => !customerSearch || c.company_name.toLowerCase().includes(customerSearch.toLowerCase()))
+                  // 按客户名称框里打的字筛选（原来筛选用的 customerSearch 从来没被赋值，下拉永远是前 20 个）
+                  .filter(c => !form.customer_name.trim() || c.company_name.toLowerCase().includes(form.customer_name.trim().toLowerCase()))
                   .slice(0, 20)
                   .map(c => (
                     <button

@@ -46,6 +46,7 @@ export default function DldPage() {
           label="产品认证"
           accentHue={10}
           description="汽车零配件的DLD产品认证，Ing整理材料、Bam提交审批。审批过不过看官员心情，别忘了现场检查要提前准备货架和合规标识。"
+          subServiceTypes={["product", ""]}
         />
       )}
     </div>

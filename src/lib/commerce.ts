@@ -5,7 +5,7 @@ import type Database from "better-sqlite3";
 import type { TokenPayload } from "./auth";
 import { commerceWorkflow, CommerceTemplateError } from "./commerce-fulfillment";
 import { COMMERCE_MAX_LINES } from "./commerce-catalog";
-import { notifyUnclassifiedOrder } from "./order-alerts";
+import { notifyNewMallOrder, notifyUnclassifiedOrder } from "./order-alerts";
 import type { CommerceProduct, CommerceQuote, CommerceSale, CommerceSelection } from "./commerce-types";
 
 import { readBilling, readCancellations, expectRevision, advanceRevision } from "./commerce-ledger";
@@ -154,6 +154,7 @@ export function checkout(db: Database.Database, actor: TokenPayload, input: unkn
     const saleId = "SALE-" + randomUUID();
     db.prepare("INSERT INTO commerce_sales(id,buyer_account_id,buyer_name,request_id,request_json,total_cents) VALUES (?,?,?,?,?,?)")
       .run(saleId,actor.id,actor.name,requestId,identity,current.total_cents);
+    const mallOrders: { orderId: string; sku: string; unclassified: boolean }[] = [];
     for (const [index,line] of current.lines.entries()) {
       const lineId = randomUUID();
       const workflow = workflows[index];
@@ -168,6 +169,7 @@ export function checkout(db: Database.Database, actor: TokenPayload, input: unkn
           .run(orderId,actor.name,workflow.businessId,workflow.subService,workflow.addressType,line.unit_cents/100,String(actor.id),"商城购买单 " + saleId + " / " + line.sku + " / 第 " + copy + " 份");
         db.prepare("INSERT INTO commerce_fulfillments(line_id,copy_no,order_id,allocated_cents) VALUES (?,?,?,?)")
           .run(lineId,copy,orderId,line.unit_cents);
+        mallOrders.push({ orderId, sku: line.sku, unclassified: workflow.key === "unclassified-v1" });
         for (const [stepIndex,step] of workflow.steps.entries()) {
           const result = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,assignee,notes) VALUES (?,?,?,?,?)")
             .run(orderId,step.name,stepIndex+1,step.assignee,step.notes || "");
@@ -177,10 +179,14 @@ export function checkout(db: Database.Database, actor: TokenPayload, input: unkn
       }
     }
     db.prepare("INSERT INTO commerce_invoices(id,sale_id,total_cents) VALUES (?,?,?)").run("INV-" + randomUUID(),saleId,current.total_cents);
-    // 待分类提醒（规则 6）：本单含未归类办理项时提醒全体在职员工（每人一条），谁看到谁领取（填负责人=认领，改业务线=归类）
-    const unclassifiedSkus = current.lines.filter((line, i) => workflows[i].key === "unclassified-v1").map(line => line.sku);
-    if (unclassifiedSkus.length)
-      notifyUnclassifiedOrder(db, saleId, `商城单 ${saleId}（客户 ${actor.name}）含待确认归属的服务：${unclassifiedSkus.join("、")}。请在订单列表「待分类」业务线中认领并归类。`);
+    // 待分类提醒（规则 6）：本单含未归类办理项时提醒全体在职员工（每人一条），谁看到谁领取（填负责人=认领，改业务线=归类）。
+    // 10-15：提醒挂办理单号（原来挂 SALE- 商城单号，点开进不了单）；对上业务线的也照客户站新单提醒全员
+    const unclassified = mallOrders.filter(o => o.unclassified);
+    const matched = mallOrders.filter(o => !o.unclassified);
+    if (unclassified.length)
+      notifyUnclassifiedOrder(db, unclassified[0].orderId, `商城单 ${saleId}（客户 ${actor.name}）含待确认归属的服务：${[...new Set(unclassified.map(o => o.sku))].join("、")}，共 ${unclassified.length} 张办理单。请在左边菜单「待分类（待领取）」里认领并改派。`);
+    if (matched.length)
+      notifyNewMallOrder(db, matched[0].orderId, `商城单 ${saleId}（客户 ${actor.name}）：${[...new Set(matched.map(o => o.sku))].join("、")}，共 ${matched.length} 张办理单${matched.length > 1 ? `（${matched.map(o => o.orderId).join("、")}）` : ""}，还没有负责人。`);
     if (revision !== undefined) {
       const consumed = db.prepare("UPDATE commerce_carts SET revision=revision+1,lines_json='[]',updated_at=datetime('now') WHERE buyer_account_id=? AND revision=?").run(actor.id,revision);
       if (consumed.changes !== 1) return fail(409,"CART_CHANGED","购物车已变化，请重新加载");

@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
       const note = mapping.kind === 'unclassified' ? mapping.note || '' : '';
       // 待分类提醒（规则 6）：全体在职员工每人一条，谁看到谁领取（订单列表按「待分类」业务线筛选即待领取队列）
       if (mapping.kind === 'unclassified')
-        notifyUnclassifiedOrder(db, sourceOrderNo, `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}。请在订单列表「待分类」业务线中认领并归类。`);
+        notifyUnclassifiedOrder(db, sourceOrderNo, `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}。请在左边菜单「待分类（待领取）」里认领并改派。`);
       const bt = db.prepare('SELECT id FROM business_types WHERE name=?').get(businessTypeName) as {id:number} | undefined;
       if (!bt) throw new Error(`业务线不存在: ${businessTypeName}`);
       if (mapping.kind === 'mapped') mappedLines.push(`${String(line.raw.sku_name || line.sku_code)} ×${line.quantity}份 → ${businessTypeName}`);

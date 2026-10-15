@@ -14,13 +14,17 @@ interface BusinessLinePageProps {
   accentHue: number;
   description: string;
   subServiceType?: string;
+  /** 只列这几种具体服务的单（"" 表示没选具体服务的老单）；给了就不看 subServiceType（2026-10-15） */
+  subServiceTypes?: string[];
 }
 
 const accentStyles = (hue: number) => ({
   accentBorder: `border-[color-mix(in_oklch,oklch(0.55_0.14_${hue}),var(--background)_70%)]`,
 });
 
-export function BusinessLinePage({ businessKey, label, accentHue, description, subServiceType }: BusinessLinePageProps) {
+export function BusinessLinePage({ businessKey, label, accentHue, description, subServiceType, subServiceTypes }: BusinessLinePageProps) {
+  // 用字符串当依赖：传数组时每次渲染都是新数组，直接放进依赖会反复拉数据
+  const subKey = subServiceTypes ? subServiceTypes.join("|") : subServiceType ?? null;
   const [orders, setOrders] = useState<Order[]>([]);
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +40,8 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
         const bt = types.find((t) => t.name === businessKey);
         if (bt) {
           const data = await fetchOrders({ business_type_id: bt.id });
-          const filtered = subServiceType ? data.filter((o: Order) => o.sub_service_type === subServiceType) : data;
+          const allowed = subKey === null ? null : subKey.split("|");
+          const filtered = allowed && (subServiceTypes || subServiceType) ? data.filter((o: Order) => allowed.includes(o.sub_service_type || "")) : data;
           setOrders(filtered);
         }
       } catch (err) {
@@ -46,7 +51,8 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
       }
     }
     load();
-  }, [businessKey, subServiceType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subKey 已包含 subServiceType / subServiceTypes 的内容
+  }, [businessKey, subKey]);
 
   const stats = useMemo(() => {
     const total = orders.length;
@@ -196,7 +202,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
       </div>
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Link href={`/orders/new?biz=${businessKey}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><Plus className="size-3.5" aria-hidden="true" />新建订单</Link>
+        <Link href={`/orders/new?biz=${businessKey}${subKey && !subKey.includes("|") ? `&sub=${encodeURIComponent(subKey)}` : subKey ? `&sub=${encodeURIComponent(subKey.split("|")[0])}` : ""}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><Plus className="size-3.5" aria-hidden="true" />新建订单</Link>
         <Link href={`/documents?biz=${businessKey}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><FileText className="size-3.5" aria-hidden="true" />去看文档</Link>
         <Link href={`/tasks?biz=${businessKey}`} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-all hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"><ClipboardList className="size-3.5" aria-hidden="true" />看看任务</Link>
       </div>

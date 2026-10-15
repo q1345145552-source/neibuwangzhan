@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { listMySteps } from "@/lib/my-steps";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -29,16 +30,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(rows);
   }
 
-  // 订单步骤
-  const rows = db.prepare(`
-    SELECT os.id as step_id, os.order_id, os.step_name, os.status, os.step_order,
-           o.customer_name, o.business_type_id, bt.name as business_type_name
-    FROM order_steps os
-    JOIN orders o ON os.order_id = o.id
-    JOIN business_types bt ON o.business_type_id = bt.id
-    WHERE os.assignee LIKE ? AND os.status != '已完成'
-    ORDER BY os.step_order
-  `).all(likeUser);
-
-  return NextResponse.json(rows);
+  // 订单步骤：经办人是我，或步骤没写经办人、订单负责人是我；不含已取消的单（口径见 lib/my-steps.ts）
+  return NextResponse.json(listMySteps(db, user));
 }

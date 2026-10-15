@@ -5,6 +5,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
+import { subServices } from "@/lib/constants";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -64,6 +65,11 @@ export async function POST(req: NextRequest) {
   const id = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const now = new Date().toISOString();
   const ssType = sub_service_type || "";
+  // 有具体服务的业务线必须选一个：不选会套成通用流程，建完改不了（2026-10-15）
+  const options = subServices[Number(business_type_id)] || [];
+  if (options.length && !options.some((o) => o.key === ssType)) {
+    return NextResponse.json({ error: "请选择子类型" }, { status: 400 });
+  }
 
   try {
     const insertAll = db.transaction(() => {

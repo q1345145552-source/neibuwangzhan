@@ -5,12 +5,13 @@ import { statusClass, statusLabels } from "@/lib/api";
 
 interface Props {
   orders: Order[];
+  title?: string;
 }
 
-export function TodoList({ orders }: Props) {
+export function TodoList({ orders, title = "近期待办" }: Props) {
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-5 py-5">
-      <h3 className="mb-4 text-sm font-medium text-[var(--foreground)]">近期待办</h3>
+      <h3 className="mb-4 text-sm font-medium text-[var(--foreground)]">{title}</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

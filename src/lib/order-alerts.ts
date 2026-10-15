@@ -48,6 +48,36 @@ export function notifyNewSyncedOrder(
   notifyAllStaff(db, "客户站新订单", detail, sourceOrderNo);
 }
 
+/** 内部商城新单提醒（2026-10-15）：对上业务线的商城单原来一条提醒都不发，照客户站新单的规矩提醒全体在职员工。related_id 用办理单号。 */
+export function notifyNewMallOrder(
+  db: Database.Database,
+  internalOrderId: string,
+  detail: string,
+): void {
+  notifyAllStaff(db, "商城新订单", detail, internalOrderId);
+}
+
+/**
+ * 回传客户站一直失败的提醒（2026-10-15）：只发在职管理员，每人一条。related_id 用客户站单号，消息中心会换成办理单号。
+ * 客户站长时间连不上时各条事件会陆续失败：管理员手上还有 12 小时内没读的同类提醒就不再发，一次断线只提醒一回。
+ */
+export function notifySyncBackFailure(
+  db: Database.Database,
+  sourceOrderNo: string,
+  detail: string,
+): void {
+  const admins = db.prepare(
+    "SELECT DISTINCT name FROM employees WHERE role = 'admin' AND status = '在职' AND name <> ''"
+  ).all() as { name: string }[];
+  const insert = db.prepare(
+    "INSERT INTO notifications (type,title,body,recipient,related_id,related_type) VALUES ('',?,?,?,?,'order')"
+  );
+  const pending = db.prepare(
+    "SELECT 1 FROM notifications WHERE recipient = ? AND type = '' AND related_type = 'order' AND title = '客户站同步失败' AND is_read = 0 AND created_at >= datetime('now','-12 hours') LIMIT 1"
+  );
+  for (const { name } of admins) if (!pending.get(name)) insert.run("客户站同步失败", detail, name, sourceOrderNo);
+}
+
 /**
  * 客户站内申请取消的提醒（2026-10-03，规则 19/20）：批准取消仅管理员可操作（规则 4），
  * 所以只发在职管理员，每人一条；related_id 用办理单号，便于按单查。

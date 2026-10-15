@@ -24,6 +24,7 @@ export async function POST(
 
   const fin = db.prepare("SELECT * FROM finances WHERE id = ? AND order_id = ?").get(finance_id, id) as any;
   if (!fin) return NextResponse.json({ error: "费用记录不存在" }, { status: 404 });
+  if (fin.type !== "income") return NextResponse.json({ error: "只有收入需要核对到账" }, { status: 400 });
 
   let status: string;
   let verifyNote = "";

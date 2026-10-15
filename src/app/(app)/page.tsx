@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [orderSearch, setOrderSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string }>>([]);
+  const [assignedSteps, setAssignedSteps] = useState<Array<{ step_id: number; order_id: string; step_name: string; status: string; business_type_name: string; customer_name?: string; via_owner?: number; can_start?: number }>>([]);
   const [stepsLoaded, setStepsLoaded] = useState(false);
   const [leaveDashboard, setLeaveDashboard] = useState<{ todayOnLeave: Array<{ employee_name: string; leave_type: string; start_date: string; end_date: string }>; upcomingLeave: Array<{ employee_name: string; leave_type: string; start_date: string; end_date: string }>; pendingCount: number; recent: any[] } | null>(null);
   const [attendanceAnomaly, setAttendanceAnomaly] = useState<{ late: Array<{ name: string; time: string }>; notClockedIn: string[] } | null>(null);
@@ -347,7 +347,9 @@ export default function DashboardPage() {
                   <Link href={`/orders/${step.order_id}`} className="shrink-0 font-mono text-xs font-medium text-[var(--primary)] hover:underline">
                     {step.order_id}
                   </Link>
-                  <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{step.step_name}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{step.step_name}{step.customer_name ? <span className="text-xs text-[var(--muted-foreground)]"> · {step.customer_name}</span> : null}</span>
+                  {step.status === "待处理" && !step.can_start && <span className="shrink-0 rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)]">等前一步</span>}
+                  {!!step.via_owner && <span className="shrink-0 rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-xs text-[var(--muted-foreground)]" title="这一步没写经办人，算这张单负责人的">我是负责人</span>}
                   <span className="shrink-0 rounded-md bg-[var(--secondary)] px-1.5 py-0.5 text-xs text-[var(--secondary-foreground)]">{step.business_type_name}</span>
                   <span className={cn(
                     "shrink-0 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium",
@@ -368,7 +370,8 @@ export default function DashboardPage() {
 
       <BusinessChart data={businessCounts} />
 
-      <TodoList orders={orders.filter((o) => o.status !== "已完成")} />
+      {/* 这里列的是全公司没办完的单，不是本人的待办（本人的看上面「我的环节」）；客户取消的单不列（2026-10-15） */}
+      <TodoList title="全公司未完成订单" orders={orders.filter((o) => o.status !== "已完成" && o.status !== "客户取消")} />
     </div>
   );
 }
