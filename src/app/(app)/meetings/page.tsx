@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus, X, CalendarClock, Trash2 } from "lucide-react";
+import { parseMeetingTopics } from "@/lib/meeting-topics";
 
 interface Meeting {
   id: number;
@@ -86,12 +87,79 @@ function statusBadge(st: string) {
   );
 }
 
+function MeetingSummaryCard({ meeting }: { meeting: Meeting }) {
+  return (
+    <article aria-label={meeting.title} className="min-w-0 rounded-xl border border-blue-200/60 bg-gradient-to-br from-blue-50/70 to-[var(--background)] p-4 shadow-sm dark:border-blue-400/20 dark:from-blue-950/30">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 className="min-w-0 break-words text-sm font-medium text-[var(--foreground)] [overflow-wrap:anywhere]">{meeting.title}</h3>
+        <span className="text-xs text-[var(--muted-foreground)]">{meeting.meeting_date}{meeting.meeting_time && ` ${meeting.meeting_time}`}</span>
+      </div>
+      {meeting.story?.trim() ? (
+        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--foreground)] [overflow-wrap:anywhere]">{meeting.story}</p>
+      ) : <p className="mt-3 text-sm text-[var(--muted-foreground)]">暂无故事线</p>}
+    </article>
+  );
+}
+
+function MeetingSummaryBoard({ meetings }: { meetings: Meeting[] }) {
+  const [dimension, setDimension] = useState<"meeting" | "topic" | "participant">("meeting");
+  // 只使用会议列表接口已授权返回的数据，不额外读取全局主题或员工列表。
+  const groups = new Map<string, Meeting[]>();
+  if (dimension !== "meeting") {
+    for (const meeting of meetings) {
+      const topics = dimension === "topic" ? parseMeetingTopics(meeting.topics) : [];
+      const keys = dimension === "topic" ? (topics.length ? topics : ["未分类"])
+        : [...new Set(parseList(meeting.participants).map((name) => name.trim()).filter(Boolean))];
+      for (const key of keys) {
+        const group = groups.get(key) ?? [];
+        group.push(meeting);
+        groups.set(key, group);
+      }
+    }
+  }
+  return (
+    <section aria-label="会议总结看板" className="flex min-w-0 flex-col gap-4">
+      <div role="group" aria-label="总结看板分组维度" className="flex flex-wrap items-center gap-2">
+        {([
+          ["meeting", "按会议"], ["topic", "按主题"], ["participant", "按参会人"],
+        ] as const).map(([value, label]) => (
+          <Button key={value} size="sm" variant={dimension === value ? "default" : "outline"} aria-pressed={dimension === value} onClick={() => setDimension(value)}>{label}</Button>
+        ))}
+      </div>
+      {meetings.length === 0 ? (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无可查看的会议</p>
+      ) : dimension === "meeting" ? (
+        <div className="grid min-w-0 gap-3 md:grid-cols-2">
+          {meetings.map((meeting) => <MeetingSummaryCard key={meeting.id} meeting={meeting} />)}
+        </div>
+      ) : groups.size === 0 ? (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无参会人分组</p>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-6">
+          {[...groups].map(([name, groupedMeetings], index) => (
+            <section key={name} aria-labelledby={`meeting-summary-group-${index}`} className="min-w-0">
+              <h2 id={`meeting-summary-group-${index}`} className="mb-3 flex min-w-0 flex-wrap items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">{name}</span>
+                <span className="text-xs font-normal text-[var(--muted-foreground)]">{groupedMeetings.length} 场会议</span>
+              </h2>
+              <div className="grid min-w-0 gap-3 md:grid-cols-2">
+                {groupedMeetings.map((meeting) => <MeetingSummaryCard key={meeting.id} meeting={meeting} />)}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function MeetingsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"list" | "summary">("list");
 
   // 发起会议表单
   const [formOpen, setFormOpen] = useState(false);
@@ -315,8 +383,15 @@ export default function MeetingsPage() {
         )}
       </div>
 
+      <div role="group" aria-label="会议视图切换" className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={view === "list" ? "default" : "ghost"} aria-pressed={view === "list"} onClick={() => setView("list")}>会议列表</Button>
+        <Button size="sm" variant={view === "summary" ? "default" : "ghost"} aria-pressed={view === "summary"} onClick={() => setView("summary")}>总结看板</Button>
+      </div>
+
       {loading ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+      ) : view === "summary" ? (
+        <MeetingSummaryBoard meetings={meetings} />
       ) : meetings.length === 0 ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">{isAdmin ? "还没有会议，点右上角发起会议" : "暂无你参加的会议"}</p>
       ) : (
