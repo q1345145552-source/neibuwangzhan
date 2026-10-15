@@ -33,7 +33,28 @@ export async function GET(req: NextRequest) {
 
   // 员工只看参会人里有自己的会议
   const result = isAdmin ? rows : rows.filter((m) => parseParticipants(m.participants).includes(auth.name));
-  return NextResponse.json(result);
+  // 一次查询全部有效提交，按会议和员工去重；退回的心得不计入。
+  const submittedRows = db.prepare(
+    "SELECT DISTINCT meeting_id, employee_name FROM meeting_reflections WHERE status = '已提交'"
+  ).all() as { meeting_id: number; employee_name: string }[];
+  const submittedByMeeting = new Map<number, Set<string>>();
+  for (const row of submittedRows) {
+    const names = submittedByMeeting.get(row.meeting_id) ?? new Set<string>();
+    names.add(row.employee_name);
+    submittedByMeeting.set(row.meeting_id, names);
+  }
+  return NextResponse.json(result.map((meeting) => {
+    const participants = parseParticipants(meeting.participants);
+    const submitted = submittedByMeeting.get(meeting.id);
+    const submittedCount = participants.filter((name) => submitted?.has(name)).length;
+    return {
+      ...meeting,
+      participant_count: participants.length,
+      submitted_count: submittedCount,
+      unsubmitted_count: participants.length - submittedCount,
+      my_submitted: participants.includes(auth.name) && Boolean(submitted?.has(auth.name)),
+    };
+  }));
 }
 
 // POST /api/meetings — 管理员发起会议通知

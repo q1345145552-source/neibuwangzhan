@@ -17,6 +17,10 @@ interface Meeting {
   participants: string;
   creator: string;
   created_at: string;
+  participant_count: number;
+  submitted_count: number;
+  unsubmitted_count: number;
+  my_submitted: boolean;
 }
 
 interface Reflection {
@@ -186,21 +190,21 @@ export default function MeetingsPage() {
       ? await apiCall(`/api/meetings/${detailMeeting.id}/reflections`, { method: "POST", body, onError: (m) => setRfErr(m) })
       : await apiCall(`/api/meetings/${detailMeeting.id}/reflections/${rfId}`, { method: "PATCH", body, onError: (m) => setRfErr(m) });
     setRfSaving(false);
-    if (ok) { setRfOpen(false); setRfErr(""); loadReflections(detailMeeting.id); }
+    if (ok) { setRfOpen(false); setRfErr(""); loadReflections(detailMeeting.id); load(); }
   };
 
   const deleteRf = async (r: Reflection) => {
     if (!detailMeeting) return;
     if (!confirm("确定删除这条心得？")) return;
     const ok = await apiCall(`/api/meetings/${detailMeeting.id}/reflections/${r.id}`, { method: "DELETE" });
-    if (ok) loadReflections(detailMeeting.id);
+    if (ok) { loadReflections(detailMeeting.id); load(); }
   };
 
   const rejectRf = async (r: Reflection) => {
     if (!detailMeeting) return;
     if (!confirm(`确定退回 ${r.employee_name} 的这条心得？`)) return;
     const ok = await apiCall(`/api/meetings/${detailMeeting.id}/reflections/${r.id}`, { method: "PATCH", body: { action: "reject" } });
-    if (ok) loadReflections(detailMeeting.id);
+    if (ok) { loadReflections(detailMeeting.id); load(); }
   };
 
   const dateTimeLabel = (m: Meeting) => (m.meeting_time ? `${m.meeting_date} ${m.meeting_time}` : m.meeting_date);
@@ -229,7 +233,7 @@ export default function MeetingsPage() {
             <button
               key={m.id}
               onClick={() => openMeeting(m)}
-              className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-left transition-colors hover:border-[var(--primary)]"
+              className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-left transition-colors hover:border-[var(--primary)]"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <CalendarClock className="size-4 text-[var(--muted-foreground)]" />
@@ -244,6 +248,36 @@ export default function MeetingsPage() {
                   <span key={p} className="rounded-full bg-[var(--muted)]/40 px-2 py-0.5 text-xs text-[var(--foreground)]">{p}</span>
                 ))}
               </div>
+              {isAdmin ? (
+                <div className="mt-3 min-w-0 rounded-xl border border-blue-200/60 bg-gradient-to-br from-blue-50/80 via-sky-50/50 to-blue-100/40 p-3 shadow-[0_4px_20px_rgba(59,130,246,0.10)] backdrop-blur-md dark:border-blue-400/20 dark:from-blue-950/60 dark:via-slate-900/40 dark:to-blue-900/30">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                    <span className="font-medium text-blue-800 dark:text-blue-200">已交 {m.submitted_count} 人 / 共 {m.participant_count} 人</span>
+                    <span className="font-semibold tabular-nums text-blue-600 dark:text-sky-300">{m.participant_count > 0 ? Math.round(m.submitted_count / m.participant_count * 100) : 0}%</span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-label="会议心得提交进度"
+                    aria-valuemin={0}
+                    aria-valuemax={m.participant_count || 1}
+                    aria-valuenow={m.submitted_count}
+                    aria-valuetext={`已交 ${m.submitted_count} 人，共 ${m.participant_count} 人，未交 ${m.unsubmitted_count} 人`}
+                    className="mt-2.5 h-2.5 overflow-hidden rounded-full bg-slate-200/80 shadow-inner dark:bg-slate-700/70"
+                  >
+                    <div className="h-full rounded-full bg-gradient-to-r from-blue-600 via-blue-400 to-cyan-300 shadow-[0_0_12px_rgba(59,130,246,0.55)] transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${m.participant_count > 0 ? m.submitted_count / m.participant_count * 100 : 0}%` }} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <span className="text-blue-700 dark:text-blue-300">已交 {m.submitted_count} 人</span>
+                    <span className="text-red-600 dark:text-red-300">未交 {m.unsubmitted_count} 人</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-[var(--muted-foreground)]">我的状态</span>
+                  <span className={cn("rounded-full px-2.5 py-1 font-medium", m.my_submitted ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300")}>
+                    {m.my_submitted ? "已交" : "未交"}
+                  </span>
+                </div>
+              )}
             </button>
           ))}
         </div>
