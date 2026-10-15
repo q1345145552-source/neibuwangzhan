@@ -26,6 +26,10 @@ LOG="$REPO/dispatch.log"
 
 CODEX="/Users/liuxiong/.npm-global/bin/codex"
 
+# Unattended Git operations must fail instead of waiting forever on a stale SSH connection.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="/usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+
 
 
 cd "$REPO" || { echo "仓库路径不存在: $REPO"; exit 1; }
