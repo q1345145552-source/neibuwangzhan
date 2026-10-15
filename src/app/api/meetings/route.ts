@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { syncMeetingReminders } from "@/lib/meeting-sync";
+import { parseMeetingTopics } from "@/lib/meeting-topics";
 
 // 解析参会人 JSON 数组 → 去重后的员工名数组
 function parseParticipants(raw: unknown): string[] {
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
   const body = await readJson(req);
-  const { title, meeting_date, meeting_time, agenda, participants } = body;
+  const { title, meeting_date, meeting_time, agenda, participants, topics } = body;
 
   if (!title || !String(title).trim()) return NextResponse.json({ error: "请填写会议主题" }, { status: 400 });
   const date = String(meeting_date || "").trim();
@@ -74,16 +75,18 @@ export async function POST(req: NextRequest) {
 
   const names = parseParticipants(participants);
   if (names.length === 0) return NextResponse.json({ error: "请选择参会人" }, { status: 400 });
+  if (topics !== undefined && !Array.isArray(topics)) return NextResponse.json({ error: "会议主题须为数组" }, { status: 400 });
 
   const now = new Date().toISOString();
   const result = db.prepare(
-    "INSERT INTO meetings (title, meeting_date, meeting_time, agenda, participants, creator, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO meetings (title, meeting_date, meeting_time, agenda, participants, topics, creator, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(
     String(title).trim(),
     date,
     String(meeting_time || "").trim(),
     String(agenda || "").trim(),
     JSON.stringify(names),
+    JSON.stringify(parseMeetingTopics(topics)),
     auth.name,
     now,
     now

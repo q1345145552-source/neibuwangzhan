@@ -1443,6 +1443,8 @@ function initTables(database: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       meeting_date TEXT NOT NULL,
+      topics TEXT NOT NULL DEFAULT '[]',
+      story TEXT NOT NULL DEFAULT '',
       meeting_time TEXT DEFAULT '',
       agenda TEXT DEFAULT '',
       participants TEXT NOT NULL DEFAULT '[]',
@@ -1453,6 +1455,13 @@ function initTables(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(meeting_date);
     CREATE INDEX IF NOT EXISTS idx_meetings_creator ON meetings(creator);
   `);
+  const meetingColumns = database.prepare("PRAGMA table_info(meetings)").all() as { name: string }[];
+  if (!meetingColumns.some((column) => column.name === "topics")) {
+    database.exec("ALTER TABLE meetings ADD COLUMN topics TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!meetingColumns.some((column) => column.name === "story")) {
+    database.exec("ALTER TABLE meetings ADD COLUMN story TEXT NOT NULL DEFAULT ''");
+  }
 
   // 会议心得：同一场会议员工可提交多条，图片存 JSON 数组
   database.exec(`

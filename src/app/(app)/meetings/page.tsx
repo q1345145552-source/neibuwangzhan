@@ -14,6 +14,8 @@ interface Meeting {
   meeting_date: string;
   meeting_time: string;
   agenda: string;
+  topics: string;
+  story: string;
   participants: string;
   creator: string;
   created_at: string;
@@ -99,6 +101,11 @@ export default function MeetingsPage() {
   const [formTime, setFormTime] = useState("");
   const [formAgenda, setFormAgenda] = useState("");
   const [formParticipants, setFormParticipants] = useState<string[]>([]);
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+  const [formTopics, setFormTopics] = useState<string[]>([]);
+  const [newTopic, setNewTopic] = useState("");
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState("");
   const [formErr, setFormErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -135,12 +142,37 @@ export default function MeetingsPage() {
   useEffect(() => { load(); }, [user?.name]);
 
   // ── 发起会议 ──
+  const loadTopics = async () => {
+    setTopicsLoading(true);
+    setTopicsError("");
+    try {
+      const res = await fetchWithAuth("/api/meetings/topics", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "会议主题加载失败");
+      setAvailableTopics(Array.isArray(data) ? data.filter((topic): topic is string => typeof topic === "string") : []);
+    } catch (error) {
+      setTopicsError(error instanceof Error ? error.message : "会议主题加载失败");
+    } finally { setTopicsLoading(false); }
+  };
+
+  const addTopic = () => {
+    const topic = newTopic.trim();
+    if (!topic) return;
+    setAvailableTopics((topics) => [...new Set([...topics, topic])]);
+    setFormTopics((topics) => [...new Set([...topics, topic])]);
+    setNewTopic("");
+  };
+
   const openCreate = () => {
     setFormTitle("");
     setFormDate("");
     setFormTime("");
     setFormAgenda("");
     setFormParticipants([]);
+    setFormTopics([]);
+    setNewTopic("");
+    setAvailableTopics([]);
+    void loadTopics();
     setFormErr("");
     setFormOpen(true);
     fetchWithAuth("/api/employees", { cache: "no-store" })
@@ -158,7 +190,9 @@ export default function MeetingsPage() {
     if (!formDate) { setFormErr("请选择会议日期"); return; }
     if (formParticipants.length === 0) { setFormErr("请至少勾选一名参会人"); return; }
     setSaving(true);
-    const body = { title: formTitle, meeting_date: formDate, meeting_time: formTime, agenda: formAgenda, participants: formParticipants };
+    // 尚未点“添加”就直接发布时，也保存输入框中的新主题。
+    const topics = [...new Set([...formTopics, newTopic.trim()].filter(Boolean))];
+    const body = { title: formTitle, meeting_date: formDate, meeting_time: formTime, agenda: formAgenda, participants: formParticipants, topics };
     const ok = await apiCall("/api/meetings", { method: "POST", body, onError: (m) => setFormErr(m) });
     setSaving(false);
     if (ok) { setFormOpen(false); setFormErr(""); load(); }
@@ -483,9 +517,28 @@ export default function MeetingsPage() {
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="text-xs font-medium">会议主题 <span className="text-[var(--destructive)]">*</span></label>
+                <label className="text-xs font-medium">会议标题 <span className="text-[var(--destructive)]">*</span></label>
                 <input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="例如：周会 / 项目进度讨论" className="mt-1 h-9 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
               </div>
+
+              <fieldset className="min-w-0">
+                <legend className="text-xs font-medium">会议主题（可多选）</legend>
+                {topicsLoading && <p className="mt-1 text-xs text-[var(--muted-foreground)]">加载已有主题…</p>}
+                {topicsError && <div role="alert" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--destructive)]">{topicsError}<Button size="sm" variant="ghost" onClick={() => void loadTopics()}>重试</Button></div>}
+                <div className="mt-1.5 flex max-h-36 flex-wrap gap-2 overflow-y-auto">
+                  {[...new Set([...availableTopics, ...formTopics])].map((topic) => (
+                    <label key={topic} className={cn("flex min-w-0 max-w-full cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm", formTopics.includes(topic) ? "border-blue-400/60 bg-blue-50/70 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200" : "border-[var(--border)]")}>
+                      <input type="checkbox" checked={formTopics.includes(topic)} onChange={() => setFormTopics((topics) => topics.includes(topic) ? topics.filter((item) => item !== topic) : [...topics, topic])} className="size-4 shrink-0" />
+                      <span className="min-w-0 break-words">{topic}</span>
+                    </label>
+                  ))}
+                </div>
+                {!topicsLoading && !topicsError && availableTopics.length === 0 && <p className="mt-1 text-xs text-[var(--muted-foreground)]">暂无已有主题，可在下方新建</p>}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <input aria-label="新会议主题" value={newTopic} onChange={(e) => setNewTopic(e.target.value)} onBlur={addTopic} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); addTopic(); } }} placeholder="输入新主题，回车添加" className="h-9 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]" />
+                  <Button type="button" size="sm" variant="outline" onClick={addTopic}>添加主题</Button>
+                </div>
+              </fieldset>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
