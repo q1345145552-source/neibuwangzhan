@@ -56,6 +56,7 @@ deploy_ssh.py
 
 # 部署脚本的本地私有配置 / 隔离环境（绝不入库）
 .deploy.env
+.gh-config/
 .venv-deploy/
 .deploy-*.py
 
