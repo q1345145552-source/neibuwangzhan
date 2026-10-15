@@ -190,8 +190,11 @@ async function main() {
     const unread = (name: string) => (db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE related_id=? AND recipient=? AND is_read=0').get(no, name) as { n: number }).n;
     assert.equal(unread(reader), 0);
     assert.equal(unread(other), 2);
-    const list = await notifications.GET(new NextRequest('http://fixture.invalid/api/notifications?unread=1', { headers: { authorization: `Bearer ${token}` } }));
-    assert(!(await list.json() as { related_id: string }[]).some(n => n.related_id === no));
+    // 10-10 起消息中心列表已读、未读都返回（不再认 unread 参数）：这两条照样列出，但必须都是已读
+    const list = await notifications.GET(new NextRequest('http://fixture.invalid/api/notifications', { headers: { authorization: `Bearer ${token}` } }));
+    const listed = (await list.json() as { related_id: string; is_read: number }[]).filter(n => n.related_id === no);
+    assert.equal(listed.length, 2, JSON.stringify(listed));
+    assert(listed.every(n => n.is_read === 1), JSON.stringify(listed));
   });
 
   await test('internal-site customer views show public step names, staff views keep originals', async () => {

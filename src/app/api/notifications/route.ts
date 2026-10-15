@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { MESSAGE_CENTER_TYPES } from "@/lib/notification-types";
+import { messageCenterFilter } from "@/lib/notification-types";
 
 // GET /api/notifications — 消息中心列表：未读排前面，再按时间倒序；已隐藏的不返回
 export async function GET(req: NextRequest) {
@@ -14,16 +14,27 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
 
-  const placeholders = MESSAGE_CENTER_TYPES.map(() => "?").join(",");
-  const params: any[] = [...MESSAGE_CENTER_TYPES, auth.name];
+  const filter = messageCenterFilter();
   const sql = `SELECT * FROM notifications
     WHERE hidden = 0
-      AND type IN (${placeholders})
+      AND ${filter.sql}
       AND (recipient = ? OR recipient = '')
     ORDER BY is_read ASC, created_at DESC, id DESC
     LIMIT ?`;
-  params.push(limit);
-  return NextResponse.json(db.prepare(sql).all(...params));
+  const rows = db.prepare(sql).all(...filter.params, auth.name, limit) as { related_type: string; related_id: string }[];
+
+  // 客户站订单提醒的 related_id 有的是内部办理单号，有的是客户站单号：统一换成内部办理单号，点开能直接进订单
+  const byId = db.prepare("SELECT id FROM orders WHERE id = ?");
+  const bySource = db.prepare(
+    "SELECT internal_order_id FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no LIMIT 1"
+  );
+  const withOrder = rows.map((n) => {
+    if (n.related_type !== "order" || !n.related_id) return n;
+    const own = byId.get(n.related_id) as { id: string } | undefined;
+    const synced = own ? undefined : (bySource.get(n.related_id) as { internal_order_id: string } | undefined);
+    return { ...n, order_id: own?.id || synced?.internal_order_id || null };
+  });
+  return NextResponse.json(withOrder);
 }
 
 // PATCH /api/notifications — 标记已读 / 隐藏 / 全部已读
