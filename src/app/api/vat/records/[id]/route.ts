@@ -37,8 +37,6 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
-  if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const { id } = await params;
   const db = getDb();
   const body = await readJson(req);
@@ -52,6 +50,7 @@ export async function PATCH(
   const values: unknown[] = [];
 
   if (amount !== undefined) {
+    if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
     if (isNaN(Number(amount)) || Number(amount) < 0) {
       return NextResponse.json({ error: "金额必须是非负数字" }, { status: 400 });
     }
