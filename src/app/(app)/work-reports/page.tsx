@@ -39,6 +39,7 @@ interface AutoGroup { type: string; label: string; items: AutoItem[]; }
 interface RelatedObject { type: "project" | "customer" | "order"; id: string; name: string; }
 interface PickObject { id: string; name: string; }
 interface BoardRow { name: string; report: WorkReport | null; }
+type ReportReview = Pick<WorkReport, "id" | "employee_name" | "report_date" | "boss_rating" | "boss_comment">;
 
 type DayStatus = "已提交" | "补交" | "未提交" | "退回";
 
@@ -198,6 +199,16 @@ function StatusBadge({ st }: { st: DayStatus }) {
   return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", statusBadgeClass(st))}>{st}</span>;
 }
 
+function ReviewStatus({ report }: { report: ReportReview }) {
+  const reviewed = report.boss_rating > 0 || Boolean(report.boss_comment?.trim());
+  if (!reviewed) return <span className="text-xs text-[var(--muted-foreground)]">未点评</span>;
+  return (
+    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+      {report.boss_rating > 0 ? `已点评 ★ ${report.boss_rating} 星` : "已点评 · 未评分"}
+    </span>
+  );
+}
+
 export default function WorkReportsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -210,6 +221,10 @@ export default function WorkReportsPage() {
   const [boardDate, setBoardDate] = useState(bangkokDateStr());
   const [board, setBoard] = useState<BoardRow[]>([]);
   const [boardLoading, setBoardLoading] = useState(true);
+  const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [reviews, setReviews] = useState<ReportReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState("");
 
   // 填写/重交表单
   const [formOpen, setFormOpen] = useState(false);
@@ -290,11 +305,25 @@ export default function WorkReportsPage() {
 
   const refresh = () => { if (isAdmin) loadBoard(); else loadEmployee(); };
 
+  const loadReviews = async () => {
+    setReviewsLoading(true);
+    setReviewsError("");
+    try {
+      const res = await fetchWithAuth("/api/work-reports/reviews", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "点评汇总加载失败");
+      setReviews(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setReviewsError(error instanceof Error ? error.message : "点评汇总加载失败");
+    } finally { setReviewsLoading(false); }
+  };
+
   const openDetail = (r: WorkReport) => {
     setDetail(r);
     setReviewRating(r.boss_rating || 0);
     setReviewComment(r.boss_comment || "");
     setReviewErr("");
+    setReviewSaved(false);
   };
 
   useEffect(() => {
@@ -492,15 +521,21 @@ export default function WorkReportsPage() {
   const submitReview = async () => {
     if (!detail) return;
     if (reviewRating < 1 || reviewRating > 5) { setReviewErr("请先打 1-5 星"); return; }
+    const reportId = detail.id;
+    const rating = reviewRating;
+    const comment = reviewComment.trim();
     setReviewing(true);
-    const ok = await apiCall(`/api/work-reports/${detail.id}`, { method: "PATCH", body: { action: "review", rating: reviewRating, comment: reviewComment }, onError: (m) => setReviewErr(m) });
+    const ok = await apiCall(`/api/work-reports/${reportId}`, { method: "PATCH", body: { action: "review", rating, comment }, onError: (m) => setReviewErr(m) });
     setReviewing(false);
     if (ok) {
-      setDetail((p) => (p ? { ...p, boss_rating: reviewRating, boss_comment: reviewComment } : p));
+      const update = (report: WorkReport) => report.id === reportId ? { ...report, boss_rating: rating, boss_comment: comment } : report;
+      setDetail((report) => report ? update(report) : report);
+      setBoard((rows) => rows.map((row) => ({ ...row, report: row.report ? update(row.report) : null })));
+      setReports((rows) => rows.map(update));
+      setTimeline((rows) => rows.map(update));
       setReviewErr("");
       setReviewSaved(true);
       setTimeout(() => setReviewSaved(false), 2500);
-      refresh();
     }
   };
 
@@ -540,6 +575,7 @@ export default function WorkReportsPage() {
   };
 
   const openStory = () => {
+    setReviewsOpen(false);
     setStoryOpen(true);
     setStorySummary("");
     setStoryErr("");
@@ -586,13 +622,14 @@ export default function WorkReportsPage() {
       </div>
 
       {/* 视图切换 */}
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant={storyOpen ? "ghost" : "default"} onClick={() => setStoryOpen(false)}>{isAdmin ? "看板" : "我的日报"}</Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={storyOpen || reviewsOpen ? "ghost" : "default"} onClick={() => { setStoryOpen(false); setReviewsOpen(false); }}>{isAdmin ? "看板" : "我的日报"}</Button>
+        {isAdmin && <Button size="sm" variant={reviewsOpen ? "default" : "ghost"} onClick={() => { setStoryOpen(false); setReviewsOpen(true); void loadReviews(); }}>点评汇总</Button>}
         <Button size="sm" variant={storyOpen ? "default" : "ghost"} onClick={openStory}>按业务对象看</Button>
       </div>
 
       {/* 老板看板 */}
-      {!storyOpen && isAdmin && (
+      {!storyOpen && !reviewsOpen && isAdmin && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -623,8 +660,9 @@ export default function WorkReportsPage() {
                       row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]"
                     )}
                   >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm font-medium text-[var(--foreground)]">{row.name}</span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="min-w-0 max-w-full truncate text-sm font-medium text-[var(--foreground)]">{row.name}</span>
+                      {row.report && <ReviewStatus report={row.report} />}
                       {risky && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">风险</span>}
                     </div>
                     <StatusBadge st={st} />
@@ -632,6 +670,35 @@ export default function WorkReportsPage() {
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* 老板点评汇总 */}
+      {isAdmin && reviewsOpen && (
+        <div className="flex min-w-0 flex-col gap-3">
+          {reviewsLoading ? (
+            <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
+          ) : reviewsError ? (
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-[var(--destructive)]">
+              <span>{reviewsError}</span><Button size="sm" variant="outline" onClick={() => void loadReviews()}>重试</Button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--muted-foreground)]">共点评 {reviews.length} 条</p>
+              {reviews.length === 0 ? (
+                <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无点评记录</p>
+              ) : reviews.map((review) => (
+                <div key={review.id} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-xs text-[var(--muted-foreground)]">{review.report_date}</span>
+                    <span className="min-w-0 break-words text-sm font-medium text-[var(--foreground)]">{review.employee_name}</span>
+                    <ReviewStatus report={review} />
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{review.boss_comment?.trim() || "未填写点评意见"}</p>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}
