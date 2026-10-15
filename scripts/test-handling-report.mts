@@ -190,7 +190,7 @@ await check('只有管理员能看：员工、客户 403，管理员 200', async
   const emp = (role: string) => db.prepare("SELECT id, name, role, auth_version FROM employees WHERE role=? AND status='在职' LIMIT 1").get(role) as { id: number; name: string; role: string; auth_version: number };
   db.prepare("INSERT INTO employees (name, email, role, password, must_change_password, status) VALUES ('测试客户', 'client@example.invalid', 'client', 'x', 0, '在职')").run();
   db.prepare('UPDATE employees SET must_change_password=0').run();
-  const call = async (handler: Function, role: string, url: string) => {
+  const call = async (handler: (req: NextRequest) => Promise<Response>, role: string, url: string) => {
     const e = emp(role);
     const token = await signToken({ id: e.id, name: e.name, role: e.role as 'admin', auth_version: e.auth_version, must_change_password: 0 });
     return (await handler(new NextRequest(`http://127.0.0.1${url}`, { headers: { authorization: `Bearer ${token}` } }))) as Response;

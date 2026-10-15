@@ -41,7 +41,7 @@ alerts.notifyCancelRequest(db, 'ORD-internal-1', '客户申请取消零申报做
 db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES ('', '其它旧提醒', 'x', ?, '1', 'misc')").run(staff.name);
 db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES ('leave_requested', '请假申请', 'x', ?, '1', 'leave')").run(staff.name);
 
-const call = async (handler: Function, who: Emp, url: string) => {
+const call = async (handler: (req: NextRequest) => Promise<Response>, who: Emp, url: string) => {
   const req = new NextRequest(`http://127.0.0.1${url}`, { method: 'GET', headers: { authorization: `Bearer ${await token(who)}` } });
   return handler(req) as Promise<Response>;
 };
