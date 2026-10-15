@@ -57,9 +57,7 @@ deploy_ssh.py
 # 部署脚本的本地私有配置 / 隔离环境（绝不入库）
 .deploy.env
 .venv-deploy/
-.deploy-probe.py
-.deploy-verify*.py
-.deploy-final-verify.py
+.deploy-*.py
 
 # codex 调度产物
 dispatch.log

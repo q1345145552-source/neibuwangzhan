@@ -158,6 +158,7 @@ STATUS_OUT=""
 LOGIN_CODE="000"
 AUTH_CODE="000"
 GIT_COMMIT=""
+GIT_COMMIT_FULL=""
 RUN_ID=""
 
 # ─────────────────────────────────────────────────────────────
@@ -247,9 +248,14 @@ ok "容器 $CONTAINER 已停止"
 # 4) git pull
 # ─────────────────────────────────────────────────────────────
 step 4 "git pull（远端 $APP_DIR）"
-GIT_COMMIT="$(ssh_exec "cd '$APP_DIR' && git fetch origin '$BRANCH' >/dev/null && git checkout '$BRANCH' >/dev/null && git pull --ff-only origin '$BRANCH' && git rev-parse --short HEAD")" \
+# 用唯一标记提取 commit，不要靠"取最后一行"：git fetch 的进度行
+# ("* branch main -> FETCH_HEAD") 走 stderr，混进来会覆盖真正的 SHA。
+PULL_OUT="$(ssh_exec "cd '$APP_DIR' && git fetch origin '$BRANCH' >/dev/null && git checkout '$BRANCH' >/dev/null && git pull --ff-only origin '$BRANCH' && echo \"REMOTE_COMMIT=\$(git rev-parse HEAD)\"")" \
   || die "远端 git pull 失败"
-ok "远端已更新到 $GIT_COMMIT"
+GIT_COMMIT_FULL="$(printf '%s\n' "$PULL_OUT" | sed -n 's/.*REMOTE_COMMIT=\([0-9a-f]\{7,40\}\).*/\1/p' | tail -1)"
+[ -n "$GIT_COMMIT_FULL" ] || die "git pull 完成但解析不到远端 commit，输出：$PULL_OUT"
+GIT_COMMIT="$(printf '%.7s' "$GIT_COMMIT_FULL")"
+ok "远端已更新到 $GIT_COMMIT（$GIT_COMMIT_FULL）"
 if [ "$GIT_COMMIT" != "$LOCAL_HEAD" ] && [ "$SKIP_PUSH" != "1" ]; then
   echo "警告：远端 HEAD ($GIT_COMMIT) 与本地 HEAD ($LOCAL_HEAD) 不一致"
 fi
@@ -399,7 +405,7 @@ else
 湘泰内部管理系统 部署记录
 时间(曼谷)        : $(TZ=Asia/Bangkok date '+%Y-%m-%d %H:%M:%S')
 时间(本机)        : $(date '+%Y-%m-%d %H:%M:%S %Z')
-远端 git commit   : $GIT_COMMIT
+远端 git commit   : $GIT_COMMIT_FULL
 本地 git HEAD     : $LOCAL_HEAD
 分支              : $BRANCH
 镜像标签          : $IMAGE_NAME_BEFORE

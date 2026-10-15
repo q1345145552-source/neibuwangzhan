@@ -71,14 +71,25 @@ SSH_PASS='<服务器密码>' python3 scripts/deploy.py
    注意宿主机是 `/data/neibuxitong/data.db` → 容器内 `/app/data/data.db`（拼接时别丢掉那个 `/`）。
 4. **`docker inspect -f` 的 Go 模板里不能放 `{"\n"}`**，会 `template parsing error`。
    用简单模板 + `|` 当分隔符，或在本地解析 `docker inspect` 的 JSON。
-5. **`.env` 检查绝不能按行号**。早期版本用 `awk 'NR>=11 && NR<=13'` 取必填键，在真实 `.env` 上
-   取的就已经是 `COMMERCE_PILOT_ENABLED` / `ASSET_SECRET` 了（只因为白名单里的键恰好都有值才
-   「碰巧通过」）。在开头加一行注释就会整体错位 —— 要么误报挡住部署，要么放行没被检查的配置。
-   一律按 **key 名**匹配。
+5. **`.env` 一律按 key 名检查，不要按行号**。
+   曾经误以为行号检查"当前就已经取错了"——那是拿**自己构造的模拟 `.env`**测出来的错误结论。
+   2026-10-16 对**真实** `.env` 复核：文件共 14 行，第 11-13 行恰好就是
+   `SYNC_SECRET` / `CUSTOMER_SYNC_URL` / `COMMERCE_PILOT_ENABLED`，`ASSET_SECRET` 在第 14 行，
+   所以行号检查当时是"对的"。但它**依赖文件行数不变**：开头加一行注释就整体错位，
+   要么误报挡住部署，要么放行没被检查的配置。按 key 名匹配没有这个隐患，所以仍改掉。
 6. **bash 3.2（macOS 自带）下 `case "$v" in *[!0-9]*)` 不匹配空串**。
    如果拿它校验「是否纯数字」，空字段会**漏过校验**掉进算术比较，报
    `integer expression expected`。判数字一律用脚本里的 `is_uint()`；判 5 段数字用
    `is_uint_counts()`（按字段索引逐个判，不能用 `tr '|' ' '` 后词分割——那会把空字段直接吞掉）。
+7. **解析远端 commit 不能用「取输出最后一行」**。`git fetch` 的进度行
+   （`* branch main -> FETCH_HEAD`）走 **stderr**，而封装函数把 stderr 追加在 stdout 之后，
+   于是「最后一行」取到的是进度行而不是 SHA —— 2026-10-16 实际发生，备份清单里的
+   `远端 git commit` 被写成了 `* branch main -> FETCH_HEAD`。改用唯一标记
+   `REMOTE_COMMIT=<sha>` 正则提取。（已更正该次清单，并在备份里留了 `.bak` 副本。）
+8. **判断异步构建是否完成，读退出码比 grep 日志标记可靠**。`docker compose build` 在
+   buildkit 与 classic builder 下的成功输出不同（`writing image sha256:...` vs
+   `Successfully built ...`），grep 标记容易误判超时。现在让后台任务把 `$?` 写进 `.exit`
+   文件、轮询读退出码，与构建器无关。
 
 ## 备份产物
 

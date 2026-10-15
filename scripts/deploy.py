@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import time
@@ -75,6 +76,10 @@ CONTAINER = os.environ.get("CONTAINER", "neibuxitong")
 SVC = os.environ.get("SVC", "neibuxitong")
 BRANCH = os.environ.get("BRANCH", "main")
 HEALTH_TIMEOUT = int(os.environ.get("HEALTH_TIMEOUT", "90"))
+# 默认带缓存构建（更快，且 .next 已删除、应用代码变化会正常重建）。
+# 设 NO_CACHE=1 走 --no-cache 全量重建，慢但更彻底。
+NO_CACHE = os.environ.get("NO_CACHE", "0") == "1"
+BUILD_FLAGS = "--no-cache" if NO_CACHE else ""
 SKIP_PUSH = os.environ.get("SKIP_PUSH", "0") == "1"
 SKIP_BACKUP = os.environ.get("SKIP_BACKUP", "0") == "1"
 
@@ -402,13 +407,21 @@ def main() -> int:
 
         # ── 4) git pull ──────────────────────────────────────────────────────
         step(4, f"git pull（远端 {APP_DIR}）")
-        remote_commit = run(
+        # 用唯一标记提取 commit。不能靠"取输出最后一行"——run() 会把 stderr 追加在
+        # stdout 后面，而 git fetch 的进度行("* branch main -> FETCH_HEAD")走 stderr，
+        # 于是"最后一行"会取到进度行而不是 SHA（2026-10-16 实际踩过，清单里被写错）。
+        pull_out = run(
             f"cd {APP_DIR} && git fetch origin {BRANCH} >/dev/null && "
             f"git checkout {BRANCH} >/dev/null && git pull --ff-only origin {BRANCH} && "
-            "git rev-parse --short HEAD",
+            f"echo REMOTE_COMMIT=$(git rev-parse HEAD)",
             timeout=300,
-        ).strip().splitlines()[-1]
-        ok(f"远端已更新到 {remote_commit}")
+        )
+        m = re.search(r"REMOTE_COMMIT=([0-9a-f]{7,40})", pull_out)
+        if not m:
+            die(f"git pull 完成但解析不到远端 commit，最后输出：{pull_out[-300:]}")
+        remote_commit = m.group(1)[:7]
+        remote_commit_full = m.group(1)
+        ok(f"远端已更新到 {remote_commit}（{remote_commit_full}）")
         if not SKIP_PUSH and remote_commit != local_commit:
             print(f"警告：远端 HEAD ({remote_commit}) 与本地 HEAD ({local_commit}) 不一致")
 
@@ -437,47 +450,49 @@ def main() -> int:
         # ── 6) 清缓存重建并启动 ──────────────────────────────────────────────
         step(6, "清 .next 缓存，异步重建镜像并启动（这一步比较慢）")
         build_log = "/tmp/neibuxitong-deploy-build.log"
-        # 刻意异步：全量构建可能十几分钟，同步等容易被 SSH/客户端超时拖断，
-        # 而且构建失败时连接一断就看不到真正的报错。这里改成后台跑 + 轮询日志。
+        build_rc = build_log + ".exit"
+        # 刻意异步：构建可能十几分钟，同步等容易被 SSH/客户端超时拖断，
+        # 而且构建失败时连接一断就看不到真正的报错。
+        # 判定"构建完成"不靠 grep 日志标记（classic builder / buildkit 输出格式不同，
+        # 容易误报超时），而是让后台任务把**退出码**写进文件，再读退出码——与构建器无关。
         run(
-            f"cd {APP_DIR} && rm -rf .next && rm -f {build_log} && "
-            f"(nohup docker compose build --no-cache {SVC} > {build_log} 2>&1 < /dev/null &) && "
-            "echo BUILD_STARTED",
+            f"cd {APP_DIR} && rm -rf .next && rm -f {build_log} {build_rc} && "
+            f"(nohup sh -c 'docker compose build {BUILD_FLAGS} {SVC} > {build_log} 2>&1; "
+            f"echo $? > {build_rc}' > /dev/null 2>&1 < /dev/null &) && echo BUILD_STARTED",
             quiet=True,
         )
         print(f"  构建已在后台启动，日志 {build_log}，轮询中...")
         deadline = time.monotonic() + 1800
-        built = False
-        build_failed = False
-        time.sleep(20)  # 给构建一点时间落盘日志
+        build_rc_value = None
+        dots = 0
+        time.sleep(15)
         while time.monotonic() < deadline:
-            mark = run(
-                f"if grep -qE 'Built|writing image|naming to' {build_log} 2>/dev/null; then echo DONE; "
-                f"elif grep -qiE 'failed to solve|^ERROR|error:' {build_log} 2>/dev/null; then echo FAIL; "
-                f"elif [ -f {build_log} ]; then echo RUNNING; else echo NOLOG; fi || echo SSHFAIL",
+            probe = run(
+                f"if [ -f {build_rc} ]; then cat {build_rc}; else echo PENDING; fi",
                 check=False, quiet=True,
             ).strip().splitlines()
-            state = mark[-1].strip() if mark else "SSHFAIL"
-            if state == "DONE":
-                built = True
-                break
-            if state == "FAIL":
-                build_failed = True
+            state = probe[-1].strip() if probe else "SSHFAIL"
+            if state.isdigit():
+                build_rc_value = int(state)
                 break
             if state == "SSHFAIL":
                 print("  SSH 抖动，继续轮询...")
             else:
-                sys.stdout.write(".")
+                dots += 1
+                if dots % 4 == 0:
+                    sys.stdout.write(f"[{dots * 15}s]")
+                else:
+                    sys.stdout.write(".")
                 sys.stdout.flush()
             time.sleep(15)
         print()
-        if build_failed:
+        if build_rc_value is None:
             print(run(f"tail -30 {build_log} 2>/dev/null || true", check=False, quiet=True))
-            die("镜像构建失败（详见上方日志）")
-        if not built:
-            print(run(f"tail -30 {build_log} 2>/dev/null || true", check=False, quiet=True))
-            die("镜像构建超时（1800s）或未出现完成标记")
-        ok("镜像构建完成")
+            die("镜像构建超时（1800s 未结束）")
+        if build_rc_value != 0:
+            print(run(f"tail -40 {build_log} 2>/dev/null || true", check=False, quiet=True))
+            die(f"镜像构建失败（docker compose build 退出码 {build_rc_value}，详见上方日志）")
+        ok(f"镜像构建完成（build 退出码 0，用时约 {time.monotonic() - (deadline - 1800):.0f}s）")
         run(f"cd {APP_DIR} && docker compose up -d {SVC} && docker image prune -f >/dev/null", timeout=600)
         ok("容器已启动")
 
@@ -572,7 +587,7 @@ def main() -> int:
             manifest = compose_manifest({
                 "时间(曼谷)": bangkok,
                 "时间(本机)": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "远端 git commit": remote_commit,
+                "远端 git commit": remote_commit_full,
                 "本地 git HEAD": local_commit,
                 "分支": BRANCH,
                 "镜像标签": image_name,
