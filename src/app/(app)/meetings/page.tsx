@@ -113,6 +113,8 @@ export default function MeetingsPage() {
   const [detailMeeting, setDetailMeeting] = useState<Meeting | null>(null);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [refLoading, setRefLoading] = useState(false);
+  const [storyGenerating, setStoryGenerating] = useState(false);
+  const [storyError, setStoryError] = useState("");
   const onTranslated = (id: number, content: string) => {
     setReflections((rows) => rows.map((row) => row.id === id ? { ...row, content_zh: content } : row));
   };
@@ -210,8 +212,25 @@ export default function MeetingsPage() {
 
   const openMeeting = (m: Meeting) => {
     setDetailMeeting(m);
+    setStoryError("");
     setReflections([]);
     loadReflections(m.id);
+  };
+
+  const generateStory = async () => {
+    if (!detailMeeting || storyGenerating) return;
+    const meetingId = detailMeeting.id;
+    setStoryGenerating(true);
+    setStoryError("");
+    try {
+      const res = await fetchWithAuth(`/api/meetings/${meetingId}/story`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "生成失败，请重试");
+      setMeetings((rows) => rows.map((meeting) => meeting.id === meetingId ? { ...meeting, story: data.story } : meeting));
+      setDetailMeeting((meeting) => meeting?.id === meetingId ? { ...meeting, story: data.story } : meeting);
+    } catch (error) {
+      setStoryError(error instanceof Error ? error.message : "生成失败，请重试");
+    } finally { setStoryGenerating(false); }
   };
 
   const openRfCreate = () => {
@@ -369,6 +388,17 @@ export default function MeetingsPage() {
             </div>
 
             {detailMeeting.agenda && <p className="mt-3 whitespace-pre-wrap break-words rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3 text-sm">{detailMeeting.agenda}</p>}
+
+            {(isAdmin || detailMeeting.story) && (
+              <div className="mt-4 min-w-0 rounded-xl border border-blue-200/60 bg-blue-50/60 p-3 dark:border-blue-400/20 dark:bg-blue-950/30">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-medium text-blue-700 dark:text-blue-200">会议故事线</h4>
+                  {isAdmin && !detailMeeting.story && <Button size="sm" onClick={generateStory} disabled={storyGenerating}>{storyGenerating ? "生成中…" : "生成故事线"}</Button>}
+                </div>
+                {detailMeeting.story && <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--foreground)]">{detailMeeting.story}</p>}
+                {isAdmin && storyError && <p role="alert" className="mt-2 break-words text-xs text-[var(--destructive)]">{storyError}</p>}
+              </div>
+            )}
 
             {isAdmin ? (
               <>
