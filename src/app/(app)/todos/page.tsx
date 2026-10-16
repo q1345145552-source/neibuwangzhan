@@ -43,7 +43,7 @@ interface TodoStats {
   week: RangeStats;
   month: RangeStats;
   employees: { name: string; unfinished: number; today: RangeStats; week: RangeStats; month: RangeStats; categories: { name: string; count: number }[] }[];
-  backlog: { id: number; content: string; assignee: string; created_at: string; last_follow_at: string; createdAgoMs: number; followAgoMs: number | null; warn: boolean }[];
+  backlog: { id: number; content: string; assignee: string; created_at: string; last_follow_at: string | null; createdAgoMs: number; followAgoMs: number | null; warn: boolean }[];
   trend: { created: { this: number; last: number }; completed: { this: number; last: number } };
 }
 
@@ -62,7 +62,7 @@ function formatDuration(ms: number): string {
   if (hours < 24) return `${hours} 小时`;
   const days = Math.floor(ms / 86400000);
   const remHours = Math.floor((ms % 86400000) / 3600000);
-  return remHours > 0 ? `${days} 天 ${remHours} 小时` : `${days} 天`;
+  return `${days} 天 ${remHours} 小时`;
 }
 
 export default function TodosPage() {

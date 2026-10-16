@@ -74,15 +74,21 @@ export async function GET(req: NextRequest) {
   // ── 积压提醒：列出所有未完成待办，附创建时间 / 上次跟进时间 / 未完成时长 ──
   const backlogRows = db.prepare(
     `SELECT t.id, t.content, t.assignee, t.created_at,
-            (SELECT MAX(f.created_at) FROM todo_follow_ups f WHERE f.todo_id = t.id) AS last_follow_at
+            (SELECT f.created_at FROM todo_follow_ups f WHERE f.todo_id = t.id
+             ORDER BY julianday(f.created_at) DESC, f.id DESC LIMIT 1) AS last_follow_at
      FROM todos t
      WHERE t.status = '未完成'
      ORDER BY t.created_at ASC`
   ).all() as { id: number; content: string; assignee: string; created_at: string; last_follow_at: string | null }[];
 
   const nowMs = Date.now();
-  const toMs = (s: string | null | undefined): number | null =>
-    s ? new Date(s.replace(" ", "T") + "Z").getTime() : null;
+  // 新建待办存 ISO UTC，历史记录/跟进存 SQLite UTC；已有时区时不能再次追加 Z。
+  const toMs = (s: string | null | undefined): number | null => {
+    if (!s?.trim()) return null;
+    const normalized = s.trim().replace(" ", "T");
+    const timestamp = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  };
 
   const backlog = backlogRows.map((r) => {
     const createdMs = toMs(r.created_at) ?? nowMs;
@@ -96,7 +102,7 @@ export async function GET(req: NextRequest) {
       content: r.content,
       assignee: r.assignee,
       created_at: r.created_at,
-      last_follow_at: r.last_follow_at || "",
+      last_follow_at: r.last_follow_at || null,
       createdAgoMs,
       followAgoMs,
       warn,
