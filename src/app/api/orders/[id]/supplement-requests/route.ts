@@ -12,7 +12,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
-  return NextResponse.json(getDb().prepare("SELECT * FROM sync_document_requests WHERE internal_order_id = ? ORDER BY created_at DESC, rowid DESC").all(id));
+  // latest_status：客户按这条补件交的、这张单上最近一份资料的审核状态（已退回 → 页面显示「已退回，等客户重交」，2026-10-16）
+  return NextResponse.json(getDb().prepare(`SELECT r.*, (SELECT d.status FROM sync_documents sd JOIN documents d ON d.id = sd.document_id
+      WHERE sd.requirement_id = 'sreq-' || r.id AND sd.internal_order_id = r.internal_order_id AND sd.withdrawn = 0 ORDER BY sd.id DESC LIMIT 1) AS latest_status
+    FROM sync_document_requests r WHERE r.internal_order_id = ? ORDER BY r.created_at DESC, r.rowid DESC`).all(id));
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

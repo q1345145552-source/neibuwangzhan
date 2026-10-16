@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, ArrowUpDown, Trash2, Download } from "lucide-react";
 import { fetchOrders, fetchBusinessTypes, deleteOrder } from "@/lib/api";
@@ -15,18 +15,35 @@ import { bangkokDateStr } from "@/lib/time";
 /** 订单管理列表；unclassifiedOnly 时只列「待分类」业务线（侧栏「待分类（待领取）」，2026-10-15） */
 export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: boolean }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [orders, setOrders] = useState<Order[]>([]);
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
-  const [search, setSearch] = useState("");
+  // 搜索词、状态、业务线、快捷筛选都记在网址里（2026-10-16）：点进一张单再返回，列表还是原来筛好的样子
+  const [search, setSearch] = useState(() => searchParams.get("q") || "");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "all");
-  const [businessFilter, setBusinessFilter] = useState("all");
+  const [businessFilter, setBusinessFilter] = useState(() => searchParams.get("biz") || "all");
   const [sortField, setSortField] = useState<"total_amount" | "created_at" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   // 快捷筛选（2026-10-16）：我负责的 / 还没人负责 / 卡住的 / 办完没收齐
-  const [quick, setQuick] = useState<"all" | "mine" | "unowned" | "blocked" | "overdue" | "unpaid">("all");
+  const [quick, setQuick] = useState<"all" | "mine" | "unowned" | "blocked" | "overdue" | "unpaid">(() => {
+    const q = searchParams.get("quick");
+    return q === "mine" || q === "unowned" || q === "blocked" || q === "overdue" || q === "unpaid" ? q : "all";
+  });
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (businessFilter !== "all" && !unclassifiedOnly) params.set("biz", businessFilter);
+    if (quick !== "all") params.set("quick", quick);
+    const next = params.toString();
+    if (next !== searchParams.toString()) router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+    // 只在筛选变了时写网址；searchParams 跟着网址变，不放进依赖免得来回写
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter, businessFilter, quick, unclassifiedOnly, pathname]);
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deleting, setDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -151,6 +168,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
           <input
             ref={searchInputRef}
+            defaultValue={search}
             placeholder="输入订单号、客户站单号（ORD…）或客户名称搜索..."
             aria-label="搜索订单"
             onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInputRef.current?.value || ""); } }}
@@ -172,7 +190,6 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
           <option value="待处理">待处理</option>
           <option value="进行中">进行中</option>
           <option value="已完成">已完成</option>
-          <option value="已逾期">已逾期</option>
           <option value="客户取消">客户取消</option>
         </select>
         {user?.role !== "client" && (

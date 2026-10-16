@@ -44,6 +44,7 @@ const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { 
   轮到你了: { label: "订单", icon: ListTodo, href: orderHref },
   证书快到期: { label: "证书", icon: FileText, href: orderHref },
   步骤超时: { label: "订单", icon: XCircle, href: orderHref },
+  收入未到账: { label: "收款", icon: XCircle, href: orderHref },
 };
 const metaOf = (n: Notice) =>
   TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);

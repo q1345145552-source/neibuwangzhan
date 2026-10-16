@@ -92,7 +92,7 @@ export default function NewOrderPage() {
     if (availableSubServices.length > 0 && !form.sub_service_type) { setError("请选择子类型"); return; }
     setLoading(true);
     try {
-      await createOrder({
+      const created = await createOrder({
         customer_name: form.customer_name.trim(),
         new_customer: newCustomer && !known,
         business_type_id: Number(form.business_type_id),
@@ -105,7 +105,8 @@ export default function NewOrderPage() {
         address_type: isAddressBiz ? form.address_type : "client",
         monthly_rent: isAddressBiz && form.address_type === "xiangtai" ? Number(form.monthly_rent) || 0 : 0,
       });
-      router.push("/orders");
+      // 建完直接进这张单（接着派人、传资料）；用 replace，详情页点返回回到原来的列表而不是空表单
+      router.replace(created?.id ? `/orders/${created.id}` : "/orders");
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建订单失败，稍后再试");
     } finally {
@@ -132,7 +133,8 @@ export default function NewOrderPage() {
             <Label htmlFor="business_type_id" className="text-sm font-medium">业务线</Label>
             <select id="business_type_id" name="business_type_id" value={form.business_type_id} onChange={handleChange} required className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
               <option value="">请选择业务线</option>
-              {businessTypes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {/* 「待分类」只给客户站、商城转来的单用：手建的待分类单改派不了、只能取消重建 */}
+              {businessTypes.filter((b) => b.name !== "待分类").map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           {availableSubServices.length > 0 && (

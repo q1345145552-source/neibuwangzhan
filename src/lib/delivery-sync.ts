@@ -69,5 +69,20 @@ export function syncCertificateDelivery(db: Database.Database, internalOrderId: 
 /** 客户站资料清单带回的 requirement_id 若是本站发出的补件要求（sreq-<id>），标记客户已交；只认同一张客户单发出的要求。 */
 export function markRequestSubmitted(db: Database.Database, requirementId: unknown, sourceOrderNo: string): void {
   if (typeof requirementId !== "string" || !requirementId.startsWith("sreq-")) return;
-  db.prepare("UPDATE sync_document_requests SET submitted_at = COALESCE(submitted_at, datetime('now')) WHERE id = ? AND source_order_no = ?").run(requirementId.slice(5), sourceOrderNo);
+  // 记最近一次交的时间（退回后重交，列表显示重交的时间，2026-10-16）
+  db.prepare("UPDATE sync_document_requests SET submitted_at = datetime('now') WHERE id = ? AND source_order_no = ?").run(requirementId.slice(5), sourceOrderNo);
+}
+
+/**
+ * 这份文档是客户在客户站交来的、客户还没撤回（2026-10-16）：直接删掉，客户那边会一直「待审核」、这一项也没法按原入口重交。
+ * 删除入口一律挡下，让员工用「退回」并写原因。
+ */
+export function customerDocumentDeleteError(status?: string | null): string {
+  // 已经退回过：退回结果已经回传客户站，等客户在客户站删掉或重交（「退回」按钮这时不显示，不能再叫员工去点它）
+  return status === "已退回"
+    ? "这份客户资料已经退回给客户了，等客户在客户网站删掉或重交，这里不用再删"
+    : "这是客户在客户网站交来的资料，请用「退回」并写原因，客户那边才知道要重交";
+}
+export function isLiveCustomerSubmission(db: Database.Database, documentId: unknown): boolean {
+  return !!db.prepare("SELECT 1 FROM sync_documents WHERE document_id = ? AND withdrawn = 0 LIMIT 1").get(Number(documentId));
 }

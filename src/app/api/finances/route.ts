@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type");
   const status = searchParams.get("status");
 
-  let sql = "SELECT f.*, o.customer_name, o.business_type_id, bt.name AS business_name FROM finances f JOIN orders o ON f.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
+  // order_total / order_currency：核对收入时对着这张单该收多少（2026-10-16，只读）
+  let sql = "SELECT f.*, o.customer_name, o.business_type_id, bt.name AS business_name, o.total_amount AS order_total, o.currency AS order_currency FROM finances f JOIN orders o ON f.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
   const conditions: string[] = [];
   const params: string[] = [];
   if (auth.role === "client") {

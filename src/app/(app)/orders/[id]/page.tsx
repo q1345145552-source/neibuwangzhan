@@ -93,6 +93,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
+  // 取消弹窗里的报错（原来写在页面顶上，被弹窗遮罩挡住，看着像没反应）
+  const [cancelError, setCancelError] = useState("");
 
   // ── 反馈链接 ──
   const loadFeedbackLink = async () => {
@@ -201,7 +203,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [docFileUrl, setDocFileUrl] = useState("");
   const [docErrorMsg, setDocErrorMsg] = useState("");
   // 补件要求（2026-10-03）：只有客户网站同步过来的单才有
-  const [supplementRequests, setSupplementRequests] = useState<{ id: string; name: string; description: string; created_by: string; created_at: string; submitted_at: string | null }[]>([]);
+  const [supplementRequests, setSupplementRequests] = useState<{ id: string; name: string; description: string; created_by: string; created_at: string; submitted_at: string | null; latest_status?: string | null }[]>([]);
   const [reqName, setReqName] = useState("");
   // 客户站内申请取消（2026-10-03，规则 19/20）
   const [cancelRequests, setCancelRequests] = useState<{ id: string; line_no: number; copy_no: number; reason: string; status: "pending" | "approved" | "rejected"; decision_note: string; decided_by: string | null; decided_at: string | null; created_at: string }[]>([]);
@@ -364,9 +366,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         await addStepNote(id, stepId, noteContent, user?.name || "系统");
       }
       await updateStep(id, stepId, { status: "已完成" });
-      // 自动启动下一步（跳过的步骤不算）
+      // 自动启动下一步（跳过的步骤不算）；公司注册那套各步互不阻塞，没有「下一步」，不自动开始（不然用不上的条件步骤也被开始、算成当前步骤和超时）
       const idx = steps.findIndex(s => s.id === stepId);
-      const next = idx >= 0 ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
+      const parallel = !!order && isParallelFlow(order.business_type_id, order.sub_service_type);
+      const next = idx >= 0 && !parallel ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
       if (next && next.status === "待处理") {
         await updateStep(id, next.id, { status: "进行中" });
       }
@@ -382,7 +385,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       await updateStep(id, reasonFor.stepId, { status: reasonFor.kind, reason: text });
       // 跳过和点完成一样：顺手开始下一步（跳过的步骤不算）
-      if (reasonFor.kind === "已跳过") {
+      if (reasonFor.kind === "已跳过" && !(order && isParallelFlow(order.business_type_id, order.sub_service_type))) {
         const idx = steps.findIndex(s => s.id === reasonFor.stepId);
         const next = idx >= 0 ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
         if (next && next.status === "待处理") await updateStep(id, next.id, { status: "进行中" });
@@ -535,7 +538,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteDocument(id, deleteDocTarget);
       setDeleteDocTarget(null);
       reload();
-    } catch (e) { console.error("[订单] 删除文档失败", e); setError("删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
+    } catch (e) { console.error("[订单] 删除文档失败", e); setDocErrorMsg(e instanceof Error ? e.message : "删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
   };
 
   const handleSaveCert = async (certId: number) => {
@@ -629,16 +632,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const handleCancelOrder = async () => {
     if (!order) return;
     const reason = cancelReason.trim();
-    if (!reason) { setError("请填写取消原因"); return; }
+    if (!reason) { setCancelError("请填写取消原因"); return; }
     setCancelSaving(true);
+    setCancelError("");
     try {
       const updated = await updateOrder(order.id, { cancel: true, cancel_reason: reason });
       setOrder(updated);
       setShowCancelModal(false);
       setCancelReason("");
+      reload();
     } catch (err) {
       console.error("取消订单失败:", err);
-      setError(err instanceof Error ? err.message : "取消订单失败");
+      setCancelError(err instanceof Error ? err.message : "取消订单失败");
     } finally {
       setCancelSaving(false);
     }
@@ -649,6 +654,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const updated = await updateOrder(order.id, { restore: true });
       setOrder(updated);
+      reload();
     } catch (err) {
       console.error("恢复订单失败:", err);
       setError(err instanceof Error ? err.message : "恢复订单失败");
@@ -716,10 +722,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {!editingOrder ? (
                 <>
                   <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
-                  {order.status === "客户取消" ? (
+                  {/* 客户站、商城来的单只有管理员能取消、恢复（接口原来就这么拦），员工这边不显示按钮 */}
+                  {order.source_system && user?.role !== "admin" ? (
+                    <span className="text-xs text-[var(--muted-foreground)]">客户站来的单只有管理员能取消</span>
+                  ) : order.status === "客户取消" ? (
                     <Button variant="outline" size="sm" onClick={handleRestoreOrder} className="gap-1.5 text-[var(--success)] border-[var(--success)]/30 hover:bg-[var(--success)]/10"><Undo2 className="size-3.5" />恢复</Button>
                   ) : (
-                    <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
+                    <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setCancelError(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
                   )}
                   {/* 10-16 老板定：只有管理员能删订单，员工只能取消 */}
                   {user?.role === "admin" && <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>}
@@ -734,8 +743,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
-
-      {error && <div role="alert" className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
 
       {!isClient && cancelRequests.length > 0 && (() => {
         const pending = cancelRequests.filter(r => r.status === "pending");
@@ -947,6 +954,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               const ok = (due === 0 || short === 0 || isNativeCommerce) && !waiting && !missing;
               return <p className={cn("mt-1.5 text-xs", ok ? "text-[var(--success)]" : "text-[var(--warning)]")}>收款：{parts.join("，")}</p>;
             })()}
+            {/* 客户站来的单：客户站单号和客户站账单付没付（跟订单列表一致；钱到没到账还是以上面核对过的为准） */}
+            {!isClient && order.source_order_no && (
+              <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">客户站单号 {order.source_order_no}{order.client_billing ? ` · 客户站账单：${order.client_billing === "paid" ? "已付" : "未付"}` : ""}</p>
+            )}
             {/* 人员耗时汇总 — see personHours computed above */}
             {personEntries.length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
@@ -1170,7 +1181,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <Upload className="size-3" />
                             {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
                             <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" onChange={async e => {
-                              const file = e.target.files?.[0]; if (!file) return;
+                              const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
                               const stepId = step.id;
                               setStepUploading(p => ({ ...p, [stepId]: true }));
                               setStepFileNames(p => ({ ...p, [stepId]: file.name }));
@@ -1318,7 +1329,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               // 收入只把核对过「已到账」的算进收入，待核对单列；支出照旧（2026-10-15）
               const totalIncomeRaw = finances.filter(f => f.type === "income" && f.status === "paid").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const waitingIncomeRaw = finances.filter(f => f.type === "income" && (f.status === "待核对" || f.status === "pending")).reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
-              const totalExpenseRaw = finances.filter(f => f.type === "expense").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const totalExpenseRaw = finances.filter(f => f.type === "expense" && f.status !== "cancelled").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const pendingPayRaw = finances.filter(f => f.type === "expense" && f.status === "pending").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const totalIncome = Math.round(totalIncomeRaw);
               const waitingIncome = Math.round(waitingIncomeRaw);
@@ -1331,7 +1342,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {["CNY", "THB"].filter(currency => currency === "CNY" || finances.some(f => f.currency === currency)).map(currency => {
                   const rows = finances.filter(f => (f.currency || "CNY") === currency && !f.commerce_refund);
                   const refunded = finances.filter(f=>f.commerce_refund && (f.currency || "CNY")===currency).reduce((n,f)=>n+Number(f.amount),0);
-                  const sum = (type: string, status?: string) => rows.filter(f => f.type === type && (!status || f.status === status)).reduce((total, f) => total + Math.round(f.amount * 100), 0) / 100;
+                  const sum = (type: string, status?: string) => rows.filter(f => f.type === type && (status ? f.status === status : f.status !== "cancelled")).reduce((total, f) => total + Math.round(f.amount * 100), 0) / 100;
                   return <div key={currency} className="rounded border border-[var(--border)] p-2">
                     <p>已收款 {formatCurrency(sum("income", "paid"), currency)}</p>
                     <p>已退款 {formatCurrency(refunded, currency)}（单列，不算办理成本）</p>
@@ -1523,7 +1534,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           {doc.status !== "已审核" && <button onClick={() => handleReviewDocument(doc.id, false)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--success)] hover:bg-[var(--muted)]">审核通过</button>}
                           {doc.direction !== "us_to_client" && doc.status !== "已退回" && <button onClick={() => handleReturnDocument(doc)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--destructive)] hover:bg-[var(--muted)]">退回</button>}
                           {!(doc.publication_verified === 1 && doc.direction === "us_to_client" && doc.status === "已审核") && <button onClick={() => handleReviewDocument(doc.id, true)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)]">核对后对客公开</button>}
-                          <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>
+                          {!doc.live_submission && <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>}
                           </div>
                         )}
                       </li>
@@ -1536,7 +1547,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <input placeholder="文档名…" value={newDocName} onChange={(e) => { setNewDocName(e.target.value); setDocErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                   <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                     {uploadingDoc ? "上传中..." : "选择文件"}
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingDoc(true); setDocFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setDocFileUrl(data.url); } catch (err) { console.error("文档上传失败:", err); setDocErrorMsg("文件上传失败"); setDocFileName(""); } finally { setUploadingDoc(false); } }} disabled={uploadingDoc} />
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingDoc(true); setDocFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setDocFileUrl(data.url); } catch (err) { console.error("文档上传失败:", err); setDocErrorMsg("文件上传失败"); setDocFileName(""); } finally { setUploadingDoc(false); } }} disabled={uploadingDoc} />
                   </label>
                   <button onClick={async () => { if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; } setDocErrorMsg(""); try { await uploadDocument(id, { name: newDocName, uploaded_by: "Bam", direction: "client_to_us", file_url: docFileUrl }); setNewDocName(""); setDocFileUrl(""); setDocFileName(""); reload(); } catch (err) { console.error("添加文档失败:", err); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">添加</button>
                 </div>
@@ -1559,7 +1570,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           <li key={r.id} className="rounded-md bg-[var(--secondary)] px-2 py-1.5 text-xs">
                             <p className="font-medium text-[var(--foreground)]">{r.name}{r.description && <span className="font-normal text-[var(--muted-foreground)]"> — {r.description}</span>}</p>
                             <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">
-                              {r.created_by} · {toThaiTime(r.created_at)} · <span className={r.submitted_at ? "text-[var(--success)]" : "text-[var(--warning)]"}>{r.submitted_at ? `客户已交（${toThaiTime(r.submitted_at)}）` : "等客户交"}</span>
+                              {r.created_by} · {toThaiTime(r.created_at)} · {r.submitted_at && r.latest_status === "已退回"
+                                ? <span className="text-[var(--warning)]">已退回，等客户重交</span>
+                                : <span className={r.submitted_at ? "text-[var(--success)]" : "text-[var(--warning)]"}>{r.submitted_at ? `客户已交（${toThaiTime(r.submitted_at)}）` : "等客户交"}</span>}
                             </p>
                           </li>
                         ))}
@@ -1595,7 +1608,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">NSW下载</label><select value={fields.nsw_download_status || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, nsw_download_status: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]"><option value="">—</option><option value="未下载">未下载</option><option value="已下载">已下载</option><option value="下载中">下载中</option></select></div>
                             </div>
                             <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">备注</label><input value={fields.notes || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" /></div>
-                            <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">证书文件</label><div className="flex items-center gap-1.5"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : fields.file_url ? "重新上传" : "选择文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setEditCertFields((p) => ({ ...p, file_url: data.url })); } catch (err) { console.error("证书上传失败:", err); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{fields.file_url && !certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">已上传: {fields.file_url.split("/").pop()}</span>}{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">新: {certFileName}</span>}</div></div>
+                            <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">证书文件</label><div className="flex items-center gap-1.5"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : fields.file_url ? "重新上传" : "选择文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setEditCertFields((p) => ({ ...p, file_url: data.url })); } catch (err) { console.error("证书上传失败:", err); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{fields.file_url && !certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">已上传: {fields.file_url.split("/").pop()}</span>}{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">新: {certFileName}</span>}</div></div>
                             <div className="flex gap-1.5">
                               <button onClick={() => handleSaveCert(cert.id)} className="rounded px-2 py-1 text-xs bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">保存</button>
                               <button onClick={() => { if (isClient) return; setEditingCertId(null); setEditCertFields({}); }} className="rounded px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
@@ -1644,7 +1657,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <label className="flex items-center gap-1">到期<input type="date" value={newCertExpiry} onChange={(e) => { setNewCertExpiry(e.target.value); setCertErrorMsg(""); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]" /></label>
                   <span>照证书上的填；没有到期日就空着</span>
                 </div>
-                <div className="flex gap-1.5 items-center"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : "选择证书文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setCertFileUrl(data.url); } catch (err) { console.error("证书上传失败:", err); setCertErrorMsg("文件上传失败"); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px]">{certFileName}</span>}</div>
+                <div className="flex gap-1.5 items-center"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : "选择证书文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setCertFileUrl(data.url); } catch (err) { console.error("证书上传失败:", err); setCertErrorMsg("文件上传失败"); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px]">{certFileName}</span>}</div>
                 </>
                 )}
                 {certErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{certErrorMsg}</p>}
@@ -1740,6 +1753,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               rows={3}
               className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
             />
+            {cancelError && <p role="alert" className="mt-2 text-sm text-[var(--destructive)]">{cancelError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowCancelModal(false)} disabled={cancelSaving}>取消</Button>
               <Button size="sm" onClick={handleCancelOrder} disabled={cancelSaving} className="bg-[var(--warning)] text-[var(--warning-foreground)]">{cancelSaving ? "取消中…" : "确认取消"}</Button>

@@ -145,6 +145,9 @@ export async function POST(req: NextRequest) {
     && !db.prepare("SELECT 1 FROM employees WHERE name = ? AND role IN ('admin','employee')").get(rp)) {
     return NextResponse.json({ error: "负责人只能选员工" }, { status: 400 });
   }
+  // 「待分类」只给客户站、商城转来的单用：员工手建的待分类单改派不了，只能取消重建（2026-10-16）
+  const btRow = db.prepare("SELECT name FROM business_types WHERE id = ?").get(Number(business_type_id)) as { name: string } | undefined;
+  if (btRow?.name === "待分类") return NextResponse.json({ error: "「待分类」只用于客户站、商城转来的单，请选具体业务线；拿不准就先问负责人" }, { status: 400 });
   // 有具体服务的业务线必须选一个：不选会套成通用流程，建完改不了（2026-10-15）
   const options = subServices[Number(business_type_id)] || [];
   if (options.length && !options.some((o) => o.key === ssType)) {

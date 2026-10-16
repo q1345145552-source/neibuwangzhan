@@ -24,6 +24,8 @@ export interface Order {
   source_order_no?: string;
   progress?: { total: number; closed: number; current_step: string; current_assignee: string; more_active: number; blocked: string[]; overdue?: { step: string; elapsed: number; expected: number } | null };
   payment?: { arrived: number; arrived_other: number; waiting: number; has_income: boolean; has_arrived: boolean; client_billing?: string | null };
+  /** 订单详情：客户站来的单，客户站账单 paid / unpaid */
+  client_billing?: string | null;
 }
 
 export interface OrderStep {
@@ -306,6 +308,8 @@ export interface EmployeeFile {
 
 export interface Document {
   publication_verified?: number;
+  /** 客户在客户站交来、客户还没撤回（不能直接删，要退回） */
+  live_submission?: number;
   id: number;
   order_id: string;
   name: string;
@@ -525,7 +529,7 @@ export async function deleteDocument(orderId: string, documentId: number) {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ document_id: documentId }),
   });
-  if (!res.ok) throw new Error("删除文档失败");
+  if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || "删除文档失败");
   return res.json();
 }
 
@@ -746,7 +750,7 @@ export async function deleteGlobalDocument(id: number) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('删除文档失败');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || '删除文档失败');
   return res.json();
 }
 

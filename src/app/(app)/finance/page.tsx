@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "lucide-react";
 import { fetchAllFinances, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
@@ -10,7 +11,8 @@ import { cn, toThaiTime, toThaiDate, bangkokDateStr, fileUrl } from "@/lib/utils
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
-const statusLabels: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款" };
+// 支出新建默认是 pending、可以改成已取消：原来这两个没有中文，页面上直接露出英文（2026-10-16，跟订单详情的叫法一样）
+const statusLabels: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款", pending: "待付", cancelled: "已取消" };
 // 10-13 核对功能上线前录的收入有的是 pending（页面显示「待付」）：一律当待核对，老板点一下核对就行（2026-10-15）
 const isWaitingIncome = (r: { type: string; status: string }) => r.type === "income" && (r.status === "待核对" || r.status === "pending");
 const rowStatusLabel = (r: { type: string; status: string }) => isWaitingIncome(r) ? "待核对" : statusLabels[r.status] || r.status;
@@ -81,7 +83,11 @@ interface FinanceRecord {
   verify_by?: string;
   verify_at?: string;
   verify_note?: string;
+  order_total?: number;
+  order_currency?: string;
 }
+// 已取消的支出不算进总支出、利润
+const countsAsExpense = (r: { type: string; status: string }) => r.type === "expense" && r.status !== "cancelled";
 
 export default function FinancePage() {
   const { user } = useAuth();
@@ -169,7 +175,7 @@ export default function FinancePage() {
     [filtered]
   );
   const totalExpense = useMemo(
-    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.type === "expense")),
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => countsAsExpense(r))),
     [filtered]
   );
   const totalRefund = useMemo(
@@ -204,7 +210,7 @@ export default function FinancePage() {
       const amount = Number(r.amount) || 0;
       if (r.type === "income" && r.status === "paid") {
         if (isTHB) g.incomeTHB += amount; else g.incomeCNY += amount;
-      } else if (r.type === "expense") {
+      } else if (countsAsExpense(r)) {
         if (isTHB) g.expenseTHB += amount; else g.expenseCNY += amount;
       }
     }
@@ -250,7 +256,7 @@ export default function FinancePage() {
 
   // 导出当前筛选后的费用明细为 Excel
   const handleExport = () => {
-    const statusText: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款", pending: "待处理" };
+    const statusText: Record<string, string> = { paid: "已支付", unpaid: "未支付", refunded: "已退款", pending: "待付", cancelled: "已取消" };
     const cols: ExportColumn<FinanceRecord>[] = [
       { header: "订单号", render: (r) => r.order_id || "-" },
       { header: "客户名", render: (r) => r.customer_name || "-" },
@@ -258,7 +264,7 @@ export default function FinancePage() {
       { header: "类型", render: (r) => (r.commerce_refund ? "退款" : typeLabels[r.type] || r.type) },
       { header: "金额", render: (r) => `${r.currency === "THB" ? "฿" : "¥"}${Number(r.amount).toLocaleString()}` },
       { header: "币种", render: (r) => (r.currency === "THB" ? "泰铢" : "人民币") },
-      { header: "状态", render: (r) => statusText[r.status] || r.status },
+      { header: "状态", render: (r) => isWaitingIncome(r) ? "待核对" : statusText[r.status] || r.status },
       { header: "描述", render: (r) => r.description || "-" },
       { header: "日期", render: (r) => toThaiDate(r.created_at) || "-" },
     ];
@@ -632,6 +638,7 @@ export default function FinancePage() {
                 <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">金额</th>
                 <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">状态</th>
                 <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">描述</th>
+                <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">客户</th>
                 <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">订单号</th>
                 <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">日期</th>
               </tr>
@@ -639,7 +646,7 @@ export default function FinancePage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无费用记录</td>
+                  <td colSpan={7} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无费用记录</td>
                 </tr>
               ) : (
                 filtered.map((r: FinanceRecord) => (
@@ -658,7 +665,8 @@ export default function FinancePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 max-w-[200px] truncate">{r.description || "-"}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{r.order_id || "-"}</td>
+                    <td className="px-4 py-3 max-w-[160px] truncate text-xs">{r.customer_name || "-"}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{r.order_id ? <Link href={`/orders/${r.order_id}`} onClick={(e) => e.stopPropagation()} className="text-[var(--primary)] hover:underline">{r.order_id}</Link> : "-"}</td>
                     <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">{toThaiDate(r.created_at) || "-"}</td>
                   </tr>
                 ))
@@ -683,7 +691,8 @@ export default function FinancePage() {
                 </div>
                 <div className="mt-2 space-y-1.5 text-sm">
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">描述</span><span className="text-right">{r.description || "—"}</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">订单号</span><span className="font-mono text-xs">{r.order_id || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">客户</span><span className="text-right">{r.customer_name || "—"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">订单号</span>{r.order_id ? <Link href={`/orders/${r.order_id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs text-[var(--primary)] hover:underline">{r.order_id}</Link> : <span className="font-mono text-xs">—</span>}</div>
                 </div>
               </div>
             ))}
@@ -703,7 +712,17 @@ export default function FinancePage() {
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">金额</span><span className="font-mono font-medium text-[var(--foreground)]">{verifyTarget.currency === "THB" ? "฿" : "¥"}{Number(verifyTarget.amount).toLocaleString()}</span></div>
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">客户</span><span className="text-right">{verifyTarget.customer_name || "—"}</span></div>
-              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">订单号</span><span className="font-mono text-xs">{verifyTarget.order_id || "—"}</span></div>
+              <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">订单号</span>{verifyTarget.order_id ? <Link href={`/orders/${verifyTarget.order_id}`} className="font-mono text-xs text-[var(--primary)] hover:underline">{verifyTarget.order_id}（打开订单）</Link> : <span className="font-mono text-xs">—</span>}</div>
+              {(() => {
+                // 对着这张单该收多少：订单金额、之前已经核对到账的（同币种，不含这一笔）
+                const total = Number(verifyTarget.order_total) || 0;
+                if (!verifyTarget.order_id || total <= 0) return null;
+                const cur = verifyTarget.order_currency || "CNY";
+                const before = allFinances.filter(f => f.order_id === verifyTarget.order_id && f.id !== verifyTarget.id && f.type === "income" && f.status === "paid" && !f.commerce_refund && (f.currency || "CNY") === cur)
+                  .reduce((n, f) => n + (Number(f.amount) || 0), 0);
+                const sign = cur === "THB" ? "฿" : "¥";
+                return <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">这张单</span><span className="text-right">订单金额 {sign}{total.toLocaleString()}，之前已到账 {sign}{before.toLocaleString()}</span></div>;
+              })()}
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">描述</span><span className="text-right break-words">{verifyTarget.description || "—"}</span></div>
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">录入人</span><span>{verifyTarget.created_by || "—"}</span></div>
               <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">录入时间</span><span>{toThaiTime(verifyTarget.created_at) || "—"}</span></div>

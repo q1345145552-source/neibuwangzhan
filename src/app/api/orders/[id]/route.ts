@@ -41,9 +41,17 @@ export async function GET(
     "SELECT * FROM order_steps WHERE order_id = ? ORDER BY step_order"
   ).all(id);
 
-  return NextResponse.json(auth.role === "client"
-    ? { ...publicOrder(order), steps: publicSteps(steps) }
-    : { ...order as object, steps, commerce_purchase: readOrderPurchase(db,id) });
+  if (auth.role === "client") return NextResponse.json({ ...publicOrder(order), steps: publicSteps(steps) });
+  // 客户站来的单：带上客户站单号和客户站账单付没付（跟订单列表同一个查法，只读，2026-10-16）
+  const source = db.prepare("SELECT source_order_no FROM sync_inbox WHERE internal_order_id = ? ORDER BY line_no, copy_no LIMIT 1").get(id) as { source_order_no: string } | undefined;
+  let clientBilling: string | null = null;
+  if (source) {
+    try {
+      const row = db.prepare("SELECT financial_json FROM sync_orders WHERE source_order_no = ?").get(source.source_order_no) as { financial_json: string } | undefined;
+      clientBilling = row ? (JSON.parse(row.financial_json) as { billingStatus?: string }).billingStatus || null : null;
+    } catch { /* 坏数据不显示 */ }
+  }
+  return NextResponse.json({ ...order as object, steps, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling });
 }
 
 // PATCH /api/orders/:id
