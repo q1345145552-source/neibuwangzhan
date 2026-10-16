@@ -89,7 +89,7 @@ export default function HandlingReportPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Tile label={isCurrentMonth ? "本月到目前办完" : "当月办完"} value={String(s.done)} unit="单" note={s.medianDays != null ? `从建单到办完，中间值 ${s.medianDays} 个工作日（不含公司注册）` : "办完的单太少，先不算中间值"} />
             <Tile label="现在还在办" value={String(s.inProgress)} unit="单" note={`其中有步骤卡住的 ${s.blockedOrders} 单`} />
-            <Tile label="现在超时的单" value={String(s.overdue)} unit="单" note="停在当前这一步，超过平时时长的 1.5 倍" alert={s.overdue > 0} />
+            <Tile label="现在超时的单" value={String(s.overdue)} unit="单" note="停在当前这一步，超过设定天数（没设的按平时 1.5 倍）" alert={s.overdue > 0} />
             <Tile label="时间记录齐全" value={s.coverage == null ? "—" : String(s.coverage)} unit={s.coverage == null ? undefined : "%"} note="当月完成的步骤里记了开始时间的比例；7 月 16 日前的老单没记" />
           </div>
 
@@ -175,7 +175,7 @@ export default function HandlingReportPage() {
           <section className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-4">
               <h2 className="text-sm font-medium text-[var(--foreground)]">现在超时的单</h2>
-              <span className="text-xs text-[var(--muted-foreground)]">停在当前这一步超过平时（近 90 天同一步的中间值）的 1.5 倍；样本不够的步骤不判</span>
+              <span className="text-xs text-[var(--muted-foreground)]">流程设置里设了预计天数的，超过设定天数就算；没设的按平时（近 90 天同一步的中间值）的 1.5 倍判，样本不够的不判</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -189,7 +189,7 @@ export default function HandlingReportPage() {
                       <td className={td}><span className="mr-1.5">{r.step}</span>{r.external && <ExternalTag />}</td>
                       <td className={td}>{r.assignee || <span className="text-[var(--muted-foreground)]">未指定</span>}</td>
                       <td className={cn(tdNum, "text-[var(--destructive)]")}>{fmtDays(r.stayedDays)}</td>
-                      <td className={tdNum}>{fmtDays(r.normalDays)}</td>
+                      <td className={tdNum}>{r.bySetting ? `设定 ${fmtDays(r.normalDays)}` : fmtDays(r.normalDays)}</td>
                     </tr>
                   ))}
                 </tbody>

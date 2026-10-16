@@ -5,5 +5,8 @@ export async function register() {
     if (process.env.NEXT_PHASE === "phase-production-build") return;
     const { ensureProgressWorker } = await import("./lib/progress-sync");
     ensureProgressWorker();
+    // 证书快到期、步骤超时提醒：每小时查一次（2026-10-16）
+    const { ensureReminderWorker } = await import("./lib/order-reminders");
+    ensureReminderWorker();
   }
 }

@@ -26,7 +26,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   // 快捷筛选（2026-10-16）：我负责的 / 还没人负责 / 卡住的 / 办完没收齐
-  const [quick, setQuick] = useState<"all" | "mine" | "unowned" | "blocked" | "unpaid">("all");
+  const [quick, setQuick] = useState<"all" | "mine" | "unowned" | "blocked" | "overdue" | "unpaid">("all");
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deleting, setDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -89,6 +89,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
     key === "mine" ? owners(o).includes(me) && o.status !== "客户取消"
     : key === "unowned" ? owners(o).length === 0 && live(o)
     : key === "blocked" ? (o.progress?.blocked.length || 0) > 0 && live(o)
+    : key === "overdue" ? !!o.progress?.overdue && live(o)
     : key === "unpaid" ? unpaidDone(o)
     : true;
   const filtered = orders.filter((o) => matchesSearch(o) && quickTest(quick, o));
@@ -175,7 +176,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
         </select>
         {user?.role !== "client" && (
           <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5" role="group" aria-label="快捷筛选">
-            {([["all", "全部"], ["mine", "我负责的"], ["unowned", "还没人负责"], ["blocked", "卡住的"], ["unpaid", "办完没收齐"]] as const).map(([key, label]) => (
+            {([["all", "全部"], ["mine", "我负责的"], ["unowned", "还没人负责"], ["blocked", "卡住的"], ["overdue", "超时的"], ["unpaid", "办完没收齐"]] as const).map(([key, label]) => (
               <button key={key} type="button" onClick={() => setQuick(key)} aria-pressed={quick === key}
                 className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors", quick === key ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
                 {label}
@@ -212,7 +213,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
                 </button>
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">状态</th>
-              {user?.role !== "client" && <th className="py-3 px-4 text-center text-xs font-medium text-[var(--muted-foreground)] tracking-wide w-16">操作</th>}
+              {user?.role === "admin" && <th className="py-3 px-4 text-center text-xs font-medium text-[var(--muted-foreground)] tracking-wide w-16">操作</th>}
             </tr>
           </thead>
           <tbody>
@@ -236,6 +237,9 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
                           <span className="text-[var(--muted-foreground)]">{order.progress.current_assignee || ((order.responsible_person || "").trim() ? `负责人 ${order.responsible_person}` : "没写经办人")}</span>
                         )}
                         {order.progress.blocked.length > 0 && order.status !== "客户取消" && <span className="text-[var(--destructive)]">卡住：{order.progress.blocked.join("、")}</span>}
+                        {order.progress.overdue && order.status !== "客户取消" && order.status !== "已完成" && (
+                          <span className="text-[var(--destructive)]">超时：已 {order.progress.overdue.elapsed} 个工作日（设定 {order.progress.overdue.expected} 天）</span>
+                        )}
                       </div>
                     ) : <span className="text-[var(--muted-foreground)]">—</span>}
                   </td>
@@ -253,7 +257,8 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
                 <td className="py-3 px-4">
                   <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
                 </td>
-                {user?.role !== "client" && (
+                {/* 10-16 老板定：只有管理员能删订单，员工只能在订单里「取消订单」 */}
+                {user?.role === "admin" && (
                   <td className="py-3 px-4 text-center">
                     <button
                       onClick={() => setDeleteTarget({ id: order.id, name: order.customer_name })}

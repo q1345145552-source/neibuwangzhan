@@ -6,7 +6,8 @@ import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 import { subServices } from "@/lib/constants";
-import { isStepClosed } from "@/lib/step-status";
+import { isStepClosed, currentOpenSteps } from "@/lib/step-status";
+import { currentStepTimings } from "@/lib/step-overdue";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -68,13 +69,19 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
   for (const r of db.prepare("SELECT internal_order_id, source_order_no FROM sync_inbox WHERE internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all() as { internal_order_id: string; source_order_no: string }[]) {
     if (!sources.has(r.internal_order_id)) sources.set(r.internal_order_id, r.source_order_no);
   }
+  // 当前步骤超时（流程设置里设了预计天数的，2026-10-16）
+  const overdueBy = new Map<string, { step: string; elapsed: number; expected: number }>();
+  try {
+    for (const t of currentStepTimings(db, new Date(), new Set(rows.map((r) => r.id)))) {
+      if (t.overdue && t.expectedDays != null && !overdueBy.has(t.orderId)) overdueBy.set(t.orderId, { step: t.stepName, elapsed: t.elapsedDays, expected: t.expectedDays });
+    }
+  } catch (error) { console.error("[orders] 超时计算失败:", error); }
   return rows.map((o) => {
     const list = stepsBy.get(o.id) || [];
     const closed = list.filter((x) => isStepClosed(x.status));
-    // 公司注册各步互不阻塞：当前步骤取正在办/卡住的；其他业务取第一个没办完的
-    const open = list.filter((x) => !isStepClosed(x.status));
-    const active = o.business_type_id === 1 ? open.filter((x) => x.status === "进行中" || x.status === "阻塞") : [];
-    const current = active[0] || open[0] || null;
+    // 当前停在哪一步：跟超时、办理月报同一口径（公司注册各步互不阻塞，可能同时有几步在办）
+    const currentSteps = currentOpenSteps(o.business_type_id, (o as ListOrder & { sub_service_type?: string | null }).sub_service_type, list);
+    const current = currentSteps[0] || null;
     const cur = o.currency || "CNY";
     const m = moneyBy.get(o.id) || [];
     return {
@@ -85,8 +92,9 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
         closed: closed.length,
         current_step: current?.step_name || "",
         current_assignee: current ? ((current.assignee || "").trim() || "") : "",
-        more_active: Math.max(active.length - 1, 0),
+        more_active: Math.max(currentSteps.length - 1, 0),
         blocked: list.filter((x) => x.status === "阻塞").map((x) => x.step_name),
+        overdue: overdueBy.get(o.id) || null,
       },
       payment: {
         arrived: m.filter((x) => x.currency === cur).reduce((n, x) => n + Number(x.arrived || 0), 0),
@@ -142,13 +150,13 @@ export async function POST(req: NextRequest) {
 
       const steps = getOrderStepsWithDocs(Number(business_type_id), ssType, address_type);
       const insertStep = db.prepare(
-        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee, notes) VALUES (?, ?, ?, '待处理', ?, ?)"
+        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee, notes, expected_days, template_version_id) VALUES (?, ?, ?, '待处理', ?, ?, ?, ?)"
       );
       const insertStepDoc = db.prepare(
         "INSERT INTO step_documents (step_id, order_id, document_name, status) VALUES (?, ?, ?, 'pending')"
       );
       steps.forEach((step, i) => {
-        const res = insertStep.run(id, step.name, i + 1, step.assignee, step.notes || "");
+        const res = insertStep.run(id, step.name, i + 1, step.assignee, step.notes || "", step.expected_days ?? null, step.template_version_id ?? null);
         // 按步骤模板同步生成"所需文件"清单，供订单详情页跟踪上传状态
         for (const docName of step.docs) {
           insertStepDoc.run(res.lastInsertRowid, id, docName);

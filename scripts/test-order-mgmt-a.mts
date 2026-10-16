@@ -214,7 +214,7 @@ await check('核对上线前留下的 pending 收入算待核对：侧栏角标�
   assert.equal(finRow(fid).status, 'paid');
 });
 
-await check('有核对过收入的单员工删不了，管理员删时记下带走的收入', async () => {
+await check('员工删不了订单（10-16 起只有管理员能删），管理员删时记下带走的收入', async () => {
   const o = order(TM, 'tm-reg', { steps: [{ name: '方案确认', status: '已完成' }] });
   db.prepare("INSERT INTO finances (order_id, type, amount, status, currency, verify_by) VALUES (?, 'income', 800, 'paid', 'THB', 'x')").run(o);
   const r = await call(orderRoute.DELETE as never, staff, 'DELETE', `/api/orders/${o}`, undefined, o);
@@ -225,7 +225,8 @@ await check('有核对过收入的单员工删不了，管理员删时记下带�
   assert.match(log.detail, /800 泰铢/);
   const o2 = order(TM, 'tm-reg', { steps: [{ name: '方案确认', status: '已完成' }] });
   db.prepare("INSERT INTO finances (order_id, type, amount, status, currency) VALUES (?, 'income', 100, '待核对', 'CNY')").run(o2);
-  assert.equal((await call(orderRoute.DELETE as never, staff, 'DELETE', `/api/orders/${o2}`, undefined, o2)).status, 200, '还没核对的照旧能删');
+  assert.equal((await call(orderRoute.DELETE as never, staff, 'DELETE', `/api/orders/${o2}`, undefined, o2)).status, 403, '没核对收入的单员工也删不了');
+  assert.equal((await call(orderRoute.DELETE as never, admin, 'DELETE', `/api/orders/${o2}`, undefined, o2)).status, 200);
 });
 
 await check('负责人兜底只认名字完全一样：Ann 看不到 Anna 的单', async () => {

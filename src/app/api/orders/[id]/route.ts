@@ -193,11 +193,11 @@ export async function PATCH(
         }
         db.prepare("UPDATE order_steps SET status = '已完成', completed_at = COALESCE(completed_at, datetime('now')) WHERE id = ?").run(claim.id);
         const last = (db.prepare("SELECT MAX(step_order) AS n FROM order_steps WHERE order_id = ?").get(id) as { n: number }).n;
-        const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes) VALUES (?,?,?,'待处理',?,?)");
+        const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes,expected_days,template_version_id) VALUES (?,?,?,'待处理',?,?,?,?)");
         const insertDoc = db.prepare("INSERT INTO step_documents(step_id,order_id,document_name,status) VALUES (?,?,?,'pending')");
         // 新业务线模板第一步也是「方案确认」，已保留原来那步，不重复加
         getOrderStepsWithDocs(reassign.businessTypeId, reassign.subServiceType, reassign.addressType).slice(1).forEach((step, i) => {
-          const inserted = insertStep.run(id, step.name, last + 1 + i, step.assignee, step.notes || "");
+          const inserted = insertStep.run(id, step.name, last + 1 + i, step.assignee, step.notes || "", step.expected_days ?? null, step.template_version_id ?? null);
           for (const name of step.docs) insertDoc.run(inserted.lastInsertRowid, id, name);
         });
       }
@@ -239,6 +239,9 @@ export async function DELETE(
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
+  // 10-16 老板定：只有管理员能删订单，员工只能「取消订单」（删了步骤、文件、费用一起没，恢复不了）
+  if (auth.role !== "admin") return NextResponse.json({ error: "只有管理员能删订单，员工请用「取消订单」" }, { status: 403 });
+
   const { id } = await params;
   const db = getDb();
 
@@ -251,11 +254,7 @@ export async function DELETE(
   if (synchronized) {
     return NextResponse.json({ error: "同步订单请使用取消操作，保留来源台账与账单关联" }, { status: 409 });
   }
-  // 核对过的收入员工删不了（2026-10-15），删整张单也一样：有已到账/未到账收入的单只有管理员能删，删时记下带走的钱
-  const settled = db.prepare("SELECT amount, currency, status FROM finances WHERE order_id = ? AND type = 'income' AND status IN ('paid','未到账')").all(id) as { amount: number; currency: string | null; status: string }[];
-  if (settled.length && auth.role !== "admin") {
-    return NextResponse.json({ error: "这张单有核对过的收入，只有管理员能删" }, { status: 403 });
-  }
+  // 删单时记下带走的收入（2026-10-15）
   const incomeNote = (db.prepare("SELECT type, amount, currency, status FROM finances WHERE order_id = ? AND type = 'income'").all(id) as { amount: number; currency: string | null; status: string }[])
     .map(f => `${f.amount} ${(f.currency || "CNY") === "THB" ? "泰铢" : "人民币"}（${f.status}）`).join("、");
 

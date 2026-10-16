@@ -706,7 +706,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   ) : (
                     <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
                   )}
-                  <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>
+                  {/* 10-16 老板定：只有管理员能删订单，员工只能取消 */}
+                  {user?.role === "admin" && <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>}
                 </>
               ) : (
                 <>
@@ -941,7 +942,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div className="flex flex-col gap-0">
                 {steps.map((step, i) => {
                   const hasPlanConfirm = steps.find(s => s.step_order === 1)?.step_name === "方案确认";
-                  const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0);
+                  // 按流程设置建的单（带版本号）资料以库里为准，没有就是真没有，不回退程序里的清单（2026-10-16）
+                  const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0) || steps.some(s => s.template_version_id != null);
                   const notes = stepNotes[step.id] || [];
                   const sd = stepDocs[step.id] || [];
                   const uploadedCount = sd.filter((d: { status?: string; uploaded?: boolean }) => d.status === "uploaded").length;

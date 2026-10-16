@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { subServices } from "@/lib/constants";
+import { currentOpenSteps } from "@/lib/step-status";
 
 /**
  * 办理效率月报（2026-10-15，老板定的口径）：
@@ -33,7 +34,7 @@ const DONE = "已完成";
 const closed = (s: { status: string }) => s.status === DONE || s.status === "已跳过"; // 已跳过 = 这一步不用办（2026-10-16）
 
 type OrderRow = { id: string; customer_name: string; business_type_id: number; sub_service_type: string | null; address_type: string | null; status: string; created_at: string; responsible_person: string | null };
-type StepRow = { id: number; order_id: string; step_name: string; step_order: number; status: string; assignee: string | null; started_at: string | null; completed_at: string | null; created_at: string | null };
+type StepRow = { id: number; order_id: string; step_name: string; step_order: number; status: string; assignee: string | null; started_at: string | null; completed_at: string | null; created_at: string | null; expected_days: number | null };
 
 /** 库里时间两种写法混存：「YYYY-MM-DD HH:MM:SS」（UTC）和 ISO（带 Z） */
 export function parseDbTime(raw: string | null | undefined): Date | null {
@@ -93,12 +94,13 @@ export type HandlingReport = {
   groups: { group: string; done: number; medianDays: number | null; maxDays: number | null; inProgress: number; note: string }[];
   slowSteps: { group: string; step: string; medianDays: number; samples: number; external: boolean }[];
   load: { person: string; kind: "staff" | "unassigned" | "external" | "other"; orders: number; blocked: number; notStarted: number; longestDays: number }[];
-  overdue: { orderId: string; customer: string; group: string; step: string; assignee: string; external: boolean; stayedDays: number; normalDays: number }[];
+  /** normalDays：流程设置里设了预计天数的用设定值（bySetting=true），没设的用近 90 天中间值 */
+  overdue: { orderId: string; customer: string; group: string; step: string; assignee: string; external: boolean; stayedDays: number; normalDays: number; bySetting?: boolean }[];
 };
 
 export function buildHandlingReport(db: Database.Database, month: string, now: Date): HandlingReport {
   const orders = db.prepare("SELECT id, customer_name, business_type_id, sub_service_type, address_type, status, created_at, responsible_person FROM orders").all() as OrderRow[];
-  const steps = db.prepare("SELECT id, order_id, step_name, step_order, status, assignee, started_at, completed_at, created_at FROM order_steps ORDER BY order_id, step_order, id").all() as StepRow[];
+  const steps = db.prepare("SELECT id, order_id, step_name, step_order, status, assignee, started_at, completed_at, created_at, expected_days FROM order_steps ORDER BY order_id, step_order, id").all() as StepRow[];
   const btName = new Map((db.prepare("SELECT id, name FROM business_types").all() as { id: number; name: string }[]).map(b => [b.id, b.name]));
   const staff = (db.prepare("SELECT name, status FROM employees WHERE role IN ('admin','employee') AND name <> ''").all() as { name: string; status: string }[]);
   const staffByLower = new Map(staff.map(e => [e.name.trim().toLowerCase(), e]));
@@ -201,15 +203,8 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
   for (const o of inProgressOrders) {
     const list = stepsByOrder.get(o.id) || [];
     if (list.some(s => s.status === "阻塞")) blockedOrders.add(o.id);
-    let current: StepRow[];
-    if (isCompanyReg(o)) {
-      // 公司注册可以不按顺序办：在办的步骤都算；一步都没开始就算第一个没做完的
-      current = list.filter(s => s.status === "进行中" || s.status === "阻塞");
-      if (!current.length) { const first = list.find(s => !closed(s)); if (first) current = [first]; }
-    } else {
-      const first = list.find(s => !closed(s));
-      current = first ? [first] : [];
-    }
+    // 公司注册（公司变更除外）可以不按顺序办：在办的步骤都算，一步都没开始就算第一个没做完的；跟订单列表、超时同一口径
+    const current: StepRow[] = currentOpenSteps(o.business_type_id, o.sub_service_type, list);
     for (const s of current) {
       const idx = list.indexOf(s);
       // 前面最近一次办完的时刻（前一步被跳过时没有完成时间，往前找）
@@ -228,11 +223,18 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
         else if (emp.status === "离职" || emp.status === "停薪留职") bump(`${emp.name.trim()}（${emp.status}，要改派）`, "other", s, stayed);
         else bump(emp.name.trim(), "staff", s, stayed);
       }
+      const who = (s.assignee || "").trim() || ((o.responsible_person || "").trim() ? `负责人：${(o.responsible_person || "").trim()}` : "");
+      // 建单时记下了预计天数（流程设置里设的，2026-10-16）：超过就算超时，公司注册也一样；没记的（老单）照旧按平时 1.5 倍判
+      const setDays = s.expected_days ?? null;
+      if (setDays != null) {
+        if (stayed > setDays) overdue.push({ orderId: o.id, customer: o.customer_name, group: groupOf(o), step: s.step_name, assignee: who, external, stayedDays: round1(stayed)!, normalDays: setDays, bySetting: true });
+        continue;
+      }
       if (isCompanyReg(o)) continue;
       const base = baseline.get(keyOf(groupOf(o), s.step_name));
       const normal = base && base.length >= MIN_SAMPLES ? median(base) : null;
       if (normal != null && stayed > normal * OVERDUE_FACTOR && stayed >= 1) {
-        overdue.push({ orderId: o.id, customer: o.customer_name, group: groupOf(o), step: s.step_name, assignee: (s.assignee || "").trim() || ((o.responsible_person || "").trim() ? `负责人：${(o.responsible_person || "").trim()}` : ""), external, stayedDays: round1(stayed)!, normalDays: round1(normal)! });
+        overdue.push({ orderId: o.id, customer: o.customer_name, group: groupOf(o), step: s.step_name, assignee: who, external, stayedDays: round1(stayed)!, normalDays: round1(normal)! });
       }
     }
   }

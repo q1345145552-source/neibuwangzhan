@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { initializeSyncSchema } from "./sync-schema";
 import { ensureAccessSchema } from "./access-schema";
+import { ensureWorkflowSchema } from "./workflow-schema";
 import { expandLegacyCheck } from "./legacy-check-schema";
 import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
@@ -24,6 +25,7 @@ export function getDb(): Database.Database {
       migrateInfluencersCheck(database);
       migrateEmployeeStatusCheck(database);
       ensureAccessSchema(database);
+      ensureWorkflowSchema(database);
       if (commercePilotEnabled()) ensureCommerceSchema(database);
     } catch (error) {
       database.close();
@@ -470,6 +472,44 @@ export function getStepsWithAddressType(businessTypeId: number, subServiceType?:
 
 export interface StepTemplateWithDocs extends StepTemplate {
   docs: string[];
+  /** 流程设置里设的预计天数（工作日）；程序里的流程没有 */
+  expected_days?: number | null;
+  /** 来自系统里哪个流程版本；程序里的流程没有 */
+  template_version_id?: number | null;
+}
+
+/** 一套流程的指纹：步骤名、经办人、资料、备注（流程清单合并、按指纹认系统里的流程都用它） */
+export function templateSignature(tpl: StepTemplateWithDocs[]): string {
+  return JSON.stringify(tpl.map((s) => [s.name, s.assignee, s.docs, s.notes || ""]));
+}
+
+/**
+ * 系统里有这套流程（流程设置导入过）就用系统里正在用的版本，没有就返回 null（照旧用程序里的）。
+ * 安全闸：步骤名和顺序必须跟程序里一模一样（这一期不开放改名/增删），对不上也照旧用程序里的。
+ */
+function resolveTemplateFromDb(legacy: StepTemplateWithDocs[]): StepTemplateWithDocs[] | null {
+  if (!db) return null;
+  try {
+    const row = db.prepare(
+      "SELECT t.current_version_id AS vid FROM workflow_templates t WHERE t.legacy_signature = ? AND t.current_version_id IS NOT NULL"
+    ).get(templateSignature(legacy)) as { vid: number } | undefined;
+    if (!row) return null;
+    const steps = db.prepare(
+      "SELECT name, assignee, notes, docs_json, expected_days FROM workflow_template_steps WHERE version_id = ? ORDER BY step_order"
+    ).all(row.vid) as { name: string; assignee: string; notes: string; docs_json: string; expected_days: number | null }[];
+    if (steps.length !== legacy.length || steps.some((s, i) => s.name !== legacy[i].name)) return null;
+    return steps.map((s) => ({
+      name: s.name,
+      assignee: s.assignee,
+      ...(s.notes ? { notes: s.notes } : {}),
+      docs: JSON.parse(s.docs_json || "[]") as string[],
+      expected_days: s.expected_days,
+      template_version_id: row.vid,
+    }));
+  } catch (error) {
+    console.error("[workflow] 读系统里的流程失败，照旧用程序里的:", error);
+    return null;
+  }
 }
 
 /**
@@ -478,6 +518,12 @@ export interface StepTemplateWithDocs extends StepTemplate {
  * 保证插入步骤后文件清单不会错位。
  */
 export function getOrderStepsWithDocs(businessTypeId: number, subServiceType?: string, addressType?: string): StepTemplateWithDocs[] {
+  const legacy = getLegacyOrderStepsWithDocs(businessTypeId, subServiceType, addressType);
+  return resolveTemplateFromDb(legacy) ?? legacy;
+}
+
+/** 写在程序里的流程（流程设置导入前的原样；导入、比对都以它为准） */
+export function getLegacyOrderStepsWithDocs(businessTypeId: number, subServiceType?: string, addressType?: string): StepTemplateWithDocs[] {
   const base = getBusinessSteps(businessTypeId, subServiceType);
   const docsMap = getStepDocs(businessTypeId, subServiceType);
   // 所有业务线流程最前面加「方案确认」第一步：负责人留空（谁都能操作），

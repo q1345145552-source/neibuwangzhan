@@ -12,3 +12,17 @@ export function orderStatusFromSteps(statuses: string[]): string | null {
   if (statuses.every(isStepClosed)) return "已完成";
   return statuses.some((s) => s === "进行中" || s === "阻塞" || isStepClosed(s)) ? "进行中" : "待处理";
 }
+
+/**
+ * 这张单现在停在哪一步（订单列表、超时、办理月报共用一个口径，2026-10-16）：
+ * 公司注册（公司变更除外，它是自己的 4 步按顺序走）各步互不阻塞，算正在办/卡住的步骤，一步都没开始就算第一个没办完的；
+ * 其他业务算第一个没办完的步骤。已跳过算办完。
+ */
+export function currentOpenSteps<T extends { status: string }>(businessTypeId: number, subServiceType: string | null | undefined, steps: T[]): T[] {
+  const open = steps.filter((s) => !isStepClosed(s.status));
+  if (businessTypeId === 1 && subServiceType !== "change") {
+    const active = open.filter((s) => s.status === "进行中" || s.status === "阻塞");
+    return active.length ? active : open.slice(0, 1);
+  }
+  return open.slice(0, 1);
+}

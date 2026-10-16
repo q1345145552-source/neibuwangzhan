@@ -171,8 +171,8 @@ export function checkout(db: Database.Database, actor: TokenPayload, input: unkn
           .run(lineId,copy,orderId,line.unit_cents);
         mallOrders.push({ orderId, sku: line.sku, unclassified: workflow.key === "unclassified-v1" });
         for (const [stepIndex,step] of workflow.steps.entries()) {
-          const result = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,assignee,notes) VALUES (?,?,?,?,?)")
-            .run(orderId,step.name,stepIndex+1,step.assignee,step.notes || "");
+          const result = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,assignee,notes,expected_days,template_version_id) VALUES (?,?,?,?,?,?,?)")
+            .run(orderId,step.name,stepIndex+1,step.assignee,step.notes || "",step.expected_days ?? null,step.template_version_id ?? null);
           db.prepare("INSERT INTO commerce_public_steps(step_id,public_name) VALUES (?,?)").run(result.lastInsertRowid,workflow.publicNames[stepIndex]);
           for (const name of step.docs) db.prepare("INSERT INTO step_documents(step_id,order_id,document_name) VALUES (?,?,?)").run(result.lastInsertRowid,orderId,name);
         }

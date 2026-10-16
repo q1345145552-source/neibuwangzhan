@@ -22,7 +22,7 @@ export interface Order {
   steps?: OrderStep[];
   /** 订单列表摘要（只有员工拿到，2026-10-16） */
   source_order_no?: string;
-  progress?: { total: number; closed: number; current_step: string; current_assignee: string; more_active: number; blocked: string[] };
+  progress?: { total: number; closed: number; current_step: string; current_assignee: string; more_active: number; blocked: string[]; overdue?: { step: string; elapsed: number; expected: number } | null };
   payment?: { arrived: number; arrived_other: number; waiting: number; has_income: boolean; has_arrived: boolean };
 }
 
@@ -42,6 +42,9 @@ export interface OrderStep {
   completed_at: string | null;
   created_at: string;
   started_at?: string | null;
+  /** 按流程设置里哪一版建的（2026-10-16）；导入前建的单没有 */
+  template_version_id?: number | null;
+  expected_days?: number | null;
 }
 
 export interface BusinessType {
