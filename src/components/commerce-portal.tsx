@@ -336,7 +336,7 @@ function Portal({ staff,importedCatalog }: { staff: boolean;importedCatalog:bool
               {line.fulfillments.map(f=><section key={f.order_id} className={panel}>
                 <div className="flex flex-wrap items-center justify-between gap-2"><h4>第 {f.copy_no} 份 · {f.status}</h4>
                   {staff && <Link className="underline" href={"/orders/" + f.order_id}>进入原办理流程</Link>}</div>
-                <ol className="my-3 grid gap-2 text-sm sm:grid-cols-2">{f.steps.map(step=><li key={step.id}>{step.step_order}. {step.name} · {step.status}</li>)}</ol>
+                <ol className="my-3 grid gap-2 text-sm sm:grid-cols-2">{f.steps.map(step=><li key={step.id}>{step.step_order}. {step.name} · {step.status === "已跳过" ? "无需办理" : step.status}</li>)}</ol>
                 <p className="text-xs text-[var(--muted-foreground)]">按所购服务核对适用项目；原流程清单不代表新增附属服务、订阅或收费。</p>
                 <ul className="my-3 space-y-2">{f.documents.map(doc=><li key={doc.id} className="flex flex-wrap items-center gap-2">
                   <span>{doc.name} · {doc.status}</span>{doc.file_url && <Button variant="outline" size="sm" disabled={busy} onClick={()=>download(doc.file_url,doc.name)}>下载资料</Button>}

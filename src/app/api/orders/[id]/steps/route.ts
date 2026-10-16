@@ -3,6 +3,8 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
+import { STEP_STATUSES, STEP_SKIPPED, isStepClosed, orderStatusFromSteps } from "@/lib/step-status";
+import { notifyNextStep } from "@/lib/order-alerts";
 
 // PATCH /api/orders/:id/steps
 export async function PATCH(
@@ -18,20 +20,35 @@ export async function PATCH(
   const db = getDb();
   const body = await readJson(req);
   const { step_id, status, notes, assignee, approval_status, submission_count } = body;
+  // 跳过、标阻塞时写的原因：记进这一步的备注（2026-10-16）
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 200) : "";
 
   if (!step_id) {
     return NextResponse.json({ error: "请提供 step_id" }, { status: 400 });
   }
 
   // status 可选：只改负责人/备注等字段时不必传，避免误触完成时间的重算逻辑
-  const validStatuses = ["待处理", "进行中", "已完成", "阻塞"];
-  if (status !== undefined && !validStatuses.includes(status)) {
+  if (status !== undefined && !(STEP_STATUSES as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
   }
 
-  const step = db.prepare("SELECT * FROM order_steps WHERE id = ? AND order_id = ?").get(step_id, id);
+  const step = db.prepare("SELECT * FROM order_steps WHERE id = ? AND order_id = ?").get(step_id, id) as { status: string; step_order: number; step_name: string; assignee: string } | undefined;
   if (!step) {
     return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
+  }
+  if (status === STEP_SKIPPED && step.status !== STEP_SKIPPED) {
+    if (!reason) return NextResponse.json({ error: "跳过要写原因" }, { status: 400 });
+    if (step.status === "已完成") return NextResponse.json({ error: "已完成的步骤不能跳过，先撤回" }, { status: 400 });
+    const range = db.prepare("SELECT MIN(step_order) AS lo, MAX(step_order) AS hi FROM order_steps WHERE order_id = ?").get(id) as { lo: number; hi: number };
+    if (step.step_order === range.lo || step.step_order === range.hi) {
+      return NextResponse.json({ error: "第一步和最后一步不能跳过" }, { status: 400 });
+    }
+    // 只能跳「当前这一步」：前面都办完（或跳过）了才能跳，免得提前把后面的人叫起来。公司注册各步互不阻塞，不限
+    const bt = (db.prepare("SELECT business_type_id FROM orders WHERE id = ?").get(id) as { business_type_id: number } | undefined)?.business_type_id;
+    const openBefore = db.prepare("SELECT 1 FROM order_steps WHERE order_id = ? AND step_order < ? AND status NOT IN ('已完成','已跳过') LIMIT 1").get(id, step.step_order);
+    if (bt !== 1 && openBefore) {
+      return NextResponse.json({ error: "前面还有步骤没办完，等轮到这一步再跳过" }, { status: 400 });
+    }
   }
 
   const updates: string[] = [];
@@ -63,7 +80,8 @@ export async function PATCH(
     values.push(submission_count);
   }
   if (status !== undefined) {
-    if (status === "已完成") {
+    if (status === "已完成" || status === STEP_SKIPPED) {
+      // 跳过也记下时刻：下一步「从什么时候开始等」、计时器都按它算（耗时统计只认已完成，不会把跳过算进去）
       updates.push("completed_at = datetime('now')");
     } else if (status === "进行中") {
       // 点"开始"：记录开始时间（首次点开始才记，避免撤回后重新开始覆盖）
@@ -90,15 +108,17 @@ export async function PATCH(
         return { queued: 0, step: null, cancelled: true };
       }
       db.prepare(`UPDATE order_steps SET ${updates.join(", ")} WHERE id = ? AND order_id = ?`).run(...values);
+      if (reason && (status === STEP_SKIPPED || status === "阻塞") && status !== step.status) {
+        db.prepare("INSERT INTO step_notes (step_id, order_id, content, created_by) VALUES (?, ?, ?, ?)")
+          .run(step_id, id, `${status === STEP_SKIPPED ? "跳过原因" : "卡住原因"}：${reason}`, auth.name || "");
+      }
 
       // 取消状态粘住；恢复动作仍由订单接口按真实步骤状态计算。
       const orderStatusRow = db.prepare("SELECT status FROM orders WHERE id = ?").get(id) as { status: string } | undefined;
       if (!orderStatusRow || orderStatusRow.status !== "客户取消") {
         const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
-        const allDone = steps.every((s) => s.status === "已完成");
-        const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
-        if (steps.length > 0) {
-          const orderStatus = allDone ? "已完成" : anyActivity ? "进行中" : "待处理";
+        const orderStatus = orderStatusFromSteps(steps.map((s) => s.status));
+        if (orderStatus) {
           db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(orderStatus, id);
         }
       }
@@ -113,6 +133,10 @@ export async function PATCH(
 
   if (result.cancelled) return NextResponse.json({ error: "本服务已批准取消，保留原步骤；仍可补充资料与备注" }, { status: 409 });
   if (result.queued > 0) requestProgressFlush();
+  // 这一步刚做完（或跳过）：提醒下一步的经办人「轮到你了」（2026-10-16）
+  if (status !== undefined && isStepClosed(status) && !isStepClosed(step.status)) {
+    try { notifyNextStep(db, id, step.step_order, auth.name || "", status === STEP_SKIPPED ? "已跳过" : "已办完"); } catch (error) { console.error("[orders/steps] 下一步提醒失败:", error); }
+  }
   const oldAssignee = (step as { assignee: string }).assignee || "";
   if (assignee !== undefined && oldAssignee !== assignee) {
     logOperation(auth.name, "修改负责人", "step", String(step_id), `${(step as { step_name: string }).step_name}: ${oldAssignee} → ${assignee}`, oldAssignee, assignee, "assignee");

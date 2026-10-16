@@ -358,7 +358,7 @@ function computeAutoPoints(db: any, month: string) {
     }
 
     // 步骤逾期/提前
-    const od = (db.prepare(`SELECT COUNT(*) as c FROM order_steps WHERE assignee = ? AND deadline != '' AND deadline < ? AND status NOT IN ('已完成','已停止')`).get(en, now) as { c: number }).c;
+    const od = (db.prepare(`SELECT COUNT(*) as c FROM order_steps WHERE assignee = ? AND deadline != '' AND deadline < ? AND status NOT IN ('已完成','已停止','已跳过')`).get(en, now) as { c: number }).c;
     if (od > 0) addPoints(en, od * -5, `订单步骤逾期${od}个，扣${od * 5}分`, "step_overdue");
     const es = (db.prepare(`SELECT COUNT(*) as c FROM order_steps WHERE assignee = ? AND completed_at >= ? AND completed_at <= ? AND status = '已完成' AND deadline != '' AND completed_at < deadline`).get(en, utcFrom, utcTo) as { c: number }).c;
     if (es > 0) addPoints(en, es * 2, `提前完成步骤${es}个，加${es * 2}分`, "step_early");

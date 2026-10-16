@@ -41,6 +41,7 @@ const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { 
   客户申请取消: { label: "客户站", icon: XCircle, href: orderHref },
   商城新订单: { label: "商城", icon: ShoppingCart, href: orderHref },
   客户站同步失败: { label: "客户站", icon: XCircle, href: orderHref },
+  轮到你了: { label: "订单", icon: ListTodo, href: orderHref },
 };
 const metaOf = (n: Notice) =>
   TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);

@@ -25,6 +25,8 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  // 快捷筛选（2026-10-16）：我负责的 / 还没人负责 / 卡住的 / 办完没收齐
+  const [quick, setQuick] = useState<"all" | "mine" | "unowned" | "blocked" | "unpaid">("all");
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deleting, setDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -71,13 +73,25 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
     }
   };
 
-  const filtered = search
-    ? orders.filter((o) =>
-        o.id.toLowerCase().includes(search.toLowerCase()) ||
-        o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-        (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
-      )
-    : orders;
+  // 搜索也认客户站单号（客户来问一般报 ORD2026…）
+  const matchesSearch = (o: Order) => {
+    const q = search.trim().toLowerCase();
+    return !q || o.id.toLowerCase().includes(q) || o.customer_name.toLowerCase().includes(q) ||
+      (o.trademark_name || "").toLowerCase().includes(q) || (o.source_order_no || "").toLowerCase().includes(q);
+  };
+  const me = (user?.name || "").trim().toLowerCase();
+  const owners = (o: Order) => (o.responsible_person || "").split(/[\/、,，]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const live = (o: Order) => o.status !== "客户取消" && o.status !== "已完成";
+  // 办完没收齐：订单金额填了就按同币种已到账比；金额没填就看有没有核对过到账的收入。商城单的钱以商城账单为准，不算
+  const unpaidDone = (o: Order) => o.status === "已完成" && o.source_system !== "commerce" &&
+    (Number(o.total_amount) > 0 ? (o.payment?.arrived || 0) < Number(o.total_amount) : !o.payment?.has_arrived);
+  const quickTest = (key: typeof quick, o: Order) =>
+    key === "mine" ? owners(o).includes(me) && o.status !== "客户取消"
+    : key === "unowned" ? owners(o).length === 0 && live(o)
+    : key === "blocked" ? (o.progress?.blocked.length || 0) > 0 && live(o)
+    : key === "unpaid" ? unpaidDone(o)
+    : true;
+  const filtered = orders.filter((o) => matchesSearch(o) && quickTest(quick, o));
 
   const sorted = sortField
     ? [...filtered].sort((a, b) => {
@@ -93,19 +107,16 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
   };
 
   const handleExport = () => {
-    const filtered_ = search
-      ? orders.filter((o) =>
-          o.id.toLowerCase().includes(search.toLowerCase()) ||
-          o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-          (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
-        )
-      : orders;
+    const filtered_ = filtered;
     const cols: ExportColumn<Order>[] = [
       { header: "订单编号", key: "id", width: 16 },
       { header: "客户名称", key: "customer_name" },
       { header: "业务类型", render: (r) => businessTypes.find(b => b.id === r.business_type_id)?.name || "—" },
       { header: "商标名称", render: (r) => r.trademark_name || "—" },
-      { header: "金额", render: (r) => formatCurrency(r.total_amount) },
+      { header: "客户站单号", render: (r) => r.source_order_no || "—" },
+      { header: "进度", render: (r) => r.progress ? `${r.progress.closed}/${r.progress.total} ${r.progress.current_step}` : "—" },
+      { header: "金额", render: (r) => formatCurrency(r.total_amount, r.currency) },
+      { header: "已到账", render: (r) => r.payment ? formatCurrency(r.payment.arrived, r.currency) : "—" },
       { header: "状态", render: (r) => statusLabels[r.status] || r.status },
       { header: "创建时间", render: (r) => toThaiTime(r.created_at) },
     ];
@@ -138,7 +149,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
           <input
             ref={searchInputRef}
-            placeholder="输入订单号或客户名称快速搜索..."
+            placeholder="输入订单号、客户站单号（ORD…）或客户名称搜索..."
             aria-label="搜索订单"
             onKeyDown={(e) => { if (e.key === "Enter") { setSearch(searchInputRef.current?.value || ""); } }}
             className="h-10 w-full pl-9 pr-3 text-sm rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
@@ -162,6 +173,17 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
           <option value="已逾期">已逾期</option>
           <option value="客户取消">客户取消</option>
         </select>
+        {user?.role !== "client" && (
+          <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5" role="group" aria-label="快捷筛选">
+            {([["all", "全部"], ["mine", "我负责的"], ["unowned", "还没人负责"], ["blocked", "卡住的"], ["unpaid", "办完没收齐"]] as const).map(([key, label]) => (
+              <button key={key} type="button" onClick={() => setQuick(key)} aria-pressed={quick === key}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors", quick === key ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]")}>
+                {label}
+                {key !== "all" && <span className="ml-1 tabular-nums">{orders.filter((o) => matchesSearch(o) && quickTest(key, o)).length}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         {!unclassifiedOnly && (
         <select value={businessFilter} onChange={(e) => setBusinessFilter(e.target.value)} aria-label="按业务线筛选" className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
           <option value="all">全部业务线</option>
@@ -178,6 +200,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">商标名称</th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">客户</th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">负责人</th>
+              {user?.role !== "client" && <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-lg:hidden">进度</th>}
               <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)] tracking-wide" aria-sort={sortField === "total_amount" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
                 <button type="button" className="inline-flex cursor-pointer items-center gap-1 select-none focus-visible:outline-none focus-visible:underline" onClick={() => toggleSort("total_amount")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSort("total_amount"); } }}>
                   金额<ArrowUpDown className="size-3" />
@@ -197,13 +220,35 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
               <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
                 <td className="py-3 px-4">
                   <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
+                  {order.source_order_no && <div className="mt-0.5 font-mono text-[0.65rem] text-[var(--muted-foreground)]" title="客户站单号">{order.source_order_no}</div>}
                 </td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>
                 <td className="py-3 px-4 max-md:hidden">
                   <div className="font-medium text-[var(--foreground)]">{order.customer_name}</div>
                 </td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{(order.responsible_person || "").trim() || <span className="text-xs text-[var(--destructive)]">没人负责</span>}</td>
-                <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>
+                {user?.role !== "client" && (
+                  <td className="py-3 px-4 max-lg:hidden text-xs">
+                    {order.progress && order.progress.total > 0 ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="tabular-nums text-[var(--muted-foreground)]">{order.progress.closed}/{order.progress.total}{order.progress.current_step && order.status !== "已完成" && order.status !== "客户取消" ? <> · <span className="text-[var(--foreground)]">{order.progress.current_step}</span>{order.progress.more_active > 0 ? ` 等 ${order.progress.more_active + 1} 步` : ""}</> : ""}</span>
+                        {order.status !== "已完成" && order.status !== "客户取消" && order.progress.current_step && (
+                          <span className="text-[var(--muted-foreground)]">{order.progress.current_assignee || ((order.responsible_person || "").trim() ? `负责人 ${order.responsible_person}` : "没写经办人")}</span>
+                        )}
+                        {order.progress.blocked.length > 0 && order.status !== "客户取消" && <span className="text-[var(--destructive)]">卡住：{order.progress.blocked.join("、")}</span>}
+                      </div>
+                    ) : <span className="text-[var(--muted-foreground)]">—</span>}
+                  </td>
+                )}
+                <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">
+                  {formatCurrency(order.total_amount, order.currency)}
+                  {/* 已到账只算老板核对过的收入（同币种），2026-10-16 */}
+                  {order.payment && order.source_system !== "commerce" && (order.payment.has_income || order.status === "已完成") && (
+                    <div className={cn("mt-0.5 font-sans", unpaidDone(order) ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]")}>
+                      已到账 {formatCurrency(order.payment.arrived, order.currency)}{order.payment.arrived_other > 0 ? " +外币" : ""}{order.payment.waiting > 0 ? `，${order.payment.waiting} 笔待核对` : ""}
+                    </div>
+                  )}
+                </td>
                 <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
                 <td className="py-3 px-4">
                   <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>

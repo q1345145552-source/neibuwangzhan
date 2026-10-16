@@ -20,6 +20,10 @@ export interface Order {
   created_at: string;
   updated_at: string;
   steps?: OrderStep[];
+  /** 订单列表摘要（只有员工拿到，2026-10-16） */
+  source_order_no?: string;
+  progress?: { total: number; closed: number; current_step: string; current_assignee: string; more_active: number; blocked: string[] };
+  payment?: { arrived: number; arrived_other: number; waiting: number; has_income: boolean; has_arrived: boolean };
 }
 
 export interface OrderStep {
@@ -474,7 +478,7 @@ export async function createEmployee(data: { name: string; email: string; role?:
   return res.json();
 }
 
-export async function updateStep(orderId: string, stepId: number, data: { status?: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number }) {
+export async function updateStep(orderId: string, stepId: number, data: { status?: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number; reason?: string }) {
   const res = await fetch(`/api/orders/${orderId}/steps`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

@@ -30,6 +30,7 @@ const SLOW_MIN_DAYS = 0.5;
 const COMPANY_REG = "公司注册";
 const CANCELLED = "客户取消";
 const DONE = "已完成";
+const closed = (s: { status: string }) => s.status === DONE || s.status === "已跳过"; // 已跳过 = 这一步不用办（2026-10-16）
 
 type OrderRow = { id: string; customer_name: string; business_type_id: number; sub_service_type: string | null; address_type: string | null; status: string; created_at: string; responsible_person: string | null };
 type StepRow = { id: number; order_id: string; step_name: string; step_order: number; status: string; assignee: string | null; started_at: string | null; completed_at: string | null; created_at: string | null };
@@ -140,7 +141,7 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
   for (const o of live) {
     if (o.status !== DONE) continue;
     const list = stepsByOrder.get(o.id) || [];
-    if (!list.length || list.some(s => s.status !== DONE)) continue;
+    if (!list.length || !list.every(closed)) continue;
     const doneAt = list.map(s => parseDbTime(s.completed_at)).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0];
     const created = parseDbTime(o.created_at);
     if (!doneAt || !created || bkkMonthKey(doneAt) !== month) continue;
@@ -204,14 +205,15 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
     if (isCompanyReg(o)) {
       // 公司注册可以不按顺序办：在办的步骤都算；一步都没开始就算第一个没做完的
       current = list.filter(s => s.status === "进行中" || s.status === "阻塞");
-      if (!current.length) { const first = list.find(s => s.status !== DONE); if (first) current = [first]; }
+      if (!current.length) { const first = list.find(s => !closed(s)); if (first) current = [first]; }
     } else {
-      const first = list.find(s => s.status !== DONE);
+      const first = list.find(s => !closed(s));
       current = first ? [first] : [];
     }
     for (const s of current) {
       const idx = list.indexOf(s);
-      const prevDone = idx > 0 ? parseDbTime(list[idx - 1].completed_at) : null;
+      // 前面最近一次办完的时刻（前一步被跳过时没有完成时间，往前找）
+      const prevDone = list.slice(0, Math.max(idx, 0)).map(x => parseDbTime(x.completed_at)).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] || null;
       const since = roundStart(s) || prevDone || parseDbTime(o.created_at);
       const stayed = since ? workDays(since, now, holidays) : 0;
       const external = isExternalWait(s.step_name);

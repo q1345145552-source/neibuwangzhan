@@ -19,12 +19,14 @@ const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
+import { isStepClosed } from "@/lib/step-status";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
   "进行中": "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[oklch(0.38_0.10_240)]",
   "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
   "阻塞": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
+  "已跳过": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
 // 费用状态展示：收入显示核对结果（待核对/已到账/未到账），支出显示 已付/待付/已取消
@@ -64,6 +66,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [stepDocs, setStepDocs] = useState<Record<number, StepDocument[]>>({});
   const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
+  // 标阻塞、跳过都要写一句原因，记进这一步的备注（2026-10-16）
+  const [reasonFor, setReasonFor] = useState<{ stepId: number; kind: "阻塞" | "已跳过" } | null>(null);
+  const [reasonText, setReasonText] = useState("");
+  const [docUploading, setDocUploading] = useState<Record<number, boolean>>({});
   const [stepUploading, setStepUploading] = useState<Record<number, boolean>>({});
   const [stepFileNames, setStepFileNames] = useState<Record<number, string>>({});
   const [stepUploadErrors, setStepUploadErrors] = useState<Record<number, string>>({});
@@ -354,9 +360,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         await addStepNote(id, stepId, noteContent, user?.name || "系统");
       }
       await updateStep(id, stepId, { status: "已完成" });
-      // 自动启动下一步
+      // 自动启动下一步（跳过的步骤不算）
       const idx = steps.findIndex(s => s.id === stepId);
-      const next = idx >= 0 && idx < steps.length - 1 ? steps[idx + 1] : null;
+      const next = idx >= 0 ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
       if (next && next.status === "待处理") {
         await updateStep(id, next.id, { status: "进行中" });
       }
@@ -364,10 +370,51 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch (e) { console.error("[订单] 步骤完成失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
   };
 
-  // 步骤撤回
-  const handleRollback = async (stepId: number) => {
+  // 标阻塞 / 跳过：带原因提交
+  const handleReasonSubmit = async () => {
+    if (!reasonFor) return;
+    const text = reasonText.trim();
+    if (!text) { setError(reasonFor.kind === "已跳过" ? "跳过要写原因" : "请写一句为什么卡住"); return; }
     try {
-      await updateStep(id, stepId, { status: "进行中" });
+      await updateStep(id, reasonFor.stepId, { status: reasonFor.kind, reason: text });
+      // 跳过和点完成一样：顺手开始下一步（跳过的步骤不算）
+      if (reasonFor.kind === "已跳过") {
+        const idx = steps.findIndex(s => s.id === reasonFor.stepId);
+        const next = idx >= 0 ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
+        if (next && next.status === "待处理") await updateStep(id, next.id, { status: "进行中" });
+      }
+      setReasonFor(null);
+      setReasonText("");
+      reload();
+    } catch (e) { console.error("[订单] 步骤状态修改失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
+  };
+
+  // 所需文件某一行直接上传：存文件、记一条「上传文件」备注（带资料名）、把这一行标成已上传
+  const handleDocUpload = async (stepId: number, docId: number, docName: string, file: File) => {
+    setDocUploading(p => ({ ...p, [docId]: true }));
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      if (!ur.ok) throw new Error("上传失败");
+      const { url } = await ur.json();
+      await addStepNote(id, stepId, `上传文件: 【${docName}】${file.name} (${url})`, user?.name || "系统");
+      await markStepDocumentUploaded(id, stepId, docId);
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setDocUploading(p => ({ ...p, [docId]: false }));
+    }
+  };
+
+  // 步骤撤回（先确认：已办完的单撤回后会变回办理中，客户站也跟着变）
+  const handleRollback = async (stepId: number) => {
+    const target = steps.find(s => s.id === stepId);
+    // 撤回跳过的步骤：前面还有没办完的就回到「待处理」，不提前算开始
+    const back = target?.status === "已跳过" && order?.business_type_id !== 1 && steps.some(s => s.step_order < target.step_order && !isStepClosed(s.status)) ? "待处理" : "进行中";
+    if (!window.confirm(`确定撤回「${target?.step_name || "这一步"}」？这一步会回到「${back}」${order?.status === "已完成" ? "，整单也会变回办理中，客户那边看到的进度会跟着变" : ""}。`)) return;
+    try {
+      await updateStep(id, stepId, { status: back });
       reload();
     } catch (e) { console.error("[订单] 步骤撤回失败", e); setError(e instanceof Error ? e.message : "撤回失败"); }
   };
@@ -642,7 +689,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {order.address_type === "xiangtai" && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]">湘泰地址</span>}
               {order.address_type === "client" && order.business_type_id === 7 && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]">客户地址</span>}
               <span className="text-xs text-[var(--muted-foreground)]">{formatCurrency(order.total_amount, order.currency)}</span>
-              <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
+              <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => isStepClosed(s.status)).length}/{steps.length} 已完成</span>
               {/* 任务级"开始"按钮：仅第一步待处理时显示 */}
               {steps.length > 0 && steps[0].status === "待处理" && !isClient && !isCommerceCancelled && (
                 <button onClick={() => handleStepUpdate(steps[0].id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-3 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] transition-colors">开始任务</button>
@@ -783,7 +830,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 })()}
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">负责人</label>
-                  <input type="text" value={editFields.responsible_person || ""} onChange={(e) => setEditFields(prev => ({ ...prev, responsible_person: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  {/* 原来是手打的文本框，打错一个字就对不上人（「我的环节」、月报都按名字认）；改成从员工里选（2026-10-16） */}
+                  <select value={editFields.responsible_person || ""} onChange={(e) => setEditFields(prev => ({ ...prev, responsible_person: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                    <option value="">还没人负责</option>
+                    {/* 老单上手打的名字、几个人写在一起、已离职的人不在员工列表里：保留原值可选，不会被改掉 */}
+                    {(editFields.responsible_person || "").trim() && !employees.some(emp => emp.role !== "client" && emp.name === editFields.responsible_person) && (
+                      <option value={editFields.responsible_person || ""}>{editFields.responsible_person}（原来填的）</option>
+                    )}
+                    {employees.filter(emp => emp.role !== "client").map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">金额</label>
@@ -817,15 +872,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <h3 className="mb-4 text-sm font-medium text-[var(--foreground)]">进度追踪</h3>
             {steps.length > 0 && (
               <div className="mb-5 flex items-center gap-3">
-                <span className="text-xs text-[var(--muted-foreground)] shrink-0">已完成 {steps.filter(s => s.status === "已完成").length}/{steps.length}</span>
+                <span className="text-xs text-[var(--muted-foreground)] shrink-0">已完成 {steps.filter(s => isStepClosed(s.status)).length}/{steps.length}{steps.some(s => s.status === "已跳过") ? `（其中跳过 ${steps.filter(s => s.status === "已跳过").length}）` : ""}</span>
                 <div className="flex-1 h-2 rounded-full bg-[var(--muted)] overflow-hidden">
-                  <div className={cn("h-full rounded-full transition-all duration-300", steps.filter(s => s.status === "已完成").length === steps.length ? "bg-[var(--success)]" : "bg-[var(--success)]")} style={{ width: `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%` }} />
+                  <div className={cn("h-full rounded-full transition-all duration-300", steps.filter(s => isStepClosed(s.status)).length === steps.length ? "bg-[var(--success)]" : "bg-[var(--success)]")} style={{ width: `${Math.round(steps.filter(s => isStepClosed(s.status)).length / steps.length * 100)}%` }} />
                 </div>
-                <span className="text-xs font-medium shrink-0 text-[var(--muted-foreground)]">{steps.filter(s => s.status === "已完成").length === steps.length ? "全部完成" : `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%`}</span>
+                <span className="text-xs font-medium shrink-0 text-[var(--muted-foreground)]">{steps.filter(s => isStepClosed(s.status)).length === steps.length ? "全部完成" : `${Math.round(steps.filter(s => isStepClosed(s.status)).length / steps.length * 100)}%`}</span>
               </div>
             )}
             {/* 客户评价链接 */}
-            {steps.length > 0 && steps.filter(s => s.status === "已完成").length === steps.length && (
+            {steps.length > 0 && steps.filter(s => isStepClosed(s.status)).length === steps.length && (
               <div className="mb-4 flex items-center gap-2 flex-wrap">
                 {feedbackLink ? (
                   <>
@@ -914,9 +969,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           step.status === "已完成" && "bg-[var(--success)] text-[var(--success-foreground)]",
                           step.status === "进行中" && "bg-[var(--primary)] text-[var(--primary-foreground)] ring-2 ring-[var(--ring)]/30",
                           step.status === "阻塞" && "bg-[var(--destructive)] text-[var(--destructive-foreground)]",
-                          step.status === "待处理" && "bg-[var(--muted)] text-[var(--muted-foreground)]"
-                        )}>{step.status === "已完成" ? "✓" : step.step_order}</div>
-                        {i < steps.length - 1 && <div className={cn("w-px flex-1 min-h-[20px]", step.status === "已完成" ? "bg-[var(--success)]" : "bg-[var(--border)]")} />}
+                          (step.status === "待处理" || step.status === "已跳过") && "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                        )}>{step.status === "已完成" ? "✓" : step.status === "已跳过" ? "–" : step.step_order}</div>
+                        {i < steps.length - 1 && <div className={cn("w-px flex-1 min-h-[20px]", isStepClosed(step.status) ? "bg-[var(--success)]" : "bg-[var(--border)]")} />}
                       </div>
                       <div className="pb-5 flex-1">
                         {step.step_order === 9 && logistics && logistics.length > 0 && (
@@ -968,7 +1023,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             ) : null
                           )}
                           {/* 模板没预设经办人的步骤（如「等待官方审核」「拿证」）原来没有入口指派，这里补上 */}
-                          {!step.assignee && !isClient && step.status !== "已完成" && editingAssigneeStepId !== step.id && (
+                          {!step.assignee && !isClient && !isStepClosed(step.status) && editingAssigneeStepId !== step.id && (
                             <>
                               {/* 没写经办人的步骤算这张单负责人的，会出现在负责人的「我的环节」里（2026-10-15） */}
                               {(order.responsible_person || "").trim() && <span className="text-xs text-[var(--muted-foreground)]" title="这一步没写经办人，算这张单负责人的">负责人：{order.responsible_person}</span>}
@@ -1009,7 +1064,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <span className="text-xs font-medium text-[var(--info)]">提交 {step.submission_count}/2 · 剩{2 - step.submission_count}次</span>
                           )}
                         </div>
-                        {!isCommerceCancelled && step.status !== "已完成" && step.status !== "阻塞" && (
+                        {!isCommerceCancelled && !isStepClosed(step.status) && step.status !== "阻塞" && (
                           <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             {confirmingStepId === step.id ? (
                               <>
@@ -1023,20 +1078,42 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 />
                                 <button onClick={() => handleConfirmComplete(step.id)} className="rounded px-2 py-0.5 text-xs bg-[var(--success)] text-[var(--success-foreground)] hover:bg-[color-mix(in_oklch,var(--success),var(--foreground)_20%)] transition-colors">确认完成</button>
                                 <button onClick={() => { setConfirmingStepId(null); setNewNotes((p) => ({ ...p, [step.id]: "" })); }} className="rounded px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">取消</button>
+                                {/* 缺文件只提醒、不拦（有的文件是线下交的，2026-10-16） */}
+                                {sd.some(d => d.status !== "uploaded") && (
+                                  <span className="w-full text-xs text-[var(--warning)]">还有 {sd.filter(d => d.status !== "uploaded").length} 份文件没上传：{sd.filter(d => d.status !== "uploaded").map(d => d.document_name).join("、")}。确定这一步做完了再点完成。</span>
+                                )}
                               </>
                             ) : (
                               <>
                                 {(() => {
                                   const isCompanyReg = order?.business_type_id === 1;
                                   const prevStep = steps.find(s => s.step_order === step.step_order - 1);
-                                  const canComplete = isCompanyReg || !prevStep || prevStep.status === "已完成";
+                                  const canComplete = isCompanyReg || !prevStep || isStepClosed(prevStep.status);
                                   return canComplete ? (
                                     <button onClick={() => setConfirmingStepId(step.id)} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
                                   ) : (
                                     <span className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] opacity-50 cursor-not-allowed select-none">需先完成前一步</span>
                                   );
                                 })()}
-                                <button onClick={() => handleStepUpdate(step.id, "阻塞")} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
+                                {reasonFor?.stepId === step.id ? (
+                                  <>
+                                    <input value={reasonText} onChange={(e) => setReasonText(e.target.value)} maxLength={200} autoFocus
+                                      onKeyDown={(e) => { if (e.key === "Enter") handleReasonSubmit(); if (e.key === "Escape") { setReasonFor(null); setReasonText(""); } }}
+                                      placeholder={reasonFor.kind === "已跳过" ? "为什么不用办这一步…" : "为什么卡住（等谁、缺什么）…"}
+                                      className="w-48 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                                    <button onClick={handleReasonSubmit} className="rounded px-2 py-0.5 text-xs bg-[var(--primary)] text-[var(--primary-foreground)]">{reasonFor.kind === "已跳过" ? "确认跳过" : "确认卡住"}</button>
+                                    <button onClick={() => { setReasonFor(null); setReasonText(""); }} className="rounded px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button onClick={() => { setReasonFor({ stepId: step.id, kind: "阻塞" }); setReasonText(""); }} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
+                                    {/* 用不上的步骤（如「如需补资料」）跳过，不用假装点完成；第一步、最后一步不能跳 */}
+                                    {!isClient && step.step_order !== steps[0]?.step_order && step.step_order !== steps[steps.length - 1]?.step_order
+                                      && (order?.business_type_id === 1 || steps.every(s => s.step_order >= step.step_order || isStepClosed(s.status))) && (
+                                      <button onClick={() => { setReasonFor({ stepId: step.id, kind: "已跳过" }); setReasonText(""); }} className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="这一步这张单用不上">跳过</button>
+                                    )}
+                                  </>
+                                )}
                                 {sd.length > 0 && (
                                   <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>
                                 )}
@@ -1045,7 +1122,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i > 0 ? steps[i-1].completed_at : null} started_at={step.started_at} className="ml-1" />
                           </div>
                         )}
-                        {(step.status === "已完成" || step.status === "阻塞") && (
+                        {(isStepClosed(step.status) || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
                               <div className="flex items-center gap-3">
@@ -1173,9 +1250,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                           {isUploaded ? <CheckCircle2 className="size-3 text-[var(--success)]" /> : <Circle className="size-3 text-[var(--muted-foreground)]" />}
                                           <span className={isUploaded ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}>{docName}</span>
                                         </div>
-                                        {!isClient && !isUploaded && existingDoc && (
-                                          <button onClick={() => handleMarkUploaded(step.id, existingDoc.id)} className="rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)]">标记已上传</button>
-                                        )}
+                                        <div className="flex items-center gap-1.5">
+                                          {notes.filter(n => n.content.startsWith(`上传文件: 【${docName}】`)).map(n => {
+                                            const m = n.content.match(/上传文件:\s*【[^】]*】(.+?)\s*\(\/api\/files\/([^)]+)\)/);
+                                            return m ? <a key={n.id} href={"/api/files/" + m[2] + "?token=" + (getStoredAuthToken() || "")} target="_blank" rel="noopener noreferrer" className="max-w-[120px] truncate text-[0.65rem] text-[var(--primary)] hover:underline" title={m[1]}>{m[1]}</a> : null;
+                                          })}
+                                          {!isClient && existingDoc && (
+                                            <label className={cn("cursor-pointer rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--primary)] hover:bg-[var(--muted)]", docUploading[existingDoc.id] && "pointer-events-none opacity-50")} title="上传这份文件，传完自动打勾">
+                                              {docUploading[existingDoc.id] ? "上传中…" : isUploaded ? "再传一份" : "上传"}
+                                              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) handleDocUpload(step.id, existingDoc.id, docName, f); }} />
+                                            </label>
+                                          )}
+                                          {!isClient && !isUploaded && existingDoc && (
+                                            <button onClick={() => handleMarkUploaded(step.id, existingDoc.id)} className="rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)]" title="文件在线下交了，不用传">标记已上传</button>
+                                          )}
+                                        </div>
                                       </li>
                                     );
                                   })}

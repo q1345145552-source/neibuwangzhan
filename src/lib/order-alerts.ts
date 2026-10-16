@@ -95,3 +95,35 @@ export function notifyCancelRequest(
   );
   for (const { name } of admins) insert.run("客户申请取消", detail, name, internalOrderId);
 }
+
+/**
+ * 上一步做完（或跳过）后提醒下一步的人「轮到你了」（2026-10-16）。
+ * - 收件人：下一步的经办人（几个人写在一起的拆开）；没写经办人的算订单负责人；只发在职员工，名字完全一样才算；不发给刚点完成的本人
+ * - 公司注册各步互不阻塞，没有「下一步」，不发；已取消、已办完的单不发
+ * - 同一张单同一步，收件人手上还有没读的同一条就不重复发
+ */
+export function notifyNextStep(db: Database.Database, orderId: string, fromStepOrder: number, actor: string, how: "已办完" | "已跳过" = "已办完"): void {
+  const order = db.prepare("SELECT id, customer_name, business_type_id, status, responsible_person FROM orders WHERE id = ?").get(orderId) as
+    { id: string; customer_name: string; business_type_id: number; status: string; responsible_person: string | null } | undefined;
+  if (!order || order.status === "客户取消" || order.status === "已完成" || order.business_type_id === 1) return;
+  const next = db.prepare(
+    "SELECT step_name, step_order, assignee FROM order_steps WHERE order_id = ? AND step_order > ? AND status NOT IN ('已完成','已跳过') ORDER BY step_order LIMIT 1"
+  ).get(orderId, fromStepOrder) as { step_name: string; step_order: number; assignee: string | null } | undefined;
+  if (!next) return;
+  // 下一步前面还有没办完的（比如中间某步撤回了），还没轮到它，不提醒
+  if (db.prepare("SELECT 1 FROM order_steps WHERE order_id = ? AND step_order < ? AND status NOT IN ('已完成','已跳过') LIMIT 1").get(orderId, next.step_order)) return;
+  const done = db.prepare("SELECT step_name FROM order_steps WHERE order_id = ? AND step_order = ?").get(orderId, fromStepOrder) as { step_name: string } | undefined;
+  const split = (v: string | null | undefined) => (v || "").split(/[\/、,，]/).map((x) => x.trim()).filter(Boolean);
+  const viaOwner = split(next.assignee).length === 0;
+  const wanted = viaOwner ? split(order.responsible_person) : split(next.assignee);
+  const staff = db.prepare("SELECT DISTINCT name FROM employees WHERE role IN ('admin','employee') AND status = '在职' AND name <> ''").all() as { name: string }[];
+  const byLower = new Map(staff.map((e) => [e.name.trim().toLowerCase(), e.name]));
+  const me = actor.trim().toLowerCase();
+  const recipients = [...new Set(wanted.map((n) => byLower.get(n.toLowerCase())).filter((n): n is string => !!n && n.trim().toLowerCase() !== me))];
+  const nextPart = `下一步「${next.step_name}」`;
+  const detail = `订单 ${order.id}（${order.customer_name}）「${done?.step_name || "上一步"}」${how}，${nextPart}${viaOwner ? "没写经办人，算你这个负责人的" : "是你的"}。`;
+  // 去重按「收件人 + 订单 + 下一步」：同一步还有没读的就不再发（不比整段正文，正文里带着上一步的名字）
+  const exists = db.prepare("SELECT 1 FROM notifications WHERE recipient = ? AND type = '' AND related_type = 'order' AND title = '轮到你了' AND related_id = ? AND instr(body, ?) > 0 AND is_read = 0 LIMIT 1");
+  const insert = db.prepare("INSERT INTO notifications (type,title,body,recipient,related_id,related_type) VALUES ('',?,?,?,?,'order')");
+  for (const name of recipients) if (!exists.get(name, order.id, nextPart)) insert.run("轮到你了", detail, name, order.id);
+}

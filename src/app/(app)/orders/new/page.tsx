@@ -194,7 +194,7 @@ export default function NewOrderPage() {
             <Label htmlFor="responsible_person" className="text-sm font-medium">负责人</Label>
             <select id="responsible_person" name="responsible_person" value={form.responsible_person} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
               <option value="">选择负责人</option>
-              {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+              {employees.filter((e) => e.role !== "client").map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2">

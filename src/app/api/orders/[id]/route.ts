@@ -5,6 +5,8 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 import { subServices } from "@/lib/constants";
+import { orderStatusFromSteps } from "@/lib/step-status";
+import { notifyNextStep } from "@/lib/order-alerts";
 import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
 import { approvePending } from "@/lib/cancel-sync";
 import { isClientOrderVisible } from "@/lib/client-scope";
@@ -130,7 +132,16 @@ export async function PATCH(
     fields.push("business_type_id = ?", "sub_service_type = ?", "address_type = ?", "status = ?");
     values.push(reassign.businessTypeId, reassign.subServiceType, reassign.addressType, "进行中");
   } else if (body.business_type_id !== undefined) { fields.push("business_type_id = ?"); values.push(Number(body.business_type_id)); }
-  if (body.responsible_person !== undefined) { fields.push("responsible_person = ?"); values.push(body.responsible_person); }
+  if (body.responsible_person !== undefined) {
+    // 负责人只能是员工：客户账号的名字不收（同步骤经办人的规矩，2026-10-16）；只在真改了的时候查，老单原样保存不受影响
+    const rp = String(body.responsible_person || "").trim();
+    const unchanged = rp === String((existing as { responsible_person?: string | null }).responsible_person || "").trim();
+    if (rp && !unchanged && db.prepare("SELECT 1 FROM employees WHERE name = ? AND role = 'client'").get(rp)
+      && !db.prepare("SELECT 1 FROM employees WHERE name = ? AND role IN ('admin','employee')").get(rp)) {
+      return NextResponse.json({ error: "负责人只能选员工" }, { status: 400 });
+    }
+    fields.push("responsible_person = ?"); values.push(body.responsible_person);
+  }
   if (body.description !== undefined) { fields.push("description = ?"); values.push(body.description); }
   if (body.total_amount !== undefined) { fields.push("total_amount = ?"); values.push(Number(body.total_amount)); }
   if (!reassign && body.sub_service_type !== undefined) { fields.push("sub_service_type = ?"); values.push(body.sub_service_type); }
@@ -149,9 +160,7 @@ export async function PATCH(
   // 恢复订单：按步骤重新计算状态（回到跟着步骤走）
   if (body.restore === true) {
     const steps = db.prepare("SELECT status FROM order_steps WHERE order_id = ?").all(id) as { status: string }[];
-    const allDone = steps.length > 0 && steps.every((s) => s.status === "已完成");
-    const anyActivity = steps.some((s) => s.status === "进行中" || s.status === "已完成" || s.status === "阻塞");
-    const newStatus = allDone ? "已完成" : anyActivity ? "进行中" : "待处理";
+    const newStatus = orderStatusFromSteps(steps.map((s) => s.status)) || "待处理";
     fields.push("status = ?"); values.push(newStatus);
     fields.push("cancel_reason = ?"); values.push("");
   }
@@ -208,6 +217,14 @@ export async function PATCH(
 
   // HTTP 发送与事务分离；离线只影响传输，入队失败则整笔保存回滚。
   if (result.queued > 0) requestProgressFlush();
+  // 改派时「确认归属」被标成已完成：跟正常点完成一样提醒接上来的那一步（2026-10-16）
+  if (reassign) {
+    try {
+      const claimName = getOrderStepsWithDocs(0, UNCLASSIFIED_SUB)[1]?.name;
+      const claim = db.prepare("SELECT step_order FROM order_steps WHERE order_id = ? AND step_name = ? ORDER BY step_order LIMIT 1").get(id, claimName) as { step_order: number } | undefined;
+      if (claim) notifyNextStep(db, id, claim.step_order, auth.name || "");
+    } catch (error) { console.error("[orders] 改派后下一步提醒失败:", error); }
+  }
   logOperation(auth.name, reassign ? "待分类改派" : "修改订单", "order", id, reassign ? JSON.stringify(reassign) : `${fields.join(",")}`);
   return NextResponse.json(result.order);
 }
