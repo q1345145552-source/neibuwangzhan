@@ -2,7 +2,7 @@
 
 import { CommerceTermsSummary } from "@/components/commerce-terms";
 
-import React, { useState, useEffect, use, useCallback } from "react";
+import React, { useState, useEffect, use, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2, Ban } from "lucide-react";
@@ -182,6 +182,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [finFileName, setFinFileName] = useState("");
   const [uploadingFin, setUploadingFin] = useState(false);
   const [finSlipFile, setFinSlipFile] = useState("");
+  const finUploadInput = useRef<HTMLInputElement>(null);
   const [docFileName, setDocFileName] = useState("");
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [certFileName, setCertFileName] = useState("");
@@ -1281,17 +1282,41 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <option value="THB">฿</option>
                   </select>
                 </div>
-                <div className="flex gap-1.5">
-                  <input placeholder="付款方式（可选）" value={newFinMethod} onChange={(e) => setNewFinMethod(e.target.value)} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <input placeholder="流水单号（可选）" value={newFinSlip} onChange={(e) => setNewFinSlip(e.target.value)} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="上传水单">
-                    <Paperclip className="size-3" />
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingFin(true); setFinFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setFinSlipFile(data.url); setFinErrorMsg(""); } catch (err) { console.error("水单上传失败:", err); setFinErrorMsg("上传失败"); setFinFileName(""); } finally { setUploadingFin(false); } }} disabled={uploadingFin} />
-                  </label>
+                <div className="flex max-w-[calc(100vw-4.5rem)] flex-wrap items-center gap-1.5 sm:max-w-full">
+                  <input placeholder="付款方式（可选）" value={newFinMethod} onChange={(e) => setNewFinMethod(e.target.value)} className="min-w-0 flex-1 basis-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                  <input placeholder="流水单号（可选）" value={newFinSlip} onChange={(e) => setNewFinSlip(e.target.value)} className="min-w-0 flex-1 basis-28 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                  <button type="button" onClick={() => finUploadInput.current?.click()} disabled={uploadingFin} aria-live="polite" className={cn("inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-wait disabled:opacity-60", finSlipFile ? "border-green-300 bg-green-100 text-green-700 hover:bg-green-200 dark:border-green-700 dark:bg-green-900/40 dark:text-green-300" : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--muted)]")}>
+                    {uploadingFin ? "上传中…" : finSlipFile ? "已上传 ✓" : "上传截图"}
+                  </button>
+                  <input ref={finUploadInput} aria-label="费用截图文件" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" disabled={uploadingFin} onChange={async (e) => {
+                    const input = e.currentTarget;
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    setUploadingFin(true);
+                    setFinErrorMsg("");
+                    setFinSlipFile("");
+                    setFinFileName("");
+                    try {
+                      const form = new FormData();
+                      form.append("file", file);
+                      const res = await fetchWithAuth("/api/upload", { method: "POST", body: form });
+                      const data = await res.json().catch(() => null);
+                      if (!res.ok) throw new Error(typeof data?.error === "string" && data.error.trim() ? data.error : `上传失败（HTTP ${res.status}）`);
+                      if (typeof data?.url !== "string" || !data.url.trim()) throw new Error("上传失败：服务器未返回文件地址");
+                      setFinSlipFile(data.url);
+                      setFinFileName(file.name);
+                    } catch (err) {
+                      console.error("水单上传失败:", err);
+                      setFinErrorMsg(err instanceof Error ? err.message : "上传失败，请重试");
+                    } finally {
+                      setUploadingFin(false);
+                      input.value = "";
+                    }
+                  }} />
                   {(uploadingFin || finFileName) && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px] self-center">{uploadingFin ? "上传中..." : finFileName}</span>}
                   <button onClick={async () => { if (!newFinDesc.trim() || !newFinAmount) { setFinErrorMsg("请填写描述和金额"); return; } if (!finSlipFile) { setFinErrorMsg("请先上传截图"); return; } setFinErrorMsg(""); try { await addFinance(id, { type: effectiveFinType, amount: Number(newFinAmount), description: newFinDesc, payment_method: newFinMethod, slip_number: newFinSlip, slip_file: finSlipFile, status: effectiveFinType === "income" ? "待核对" : "pending", currency: newFinCurrency }); setNewFinDesc(""); setNewFinAmount(""); setNewFinMethod(""); setNewFinSlip(""); setFinSlipFile(""); setFinFileName(""); reload(); } catch (err) { console.error("添加费用失败:", err); setFinErrorMsg(err instanceof Error ? err.message : "添加费用失败"); } }} disabled={uploadingFin} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)] disabled:opacity-50">{uploadingFin ? "上传中..." : "添加"}</button>
                 </div>
-                {finErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{finErrorMsg}</p>}
+                {finErrorMsg && <p role="alert" className="mt-1 max-w-[calc(100vw-4.5rem)] break-words text-xs text-[var(--destructive)] sm:max-w-full">{finErrorMsg}</p>}
               </div>
               )}
             </div>
