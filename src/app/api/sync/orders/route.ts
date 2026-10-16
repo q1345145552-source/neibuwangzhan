@@ -164,6 +164,7 @@ export async function POST(req: NextRequest) {
     db.prepare(`INSERT INTO sync_orders(source_order_no,source_customer_id,source,currency,billing_revision,total_cents,discount_cents,net_cents,identity_json,financial_json,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
       .run(sourceOrderNo,customerId,order.source,order.currency,revision,order.totalCents,order.discountCents,order.netCents,order.identityJson,order.financialJson,order.payload);
     const mappedLines: string[] = [];
+    let firstMappedId: string | null = null;
     for (let i = 0; i < order.lines.length; i++) {
       const line = order.lines[i];
       const mapping = mapSku(line.sku_code);
@@ -180,13 +181,11 @@ export async function POST(req: NextRequest) {
       const subServiceType = mapping.kind === 'mapped' ? mapping.subServiceType : 'storefront-unclassified';
       const addressType = mapping.kind === 'mapped' ? mapping.addressType : 'client';
       const note = mapping.kind === 'unclassified' ? mapping.note || '' : '';
-      // 待分类提醒（规则 6）：全体在职员工每人一条，谁看到谁领取（订单列表按「待分类」业务线筛选即待领取队列）
-      if (mapping.kind === 'unclassified')
-        notifyUnclassifiedOrder(db, sourceOrderNo, `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}。请在左边菜单「待分类（待领取）」里认领并改派。`);
       const bt = db.prepare('SELECT id FROM business_types WHERE name=?').get(businessTypeName) as {id:number} | undefined;
       if (!bt) throw new Error(`业务线不存在: ${businessTypeName}`);
       if (mapping.kind === 'mapped') mappedLines.push(`${String(line.raw.sku_name || line.sku_code)} ×${line.quantity}份 → ${businessTypeName}`);
       const allocations = splitCents(allocatedLines[i],line.quantity);
+      const lineIds: string[] = [];
       for (let c = 1; c <= line.quantity; c++) {
         const id = `ORD-${randomUUID()}`;
         const now = new Date().toISOString();
@@ -205,11 +204,17 @@ export async function POST(req: NextRequest) {
           .run(randomUUID(),sourceOrderNo,line.line_no,c,line.sku_code,id,note,JSON.stringify(line.raw),allocations[c-1],allocations[c-1]/100,revision);
         queueProgressEventsForOrder(id, db);
         results.push({line_no:line.line_no,copy:c,status:'created',order_id:id});
+        lineIds.push(id);
       }
+      if (mapping.kind === 'mapped') firstMappedId ??= lineIds[0];
+      // 待分类提醒（规则 6）：全体在职员工每人一条，谁看到谁领取（订单列表按「待分类」业务线筛选即待领取队列）。
+      // 提醒挂这一行建出来的办理单（2026-10-16）：挂客户站单号时点开会进同一单里排第一的那张，可能是已对上业务线的那张
+      if (mapping.kind === 'unclassified')
+        notifyUnclassifiedOrder(db, lineIds[0], `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}${lineIds.length > 1 ? `，共 ${lineIds.length} 张办理单` : ''}。请在左边菜单「待分类（待领取）」里认领并改派。`);
     }
     // 新单提醒（2026-10-03 老板定：对上业务线的新单也提醒全体员工；待分类行已有上面的待领取提醒）
-    if (mappedLines.length)
-      notifyNewSyncedOrder(db, sourceOrderNo, `客户站新订单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）：${mappedLines.join('；')}。已按流程建好办理单，可在订单列表查看。`);
+    if (mappedLines.length && firstMappedId)
+      notifyNewSyncedOrder(db, firstMappedId, `客户站新订单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）：${mappedLines.join('；')}。已按流程建好办理单，可在订单列表查看。`);
     assertLedgerTotal();
   });
   try { ingest(); }

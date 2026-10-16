@@ -177,7 +177,8 @@ export default function FinancePage() {
     [filtered]
   );
   const totalPending = useMemo(
-    () => sumByCurrency(filtered.filter((r: FinanceRecord) => r.status === "unpaid" || r.status === "pending")),
+    // 只算支出：核对上线前的 pending 收入已经算进「待核对」，不再重复算进待付（2026-10-16）
+    () => sumByCurrency(filtered.filter((r: FinanceRecord) => (r.status === "unpaid" || r.status === "pending") && !isWaitingIncome(r))),
     [filtered]
   );
   const totalPendingVerify = useMemo(

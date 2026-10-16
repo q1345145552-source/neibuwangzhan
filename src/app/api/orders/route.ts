@@ -69,6 +69,13 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
   for (const r of db.prepare("SELECT internal_order_id, source_order_no FROM sync_inbox WHERE internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all() as { internal_order_id: string; source_order_no: string }[]) {
     if (!sources.has(r.internal_order_id)) sources.set(r.internal_order_id, r.source_order_no);
   }
+  // 客户站来的单：客户站账单付没付（客户站标「已付」时会同步过来，2026-10-16）
+  const clientBilling = new Map<string, string>();
+  try {
+    for (const r of db.prepare("SELECT source_order_no, financial_json FROM sync_orders").all() as { source_order_no: string; financial_json: string }[]) {
+      try { const f = JSON.parse(r.financial_json) as { billingStatus?: string }; if (f.billingStatus) clientBilling.set(r.source_order_no, f.billingStatus); } catch { /* 坏数据不算 */ }
+    }
+  } catch { /* 老库没有这张表 */ }
   // 当前步骤超时（流程设置里设了预计天数的，2026-10-16）
   const overdueBy = new Map<string, { step: string; elapsed: number; expected: number }>();
   try {
@@ -103,6 +110,8 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
         has_income: m.length > 0,
         // 有没有老板核对过「已到账」的收入（不分币种）：金额没填的单靠它判断收没收到钱
         has_arrived: m.some((x) => Number(x.arrived || 0) > 0),
+        // 客户站来的单才有：客户站账单 paid / unpaid
+        client_billing: sources.has(o.id) ? clientBilling.get(sources.get(o.id)!) || null : null,
       },
     };
   });

@@ -143,7 +143,9 @@ await check('待分类单改派后，接上来的第一步经办人也收到「�
 });
 
 await check('公司注册各步互不阻塞，不发「轮到你了」', async () => {
-  const o = order(CO, admin.name, [['方案确认', '进行中', ''], ['收齐变更资料', '待处理', B.name]]);
+  const o = order(CO, admin.name, [['方案确认', '进行中', ''], ['核名', '待处理', B.name]]);
+  // 公司变更（change）按顺序走，照发提醒（10-16 复核修正，见 test-order-mgmt-c）；这里测新注册
+  db.prepare("UPDATE orders SET sub_service_type='new' WHERE id=?").run(o);
   const before = inbox(B.name).length;
   await patch(A, o, '方案确认', { status: '已完成' });
   assert.equal(inbox(B.name).length, before);

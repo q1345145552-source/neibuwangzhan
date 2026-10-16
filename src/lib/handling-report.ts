@@ -282,7 +282,7 @@ export function buildHandlingReport(db: Database.Database, month: string, now: D
       medianDays: cycleAll.length >= MIN_CYCLE_SAMPLES ? round1(median(cycleAll)) : null,
       inProgress: inProgressOrders.length,
       blockedOrders: blockedOrders.size,
-      overdue: overdue.length,
+      overdue: new Set(overdue.map(r => r.orderId)).size, // 按单数（公司注册几步同时超时只算 1 单），明细照旧一步一行
       coverage: monthSteps ? Math.round((monthStepsWithStart / monthSteps) * 100) : null,
       batchSteps,
       cancelledTotal: orders.length - live.length,

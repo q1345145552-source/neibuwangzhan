@@ -18,9 +18,14 @@ export function orderStatusFromSteps(statuses: string[]): string | null {
  * 公司注册（公司变更除外，它是自己的 4 步按顺序走）各步互不阻塞，算正在办/卡住的步骤，一步都没开始就算第一个没办完的；
  * 其他业务算第一个没办完的步骤。已跳过算办完。
  */
+/** 各步互不阻塞（不用按顺序办）：公司注册那套 11 步；公司变更是自己的 4 步，按顺序走。所有地方都用这一个判断 */
+export function isParallelFlow(businessTypeId: number, subServiceType: string | null | undefined): boolean {
+  return businessTypeId === 1 && (subServiceType || "") !== "change";
+}
+
 export function currentOpenSteps<T extends { status: string }>(businessTypeId: number, subServiceType: string | null | undefined, steps: T[]): T[] {
   const open = steps.filter((s) => !isStepClosed(s.status));
-  if (businessTypeId === 1 && subServiceType !== "change") {
+  if (isParallelFlow(businessTypeId, subServiceType)) {
     const active = open.filter((s) => s.status === "进行中" || s.status === "阻塞");
     return active.length ? active : open.slice(0, 1);
   }

@@ -19,7 +19,7 @@ const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
-import { isStepClosed } from "@/lib/step-status";
+import { isStepClosed, isParallelFlow } from "@/lib/step-status";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -411,7 +411,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const handleRollback = async (stepId: number) => {
     const target = steps.find(s => s.id === stepId);
     // 撤回跳过的步骤：前面还有没办完的就回到「待处理」，不提前算开始
-    const back = target?.status === "已跳过" && order?.business_type_id !== 1 && steps.some(s => s.step_order < target.step_order && !isStepClosed(s.status)) ? "待处理" : "进行中";
+    const back = target?.status === "已跳过" && !(order && isParallelFlow(order.business_type_id, order.sub_service_type)) && steps.some(s => s.step_order < target.step_order && !isStepClosed(s.status)) ? "待处理" : "进行中";
     if (!window.confirm(`确定撤回「${target?.step_name || "这一步"}」？这一步会回到「${back}」${order?.status === "已完成" ? "，整单也会变回办理中，客户那边看到的进度会跟着变" : ""}。`)) return;
     try {
       await updateStep(id, stepId, { status: back });
@@ -1088,9 +1088,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             ) : (
                               <>
                                 {(() => {
-                                  const isCompanyReg = order?.business_type_id === 1;
-                                  const prevStep = steps.find(s => s.step_order === step.step_order - 1);
-                                  const canComplete = isCompanyReg || !prevStep || isStepClosed(prevStep.status);
+                                  // 公司注册那套各步互不阻塞；其他（含公司变更）要前面所有步骤都办完或跳过（2026-10-16 统一口径）
+                                  const parallel = !!order && isParallelFlow(order.business_type_id, order.sub_service_type);
+                                  const canComplete = parallel || steps.every(s => s.step_order >= step.step_order || isStepClosed(s.status));
                                   return canComplete ? (
                                     <button onClick={() => setConfirmingStepId(step.id)} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
                                   ) : (
@@ -1111,7 +1111,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                     <button onClick={() => { setReasonFor({ stepId: step.id, kind: "阻塞" }); setReasonText(""); }} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
                                     {/* 用不上的步骤（如「如需补资料」）跳过，不用假装点完成；第一步、最后一步不能跳 */}
                                     {!isClient && step.step_order !== steps[0]?.step_order && step.step_order !== steps[steps.length - 1]?.step_order
-                                      && (order?.business_type_id === 1 || steps.every(s => s.step_order >= step.step_order || isStepClosed(s.status))) && (
+                                      && ((!!order && isParallelFlow(order.business_type_id, order.sub_service_type)) || steps.every(s => s.step_order >= step.step_order || isStepClosed(s.status))) && (
                                       <button onClick={() => { setReasonFor({ stepId: step.id, kind: "已跳过" }); setReasonText(""); }} className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="这一步这张单用不上">跳过</button>
                                     )}
                                   </>

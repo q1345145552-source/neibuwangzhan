@@ -3,7 +3,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
-import { STEP_STATUSES, STEP_SKIPPED, isStepClosed, orderStatusFromSteps } from "@/lib/step-status";
+import { STEP_STATUSES, STEP_SKIPPED, isStepClosed, isParallelFlow, orderStatusFromSteps } from "@/lib/step-status";
 import { notifyNextStep } from "@/lib/order-alerts";
 
 // PATCH /api/orders/:id/steps
@@ -44,9 +44,9 @@ export async function PATCH(
       return NextResponse.json({ error: "第一步和最后一步不能跳过" }, { status: 400 });
     }
     // 只能跳「当前这一步」：前面都办完（或跳过）了才能跳，免得提前把后面的人叫起来。公司注册各步互不阻塞，不限
-    const bt = (db.prepare("SELECT business_type_id FROM orders WHERE id = ?").get(id) as { business_type_id: number } | undefined)?.business_type_id;
+    const ord = db.prepare("SELECT business_type_id, sub_service_type FROM orders WHERE id = ?").get(id) as { business_type_id: number; sub_service_type: string | null } | undefined;
     const openBefore = db.prepare("SELECT 1 FROM order_steps WHERE order_id = ? AND step_order < ? AND status NOT IN ('已完成','已跳过') LIMIT 1").get(id, step.step_order);
-    if (bt !== 1 && openBefore) {
+    if (!(ord && isParallelFlow(ord.business_type_id, ord.sub_service_type)) && openBefore) {
       return NextResponse.json({ error: "前面还有步骤没办完，等轮到这一步再跳过" }, { status: 400 });
     }
   }

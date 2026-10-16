@@ -83,7 +83,8 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
   const owners = (o: Order) => (o.responsible_person || "").split(/[\/、,，]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
   const live = (o: Order) => o.status !== "客户取消" && o.status !== "已完成";
   // 办完没收齐：订单金额填了就按同币种已到账比；金额没填就看有没有核对过到账的收入。商城单的钱以商城账单为准，不算
-  const unpaidDone = (o: Order) => o.status === "已完成" && o.source_system !== "commerce" &&
+  // 客户站来的单：客户站账单标了已付也算收到（钱可能是在客户站确认的）
+  const unpaidDone = (o: Order) => o.status === "已完成" && o.source_system !== "commerce" && o.payment?.client_billing !== "paid" &&
     (Number(o.total_amount) > 0 ? (o.payment?.arrived || 0) < Number(o.total_amount) : !o.payment?.has_arrived);
   const quickTest = (key: typeof quick, o: Order) =>
     key === "mine" ? owners(o).includes(me) && o.status !== "客户取消"
@@ -247,9 +248,10 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
                 <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">
                   {formatCurrency(order.total_amount, order.currency)}
                   {/* 已到账只算老板核对过的收入（同币种），2026-10-16 */}
-                  {order.payment && order.source_system !== "commerce" && (order.payment.has_income || order.status === "已完成") && (
+                  {order.payment && order.source_system !== "commerce" && (order.payment.has_income || order.status === "已完成" || order.payment.client_billing) && (
                     <div className={cn("mt-0.5 font-sans", unpaidDone(order) ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]")}>
-                      已到账 {formatCurrency(order.payment.arrived, order.currency)}{order.payment.arrived_other > 0 ? " +外币" : ""}{order.payment.waiting > 0 ? `，${order.payment.waiting} 笔待核对` : ""}
+                      {(order.payment.has_income || !order.payment.client_billing) && <>已到账 {formatCurrency(order.payment.arrived, order.currency)}{order.payment.arrived_other > 0 ? " +外币" : ""}{order.payment.waiting > 0 ? `，${order.payment.waiting} 笔待核对` : ""}</>}
+                      {order.payment.client_billing && <div>客户站账单：{order.payment.client_billing === "paid" ? "已付" : "未付"}</div>}
                     </div>
                   )}
                 </td>
