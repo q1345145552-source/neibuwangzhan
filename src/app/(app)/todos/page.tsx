@@ -43,7 +43,7 @@ interface TodoStats {
   week: RangeStats;
   month: RangeStats;
   employees: { name: string; unfinished: number; today: RangeStats; week: RangeStats; month: RangeStats; categories: { name: string; count: number }[] }[];
-  backlog: { id: number; content: string; assignee: string; created_at: string; days: number }[];
+  backlog: { id: number; content: string; assignee: string; created_at: string; last_follow_at: string; createdAgoMs: number; followAgoMs: number | null; warn: boolean }[];
   trend: { created: { this: number; last: number }; completed: { this: number; last: number } };
 }
 
@@ -53,6 +53,16 @@ function bangkokToday(): string {
 }
 function bangkokDaysAgo(n: number): string {
   return new Date(Date.now() + 7 * 3600 * 1000 - n * 86400000).toISOString().split("T")[0];
+}
+// 时长格式化：不到 1 小时显示「X 分钟」，不到 24 小时显示「X 小时」，超过 24 小时显示「X 天 X 小时」
+function formatDuration(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) return `${Math.max(1, minutes)} 分钟`;
+  const hours = Math.floor(ms / 3600000);
+  if (hours < 24) return `${hours} 小时`;
+  const days = Math.floor(ms / 86400000);
+  const remHours = Math.floor((ms % 86400000) / 3600000);
+  return remHours > 0 ? `${days} 天 ${remHours} 小时` : `${days} 天`;
 }
 
 export default function TodosPage() {
@@ -886,22 +896,40 @@ export default function TodosPage() {
                 <AlertCircle className="size-4 text-red-500" />积压提醒
               </h3>
               {(stats?.backlog ?? []).length === 0 ? (
-                <p className="py-2 text-sm text-[var(--muted-foreground)]">没有积压的待办</p>
+                <p className="py-2 text-sm text-[var(--muted-foreground)]">没有未完成的待办</p>
               ) : (
                 <>
-                  <p className="mb-2 text-xs text-[var(--muted-foreground)]">{(stats?.backlog ?? []).length} 个待办超过 3 天未完成，卡住了该催了：</p>
+                  <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                    共 {(stats?.backlog ?? []).length} 个未完成待办，其中 {(stats?.backlog ?? []).filter((b) => b.warn).length} 个超 24 小时没跟进
+                  </p>
                   <div className="max-h-64 space-y-2 overflow-y-auto">
                     {(stats?.backlog ?? []).map((b) => (
                       <div
                         key={b.id}
                         onClick={() => jumpToTodo(b.assignee, b.id)}
-                        className="cursor-pointer rounded-lg border border-red-200 bg-red-50 px-3 py-2 transition-colors hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:hover:bg-red-950/60"
+                        className={cn(
+                          "cursor-pointer rounded-lg border px-3 py-2 transition-colors",
+                          b.warn
+                            ? "border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:hover:bg-red-950/60"
+                            : "border-[var(--border)] hover:bg-[var(--muted)]"
+                        )}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm text-[var(--foreground)]">{b.content}</span>
-                          <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">{b.days} 天</span>
+                          {b.warn && (
+                            <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[0.65rem] font-medium text-white">预警</span>
+                          )}
                         </div>
-                        <div className="mt-0.5 text-xs text-[var(--muted-foreground)]">{b.assignee || "未分配"} · 创建于 {toThaiTime(b.created_at) || "—"}</div>
+                        <div className="mt-0.5 text-xs text-[var(--muted-foreground)]">{b.assignee || "未分配"}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <span className="text-[var(--muted-foreground)]">{formatDuration(b.createdAgoMs)}前创建</span>
+                          <span className="text-[var(--muted-foreground)]">·</span>
+                          <span className={cn(b.warn && "font-medium text-red-600 dark:text-red-400")}>
+                            {b.followAgoMs == null ? "从未跟进" : `${formatDuration(b.followAgoMs)}没跟进`}
+                          </span>
+                          <span className="text-[var(--muted-foreground)]">·</span>
+                          <span className="text-[var(--muted-foreground)]">{formatDuration(b.createdAgoMs)}未完成</span>
+                        </div>
                       </div>
                     ))}
                   </div>

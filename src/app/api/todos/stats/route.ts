@@ -71,16 +71,40 @@ export async function GET(req: NextRequest) {
   // 未完成数降序：谁手上待办最多排最前
   employees.sort((a, b) => (b.unfinished - a.unfinished) || String(a.name).localeCompare(String(b.name), "zh"));
 
-  // ── 积压提醒：超过 3 天仍未完成的待办 ──
-  const threeDaysAgoUtc = new Date(Date.now() - 3 * 86400000).toISOString().replace("T", " ").split(".")[0];
+  // ── 积压提醒：列出所有未完成待办，附创建时间 / 上次跟进时间 / 未完成时长 ──
   const backlogRows = db.prepare(
-    "SELECT id, content, assignee, created_at FROM todos WHERE status = '未完成' AND created_at < ? ORDER BY created_at ASC LIMIT 50"
-  ).all(threeDaysAgoUtc) as { id: number; content: string; assignee: string; created_at: string }[];
+    `SELECT t.id, t.content, t.assignee, t.created_at,
+            (SELECT MAX(f.created_at) FROM todo_follow_ups f WHERE f.todo_id = t.id) AS last_follow_at
+     FROM todos t
+     WHERE t.status = '未完成'
+     ORDER BY t.created_at ASC`
+  ).all() as { id: number; content: string; assignee: string; created_at: string; last_follow_at: string | null }[];
+
   const nowMs = Date.now();
-  const backlog = backlogRows.map((r) => ({
-    ...r,
-    days: Math.max(3, Math.floor((nowMs - new Date(r.created_at.replace(" ", "T") + "Z").getTime()) / 86400000)),
-  }));
+  const toMs = (s: string | null | undefined): number | null =>
+    s ? new Date(s.replace(" ", "T") + "Z").getTime() : null;
+
+  const backlog = backlogRows.map((r) => {
+    const createdMs = toMs(r.created_at) ?? nowMs;
+    const followMs = toMs(r.last_follow_at);
+    const createdAgoMs = Math.max(0, nowMs - createdMs);
+    const followAgoMs = followMs != null ? Math.max(0, nowMs - followMs) : null;
+    // 没跟进超 24 小时预警：有跟进记录看最近跟进时间，从没跟进过看创建时间
+    const warn = (followAgoMs ?? createdAgoMs) > 24 * 3600 * 1000;
+    return {
+      id: r.id,
+      content: r.content,
+      assignee: r.assignee,
+      created_at: r.created_at,
+      last_follow_at: r.last_follow_at || "",
+      createdAgoMs,
+      followAgoMs,
+      warn,
+    };
+  });
+
+  // 预警置顶；其余按未完成时长从长到短
+  backlog.sort((a, b) => (Number(b.warn) - Number(a.warn)) || (b.createdAgoMs - a.createdAgoMs));
 
   // ── 趋势对比：本周 vs 上周 的新增/完成数 ──
   const lastWeekDateStr = new Date(Date.now() + 7 * 3600 * 1000 - 7 * 86400000).toISOString().split("T")[0];
