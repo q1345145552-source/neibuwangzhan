@@ -476,6 +476,8 @@ export interface StepTemplateWithDocs extends StepTemplate {
   expected_days?: number | null;
   /** 来自系统里哪个流程版本；程序里的流程没有 */
   template_version_id?: number | null;
+  /** 客户看到的名字（流程设置第 4 期起每步都有）；程序里的流程没有，照旧按对照表算 */
+  public_name?: string | null;
 }
 
 /** 一套流程的指纹：步骤名、经办人、资料、备注（流程清单合并、按指纹认系统里的流程都用它） */
@@ -485,7 +487,8 @@ export function templateSignature(tpl: StepTemplateWithDocs[]): string {
 
 /**
  * 系统里有这套流程（流程设置导入过）就用系统里正在用的版本，没有就返回 null（照旧用程序里的）。
- * 安全闸：步骤名和顺序必须跟程序里一模一样（这一期不开放改名/增删），对不上也照旧用程序里的。
+ * 第 4 期起步骤名、步骤数、顺序可以跟程序里不一样（流程设置里改的），但这样的版本每一步都必须有「客户看到的名字」、
+ * 第一步必须还是「方案确认」，否则照旧用程序里的（防止半截数据把客户看到的名字弄丢）。
  */
 function resolveTemplateFromDb(legacy: StepTemplateWithDocs[]): StepTemplateWithDocs[] | null {
   if (!db) return null;
@@ -495,9 +498,10 @@ function resolveTemplateFromDb(legacy: StepTemplateWithDocs[]): StepTemplateWith
     ).get(templateSignature(legacy)) as { vid: number } | undefined;
     if (!row) return null;
     const steps = db.prepare(
-      "SELECT name, assignee, notes, docs_json, expected_days FROM workflow_template_steps WHERE version_id = ? ORDER BY step_order"
-    ).all(row.vid) as { name: string; assignee: string; notes: string; docs_json: string; expected_days: number | null }[];
-    if (steps.length !== legacy.length || steps.some((s, i) => s.name !== legacy[i].name)) return null;
+      "SELECT name, assignee, notes, docs_json, expected_days, public_name FROM workflow_template_steps WHERE version_id = ? ORDER BY step_order"
+    ).all(row.vid) as { name: string; assignee: string; notes: string; docs_json: string; expected_days: number | null; public_name: string | null }[];
+    const renamed = steps.length !== legacy.length || steps.some((s, i) => s.name !== legacy[i].name);
+    if (renamed && (steps[0]?.name !== legacy[0]?.name || steps.some((s) => !(s.public_name || "").trim()))) return null;
     return steps.map((s) => ({
       name: s.name,
       assignee: s.assignee,
@@ -505,6 +509,7 @@ function resolveTemplateFromDb(legacy: StepTemplateWithDocs[]): StepTemplateWith
       docs: JSON.parse(s.docs_json || "[]") as string[],
       expected_days: s.expected_days,
       template_version_id: row.vid,
+      public_name: (s.public_name || "").trim() || null,
     }));
   } catch (error) {
     console.error("[workflow] 读系统里的流程失败，照旧用程序里的:", error);

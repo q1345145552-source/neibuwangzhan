@@ -194,10 +194,10 @@ export async function POST(req: NextRequest) {
         db.prepare(`INSERT INTO orders(id,customer_name,business_type_id,sub_service_type,address_type,monthly_rent,status,responsible_person,description,total_amount,currency,trademark_name,created_at,updated_at,source_system,source_customer_id)
           VALUES (?,?,?,?,?,0,'待处理','',?,?,?,'',?,?,'storefront',?)`)
           .run(id,order.customerName || order.customerEmail || customerId,bt.id,subServiceType,addressType,description,allocations[c-1]/100,order.currency,now,now,customerId);
-        const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes,expected_days,template_version_id) VALUES (?,?,?,'待处理',?,?,?,?)");
+        const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes,expected_days,template_version_id,public_name) VALUES (?,?,?,'待处理',?,?,?,?,?)");
         const insertDoc = db.prepare("INSERT INTO step_documents(step_id,order_id,document_name,status) VALUES (?,?,?,'pending')");
         getOrderStepsWithDocs(bt.id,subServiceType,addressType).forEach((step,index) => {
-          const result = insertStep.run(id,step.name,index+1,step.assignee,step.notes || '',step.expected_days ?? null,step.template_version_id ?? null);
+          const result = insertStep.run(id,step.name,index+1,step.assignee,step.notes || '',step.expected_days ?? null,step.template_version_id ?? null,step.public_name ?? null);
           for (const name of step.docs) insertDoc.run(result.lastInsertRowid,id,name);
         });
         db.prepare(`INSERT INTO sync_inbox(id,source_order_no,line_no,copy_no,sku_code,internal_order_id,note,payload,allocated_cents,allocated_amount,billing_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)

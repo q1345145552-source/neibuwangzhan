@@ -143,6 +143,8 @@ await check('待分类（待领取）角标只数没人领、没办完没取消�
 // ---------- 新建订单子类型必选；建单后不能改业务线 ----------
 const FDA = bt('FDA认证');
 await check('有具体服务的业务线不选子类型建不了单；选了能建', async () => {
+  // 10-16 起客户要从客户管理里选（2A）：先在客户管理里有这个客户
+  db.prepare("INSERT OR IGNORE INTO customers (company_name, status) VALUES ('新客户', '已合作')").run();
   const bad = await call(ordersRoute.POST as never, staff, 'POST', '/api/orders', { customer_name: '新客户', business_type_id: FDA });
   assert.equal(bad.status, 400); assert.match(bad.json.error, /子类型/);
   const good = await call(ordersRoute.POST as never, staff, 'POST', '/api/orders', { customer_name: '新客户', business_type_id: FDA, sub_service_type: 'food' });

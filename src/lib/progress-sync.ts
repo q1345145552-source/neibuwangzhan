@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
-import { publicStepNames } from "./commerce-fulfillment";
+import { orderPublicStepNames } from "./commerce-fulfillment";
 import { notifySyncBackFailure } from "./order-alerts";
 
 /**
@@ -31,11 +31,11 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
     const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId) as { status: string } | undefined;
     if (!order) return 0;
     // 白名单：禁止 SELECT * 或带入备注、负责人、费用、内部描述。
-    // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 publicStepNames）。
+    // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 orderPublicStepNames：建单时记下的，老单按对照表）。
     const internalSteps = db.prepare(
-      "SELECT step_order, step_name, status FROM order_steps WHERE order_id = ? ORDER BY step_order"
-    ).all(orderId) as { step_order: number; step_name: string; status: string }[];
-    const publicNames = publicStepNames(internalSteps.map(step => step.step_name));
+      "SELECT step_order, step_name, status, public_name FROM order_steps WHERE order_id = ? ORDER BY step_order"
+    ).all(orderId) as { step_order: number; step_name: string; status: string; public_name: string | null }[];
+    const publicNames = orderPublicStepNames(internalSteps);
     const steps = internalSteps.map((step, i) => ({ step_order: step.step_order, step_name: publicNames[i], status: step.status }));
     const insert = db.prepare("INSERT INTO sync_progress_outbox (id, inbox_id, payload) VALUES (?, ?, ?)");
     const bump = db.prepare("UPDATE sync_inbox SET progress_seq = progress_seq + 1 WHERE id = ?");

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2, Ban } from "lucide-react";
 import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
+import { CustomerPicker, customerExists, isKnownCustomer, type PoolCustomer } from "@/components/customer-picker";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
@@ -220,6 +221,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 编辑模式
   const [editingOrder, setEditingOrder] = useState(false);
   const [editFields, setEditFields] = useState<Partial<Order>>({});
+  // 改客户（员工建的单）：从客户管理里选，没有的当场新建（2026-10-16，2A）
+  const [customerPool, setCustomerPool] = useState<PoolCustomer[]>([]);
+  const [editNewCustomer, setEditNewCustomer] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
@@ -566,6 +570,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         currency: order.currency || "CNY",
         trademark_name: order.trademark_name || "",
       });
+      setEditNewCustomer(false);
+      if (!order.source_system && customerPool.length === 0) {
+        fetchWithAuth("/api/customers").then(r => r.json()).then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(e => console.error("[编辑] 加载客户管理名单失败", e));
+      }
       setEditingOrder(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "切换编辑失败";
@@ -583,10 +591,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       return;
     }
     if (reassignTo && !window.confirm(`确定把这张单改派到「${reassignTo.name}」？\n会换成该业务线的整套办理流程，已做的「方案确认」和写过的备注都保留。改派只能做一次。`)) return;
+    const nextCustomer = String(editFields.customer_name ?? "").trim();
+    const customerChanged = !order.source_system && nextCustomer !== String(order.customer_name || "").trim();
+    const knownCustomer = customerChanged && (isKnownCustomer(customerPool, nextCustomer) || (!editNewCustomer && await customerExists(nextCustomer)));
+    if (customerChanged && !knownCustomer && !editNewCustomer) {
+      setError("客户要从下拉里选客户管理里的客户" + (user?.role === "admin" ? "，没有的点「新建客户」" : "；客户管理里还没有的，请管理员先新建"));
+      return;
+    }
     setSavingOrder(true);
     setError("");
     try {
-      await updateOrder(id, editFields);
+      await updateOrder(id, { ...editFields, ...(customerChanged ? { customer_name: nextCustomer, new_customer: editNewCustomer && !knownCustomer } : order.source_system ? {} : { customer_name: order.customer_name }) });
       setEditingOrder(false);
       reload();
     } catch (err) {
@@ -776,7 +791,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">客户名</label>
-                  <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  {order.source_system ? (
+                    <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  ) : (
+                    <div className="mt-1">
+                      <CustomerPicker value={editFields.customer_name || ""} isNew={editNewCustomer} pool={customerPool} canCreate={user?.role === "admin"} keep={order.customer_name}
+                        className="h-9" onChange={(name, isNew) => { setEditFields(prev => ({ ...prev, customer_name: name })); setEditNewCustomer(isNew); }} />
+                    </div>
+                  )}
                 </div>
                 {order.business_type_id === 2 && (
                 <div>

@@ -8,6 +8,7 @@ import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 import { subServices } from "@/lib/constants";
 import { isStepClosed, currentOpenSteps } from "@/lib/step-status";
 import { currentStepTimings } from "@/lib/step-overdue";
+import { checkOrderCustomer, createOrderCustomer } from "@/lib/order-customer";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -149,23 +150,27 @@ export async function POST(req: NextRequest) {
   if (options.length && !options.some((o) => o.key === ssType)) {
     return NextResponse.json({ error: "请选择子类型" }, { status: 400 });
   }
+  // 客户要从「客户管理」里选，没有的当场新建（2026-10-16，2A，见 order-customer.ts）
+  const customer = checkOrderCustomer(db, customer_name, body.new_customer, auth.role);
+  if (!customer.ok) return NextResponse.json({ error: customer.error }, { status: customer.status });
 
   try {
     const insertAll = db.transaction(() => {
-      const insParams = [id, customer_name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, currency || "CNY", trademark_name || "", now, now];
+      if (customer.create) createOrderCustomer(db, customer.name, auth.name || "", id);
+      const insParams = [id, customer.name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, currency || "CNY", trademark_name || "", now, now];
       db.prepare(
         "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, currency, trademark_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
       ).run(...insParams);
 
       const steps = getOrderStepsWithDocs(Number(business_type_id), ssType, address_type);
       const insertStep = db.prepare(
-        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee, notes, expected_days, template_version_id) VALUES (?, ?, ?, '待处理', ?, ?, ?, ?)"
+        "INSERT INTO order_steps (order_id, step_name, step_order, status, assignee, notes, expected_days, template_version_id, public_name) VALUES (?, ?, ?, '待处理', ?, ?, ?, ?, ?)"
       );
       const insertStepDoc = db.prepare(
         "INSERT INTO step_documents (step_id, order_id, document_name, status) VALUES (?, ?, ?, 'pending')"
       );
       steps.forEach((step, i) => {
-        const res = insertStep.run(id, step.name, i + 1, step.assignee, step.notes || "", step.expected_days ?? null, step.template_version_id ?? null);
+        const res = insertStep.run(id, step.name, i + 1, step.assignee, step.notes || "", step.expected_days ?? null, step.template_version_id ?? null, step.public_name ?? null);
         // 按步骤模板同步生成"所需文件"清单，供订单详情页跟踪上传状态
         for (const docName of step.docs) {
           insertStepDoc.run(res.lastInsertRowid, id, docName);
@@ -174,23 +179,23 @@ export async function POST(req: NextRequest) {
     });
 
     insertAll();
-    logOperation(auth.name, "创建订单", "order", id, `客户:${customer_name} 业务线:${business_type_id}`);
+    logOperation(auth.name, "创建订单", "order", id, `客户:${customer.name} 业务线:${business_type_id}${customer.create ? "（客户当场新建）" : ""}`);
 
     // 查找客户池中匹配的客户
-    const poolCustomer = db.prepare("SELECT * FROM customers WHERE company_name = ?").get(customer_name) as any;
+    const poolCustomer = db.prepare("SELECT * FROM customers WHERE company_name = ?").get(customer.name) as any;
 
     // 自动升级客户状态：跟进中 → 已合作，并给升级加分
     if (poolCustomer && poolCustomer.status === '跟进中') {
       db.prepare("UPDATE customers SET status = '已合作', updated_at = datetime('now') WHERE id = ?").run(poolCustomer.id);
       if (poolCustomer.claimed_by) {
-        const reason = `客户「${customer_name}」升级为已合作`;
+        const reason = `客户「${customer.name}」升级为已合作`;
         db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, 10, ?, 'customer_upgrade', 'customer', ?, 'system')").run(poolCustomer.claimed_by, reason, String(poolCustomer.id));
       }
     }
 
     // 成交奖励：给认领员工加 10 分
     if (poolCustomer && poolCustomer.claimed_by) {
-      const reason = `成交订单 ORD-关联客户「${customer_name}」`;
+      const reason = `成交订单 ORD-关联客户「${customer.name}」`;
       db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, 10, ?, 'customer_deal', 'customer', ?, 'system')").run(poolCustomer.claimed_by, reason, String(poolCustomer.id));
     }
 

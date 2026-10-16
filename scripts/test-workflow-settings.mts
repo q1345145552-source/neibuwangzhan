@@ -91,6 +91,7 @@ await check('发布：能改经办人/天数/备注/资料；增删步骤、经�
 let newOrder = '';
 await check('发布后新建的单按新版本（经办人、天数、资料、版本号都记下）；老单不跟着变', async () => {
   const before = order(TM, 'tm-reg', '老单客户', A.name);
+  db.prepare("INSERT OR IGNORE INTO customers (company_name, status) VALUES ('新单客户', '已合作')").run(); // 10-16 起客户要从客户管理里选（2A）
   const r = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { customer_name: '新单客户', business_type_id: TM, sub_service_type: 'tm-reg', responsible_person: A.name });
   assert.equal(r.status, 201, JSON.stringify(r.json));
   newOrder = r.json.id;
@@ -172,11 +173,17 @@ await check('退回：把第 1 版原样再发布成新版本，建单回到程�
   assert.equal(getOrderStepsWithDocs(TM, 'tm-reg')[1].expected_days, null);
 });
 
-await check('安全闸：系统里的步骤名跟程序里对不上时，照旧用程序里的', () => {
+await check('安全闸：系统里的步骤名跟程序里对不上、又缺「客户看到的名字」时，照旧用程序里的（第 4 期起名字齐全的改名照用）', () => {
   const cur = (db.prepare('SELECT current_version_id AS v FROM workflow_templates WHERE id=?').get(templateId) as { v: number }).v;
-  db.prepare("UPDATE workflow_template_steps SET name='被改坏的名字' WHERE version_id=? AND step_order=2").run(cur);
-  assert.equal(getOrderStepsWithDocs(TM, 'tm-reg')[1].name, tmLegacy[1].name);
-  db.prepare('UPDATE workflow_template_steps SET name=? WHERE version_id=? AND step_order=2').run(tmLegacy[1].name, cur);
+  const saved = db.prepare('SELECT name, public_name FROM workflow_template_steps WHERE version_id=? AND step_order=2').get(cur) as { name: string; public_name: string | null };
+  try {
+    db.prepare("UPDATE workflow_template_steps SET name='被改坏的名字', public_name=NULL WHERE version_id=? AND step_order=2").run(cur);
+    assert.equal(getOrderStepsWithDocs(TM, 'tm-reg')[1].name, tmLegacy[1].name);
+    db.prepare("UPDATE workflow_template_steps SET public_name='客户名' WHERE version_id=? AND step_order=2").run(cur);
+    assert.equal(getOrderStepsWithDocs(TM, 'tm-reg')[1].name, '被改坏的名字');
+  } finally {
+    db.prepare('UPDATE workflow_template_steps SET name=?, public_name=? WHERE version_id=? AND step_order=2').run(saved.name, saved.public_name, cur);
+  }
 });
 
 await check('超时没人接手（没写经办人和负责人）：改发管理员、写明没人接手；补了负责人不会因为占了名额而漏发', () => {

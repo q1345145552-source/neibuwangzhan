@@ -3,7 +3,8 @@ import { publicOrder, publicSteps } from "@/lib/client-view";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
+import { getDb, getLegacyOrderStepsWithDocs, getOrderStepsWithDocs, logOperation } from "@/lib/db";
+import { checkOrderCustomer, createOrderCustomer } from "@/lib/order-customer";
 import { subServices } from "@/lib/constants";
 import { orderStatusFromSteps } from "@/lib/step-status";
 import { notifyNextStep } from "@/lib/order-alerts";
@@ -117,7 +118,15 @@ export async function PATCH(
     const changed = nextBt !== Number(cur.business_type_id) || nextSub !== String(cur.sub_service_type || "") || nextAddr !== String(cur.address_type || "client");
     if (changed) {
       const stepNames = (db.prepare("SELECT step_name FROM order_steps WHERE order_id = ? ORDER BY step_order, id").all(id) as { step_name: string }[]).map(r => r.step_name);
-      const sameFlow = stepNames.length > 0 && JSON.stringify(getOrderStepsWithDocs(nextBt, nextSub || undefined, nextAddr).map(st => st.name)) === JSON.stringify(stepNames);
+      // 流程设置里改过名的，老单还是原来的步骤名：跟现在的流程或程序里的原样流程一样都算同一套；
+      // 这张单是按系统里某套流程（任何一版）建的、新组合现在用的也是那一套，同样算（几种服务共用一套流程时换服务）
+      const target = getOrderStepsWithDocs(nextBt, nextSub || undefined, nextAddr);
+      const templateOf = (vid: number | null | undefined) => vid ? (db.prepare("SELECT template_id AS t FROM workflow_template_versions WHERE id = ?").get(vid) as { t: number } | undefined)?.t ?? null : null;
+      const orderTemplates = (db.prepare("SELECT DISTINCT v.template_id AS t FROM order_steps s JOIN workflow_template_versions v ON v.id = s.template_version_id WHERE s.order_id = ?").all(id) as { t: number }[]).map(r => r.t);
+      const targetTemplate = templateOf(target[0]?.template_version_id);
+      const sameTemplate = targetTemplate != null && orderTemplates.length === 1 && orderTemplates[0] === targetTemplate;
+      const sameFlow = stepNames.length > 0 && (sameTemplate || [target, getLegacyOrderStepsWithDocs(nextBt, nextSub || undefined, nextAddr)]
+        .some(tpl => JSON.stringify(tpl.map(st => st.name)) === JSON.stringify(stepNames)));
       if (stepNames.length > 0 && !sameFlow) {
         return NextResponse.json({ error: "建单后不能改业务线、子类型或地址类型（步骤不会跟着换）。建错了请取消这张单，重新建一张。" }, { status: 409 });
       }
@@ -127,7 +136,22 @@ export async function PATCH(
   const fields: string[] = [];
   const values: unknown[] = [];
 
-  if (body.customer_name !== undefined) { fields.push("customer_name = ?"); values.push(body.customer_name); }
+  // 员工建的单改客户：跟新建订单一样要从客户管理里选、没有的当场新建（2026-10-16，2A）；没改、或客户站/商城来的单照旧
+  let newCustomer: string | null = null;
+  if (body.customer_name !== undefined) {
+    const original = (existing as { customer_name?: string | null }).customer_name ?? "";
+    const before = String(original).trim();
+    let next: unknown = body.customer_name;
+    // 员工建的单只多打了前后空格：算没改，照存原名（不然跟客户管理就对不上了）
+    if (!synchronized && String(body.customer_name ?? "").trim() === before) next = original;
+    if (!synchronized && String(body.customer_name ?? "").trim() !== before) {
+      const customer = checkOrderCustomer(db, body.customer_name, body.new_customer, auth.role);
+      if (!customer.ok) return NextResponse.json({ error: customer.error }, { status: customer.status });
+      next = customer.name;
+      if (customer.create) newCustomer = customer.name;
+    }
+    fields.push("customer_name = ?"); values.push(next);
+  }
   if (reassign) {
     fields.push("business_type_id = ?", "sub_service_type = ?", "address_type = ?", "status = ?");
     values.push(reassign.businessTypeId, reassign.subServiceType, reassign.addressType, "进行中");
@@ -175,6 +199,7 @@ export async function PATCH(
   let result: { queued: number; order: unknown };
   try {
     result = db.transaction(() => {
+      if (newCustomer) createOrderCustomer(db, newCustomer, auth.name || "", id);
       if (reassign) {
         const fresh = db.prepare("SELECT sub_service_type, status FROM orders WHERE id = ?").get(id) as { sub_service_type: string; status: string };
         if (fresh.sub_service_type !== UNCLASSIFIED_SUB) throw new ReassignConflict("这张单已经改派过了，请刷新页面");
@@ -193,11 +218,11 @@ export async function PATCH(
         }
         db.prepare("UPDATE order_steps SET status = '已完成', completed_at = COALESCE(completed_at, datetime('now')) WHERE id = ?").run(claim.id);
         const last = (db.prepare("SELECT MAX(step_order) AS n FROM order_steps WHERE order_id = ?").get(id) as { n: number }).n;
-        const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes,expected_days,template_version_id) VALUES (?,?,?,'待处理',?,?,?,?)");
+        const insertStep = db.prepare("INSERT INTO order_steps(order_id,step_name,step_order,status,assignee,notes,expected_days,template_version_id,public_name) VALUES (?,?,?,'待处理',?,?,?,?,?)");
         const insertDoc = db.prepare("INSERT INTO step_documents(step_id,order_id,document_name,status) VALUES (?,?,?,'pending')");
         // 新业务线模板第一步也是「方案确认」，已保留原来那步，不重复加
         getOrderStepsWithDocs(reassign.businessTypeId, reassign.subServiceType, reassign.addressType).slice(1).forEach((step, i) => {
-          const inserted = insertStep.run(id, step.name, last + 1 + i, step.assignee, step.notes || "", step.expected_days ?? null, step.template_version_id ?? null);
+          const inserted = insertStep.run(id, step.name, last + 1 + i, step.assignee, step.notes || "", step.expected_days ?? null, step.template_version_id ?? null, step.public_name ?? null);
           for (const name of step.docs) insertDoc.run(inserted.lastInsertRowid, id, name);
         });
       }

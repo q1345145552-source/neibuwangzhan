@@ -1,5 +1,5 @@
 /** Customer API DTOs. Internal entities never spread into a customer response. */
-import { publicStepNames } from "./commerce-fulfillment";
+import { orderPublicStepNames } from "./commerce-fulfillment";
 
 type Row = Record<string, unknown>;
 function pick(row: unknown, fields: readonly string[]): Row {
@@ -15,7 +15,7 @@ export function publicStep(row: unknown): Row {
 }
 /** 给客户看的整单步骤（按 step_order 排好）：步骤名换成对外说法，内部原名带员工名、合作方和内部费用（2026-10-03）。 */
 export function publicSteps(rows: readonly unknown[]): Row[] {
-  const names = publicStepNames(rows.map(row => String((row as Row).step_name ?? "")));
+  const names = orderPublicStepNames(rows.map(row => ({ step_name: String((row as Row).step_name ?? ""), public_name: ((row as Row).public_name as string | null | undefined) ?? null })));
   return rows.map((row, i) => ({ ...publicStep(row), step_name: names[i] }));
 }
 export function publicDocument(row: unknown): Row {

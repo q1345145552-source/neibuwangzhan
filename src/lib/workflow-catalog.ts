@@ -6,7 +6,7 @@ import { isExternalWait } from "@/lib/handling-report";
 
 /**
  * 流程设置只读清单（2026-10-15，第 1 期）：把现在写在程序里的流程原样列出来给老板核对。
- * 只读不改；第 2 期搬进数据库、第 3 期才开放改经办人和天数。
+ * 第 2 期搬进数据库、第 3 期开放改经办人和天数、第 4 期（2026-10-16）开放改名/增删/调顺序和「客户看到的名字」。
  */
 
 export type CatalogStep = { name: string; publicName: string; assignee: string; docs: string[]; notes: string; external: boolean; locked: boolean; expectedDays: number | null };
@@ -17,6 +17,10 @@ export type CatalogEntry = {
   steps: CatalogStep[];
   /** 整套步骤在已审核模板里：客户站/商城给客户看的名字都核对过 */
   reviewed: boolean;
+  /** 客户看到的名字在流程设置里改过（跟原来对照表算出来的不一样） */
+  customPublicNames: boolean;
+  /** 步骤名和顺序不能改（「待分类」那套：改派按名字找步骤） */
+  structureLocked: boolean;
   /** 客户看到的是「办理事项」的步骤数 */
   neutralSteps: number;
   /** 步骤名里写着的员工名 */
@@ -65,7 +69,11 @@ export function buildWorkflowCatalog(db: Database.Database): CatalogEntry[] {
     for (const c of combos) {
       const tpl = getOrderStepsWithDocs(bt.id, c.sub || undefined, c.addr || undefined);
       const names = tpl.map(s => s.name);
-      const pub = publicStepNames(names);
+      // 客户看到的名字：系统里这一版记下的；没记的（程序里的原样流程、早先导入的）按对照表算，跟客户现在看到的一样
+      const legacyPub = publicStepNames(names);
+      const pub = tpl.map((s, i) => (s.public_name || "").trim() || legacyPub[i]);
+      // 步骤名、步骤数跟程序里的原样流程不一样：在流程设置里改过
+      const renamed = JSON.stringify(names) !== JSON.stringify(getLegacyOrderStepsWithDocs(bt.id, c.sub || undefined, c.addr || undefined).map(s => s.name));
       const sig = legacySig(bt.id, c.sub, c.addr);
       const same = byTemplate.get(sig);
       if (same) {
@@ -88,7 +96,9 @@ export function buildWorkflowCatalog(db: Database.Database): CatalogEntry[] {
           locked: i === 0 || bt.name === "待分类",
           expectedDays: s.expected_days ?? null,
         })),
-        reviewed: isReviewedStepTemplate(names),
+        reviewed: isReviewedStepTemplate(names) && pub.every((p, i) => p === legacyPub[i]),
+        customPublicNames: tpl.some(s => !!s.public_name) && (renamed || pub.some((p, i) => p !== legacyPub[i])),
+        structureLocked: bt.name === "待分类",
         neutralSteps: pub.filter(p => p === NEUTRAL_PUBLIC_STEP_NAME).length,
         personNames: staff.filter(n => names.some(x => x.includes(n))),
         unconfigured: names.length === 2 && names[1] === "待定",

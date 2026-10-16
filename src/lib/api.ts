@@ -427,6 +427,8 @@ export async function createOrder(data: {
   monthly_rent?: number;
   currency?: string;
   trademark_name?: string;
+  /** 客户管理里没有、当场新建（2A） */
+  new_customer?: boolean;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -438,7 +440,7 @@ export async function createOrder(data: {
   return resData as Order;
 }
 
-export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string; cancel?: boolean; restore?: boolean; cancel_reason?: string }>) {
+export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string; cancel?: boolean; restore?: boolean; cancel_reason?: string; new_customer?: boolean }>) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

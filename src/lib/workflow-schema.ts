@@ -7,10 +7,11 @@ import type Database from "better-sqlite3";
  * - workflow_templates：一套流程。legacy_signature = 导入时程序里这套流程的指纹（步骤名、经办人、资料、备注），
  *   建单时按指纹认（几种子服务共用同一套流程的，自然共用一条）。程序里的流程以后被改了、指纹对不上，就照旧用程序里的。
  * - workflow_template_versions：每次发布一个版本，可以退回旧版本；current_version_id 指向正在用的版本。
- * - workflow_template_steps：某个版本的步骤。这一期步骤名和顺序不能改（客户看到的步骤名、商城下单都按名字核对），
- *   只开放默认经办人、预计天数、备注、所需文件。
+ * - workflow_template_steps：某个版本的步骤。第 3 期开放默认经办人、预计天数、备注、所需文件；
+ *   第 4 期（2026-10-16 老板选 1A）开放改步骤名、增删、调顺序，每步多一栏 public_name「客户看到的名字」，发布时必填。
  * - reminder_log：提醒去重（证书到期、步骤超时），同一件事只提醒一次。
  * - order_steps.expected_days / template_version_id：建单时把当时的预计天数和流程版本记下来。
+ * - order_steps.public_name：建单时把当时「客户看到的名字」记下来（第 4 期）；老单是空的，照旧按原来的对照表算，客户看到的不变。
  *   超时在查询时现场按工作日算，不写 order_steps.deadline（一写积分就会开始扣分，老板定了先不开）。
  */
 export function ensureWorkflowSchema(db: Database.Database): void {
@@ -40,6 +41,7 @@ export function ensureWorkflowSchema(db: Database.Database): void {
       notes TEXT NOT NULL DEFAULT '',
       docs_json TEXT NOT NULL DEFAULT '[]',
       expected_days REAL,
+      public_name TEXT,
       UNIQUE(version_id, step_order)
     );
     CREATE TABLE IF NOT EXISTS reminder_log (
@@ -53,4 +55,8 @@ export function ensureWorkflowSchema(db: Database.Database): void {
   const columns = new Set((db.prepare("PRAGMA table_info(order_steps)").all() as { name: string }[]).map((c) => c.name));
   if (!columns.has("expected_days")) db.exec("ALTER TABLE order_steps ADD COLUMN expected_days REAL");
   if (!columns.has("template_version_id")) db.exec("ALTER TABLE order_steps ADD COLUMN template_version_id INTEGER");
+  if (!columns.has("public_name")) db.exec("ALTER TABLE order_steps ADD COLUMN public_name TEXT");
+  // 第 2/3 期先建好表的库（本机测试库）补这一列；新库建表时就有
+  const stepColumns = new Set((db.prepare("PRAGMA table_info(workflow_template_steps)").all() as { name: string }[]).map((c) => c.name));
+  if (!stepColumns.has("public_name")) db.exec("ALTER TABLE workflow_template_steps ADD COLUMN public_name TEXT");
 }

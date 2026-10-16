@@ -200,6 +200,7 @@ await test("account downgrade, disabled pilot, template ID drift and repeated ad
   process.env.COMMERCE_PILOT_ENABLED="1";
 });
 await test("legacy manual order still creates, bills cost/income, edits steps, deletes normally",async()=>{
+  db.prepare("INSERT OR IGNORE INTO customers(company_name,status) VALUES ('LEGACY FIXTURE','已合作')").run(); // 10-16 起员工建单的客户要在客户管理里（2A）
   const legacy=await call("orders","POST","staff",{customer_name:"LEGACY FIXTURE",business_type_id:1,sub_service_type:"company-reg",total_amount:100},"",201);
   await call("orders/[id]/finances","POST","staff",{type:"income",amount:100},String(legacy.id),201);
   await call("orders/[id]","PATCH","staff",{total_amount:120},String(legacy.id),200);
