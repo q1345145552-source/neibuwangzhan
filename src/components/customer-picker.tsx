@@ -21,7 +21,7 @@ export async function customerExists(name: string): Promise<boolean> {
   const n = name.trim();
   if (!n) return false;
   try {
-    const r = await fetchWithAuth(`/api/customers?action=exists&name=${encodeURIComponent(n)}`);
+    const r = await fetchWithAuth(`/api/orders/customer-check?name=${encodeURIComponent(n)}`);
     return r.ok && !!((await r.json()) as { exists?: boolean }).exists;
   } catch (e) {
     console.error("[客户] 核对客户名失败", e);

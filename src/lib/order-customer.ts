@@ -6,8 +6,8 @@ import { logOperation } from "@/lib/db";
  * 订单和客户管理是靠名字一字不差对上的（成交金额、客户状态都按名字算），手打差一个字就对不上。
  * - 客户管理里有：照用（前后空格去掉）。
  * - 没有：可以在新建订单时当场新建（new_customer），跟订单在同一个事务里存，订单没建成客户也不会多出来。
- *   7-20 起只有管理员能建客户（刘雄 3911a8a），当场新建也先只给管理员；员工要请管理员先在客户管理里建好。
- * - 当场新建的客户直接算「已合作」（已经下单了），不进公海、不能认领，不加积分。
+ *   客户管理原来的规矩不动（老板 10-16「不要改原本的系统逻辑」）：只有管理员能建客户（7-20 刘雄 3911a8a），员工要请管理员先建好；
+ *   当场新建的客户跟在客户管理里点「新建客户」建的一模一样（状态「潜在」，其余留空），之后照客户管理原来的规矩走。
  * 客户站、商城转来的单不走这里（客户名来自客户账号）。
  */
 export type OrderCustomerCheck =
@@ -31,8 +31,11 @@ export function checkOrderCustomer(db: Database.Database, rawName: unknown, want
   return { ok: true, name, create: true };
 }
 
-/** 当场新建客户：放在建单/改单的事务里调。别人刚好同时建了同名的，就直接用那条。 */
+/**
+ * 当场新建客户：放在建单/改单的事务里调。跟客户管理里管理员点「新建客户」写的一样（只填公司名，状态默认「潜在」），
+ * 记同样的「录入客户」操作日志。别人刚好同时建了同名的，就直接用那条。
+ */
 export function createOrderCustomer(db: Database.Database, name: string, actor: string, orderId: string): void {
-  const result = db.prepare("INSERT OR IGNORE INTO customers (company_name, source_channel, status) VALUES (?, '新建订单时录入', '已合作')").run(name);
+  const result = db.prepare("INSERT OR IGNORE INTO customers (company_name) VALUES (?)").run(name);
   if (result.changes > 0) logOperation(actor, "录入客户", "customer", String(result.lastInsertRowid), `${name}（新建/修改订单 ${orderId} 时录入）`);
 }

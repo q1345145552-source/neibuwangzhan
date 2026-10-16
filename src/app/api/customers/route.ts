@@ -151,13 +151,6 @@ export async function GET(req: NextRequest) {
   }
 
   // VAT import: get vat_customers not yet in customers pool
-  // 新建/修改订单时核对客户名（2026-10-16，2A）：员工在客户管理里只看得到没人认领的和自己认领的客户，
-  // 同事认领的客户下拉里没有；打全名时只回答「客户管理里有没有」，不带联系方式等任何资料
-  if (action === "exists") {
-    const name = (url.searchParams.get("name") || "").trim();
-    return NextResponse.json({ exists: !!name && !!db.prepare("SELECT 1 FROM customers WHERE company_name = ? OR trim(company_name) = ?").get(name, name) });
-  }
-
   if (action === "vat-importable") {
     const rows = db.prepare(`
       SELECT vc.* FROM vat_customers vc
