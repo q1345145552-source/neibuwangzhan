@@ -1,5 +1,7 @@
 "use client";
 
+import { whtSubtypeLabel } from "@/lib/wht-display";
+
 import React, { useState, useEffect, use, useCallback } from "react";
 import { apiCall } from "@/lib/api-call";
 import { useRouter } from "next/navigation";
@@ -328,7 +330,7 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
           <div className="flex-1">
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{record.company_name}</h1>
             <div className="mt-1 flex items-center gap-2 flex-wrap">
-              <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]">{record.subtype}</span>
+              <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]">{whtSubtypeLabel(record.subtype)}</span>
               <span className="text-xs text-[var(--muted-foreground)]">{record.year_month}</span>
               {record.tax_id && <span className="text-xs text-[var(--muted-foreground)]">税号: {record.tax_id}</span>}
               <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
@@ -349,7 +351,7 @@ export default function WhtRecordDetailPage({ params }: { params: Promise<{ id: 
             <dl className="grid gap-4 sm:grid-cols-2">
               <div><dt className="text-xs text-[var(--muted-foreground)]">公司名称</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{record.company_name}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">申报月份</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{record.year_month}</dd></div>
-              <div><dt className="text-xs text-[var(--muted-foreground)]">子类型</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{record.subtype}</dd></div>
+              <div><dt className="text-xs text-[var(--muted-foreground)]">子类型</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{whtSubtypeLabel(record.subtype)}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">税号</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{record.tax_id || "—"}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">联系方式</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{record.contact || "—"}</dd></div>
               <div><dt className="text-xs text-[var(--muted-foreground)]">当前进度</dt><dd className="mt-1 text-sm text-[var(--foreground)]">{record.progress || "—"}</dd></div>

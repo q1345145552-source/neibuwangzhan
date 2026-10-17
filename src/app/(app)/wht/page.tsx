@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { whtSubtypeLabel } from "@/lib/wht-display";
 import { WhtCustomerProfile } from "@/components/wht-customer-profile";
 import {
   Plus, Save, X, Edit3, Trash2, RefreshCw, ChevronDown, ChevronRight, Check, FileDown, Search, ChevronLeft, AlertTriangle, Clock, Upload, Download, FileSpreadsheet,
@@ -18,7 +19,7 @@ const PROGRESS_OPTIONS = ["", "归档", "未归档"] as const;
 const tabs = [
   { key: "customers", label: "客户白名单" },
   { key: "wht1", label: "ภ.ง.ด.1" },
-  { key: "wht53", label: "ภ.ง.ด.53" },
+  { key: "wht53", label: whtSubtypeLabel("ภ.ง.ด.53") },
   { key: "history", label: "历史查询" },
   { key: "reconciliation", label: "对账表" },
   { key: "summary", label: "年度汇总" },
@@ -421,7 +422,7 @@ export default function WhtPage() {
         setError("");
         setSingleGenOpen(false);
         setSingleCustomerId("");
-        alert(`已为「${row.company_name || ""}」生成 ${recordMonth} 的 ${subtype} 申报记录`);
+        alert(`已为「${row.company_name || ""}」生成 ${recordMonth} 的 ${whtSubtypeLabel(subtype)} 申报记录`);
         loadRecords();
       } else {
         const e = await res.json().catch(() => ({}));
@@ -504,7 +505,7 @@ export default function WhtPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-medium text-[var(--foreground)]">预扣税申报</h1>
-        <p className="text-sm text-[var(--muted-foreground)] mt-0.5">ภ.ง.ด.1 员工工资扣税 ｜ ภ.ง.ด.53 服务费代扣税</p>
+        <p className="text-sm text-[var(--muted-foreground)] mt-0.5">ภ.ง.ด.1 员工工资扣税 ｜ ภ.ง.ด.53/3 服务费代扣税</p>
       </div>
 
       {error && (
@@ -552,7 +553,7 @@ export default function WhtPage() {
               className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-left hover:border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] hover:shadow-sm transition-all cursor-pointer"
             >
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-[var(--foreground)]">{subtype}</h3>
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">{whtSubtypeLabel(subtype)}</h3>
                 <span className="text-[0.65rem] text-[var(--muted-foreground)]">{dashboardStats?.month || "—"}</span>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -714,7 +715,7 @@ export default function WhtPage() {
                   全选
                 </label>
               )}
-              <h2 className="text-lg font-medium">{activeTab === "wht1" ? "ภ.ง.ด.1 员工工资扣税" : "ภ.ง.ด.53 服务费代扣税"}</h2>
+              <h2 className="text-lg font-medium">{activeTab === "wht1" ? "ภ.ง.ด.1 员工工资扣税" : "ภ.ง.ด.53/3 服务费代扣税"}</h2>
             </div>
             <div className="flex items-center gap-2">
               <input type="month" value={recordMonth} onChange={e => setRecordMonth(e.target.value)}
@@ -759,7 +760,7 @@ export default function WhtPage() {
                   className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]">
                   <option value="">全部</option>
                   <option value="ภ.ง.ด.1">ภ.ง.ด.1</option>
-                  <option value="ภ.ง.ด.53">ภ.ง.ด.53</option>
+                  <option value="ภ.ง.ด.53">ภ.ง.ด.53/3</option>
                 </select>
               </div>
               <div className="flex items-center gap-1.5">
@@ -823,7 +824,7 @@ export default function WhtPage() {
                           </button>
                           <span className="flex-1" />
                           <span className="text-xs text-[var(--muted-foreground)]">{r.year_month}</span>
-                          <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">{r.subtype}</span>
+                          <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">{whtSubtypeLabel(r.subtype)}</span>
                           <span className="text-xs text-[var(--muted-foreground)]">{r.tax_id || "—"}</span>
                           <span className="text-sm text-[var(--muted-foreground)]">
                             {totalCount(r.id) > 0 ? `${completedCount(r.id)}/${totalCount(r.id)}` : ""}
@@ -936,7 +937,7 @@ export default function WhtPage() {
                 className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-2 text-xs outline-none focus:border-[var(--ring)]">
                 <option value="">全部</option>
                 <option value="ภ.ง.ด.1">ภ.ง.ด.1</option>
-                <option value="ภ.ง.ด.53">ภ.ง.ด.53</option>
+                <option value="ภ.ง.ด.53">ภ.ง.ด.53/3</option>
               </select>
             </div>
             <div className="flex items-center gap-1.5">
@@ -981,7 +982,7 @@ export default function WhtPage() {
                           </td>
                           <td className="px-4 py-3 text-[var(--muted-foreground)]">{r.year_month}</td>
                           <td className="px-4 py-3">
-                            <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)]">{r.subtype}</span>
+                            <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)]">{whtSubtypeLabel(r.subtype)}</span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
@@ -1016,7 +1017,7 @@ export default function WhtPage() {
                       <div key={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", warningRowStyle[wl.level])} onClick={() => router.push(`/wht/${r.id}`)}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium text-[var(--foreground)]">{r.company_name}</span>
-                          <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">{r.subtype}</span>
+                          <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">{whtSubtypeLabel(r.subtype)}</span>
                         </div>
                         <div className="mt-2 space-y-1.5 text-sm">
                           <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">月份</span><span>{r.year_month}</span></div>
@@ -1153,7 +1154,7 @@ export default function WhtPage() {
                       { header: "公司名称", key: "companyName" as const },
                       { header: "税号", key: "taxId" as const },
                       { header: "ภ.ง.ด.1笔数", key: "wht1Count" as const },
-                      { header: "ภ.ง.ด.53笔数", key: "wht53Count" as const },
+                      { header: "ภ.ง.ด.53/3笔数", key: "wht53Count" as const },
                       { header: "总申报笔数", key: "totalRecords" as const },
                       { header: "已归档", key: "archivedRecords" as const },
                       { header: "未完成", key: "overdueRecords" as const },
@@ -1203,7 +1204,7 @@ export default function WhtPage() {
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-[var(--muted-foreground)]">公司名称</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">ภ.ง.ด.1</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">ภ.ง.ด.53</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">ภ.ง.ด.53/3</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">总数</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">已归档</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-[var(--muted-foreground)]">未完成</th>
@@ -1236,7 +1237,7 @@ export default function WhtPage() {
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                         <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium">{c.wht1Count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">ภ.ง.ด.1</p></div>
-                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium">{c.wht53Count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">ภ.ง.ด.53</p></div>
+                        <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium">{c.wht53Count}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">ภ.ง.ด.53/3</p></div>
                         <div className="rounded bg-[var(--muted)]/50 py-1.5"><p className="text-xs font-medium text-emerald-600">{c.archivedRecords}</p><p className="text-[0.6rem] text-[var(--muted-foreground)]">已归档</p></div>
                       </div>
                       <div className="mt-2 space-y-1 text-sm">
@@ -1265,7 +1266,7 @@ export default function WhtPage() {
               </button>
             </div>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">申报类型</span><span className="font-medium">{activeTab === "wht1" ? "ภ.ง.ด.1" : "ภ.ง.ด.53"}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">申报类型</span><span className="font-medium">{whtSubtypeLabel(activeTab === "wht1" ? "ภ.ง.ด.1" : "ภ.ง.ด.53")}</span></div>
               <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">申报月份</span><span className="font-medium">{recordMonth}</span></div>
               <div>
                 <label className="text-xs font-medium text-[var(--muted-foreground)]">选择客户（仅启用状态）</label>
@@ -1309,7 +1310,7 @@ export default function WhtPage() {
               <button onClick={() => !deletingRecordId && setDeleteRecordTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">×</button>
             </div>
             <p className="text-sm text-[var(--muted-foreground)]">
-              确认删除 <span className="font-medium text-[var(--foreground)]">{deleteRecordTarget.company_name}</span> 的 {deleteRecordTarget.year_month} {deleteRecordTarget.subtype} 申报记录？
+              确认删除 <span className="font-medium text-[var(--foreground)]">{deleteRecordTarget.company_name}</span> 的 {deleteRecordTarget.year_month} {whtSubtypeLabel(deleteRecordTarget.subtype)} 申报记录？
             </p>
             <p className="mt-1 text-xs text-red-500">
               该记录、所有步骤、备注、上传文件和对账记录都会被彻底删除，无法恢复。

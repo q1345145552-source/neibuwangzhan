@@ -1,3 +1,4 @@
+import { whtSubtypeLabel } from "@/lib/wht-display";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -25,7 +26,7 @@ export async function GET(
 
   if (!record) return NextResponse.json({ error: "记录不存在" }, { status: 404 });
   if (record.subtype !== "ภ.ง.ด.53") {
-    return NextResponse.json({ error: "仅 ภ.ง.ด.53 支持下载 50ทวิ" }, { status: 400 });
+    return NextResponse.json({ error: "仅 ภ.ง.ด.53/3 支持下载 50ทวิ" }, { status: 400 });
   }
 
   const doc = new PDFDocument({
@@ -68,7 +69,7 @@ export async function GET(
      .text("(Withholding Tax Certificate)", { align: "center" });
   doc.moveDown(0.3);
   doc.fontSize(12).font(FONT_BOLD)
-     .text("ภ.ง.ด.53", { align: "center" });
+     .text(whtSubtypeLabel(record.subtype), { align: "center" });
   doc.moveDown(0.5);
 
   // === Certificate Info ===

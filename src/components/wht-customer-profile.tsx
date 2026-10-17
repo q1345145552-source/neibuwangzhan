@@ -1,5 +1,7 @@
 "use client";
 
+import { whtSubtypeLabel } from "@/lib/wht-display";
+
 import { useState, useEffect } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -103,7 +105,7 @@ export function WhtCustomerProfile({ customerId, onClose }: { customerId: number
                   {profile.currentRecords.map(rec => (
                     <div key={rec.id} className="rounded-lg border bg-[var(--card)] p-3">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-[var(--muted)]">{rec.subtype}</span>
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-[var(--muted)]">{whtSubtypeLabel(rec.subtype)}</span>
                         <div className="flex items-center gap-2">
                           <span className={cn(
                             "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
