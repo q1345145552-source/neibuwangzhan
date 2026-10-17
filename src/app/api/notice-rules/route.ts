@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
     ${auth.role === "admin" ? "" : "WHERE EXISTS (SELECT 1 FROM notice_rule_implementations mine WHERE mine.notice_id=n.id AND mine.employee_id=?)"}
     ORDER BY n.published_at DESC, n.id DESC
   `).all(...(auth.role === "admin" ? [] : [auth.id]));
-  return NextResponse.json(rows);
+  const mine = auth.role === "employee" ? getDb().prepare("SELECT notice_id, printed, printed_at, photos, statement, submitted_at, review_status FROM notice_rule_implementations WHERE employee_id=?").all(auth.id) as { notice_id: number }[] : [];
+  const records = new Map(mine.map(record => [record.notice_id, record]));
+  return NextResponse.json((rows as { id: number }[]).map(row => ({ ...row, implementation: records.get(row.id) })), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
