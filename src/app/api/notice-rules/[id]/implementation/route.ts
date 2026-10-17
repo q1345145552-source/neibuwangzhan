@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // 条件更新同时校验打印和可提交状态，防止重复提交覆盖正在验收的内容。
   const saved = db.prepare(`UPDATE notice_rule_implementations SET photos=?, statement=?,
     photos_uploaded_at=(SELECT created_at FROM file_uploads WHERE filename=?),
-    statement_at=datetime('now'), submitted_at=datetime('now'), review_status='还没处理',
+    statement_at=strftime('%Y-%m-%d %H:%M:%f','now'), submitted_at=strftime('%Y-%m-%d %H:%M:%f','now'), review_status='还没处理', boss_comment='',
     reviewed_at=NULL, updated_at=datetime('now')
     WHERE notice_id=? AND employee_id=? AND printed=1 AND (submitted_at IS NULL OR review_status='打回')`)
     .run(JSON.stringify([photo]), statement, filename!, result.notice.id, auth.id);

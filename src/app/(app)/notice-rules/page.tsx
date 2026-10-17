@@ -6,6 +6,8 @@ import { toThaiTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NoticeRuleImplementation, type NoticeImplementation } from "@/components/notice-rule-implementation";
 
+import { NoticeRuleReview } from "@/components/notice-rule-review";
+
 interface Notice {
   implementation?: NoticeImplementation;
   id: number; title: string; body: string; type: "通知" | "规则";
@@ -19,6 +21,7 @@ export default function NoticeRulesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [reviewNoticeId, setReviewNoticeId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -105,7 +108,9 @@ export default function NoticeRulesPage() {
         <div className="flex flex-wrap items-start gap-2"><span className="shrink-0 rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-600">{notice.type}</span><h2 className="min-w-0 break-words text-lg font-semibold [overflow-wrap:anywhere]">{notice.title}</h2></div>
         <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{notice.body}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[var(--muted-foreground)]"><span>{toThaiTime(notice.published_at)}</span><span>发布人：{notice.publisher_name}</span><span>发给 {notice.recipient_count} 人</span><span>已落实 {notice.implemented_count} 人</span></div>
-        {user?.role === "employee" && notice.implementation && <NoticeRuleImplementation noticeId={notice.id} record={notice.implementation} token={token} onSaved={load} />}
+        {isAdmin && <Button type="button" className="min-h-11" aria-expanded={reviewNoticeId === notice.id} onClick={() => setReviewNoticeId(current => current === notice.id ? null : notice.id)}>{reviewNoticeId === notice.id ? "收起员工清单" : "查看员工落实"}</Button>}
+        {isAdmin && reviewNoticeId === notice.id && <NoticeRuleReview noticeId={notice.id} token={token} onReviewed={load} />}
+        {user?.role === "employee" && notice.implementation && <NoticeRuleImplementation key={`${notice.id}:${notice.implementation.submitted_at}:${notice.implementation.review_status}`} noticeId={notice.id} record={notice.implementation} token={token} onSaved={load} />}
       </article>)}
     </div>}
   </div>;

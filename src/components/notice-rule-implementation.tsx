@@ -6,7 +6,7 @@ import { fileUrl, toThaiTime } from "@/lib/utils";
 
 export interface NoticeImplementation {
   printed: number; printed_at: string | null; photos: string; statement: string;
-  submitted_at: string | null; review_status: string;
+  submitted_at: string | null; review_status: string; boss_comment: string; reviewed_at: string | null;
 }
 interface Props { noticeId: number; record: NoticeImplementation; token: string | null; onSaved: () => Promise<void> }
 
@@ -55,7 +55,8 @@ export function NoticeRuleImplementation({ noticeId, record, token, onSaved }: P
       <Button type="button" onClick={printNotice} className="min-h-11">打印</Button>
       <span className="text-sm text-[var(--muted-foreground)]">{record.printed ? `已打印 · ${toThaiTime(record.printed_at || "")}` : "第一步：打印通知/规则"}</span>
     </div>
-    {submitted ? <p role="status" className="text-sm text-green-600">{record.review_status === "通过" ? "已通过" : "已提交、等老板验收"}</p> : <p className="text-sm text-[var(--muted-foreground)]">{record.review_status === "打回" ? "已打回，请修改照片和说明后重新提交。" : "第二步：上传打印纸的照片，并填写一句话说明（均必填）。"}</p>}
+    {submitted ? <p role="status" className="text-sm text-green-600">{record.review_status === "通过" ? "已通过" : "已提交、等老板验收"}</p> : record.review_status === "打回" ? <p role="status" className="text-sm text-red-600">已打回，请修改照片和说明后重新提交。</p> : <p className="text-sm text-[var(--muted-foreground)]">第二步：上传打印纸的照片，并填写一句话说明（均必填）。</p>}
+    {(record.boss_comment || record.review_status === "打回") && <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{record.review_status === "打回" ? "打回原因" : "老板评论"}：{record.boss_comment || "未填写打回原因"}</p>}
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     {photo && <a href={fileUrl(photo)} target="_blank" rel="noreferrer" className="block w-fit max-w-full"><img src={fileUrl(photo)} alt="打印纸照片" className="max-h-48 max-w-full rounded-lg border border-[var(--border)] object-contain" /></a>}
     {submitted ? <p className="whitespace-pre-wrap break-words text-sm">{record.statement}</p> : <form onSubmit={submit} className="space-y-3">
