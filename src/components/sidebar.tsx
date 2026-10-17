@@ -66,6 +66,7 @@ const navigation = [
   { name: "消息", href: "/messages", icon: MessageSquare },
   { name: "消息中心", href: "/notifications", icon: BellRing },
   { name: "老板通知", href: "/announcements", icon: Bell },
+  { name: "通知/规则", href: "/notice-rules", icon: FileCheck },
   { name: "规则库", href: "/rules", icon: BookOpen },
   { name: "工作记录", href: "/work-reports", icon: ClipboardList },
   { name: "会议记录", href: "/meetings", icon: CalendarClock },
@@ -312,7 +313,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目")} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "员工动态" && n.name !== "我的项目" && !(user?.role === "client" && n.name === "通知/规则"))} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>

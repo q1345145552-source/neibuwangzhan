@@ -1359,6 +1359,42 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 通知/规则：独立于旧通知的落实流程；仅增表，保留旧数据。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS notice_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('通知','规则')),
+      publisher_id INTEGER NOT NULL REFERENCES employees(id),
+      publisher_name TEXT NOT NULL,
+      published_at TEXT NOT NULL DEFAULT (datetime('now')),
+      recipient_mode TEXT NOT NULL CHECK(recipient_mode IN ('all','selected')),
+      recipient_ids TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE IF NOT EXISTS notice_rule_implementations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notice_id INTEGER NOT NULL REFERENCES notice_rules(id),
+      employee_id INTEGER NOT NULL REFERENCES employees(id),
+      employee_name TEXT NOT NULL,
+      printed INTEGER NOT NULL DEFAULT 0 CHECK(printed IN (0,1)),
+      photos TEXT NOT NULL DEFAULT '[]',
+      statement TEXT NOT NULL DEFAULT '',
+      boss_comment TEXT NOT NULL DEFAULT '',
+      review_status TEXT NOT NULL DEFAULT '还没处理' CHECK(review_status IN ('通过','打回','还没处理')),
+      printed_at TEXT,
+      photos_uploaded_at TEXT,
+      statement_at TEXT,
+      submitted_at TEXT,
+      reviewed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(notice_id, employee_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_notice_rules_published ON notice_rules(published_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_notice_implementations_employee ON notice_rule_implementations(employee_id, notice_id);
+  `);
+
   // 通知（老板向下发工作交代）：通知本身 + 每个接收员工一条记录
   database.exec(`
     CREATE TABLE IF NOT EXISTS announcements (
