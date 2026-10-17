@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { customerDocumentDeleteError, isLiveCustomerSubmission, syncDocumentDelivery } from "@/lib/delivery-sync";
+import { requestProgressFlush } from "@/lib/progress-sync";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -13,7 +15,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const business = searchParams.get("business");
 
-  let sql = "SELECT d.*, o.customer_name, bt.name AS business_line FROM documents d LEFT JOIN orders o ON d.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
+  // live_submission：客户在客户站交来、客户还没撤回的资料（不能直接删，页面不显示删除按钮，2026-10-16）
+  let sql = "SELECT d.*, o.customer_name, bt.name AS business_line, EXISTS (SELECT 1 FROM sync_documents sd WHERE sd.document_id = d.id AND sd.withdrawn = 0) AS live_submission FROM documents d LEFT JOIN orders o ON d.order_id = o.id LEFT JOIN business_types bt ON o.business_type_id = bt.id";
   const conditions: string[] = [];
   const params: string[] = [];
   if (auth.role === "client") {
@@ -63,7 +66,15 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少文档ID" }, { status: 400 });
 
   const db = getDb();
-  db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+  // 跟订单详情里的删除同一套（2026-10-16）：客户站交来的资料不能直接删（要退回）；已交付给客户的文件删了，客户站那边同时撤回
+  const existing = db.prepare("SELECT * FROM documents WHERE id = ?").get(id) as (Parameters<typeof syncDocumentDelivery>[2] & { order_id?: string | null }) | undefined;
+  if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
+  if (isLiveCustomerSubmission(db, id)) return NextResponse.json({ error: customerDocumentDeleteError(existing.status) }, { status: 409 });
+  const withdrawn = db.transaction(() => {
+    db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+    return existing.order_id ? syncDocumentDelivery(db, existing.order_id, existing, undefined) : false;
+  })();
+  if (withdrawn) requestProgressFlush();
   logOperation(auth.name, "删除文档", "document", String(id));
   return NextResponse.json({ success: true });
 }

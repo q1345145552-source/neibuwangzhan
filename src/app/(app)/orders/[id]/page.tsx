@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2, Ban } from "lucide-react";
 import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
+import { CustomerPicker, customerExists, isKnownCustomer, type PoolCustomer } from "@/components/customer-picker";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { statusClass, statusLabels } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
@@ -18,30 +19,32 @@ import { getStepDocs, subServices } from "@/lib/constants";
 const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
-import { bangkokDateStr } from "@/lib/time";
 import { getStoredAuthToken } from "@/lib/auth-storage";
+import { isStepClosed, isParallelFlow } from "@/lib/step-status";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
   "进行中": "bg-[color-mix(in_oklch,var(--info),var(--background)_85%)] text-[oklch(0.38_0.10_240)]",
   "已完成": "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]",
   "阻塞": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]",
+  "已跳过": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
 // 费用状态展示：收入显示核对结果（待核对/已到账/未到账），支出显示 已付/待付/已取消
 function financeStatusText(f: Finance): string {
   if (f.type === "income") {
     if (f.status === "paid") return "已到账";
-    if (f.status === "待核对") return "待核对";
+    // 核对上线前录的 pending 收入也等老板核对（2026-10-15）
+    if (f.status === "待核对" || f.status === "pending") return "待核对";
     if (f.status === "未到账") return "未到账";
-    return f.status === "pending" ? "待付" : "已取消";
+    return "已取消";
   }
   return f.status === "paid" ? "已付" : f.status === "pending" ? "待付" : "已取消";
 }
 function financeStatusClass(f: Finance): string {
   if (f.type === "income") {
     if (f.status === "paid") return "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[var(--success)]";
-    if (f.status === "待核对") return "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]";
+    if (f.status === "待核对" || f.status === "pending") return "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[var(--warning)]";
     if (f.status === "未到账") return "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[var(--destructive)]";
     return "bg-[var(--muted)] text-[var(--muted-foreground)]";
   }
@@ -64,6 +67,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [stepDocs, setStepDocs] = useState<Record<number, StepDocument[]>>({});
   const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
   const [confirmingStepId, setConfirmingStepId] = useState<number | null>(null);
+  // 标阻塞、跳过都要写一句原因，记进这一步的备注（2026-10-16）
+  const [reasonFor, setReasonFor] = useState<{ stepId: number; kind: "阻塞" | "已跳过" } | null>(null);
+  const [reasonText, setReasonText] = useState("");
+  const [docUploading, setDocUploading] = useState<Record<number, boolean>>({});
   const [stepUploading, setStepUploading] = useState<Record<number, boolean>>({});
   const [stepFileNames, setStepFileNames] = useState<Record<number, string>>({});
   const [stepUploadErrors, setStepUploadErrors] = useState<Record<number, string>>({});
@@ -86,6 +93,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
+  // 取消弹窗里的报错（原来写在页面顶上，被弹窗遮罩挡住，看着像没反应）
+  const [cancelError, setCancelError] = useState("");
 
   // ── 反馈链接 ──
   const loadFeedbackLink = async () => {
@@ -159,6 +168,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   })();
   const [newDocName, setNewDocName] = useState("");
   const [newCertNo, setNewCertNo] = useState("");
+  // 签发、到期日照证书填；不再自动填「今天签发、一年后到期」，那是假日期，到期提醒会跟着错（2026-10-15）
+  const [newCertIssue, setNewCertIssue] = useState("");
+  const [newCertExpiry, setNewCertExpiry] = useState("");
   const [editingCertId, setEditingCertId] = useState<number | null>(null);
   const [editCertFields, setEditCertFields] = useState<Partial<Certificate>>({});
   // Finances form
@@ -191,7 +203,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [docFileUrl, setDocFileUrl] = useState("");
   const [docErrorMsg, setDocErrorMsg] = useState("");
   // 补件要求（2026-10-03）：只有客户网站同步过来的单才有
-  const [supplementRequests, setSupplementRequests] = useState<{ id: string; name: string; description: string; created_by: string; created_at: string; submitted_at: string | null }[]>([]);
+  const [supplementRequests, setSupplementRequests] = useState<{ id: string; name: string; description: string; created_by: string; created_at: string; submitted_at: string | null; latest_status?: string | null }[]>([]);
   const [reqName, setReqName] = useState("");
   // 客户站内申请取消（2026-10-03，规则 19/20）
   const [cancelRequests, setCancelRequests] = useState<{ id: string; line_no: number; copy_no: number; reason: string; status: "pending" | "approved" | "rejected"; decision_note: string; decided_by: string | null; decided_at: string | null; created_at: string }[]>([]);
@@ -211,6 +223,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 编辑模式
   const [editingOrder, setEditingOrder] = useState(false);
   const [editFields, setEditFields] = useState<Partial<Order>>({});
+  // 改客户（员工建的单）：从客户管理里选，没有的当场新建（2026-10-16，2A）
+  const [customerPool, setCustomerPool] = useState<PoolCustomer[]>([]);
+  const [editNewCustomer, setEditNewCustomer] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
@@ -351,9 +366,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         await addStepNote(id, stepId, noteContent, user?.name || "系统");
       }
       await updateStep(id, stepId, { status: "已完成" });
-      // 自动启动下一步
+      // 自动启动下一步（跳过的步骤不算）；公司注册那套各步互不阻塞，没有「下一步」，不自动开始（不然用不上的条件步骤也被开始、算成当前步骤和超时）
       const idx = steps.findIndex(s => s.id === stepId);
-      const next = idx >= 0 && idx < steps.length - 1 ? steps[idx + 1] : null;
+      const parallel = !!order && isParallelFlow(order.business_type_id, order.sub_service_type);
+      const next = idx >= 0 && !parallel ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
       if (next && next.status === "待处理") {
         await updateStep(id, next.id, { status: "进行中" });
       }
@@ -361,10 +377,51 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch (e) { console.error("[订单] 步骤完成失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
   };
 
-  // 步骤撤回
-  const handleRollback = async (stepId: number) => {
+  // 标阻塞 / 跳过：带原因提交
+  const handleReasonSubmit = async () => {
+    if (!reasonFor) return;
+    const text = reasonText.trim();
+    if (!text) { setError(reasonFor.kind === "已跳过" ? "跳过要写原因" : "请写一句为什么卡住"); return; }
     try {
-      await updateStep(id, stepId, { status: "进行中" });
+      await updateStep(id, reasonFor.stepId, { status: reasonFor.kind, reason: text });
+      // 跳过和点完成一样：顺手开始下一步（跳过的步骤不算）
+      if (reasonFor.kind === "已跳过" && !(order && isParallelFlow(order.business_type_id, order.sub_service_type))) {
+        const idx = steps.findIndex(s => s.id === reasonFor.stepId);
+        const next = idx >= 0 ? steps.slice(idx + 1).find(s => !isStepClosed(s.status)) || null : null;
+        if (next && next.status === "待处理") await updateStep(id, next.id, { status: "进行中" });
+      }
+      setReasonFor(null);
+      setReasonText("");
+      reload();
+    } catch (e) { console.error("[订单] 步骤状态修改失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
+  };
+
+  // 所需文件某一行直接上传：存文件、记一条「上传文件」备注（带资料名）、把这一行标成已上传
+  const handleDocUpload = async (stepId: number, docId: number, docName: string, file: File) => {
+    setDocUploading(p => ({ ...p, [docId]: true }));
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const ur = await fetchWithAuth("/api/upload", { method: "POST", body: fd });
+      if (!ur.ok) throw new Error("上传失败");
+      const { url } = await ur.json();
+      await addStepNote(id, stepId, `上传文件: 【${docName}】${file.name} (${url})`, user?.name || "系统");
+      await markStepDocumentUploaded(id, stepId, docId);
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setDocUploading(p => ({ ...p, [docId]: false }));
+    }
+  };
+
+  // 步骤撤回（先确认：已办完的单撤回后会变回办理中，客户站也跟着变）
+  const handleRollback = async (stepId: number) => {
+    const target = steps.find(s => s.id === stepId);
+    // 撤回跳过的步骤：前面还有没办完的就回到「待处理」，不提前算开始
+    const back = target?.status === "已跳过" && !(order && isParallelFlow(order.business_type_id, order.sub_service_type)) && steps.some(s => s.step_order < target.step_order && !isStepClosed(s.status)) ? "待处理" : "进行中";
+    if (!window.confirm(`确定撤回「${target?.step_name || "这一步"}」？这一步会回到「${back}」${order?.status === "已完成" ? "，整单也会变回办理中，客户那边看到的进度会跟着变" : ""}。`)) return;
+    try {
+      await updateStep(id, stepId, { status: back });
       reload();
     } catch (e) { console.error("[订单] 步骤撤回失败", e); setError(e instanceof Error ? e.message : "撤回失败"); }
   };
@@ -372,11 +429,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 费用保存
   const handleSaveFinance = async (financeId: number) => {
     try {
-      await updateFinance(id, financeId, editFinanceFields);
+      const current = finances.find(f => f.id === financeId);
+      // 收入的状态只走老板核对，编辑时不提交；支出只认已付/待付/已取消（收入改成支出时默认待付）
+      const { status, ...rest } = editFinanceFields;
+      const nextType = editFinanceFields.type || current?.type;
+      const expenseStatus = status && ["paid", "pending", "cancelled"].includes(status) ? status : "pending";
+      await updateFinance(id, financeId, nextType === "expense" ? { ...rest, status: expenseStatus } : rest);
       setEditingFinanceId(null);
       setEditFinanceFields({});
       reload();
-    } catch (e) { console.error("[订单] 保存费用失败", e); setError("保存费用失败"); }
+    } catch (e) { console.error("[订单] 保存费用失败", e); setError(e instanceof Error ? e.message : "保存费用失败"); }
   };
 
   // 费用删除
@@ -387,7 +449,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteFinance(id, deleteFinanceTarget);
       setDeleteFinanceTarget(null);
       reload();
-    } catch (e) { console.error("[订单] 删除费用失败", e); setError("删除费用失败"); setDeletingFinance(false); setDeleteFinanceTarget(null); }
+    } catch (e) { console.error("[订单] 删除费用失败", e); setError(e instanceof Error ? e.message : "删除费用失败"); setDeletingFinance(false); setDeleteFinanceTarget(null); }
   };
 
   // 证书删除
@@ -476,7 +538,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       await deleteDocument(id, deleteDocTarget);
       setDeleteDocTarget(null);
       reload();
-    } catch (e) { console.error("[订单] 删除文档失败", e); setError("删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
+    } catch (e) { console.error("[订单] 删除文档失败", e); setDocErrorMsg(e instanceof Error ? e.message : "删除文档失败"); setDeletingDoc(false); setDeleteDocTarget(null); }
   };
 
   const handleSaveCert = async (certId: number) => {
@@ -511,6 +573,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         currency: order.currency || "CNY",
         trademark_name: order.trademark_name || "",
       });
+      setEditNewCustomer(false);
+      if (!order.source_system && customerPool.length === 0) {
+        fetchWithAuth("/api/customers").then(r => r.json()).then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(e => console.error("[编辑] 加载客户管理名单失败", e));
+      }
       setEditingOrder(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "切换编辑失败";
@@ -528,10 +594,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       return;
     }
     if (reassignTo && !window.confirm(`确定把这张单改派到「${reassignTo.name}」？\n会换成该业务线的整套办理流程，已做的「方案确认」和写过的备注都保留。改派只能做一次。`)) return;
+    const nextCustomer = String(editFields.customer_name ?? "").trim();
+    const customerChanged = !order.source_system && nextCustomer !== String(order.customer_name || "").trim();
+    const knownCustomer = customerChanged && (isKnownCustomer(customerPool, nextCustomer) || (!editNewCustomer && await customerExists(nextCustomer)));
+    if (customerChanged && !knownCustomer && !editNewCustomer) {
+      setError("客户要从下拉里选客户管理里的客户" + (user?.role === "admin" ? "，没有的点「新建客户」" : "；客户管理里还没有的，请管理员先新建"));
+      return;
+    }
     setSavingOrder(true);
     setError("");
     try {
-      await updateOrder(id, editFields);
+      await updateOrder(id, { ...editFields, ...(customerChanged ? { customer_name: nextCustomer, new_customer: editNewCustomer && !knownCustomer } : order.source_system ? {} : { customer_name: order.customer_name }) });
       setEditingOrder(false);
       reload();
     } catch (err) {
@@ -559,16 +632,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const handleCancelOrder = async () => {
     if (!order) return;
     const reason = cancelReason.trim();
-    if (!reason) { setError("请填写取消原因"); return; }
+    if (!reason) { setCancelError("请填写取消原因"); return; }
     setCancelSaving(true);
+    setCancelError("");
     try {
       const updated = await updateOrder(order.id, { cancel: true, cancel_reason: reason });
       setOrder(updated);
       setShowCancelModal(false);
       setCancelReason("");
+      reload();
     } catch (err) {
       console.error("取消订单失败:", err);
-      setError(err instanceof Error ? err.message : "取消订单失败");
+      setCancelError(err instanceof Error ? err.message : "取消订单失败");
     } finally {
       setCancelSaving(false);
     }
@@ -579,6 +654,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const updated = await updateOrder(order.id, { restore: true });
       setOrder(updated);
+      reload();
     } catch (err) {
       console.error("恢复订单失败:", err);
       setError(err instanceof Error ? err.message : "恢复订单失败");
@@ -634,7 +710,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {order.address_type === "xiangtai" && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]">湘泰地址</span>}
               {order.address_type === "client" && order.business_type_id === 7 && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]">客户地址</span>}
               <span className="text-xs text-[var(--muted-foreground)]">{formatCurrency(order.total_amount, order.currency)}</span>
-              <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => s.status === "已完成").length}/{steps.length} 已完成</span>
+              <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => isStepClosed(s.status)).length}/{steps.length} 已完成</span>
               {/* 任务级"开始"按钮：仅第一步待处理时显示 */}
               {steps.length > 0 && steps[0].status === "待处理" && !isClient && !isCommerceCancelled && (
                 <button onClick={() => handleStepUpdate(steps[0].id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-3 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] transition-colors">开始任务</button>
@@ -646,12 +722,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {!editingOrder ? (
                 <>
                   <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5"><Edit3 className="size-3.5" />编辑</Button>
-                  {order.status === "客户取消" ? (
+                  {/* 客户站、商城来的单只有管理员能取消、恢复（接口原来就这么拦），员工这边不显示按钮 */}
+                  {order.source_system && user?.role !== "admin" ? (
+                    <span className="text-xs text-[var(--muted-foreground)]">客户站来的单只有管理员能取消</span>
+                  ) : order.status === "客户取消" ? (
                     <Button variant="outline" size="sm" onClick={handleRestoreOrder} className="gap-1.5 text-[var(--success)] border-[var(--success)]/30 hover:bg-[var(--success)]/10"><Undo2 className="size-3.5" />恢复</Button>
                   ) : (
-                    <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
+                    <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setCancelError(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
                   )}
-                  <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>
+                  {/* 10-16 老板定：只有管理员能删订单，员工只能取消 */}
+                  {user?.role === "admin" && <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>}
                 </>
               ) : (
                 <>
@@ -663,8 +743,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
-
-      {error && <div role="alert" className="rounded-md bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] px-4 py-3 text-sm text-[var(--destructive)]">{error}</div>}
 
       {!isClient && cancelRequests.length > 0 && (() => {
         const pending = cancelRequests.filter(r => r.status === "pending");
@@ -720,7 +798,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">客户名</label>
-                  <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  {order.source_system ? (
+                    <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  ) : (
+                    <div className="mt-1">
+                      <CustomerPicker value={editFields.customer_name || ""} isNew={editNewCustomer} pool={customerPool} canCreate={user?.role === "admin"} keep={order.customer_name}
+                        className="h-9" onChange={(name, isNew) => { setEditFields(prev => ({ ...prev, customer_name: name })); setEditNewCustomer(isNew); }} />
+                    </div>
+                  )}
                 </div>
                 {order.business_type_id === 2 && (
                 <div>
@@ -738,9 +823,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       const backToUnclassified = businessTypes.find(b => b.id === businessTypeId)?.name === "待分类";
                       return { ...prev, business_type_id: businessTypeId, sub_service_type: backToUnclassified ? UNCLASSIFIED_SUB : "", address_type: "client" };
                     });
-                  }} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                  }} disabled={order.sub_service_type !== UNCLASSIFIED_SUB && steps.length > 0} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] disabled:opacity-60">
                     {businessTypes.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
+                  {/* 建单后改业务线步骤不会跟着换（2026-10-15）；待分类单走上面的改派 */}
+                  {order.sub_service_type !== UNCLASSIFIED_SUB && steps.length > 0 && <p className="mt-1 text-[0.65rem] text-[var(--muted-foreground)]">建单后不能改业务线，建错了请取消这张单重新建</p>}
                 </div>
                 {(() => {
                   const target = order.sub_service_type === UNCLASSIFIED_SUB
@@ -773,7 +860,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 })()}
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">负责人</label>
-                  <input type="text" value={editFields.responsible_person || ""} onChange={(e) => setEditFields(prev => ({ ...prev, responsible_person: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
+                  {/* 原来是手打的文本框，打错一个字就对不上人（「我的环节」、月报都按名字认）；改成从员工里选（2026-10-16） */}
+                  <select value={editFields.responsible_person || ""} onChange={(e) => setEditFields(prev => ({ ...prev, responsible_person: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
+                    <option value="">还没人负责</option>
+                    {/* 老单上手打的名字、几个人写在一起、已离职的人不在员工列表里：保留原值可选，不会被改掉 */}
+                    {(editFields.responsible_person || "").trim() && !employees.some(emp => emp.role !== "client" && emp.name === editFields.responsible_person) && (
+                      <option value={editFields.responsible_person || ""}>{editFields.responsible_person}（原来填的）</option>
+                    )}
+                    {employees.filter(emp => emp.role !== "client").map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs text-[var(--muted-foreground)]">金额</label>
@@ -807,15 +902,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <h3 className="mb-4 text-sm font-medium text-[var(--foreground)]">进度追踪</h3>
             {steps.length > 0 && (
               <div className="mb-5 flex items-center gap-3">
-                <span className="text-xs text-[var(--muted-foreground)] shrink-0">已完成 {steps.filter(s => s.status === "已完成").length}/{steps.length}</span>
+                <span className="text-xs text-[var(--muted-foreground)] shrink-0">已完成 {steps.filter(s => isStepClosed(s.status)).length}/{steps.length}{steps.some(s => s.status === "已跳过") ? `（其中跳过 ${steps.filter(s => s.status === "已跳过").length}）` : ""}</span>
                 <div className="flex-1 h-2 rounded-full bg-[var(--muted)] overflow-hidden">
-                  <div className={cn("h-full rounded-full transition-all duration-300", steps.filter(s => s.status === "已完成").length === steps.length ? "bg-[var(--success)]" : "bg-[var(--success)]")} style={{ width: `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%` }} />
+                  <div className={cn("h-full rounded-full transition-all duration-300", steps.filter(s => isStepClosed(s.status)).length === steps.length ? "bg-[var(--success)]" : "bg-[var(--success)]")} style={{ width: `${Math.round(steps.filter(s => isStepClosed(s.status)).length / steps.length * 100)}%` }} />
                 </div>
-                <span className="text-xs font-medium shrink-0 text-[var(--muted-foreground)]">{steps.filter(s => s.status === "已完成").length === steps.length ? "全部完成" : `${Math.round(steps.filter(s => s.status === "已完成").length / steps.length * 100)}%`}</span>
+                <span className="text-xs font-medium shrink-0 text-[var(--muted-foreground)]">{steps.filter(s => isStepClosed(s.status)).length === steps.length ? "全部完成" : `${Math.round(steps.filter(s => isStepClosed(s.status)).length / steps.length * 100)}%`}</span>
               </div>
             )}
             {/* 客户评价链接 */}
-            {steps.length > 0 && steps.filter(s => s.status === "已完成").length === steps.length && (
+            {steps.length > 0 && steps.filter(s => isStepClosed(s.status)).length === steps.length && (
               <div className="mb-4 flex items-center gap-2 flex-wrap">
                 {feedbackLink ? (
                   <>
@@ -837,12 +932,32 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             )}
             {(() => {
-              const pendingCount = finances.filter(f => f.status === "pending").length;
-              const totalFinCount = finances.length;
-              if (totalFinCount === 0) return <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">付款：暂无记录</p>;
-              const allPaid = pendingCount === 0;
-              return <p className={cn("mt-1.5 text-xs", allPaid ? "text-[var(--success)]" : "text-[var(--warning)]")}>付款：已付 {totalFinCount - pendingCount}/{totalFinCount}，待付 {pendingCount} 项</p>;
+              // 收款只算老板核对过「已到账」的收入；待核对、未到账单独列出，不算已收（2026-10-15）
+              const incomes = finances.filter(f => f.type === "income" && !f.commerce_refund);
+              if (incomes.length === 0) return <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">收款：还没记收入</p>;
+              const cur = order.currency || "CNY";
+              const sumOf = (list: Finance[]) => list.reduce((n, f) => n + Number(f.amount || 0), 0);
+              const arrivedRows = incomes.filter(f => f.status === "paid");
+              const arrived = sumOf(arrivedRows.filter(f => (f.currency || "CNY") === cur));
+              const otherCur = cur === "CNY" ? "THB" : "CNY";
+              const arrivedOther = sumOf(arrivedRows.filter(f => (f.currency || "CNY") === otherCur));
+              const waiting = incomes.filter(f => f.status === "待核对" || f.status === "pending").length;
+              const missing = incomes.filter(f => f.status === "未到账").length;
+              const due = Number(order.total_amount) || 0;
+              const short = due > 0 ? Math.max(0, Math.round((due - arrived) * 100) / 100) : 0;
+              const parts = [`已到账 ${formatCurrency(arrived, cur)}`];
+              if (arrivedOther > 0) parts.push(`另有 ${formatCurrency(arrivedOther, otherCur)}`);
+              // 商城单可能有减免，订单金额是原价：收没收够以商城账单为准，这里不比（2026-10-15）
+              if (due > 0 && !isNativeCommerce) parts.push(short > 0 ? `订单 ${formatCurrency(due, cur)}，还差 ${formatCurrency(short, cur)}` : `订单 ${formatCurrency(due, cur)}，已收够`);
+              if (waiting) parts.push(`${waiting} 笔待核对`);
+              if (missing) parts.push(`${missing} 笔未到账`);
+              const ok = (due === 0 || short === 0 || isNativeCommerce) && !waiting && !missing;
+              return <p className={cn("mt-1.5 text-xs", ok ? "text-[var(--success)]" : "text-[var(--warning)]")}>收款：{parts.join("，")}</p>;
             })()}
+            {/* 客户站来的单：客户站单号和客户站账单付没付（跟订单列表一致；钱到没到账还是以上面核对过的为准） */}
+            {!isClient && order.source_order_no && (
+              <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">客户站单号 {order.source_order_no}{order.client_billing ? ` · 客户站账单：${order.client_billing === "paid" ? "已付" : "未付"}` : ""}</p>
+            )}
             {/* 人员耗时汇总 — see personHours computed above */}
             {personEntries.length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
@@ -859,16 +974,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             ) : (
               <div className="flex flex-col gap-0">
                 {steps.map((step, i) => {
+                  const hasPlanConfirm = steps.find(s => s.step_order === 1)?.step_name === "方案确认";
+                  // 按流程设置建的单（带版本号）资料以库里为准，没有就是真没有，不回退程序里的清单（2026-10-16）
+                  const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0) || steps.some(s => s.template_version_id != null);
                   const notes = stepNotes[step.id] || [];
                   const sd = stepDocs[step.id] || [];
                   const uploadedCount = sd.filter((d: { status?: string; uploaded?: boolean }) => d.status === "uploaded").length;
                   const docs = getStepDocs(order.business_type_id, order.sub_service_type);
-                  // 湘泰地址订单在第4、5位插入了两个额外步骤，模板配置按"基础步骤序号"存储，
-                  // 湘泰地址订单：换算回基础序号匹配文件清单
+                  // 模板资料按「基础步骤序号」存。只有整单都没有资料记录的老单才回退到模板（7 月中起建单就把资料写进数据库了，
+                  // 新单某步没资料就是真的没有，不能再去模板里拿别的步骤的）。
+                  // 9-11 起的单第一步是「方案确认」，序号要减 1 才对得上；湘泰地址另插的两步：老单在第 4、5 步，有方案确认的单在第 5、6 步。
                   const isXiangtai = order.business_type_id === 7 && order.address_type === "xiangtai";
-                  const baseOrder = isXiangtai
-                    ? (step.step_order === 4 || step.step_order === 5 ? -1 : step.step_order > 5 ? step.step_order - 2 : step.step_order)
-                    : step.step_order;
+                  const ownOrder = step.step_order - (hasPlanConfirm ? 1 : 0);
+                  const baseOrder = orderHasStepDocs || (hasPlanConfirm && step.step_order === 1)
+                    ? -1
+                    : isXiangtai
+                      ? (ownOrder === 4 || ownOrder === 5 ? -1 : ownOrder > 5 ? ownOrder - 2 : ownOrder)
+                      : ownOrder;
                   const expanded = expandedSteps[step.id] || false;
                   const hasDocs = !!(docs[baseOrder]?.length);
                   const hasNotes = notes.length > 0;
@@ -882,9 +1004,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           step.status === "已完成" && "bg-[var(--success)] text-[var(--success-foreground)]",
                           step.status === "进行中" && "bg-[var(--primary)] text-[var(--primary-foreground)] ring-2 ring-[var(--ring)]/30",
                           step.status === "阻塞" && "bg-[var(--destructive)] text-[var(--destructive-foreground)]",
-                          step.status === "待处理" && "bg-[var(--muted)] text-[var(--muted-foreground)]"
-                        )}>{step.status === "已完成" ? "✓" : step.step_order}</div>
-                        {i < steps.length - 1 && <div className={cn("w-px flex-1 min-h-[20px]", step.status === "已完成" ? "bg-[var(--success)]" : "bg-[var(--border)]")} />}
+                          (step.status === "待处理" || step.status === "已跳过") && "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                        )}>{step.status === "已完成" ? "✓" : step.status === "已跳过" ? "–" : step.step_order}</div>
+                        {i < steps.length - 1 && <div className={cn("w-px flex-1 min-h-[20px]", isStepClosed(step.status) ? "bg-[var(--success)]" : "bg-[var(--border)]")} />}
                       </div>
                       <div className="pb-5 flex-1">
                         {step.step_order === 9 && logistics && logistics.length > 0 && (
@@ -935,12 +1057,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               </button>
                             ) : null
                           )}
+                          {/* 模板没预设经办人的步骤（如「等待官方审核」「拿证」）原来没有入口指派，这里补上 */}
+                          {!step.assignee && !isClient && !isStepClosed(step.status) && editingAssigneeStepId !== step.id && (
+                            <>
+                              {/* 没写经办人的步骤算这张单负责人的，会出现在负责人的「我的环节」里（2026-10-15） */}
+                              {(order.responsible_person || "").trim() && <span className="text-xs text-[var(--muted-foreground)]" title="这一步没写经办人，算这张单负责人的">负责人：{order.responsible_person}</span>}
+                              <button onClick={() => setEditingAssigneeStepId(step.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:underline cursor-pointer">
+                                + 指派经办人
+                              </button>
+                            </>
+                          )}
                           {editingAssigneeStepId === step.id && (
                             <select
                               value={step.assignee}
                               onChange={async (e) => {
                                 const newAssignee = e.target.value;
-                                if (newAssignee === step.assignee) { setEditingAssigneeStepId(null); return; }
+                                if (!newAssignee || newAssignee === step.assignee) { setEditingAssigneeStepId(null); return; }
                                 try {
                                   await updateStep(id, step.id, { assignee: newAssignee });
                                   setEditingAssigneeStepId(null);
@@ -951,7 +1083,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               autoFocus
                               className="rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]"
                             >
-                              {employees.map(emp => (
+                              {!step.assignee && <option value="" disabled>选择经办人</option>}
+                              {/* 合作方（如 Next）、离职员工不在下拉里：放一个占位项，否则受控下拉会把第一个人显示成已选、选不中 */}
+                              {step.assignee && !employees.some(emp => emp.role !== "client" && emp.name === step.assignee) && <option value={step.assignee} disabled>{step.assignee}</option>}
+                              {employees.filter(emp => emp.role !== "client").map(emp => (
                                 <option key={emp.id} value={emp.name}>{emp.name}</option>
                               ))}
                             </select>
@@ -964,7 +1099,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <span className="text-xs font-medium text-[var(--info)]">提交 {step.submission_count}/2 · 剩{2 - step.submission_count}次</span>
                           )}
                         </div>
-                        {!isCommerceCancelled && step.status !== "已完成" && step.status !== "阻塞" && (
+                        {!isCommerceCancelled && !isStepClosed(step.status) && step.status !== "阻塞" && (
                           <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             {confirmingStepId === step.id ? (
                               <>
@@ -978,20 +1113,42 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                 />
                                 <button onClick={() => handleConfirmComplete(step.id)} className="rounded px-2 py-0.5 text-xs bg-[var(--success)] text-[var(--success-foreground)] hover:bg-[color-mix(in_oklch,var(--success),var(--foreground)_20%)] transition-colors">确认完成</button>
                                 <button onClick={() => { setConfirmingStepId(null); setNewNotes((p) => ({ ...p, [step.id]: "" })); }} className="rounded px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">取消</button>
+                                {/* 缺文件只提醒、不拦（有的文件是线下交的，2026-10-16） */}
+                                {sd.some(d => d.status !== "uploaded") && (
+                                  <span className="w-full text-xs text-[var(--warning)]">还有 {sd.filter(d => d.status !== "uploaded").length} 份文件没上传：{sd.filter(d => d.status !== "uploaded").map(d => d.document_name).join("、")}。确定这一步做完了再点完成。</span>
+                                )}
                               </>
                             ) : (
                               <>
                                 {(() => {
-                                  const isCompanyReg = order?.business_type_id === 1;
-                                  const prevStep = steps.find(s => s.step_order === step.step_order - 1);
-                                  const canComplete = isCompanyReg || !prevStep || prevStep.status === "已完成";
+                                  // 公司注册那套各步互不阻塞；其他（含公司变更）要前面所有步骤都办完或跳过（2026-10-16 统一口径）
+                                  const parallel = !!order && isParallelFlow(order.business_type_id, order.sub_service_type);
+                                  const canComplete = parallel || steps.every(s => s.step_order >= step.step_order || isStepClosed(s.status));
                                   return canComplete ? (
                                     <button onClick={() => setConfirmingStepId(step.id)} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_70%)] bg-[color-mix(in_oklch,var(--success),var(--background)_92%)] px-2 py-1 text-xs text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] transition-colors">标记完成</button>
                                   ) : (
                                     <span className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] opacity-50 cursor-not-allowed select-none">需先完成前一步</span>
                                   );
                                 })()}
-                                <button onClick={() => handleStepUpdate(step.id, "阻塞")} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
+                                {reasonFor?.stepId === step.id ? (
+                                  <>
+                                    <input value={reasonText} onChange={(e) => setReasonText(e.target.value)} maxLength={200} autoFocus
+                                      onKeyDown={(e) => { if (e.key === "Enter") handleReasonSubmit(); if (e.key === "Escape") { setReasonFor(null); setReasonText(""); } }}
+                                      placeholder={reasonFor.kind === "已跳过" ? "为什么不用办这一步…" : "为什么卡住（等谁、缺什么）…"}
+                                      className="w-48 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
+                                    <button onClick={handleReasonSubmit} className="rounded px-2 py-0.5 text-xs bg-[var(--primary)] text-[var(--primary-foreground)]">{reasonFor.kind === "已跳过" ? "确认跳过" : "确认卡住"}</button>
+                                    <button onClick={() => { setReasonFor(null); setReasonText(""); }} className="rounded px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button onClick={() => { setReasonFor({ stepId: step.id, kind: "阻塞" }); setReasonText(""); }} className="rounded border border-[color-mix(in_oklch,var(--destructive),var(--background)_70%)] bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-2 py-1 text-xs text-[var(--destructive)] hover:bg-[color-mix(in_oklch,var(--destructive),var(--background)_85%)] transition-colors">标记阻塞</button>
+                                    {/* 用不上的步骤（如「如需补资料」）跳过，不用假装点完成；第一步、最后一步不能跳 */}
+                                    {!isClient && step.step_order !== steps[0]?.step_order && step.step_order !== steps[steps.length - 1]?.step_order
+                                      && ((!!order && isParallelFlow(order.business_type_id, order.sub_service_type)) || steps.every(s => s.step_order >= step.step_order || isStepClosed(s.status))) && (
+                                      <button onClick={() => { setReasonFor({ stepId: step.id, kind: "已跳过" }); setReasonText(""); }} className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors" title="这一步这张单用不上">跳过</button>
+                                    )}
+                                  </>
+                                )}
                                 {sd.length > 0 && (
                                   <span className={cn("text-xs", uploadedCount === sd.length ? "text-[var(--success)]" : "text-[var(--warning)]")}>文件 {uploadedCount}/{sd.length}</span>
                                 )}
@@ -1000,7 +1157,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <StepTimer created_at={step.created_at} completed_at={step.completed_at} status={step.status} prev_completed_at={i > 0 ? steps[i-1].completed_at : null} started_at={step.started_at} className="ml-1" />
                           </div>
                         )}
-                        {(step.status === "已完成" || step.status === "阻塞") && (
+                        {(isStepClosed(step.status) || step.status === "阻塞") && (
                           <div className="mt-1 flex items-center gap-2">
                             {step.status === "已完成" && step.completed_at && (
                               <div className="flex items-center gap-3">
@@ -1024,7 +1181,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <Upload className="size-3" />
                             {stepUploading[step.id] ? stepFileNames[step.id] || "上传中..." : "附件"}
                             <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" onChange={async e => {
-                              const file = e.target.files?.[0]; if (!file) return;
+                              const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
                               const stepId = step.id;
                               setStepUploading(p => ({ ...p, [stepId]: true }));
                               setStepFileNames(p => ({ ...p, [stepId]: file.name }));
@@ -1128,9 +1285,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                           {isUploaded ? <CheckCircle2 className="size-3 text-[var(--success)]" /> : <Circle className="size-3 text-[var(--muted-foreground)]" />}
                                           <span className={isUploaded ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}>{docName}</span>
                                         </div>
-                                        {!isClient && !isUploaded && existingDoc && (
-                                          <button onClick={() => handleMarkUploaded(step.id, existingDoc.id)} className="rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)]">标记已上传</button>
-                                        )}
+                                        <div className="flex items-center gap-1.5">
+                                          {notes.filter(n => n.content.startsWith(`上传文件: 【${docName}】`)).map(n => {
+                                            const m = n.content.match(/上传文件:\s*【[^】]*】(.+?)\s*\(\/api\/files\/([^)]+)\)/);
+                                            return m ? <a key={n.id} href={"/api/files/" + m[2] + "?token=" + (getStoredAuthToken() || "")} target="_blank" rel="noopener noreferrer" className="max-w-[120px] truncate text-[0.65rem] text-[var(--primary)] hover:underline" title={m[1]}>{m[1]}</a> : null;
+                                          })}
+                                          {!isClient && existingDoc && (
+                                            <label className={cn("cursor-pointer rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--primary)] hover:bg-[var(--muted)]", docUploading[existingDoc.id] && "pointer-events-none opacity-50")} title="上传这份文件，传完自动打勾">
+                                              {docUploading[existingDoc.id] ? "上传中…" : isUploaded ? "再传一份" : "上传"}
+                                              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) handleDocUpload(step.id, existingDoc.id, docName, f); }} />
+                                            </label>
+                                          )}
+                                          {!isClient && !isUploaded && existingDoc && (
+                                            <button onClick={() => handleMarkUploaded(step.id, existingDoc.id)} className="rounded px-1.5 py-0.5 text-[0.65rem] text-[var(--success)] hover:bg-[color-mix(in_oklch,var(--success),var(--background)_90%)]" title="文件在线下交了，不用传">标记已上传</button>
+                                          )}
+                                        </div>
                                       </li>
                                     );
                                   })}
@@ -1157,10 +1326,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
           {!isClient && sidebarTab === "finances" && (() => {
               const toTHB = (amount: number, cur?: string) => cur === "CNY" ? amount * (exchangeRate || 1) : amount;
-              const totalIncomeRaw = finances.filter(f => f.type === "income").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
-              const totalExpenseRaw = finances.filter(f => f.type === "expense").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
-              const pendingPayRaw = finances.filter(f => f.status === "pending").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              // 收入只把核对过「已到账」的算进收入，待核对单列；支出照旧（2026-10-15）
+              const totalIncomeRaw = finances.filter(f => f.type === "income" && f.status === "paid").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const waitingIncomeRaw = finances.filter(f => f.type === "income" && (f.status === "待核对" || f.status === "pending")).reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const totalExpenseRaw = finances.filter(f => f.type === "expense" && f.status !== "cancelled").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
+              const pendingPayRaw = finances.filter(f => f.type === "expense" && f.status === "pending").reduce((s, f) => s + toTHB(f.amount, f.currency), 0);
               const totalIncome = Math.round(totalIncomeRaw);
+              const waitingIncome = Math.round(waitingIncomeRaw);
               const totalExpense = Math.round(totalExpenseRaw);
               const pendingPay = Math.round(pendingPayRaw);
               return (
@@ -1170,7 +1342,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {["CNY", "THB"].filter(currency => currency === "CNY" || finances.some(f => f.currency === currency)).map(currency => {
                   const rows = finances.filter(f => (f.currency || "CNY") === currency && !f.commerce_refund);
                   const refunded = finances.filter(f=>f.commerce_refund && (f.currency || "CNY")===currency).reduce((n,f)=>n+Number(f.amount),0);
-                  const sum = (type: string, status?: string) => rows.filter(f => f.type === type && (!status || f.status === status)).reduce((total, f) => total + Math.round(f.amount * 100), 0) / 100;
+                  const sum = (type: string, status?: string) => rows.filter(f => f.type === type && (status ? f.status === status : f.status !== "cancelled")).reduce((total, f) => total + Math.round(f.amount * 100), 0) / 100;
                   return <div key={currency} className="rounded border border-[var(--border)] p-2">
                     <p>已收款 {formatCurrency(sum("income", "paid"), currency)}</p>
                     <p>已退款 {formatCurrency(refunded, currency)}（单列，不算办理成本）</p>
@@ -1187,17 +1359,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <span className="text-[0.65rem] text-[var(--muted-foreground)] ml-auto">全部折合泰铢</span>
               </div>
               {finances.length > 0 && (
-                <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="mb-4 grid grid-cols-2 gap-2">
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--success),var(--background)_90%)] px-3 py-2 text-center">
-                    <p className="text-[0.6rem] text-[var(--success)]">总收入</p>
+                    <p className="text-[0.6rem] text-[var(--success)]">已到账收入</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--success)]">฿{totalIncome.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] px-3 py-2 text-center">
+                    <p className="text-[0.6rem] text-[var(--warning)]">待核对收入</p>
+                    <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">฿{waitingIncome.toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] px-3 py-2 text-center">
                     <p className="text-[0.6rem] text-[var(--destructive)]">总支出</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--destructive)]">฿{totalExpense.toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] px-3 py-2 text-center">
-                    <p className="text-[0.6rem] text-[var(--warning)]">待付余额</p>
+                    <p className="text-[0.6rem] text-[var(--warning)]">待付支出</p>
                     <p className="mt-0.5 text-xs font-mono font-medium text-[var(--warning)]">฿{pendingPay.toLocaleString()}</p>
                   </div>
                 </div>
@@ -1205,22 +1381,29 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </>}
               {finances.length === 0 ? <p className="py-4 text-center text-xs text-[var(--muted-foreground)]">暂无费用记录</p> : (
                 <ul className="flex flex-col gap-2">
-                  {finances.map((f) => (
+                  {finances.map((f) => {
+                    // 核对过的收入（含核对上线前就记成已付的老记录）：员工只能补描述/付款方式/流水号，金额币种类型只有管理员能改
+                    const moneyLocked = f.type === "income" && (f.status === "paid" || f.status === "未到账") && user?.role !== "admin";
+                    return (
                     <li key={f.id} className="rounded-md p-2 transition-colors hover:bg-[var(--secondary)]">
                       {editingFinanceId === f.id ? (
                         <div className="space-y-1.5">
                           <div className="flex gap-1.5">
-                            <select disabled={isNativeCommerce} value={editFinanceFields.type || f.type} onChange={(e) => setEditFinanceFields(p => ({ ...p, type: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                            <select disabled={isNativeCommerce || moneyLocked} value={editFinanceFields.type || f.type} onChange={(e) => setEditFinanceFields(p => ({ ...p, type: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
                               {!isNativeCommerce && <option value="income">收入</option>}
                               <option value="expense">支出</option>
                             </select>
-                            <input type="number" value={editFinanceFields.amount ?? f.amount} onChange={(e) => setEditFinanceFields(p => ({ ...p, amount: Number(e.target.value) }))} className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                            <select value={editFinanceFields.status || f.status} onChange={(e) => setEditFinanceFields(p => ({ ...p, status: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                            <input type="number" disabled={moneyLocked} value={editFinanceFields.amount ?? f.amount} onChange={(e) => setEditFinanceFields(p => ({ ...p, amount: Number(e.target.value) }))} className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)] disabled:opacity-60" />
+                            {(editFinanceFields.type || f.type) === "income" ? (
+                              <span className={cn("inline-flex items-center rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium", financeStatusClass({ ...f, type: "income", status: f.type === "income" ? f.status : "待核对" }))} title="收入到没到账在「费用管理」→「待核对」里核对">{f.type === "income" ? financeStatusText(f) : "待核对"}</span>
+                            ) : (
+                            <select value={editFinanceFields.status && f.type === "expense" ? editFinanceFields.status : f.type === "expense" ? f.status : "pending"} onChange={(e) => setEditFinanceFields(p => ({ ...p, status: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
                               <option value="paid">已付</option>
                               <option value="pending">待付</option>
                               <option value="cancelled">已取消</option>
                             </select>
-                            <select value={editFinanceFields.currency || f.currency || "CNY"} onChange={(e) => setEditFinanceFields(p => ({ ...p, currency: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)]">
+                            )}
+                            <select disabled={moneyLocked} value={editFinanceFields.currency || f.currency || "CNY"} onChange={(e) => setEditFinanceFields(p => ({ ...p, currency: e.target.value }))} className="w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 py-1 text-xs outline-none focus:border-[var(--ring)] disabled:opacity-60">
                               <option value="CNY">¥</option>
                               <option value="THB">฿</option>
                             </select>
@@ -1265,7 +1448,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         </>
                       )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
               {!isClient && (
@@ -1350,7 +1534,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           {doc.status !== "已审核" && <button onClick={() => handleReviewDocument(doc.id, false)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--success)] hover:bg-[var(--muted)]">审核通过</button>}
                           {doc.direction !== "us_to_client" && doc.status !== "已退回" && <button onClick={() => handleReturnDocument(doc)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--destructive)] hover:bg-[var(--muted)]">退回</button>}
                           {!(doc.publication_verified === 1 && doc.direction === "us_to_client" && doc.status === "已审核") && <button onClick={() => handleReviewDocument(doc.id, true)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)]">核对后对客公开</button>}
-                          <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>
+                          {!doc.live_submission && <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>}
                           </div>
                         )}
                       </li>
@@ -1363,7 +1547,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <input placeholder="文档名…" value={newDocName} onChange={(e) => { setNewDocName(e.target.value); setDocErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
                   <label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">
                     {uploadingDoc ? "上传中..." : "选择文件"}
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingDoc(true); setDocFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setDocFileUrl(data.url); } catch (err) { console.error("文档上传失败:", err); setDocErrorMsg("文件上传失败"); setDocFileName(""); } finally { setUploadingDoc(false); } }} disabled={uploadingDoc} />
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingDoc(true); setDocFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setDocFileUrl(data.url); } catch (err) { console.error("文档上传失败:", err); setDocErrorMsg("文件上传失败"); setDocFileName(""); } finally { setUploadingDoc(false); } }} disabled={uploadingDoc} />
                   </label>
                   <button onClick={async () => { if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; } setDocErrorMsg(""); try { await uploadDocument(id, { name: newDocName, uploaded_by: "Bam", direction: "client_to_us", file_url: docFileUrl }); setNewDocName(""); setDocFileUrl(""); setDocFileName(""); reload(); } catch (err) { console.error("添加文档失败:", err); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">添加</button>
                 </div>
@@ -1386,7 +1570,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           <li key={r.id} className="rounded-md bg-[var(--secondary)] px-2 py-1.5 text-xs">
                             <p className="font-medium text-[var(--foreground)]">{r.name}{r.description && <span className="font-normal text-[var(--muted-foreground)]"> — {r.description}</span>}</p>
                             <p className="mt-0.5 text-[0.65rem] text-[var(--muted-foreground)]">
-                              {r.created_by} · {toThaiTime(r.created_at)} · <span className={r.submitted_at ? "text-[var(--success)]" : "text-[var(--warning)]"}>{r.submitted_at ? `客户已交（${toThaiTime(r.submitted_at)}）` : "等客户交"}</span>
+                              {r.created_by} · {toThaiTime(r.created_at)} · {r.submitted_at && r.latest_status === "已退回"
+                                ? <span className="text-[var(--warning)]">已退回，等客户重交</span>
+                                : <span className={r.submitted_at ? "text-[var(--success)]" : "text-[var(--warning)]"}>{r.submitted_at ? `客户已交（${toThaiTime(r.submitted_at)}）` : "等客户交"}</span>}
                             </p>
                           </li>
                         ))}
@@ -1422,7 +1608,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                               <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">NSW下载</label><select value={fields.nsw_download_status || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, nsw_download_status: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]"><option value="">—</option><option value="未下载">未下载</option><option value="已下载">已下载</option><option value="下载中">下载中</option></select></div>
                             </div>
                             <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">备注</label><input value={fields.notes || ""} onChange={(e) => setEditCertFields((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" /></div>
-                            <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">证书文件</label><div className="flex items-center gap-1.5"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : fields.file_url ? "重新上传" : "选择文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setEditCertFields((p) => ({ ...p, file_url: data.url })); } catch (err) { console.error("证书上传失败:", err); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{fields.file_url && !certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">已上传: {fields.file_url.split("/").pop()}</span>}{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">新: {certFileName}</span>}</div></div>
+                            <div><label className="text-[0.65rem] text-[var(--muted-foreground)]">证书文件</label><div className="flex items-center gap-1.5"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : fields.file_url ? "重新上传" : "选择文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setEditCertFields((p) => ({ ...p, file_url: data.url })); } catch (err) { console.error("证书上传失败:", err); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{fields.file_url && !certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">已上传: {fields.file_url.split("/").pop()}</span>}{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[150px]">新: {certFileName}</span>}</div></div>
                             <div className="flex gap-1.5">
                               <button onClick={() => handleSaveCert(cert.id)} className="rounded px-2 py-1 text-xs bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">保存</button>
                               <button onClick={() => { if (isClient) return; setEditingCertId(null); setEditCertFields({}); }} className="rounded px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
@@ -1464,9 +1650,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {!isClient && (<>
                 <div className="mt-3 flex gap-2">
                   <input placeholder="证书编号…" value={newCertNo} onChange={(e) => { setNewCertNo(e.target.value); setCertErrorMsg(""); }} className="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)]" />
-                  <button onClick={async () => { if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; } setCertErrorMsg(""); try { await addCertificate(id, { certificate_number: newCertNo, issue_date: bangkokDateStr(), expiry_date: (() => { const d = new Date(Date.now() + 365*86400000); return d.toISOString().slice(0,10); })(), file_url: certFileUrl }); setNewCertNo(""); setCertFileUrl(""); setCertFileName(""); reload(); } catch (err) { console.error("添加证书失败:", err); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]"><Plus className="size-3" /></button>
+                  <button onClick={async () => { if (!newCertNo.trim()) { setCertErrorMsg("请填写证书编号"); return; } if (newCertIssue && newCertExpiry && newCertExpiry < newCertIssue) { setCertErrorMsg("到期日不能早于签发日"); return; } setCertErrorMsg(""); try { await addCertificate(id, { certificate_number: newCertNo, issue_date: newCertIssue, expiry_date: newCertExpiry, file_url: certFileUrl }); setNewCertNo(""); setNewCertIssue(""); setNewCertExpiry(""); setCertFileUrl(""); setCertFileName(""); reload(); } catch (err) { console.error("添加证书失败:", err); setCertErrorMsg(err instanceof Error ? err.message : "添加证书失败"); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)]" title="添加证书"><Plus className="size-3" /></button>
                 </div>
-                <div className="flex gap-1.5 items-center"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : "选择证书文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setCertFileUrl(data.url); } catch (err) { console.error("证书上传失败:", err); setCertErrorMsg("文件上传失败"); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px]">{certFileName}</span>}</div>
+                <div className="flex flex-wrap gap-1.5 items-center text-xs text-[var(--muted-foreground)]">
+                  <label className="flex items-center gap-1">签发<input type="date" value={newCertIssue} onChange={(e) => { setNewCertIssue(e.target.value); setCertErrorMsg(""); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]" /></label>
+                  <label className="flex items-center gap-1">到期<input type="date" value={newCertExpiry} onChange={(e) => { setNewCertExpiry(e.target.value); setCertErrorMsg(""); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--ring)]" /></label>
+                  <span>照证书上的填；没有到期日就空着</span>
+                </div>
+                <div className="flex gap-1.5 items-center"><label className="shrink-0 cursor-pointer rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors">{uploadingCert ? "上传中..." : "选择证书文件"}<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingCert(true); setCertFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setCertFileUrl(data.url); } catch (err) { console.error("证书上传失败:", err); setCertErrorMsg("文件上传失败"); setCertFileName(""); } finally { setUploadingCert(false); } }} disabled={uploadingCert} /></label>{certFileName && <span className="text-xs text-[var(--muted-foreground)] truncate max-w-[120px]">{certFileName}</span>}</div>
                 </>
                 )}
                 {certErrorMsg && <p className="mt-1 text-xs text-[var(--destructive)]">{certErrorMsg}</p>}
@@ -1562,6 +1753,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               rows={3}
               className="mt-3 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
             />
+            {cancelError && <p role="alert" className="mt-2 text-sm text-[var(--destructive)]">{cancelError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowCancelModal(false)} disabled={cancelSaving}>取消</Button>
               <Button size="sm" onClick={handleCancelOrder} disabled={cancelSaving} className="bg-[var(--warning)] text-[var(--warning-foreground)]">{cancelSaving ? "取消中…" : "确认取消"}</Button>

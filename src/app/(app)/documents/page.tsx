@@ -26,6 +26,8 @@ const statusLabel: Record<string, string> = {
 
 interface DocRecord {
   id?: number;
+  /** 客户在客户站交来、客户还没撤回（不能直接删，要在订单里退回） */
+  live_submission?: number;
   document_name?: string;
   name?: string;
   status?: string;
@@ -102,7 +104,8 @@ export default function DocumentsPage() {
       reload();
     } catch (err) {
       console.error("[删除文档] 失败:", err);
-      setUploadError("删除失败，请重试");
+      setUploadError(err instanceof Error && err.message !== "删除文档失败" ? err.message : "删除失败，请重试");
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }
@@ -248,7 +251,7 @@ export default function DocumentsPage() {
                     <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(fileUrl(doc.file_url), "_blank"); else setUploadError("该文档无可下载文件"); }}>
                       <Download className="size-3.5" aria-hidden="true" />
                     </Button>
-                    {!isClient && (
+                    {!isClient && !doc.live_submission && (
                       <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => setDeleteTarget(doc)}>
                         <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
                       </Button>
@@ -281,7 +284,7 @@ export default function DocumentsPage() {
                 <Button variant="ghost" size="icon-xs" aria-label="下载文档" onClick={() => { if (doc.file_url) window.open(fileUrl(doc.file_url), "_blank"); else setUploadError("该文档无可下载文件"); }}>
                   <Download className="size-3.5" aria-hidden="true" />
                 </Button>
-                {!isClient && (
+                {!isClient && !doc.live_submission && (
                   <Button variant="ghost" size="icon-xs" aria-label="删除文档" onClick={() => setDeleteTarget(doc)}>
                     <Trash2 className="size-3.5 text-[var(--destructive)]" aria-hidden="true" />
                   </Button>

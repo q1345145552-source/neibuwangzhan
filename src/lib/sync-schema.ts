@@ -123,6 +123,9 @@ export function initializeSyncSchema(database: Database.Database): void {
     const orderColumns = new Set((database.prepare('PRAGMA table_info(orders)').all() as {name:string}[]).map(c => c.name));
     if(!orderColumns.has('source_system')) database.exec("ALTER TABLE orders ADD COLUMN source_system TEXT NOT NULL DEFAULT ''");
     if(!orderColumns.has('source_customer_id')) database.exec('ALTER TABLE orders ADD COLUMN source_customer_id TEXT');
+    // 客户按哪条补件交的（sreq-<补件号>，2026-10-16 只加一列、可为空，老数据不动）：退回后补件列表要显示「已退回，等客户重交」
+    const syncDocColumns = new Set((database.prepare('PRAGMA table_info(sync_documents)').all() as {name:string}[]).map(c => c.name));
+    if(!syncDocColumns.has('requirement_id')) database.exec('ALTER TABLE sync_documents ADD COLUMN requirement_id TEXT');
     // Old inbox rows have no trustworthy buyer ID: mark them external-origin, never infer from names.
     database.exec(`UPDATE orders SET source_system='storefront'
       WHERE source_system='' AND EXISTS (SELECT 1 FROM sync_inbox si WHERE si.internal_order_id=orders.id)`);

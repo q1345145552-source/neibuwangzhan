@@ -5,10 +5,13 @@ import { BusinessLinePage } from "@/components/dashboard/business-line-page";
 import { companySubServices } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const tabs = companySubServices;
+// 「全部」放第一个；每个标签只列自己那类单。新公司注册含没选具体服务的老单（它们走的就是这套流程）。
+// 原来除「新公司注册」外都写着「该功能暂未开放」，其实客户站一直有这几类单，都混在新公司注册里（2026-10-15）
+const tabs = [{ key: "all", label: "全部" }, ...companySubServices];
 
 export default function CompanyRegistrationPage() {
   const [activeTab, setActiveTab] = useState(tabs[0].key);
+  const active = tabs.find(t => t.key === activeTab);
 
   return (
     <div className="flex flex-col gap-6">
@@ -36,19 +39,17 @@ export default function CompanyRegistrationPage() {
         ))}
       </div>
 
-      {activeTab === "company-reg" ? (
-        <BusinessLinePage
-          businessKey="公司注册"
-          label="公司注册"
-          accentHue={260}
-          description="11步并行推进：Bam收资料发Pop注册DBD，Pop/Eve/fern/Bam各管一段，互不阻塞。VAT注册、银行开户、地址服务、做账报税、公司变更全部可以在同一套流程里跟进。"
-        />
-      ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-sm text-[var(--muted-foreground)]">{tabs.find(t => t.key === activeTab)?.label}</p>
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">该功能暂未开放</p>
-        </div>
-      )}
+      <BusinessLinePage
+        key={activeTab}
+        businessKey="公司注册"
+        label={activeTab === "all" ? "公司注册" : active?.label || "公司注册"}
+        accentHue={260}
+        description={activeTab === "all"
+          ? "11步并行推进：Bam收资料发Pop注册DBD，Pop/Eve/fern/Bam各管一段，互不阻塞。VAT注册、银行开户、地址服务、做账报税、公司变更全部可以在同一套流程里跟进。"
+          : activeTab === "change" ? "公司变更单独一套流程：收齐变更资料、递交官方办理、办结交付客户。"
+          : `只列「${active?.label}」的单。`}
+        subServiceTypes={activeTab === "all" ? undefined : activeTab === "company-reg" ? ["company-reg", ""] : [activeTab]}
+      />
     </div>
   );
 }

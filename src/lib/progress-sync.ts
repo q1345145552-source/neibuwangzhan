@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
-import { publicStepNames } from "./commerce-fulfillment";
+import { orderPublicStepNames } from "./commerce-fulfillment";
+import { notifySyncBackFailure } from "./order-alerts";
 
 /**
  * 内部 → 客户站：业务写入与 seq/outbox 必须在同一数据库事务中提交；
@@ -30,11 +31,11 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
     const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId) as { status: string } | undefined;
     if (!order) return 0;
     // 白名单：禁止 SELECT * 或带入备注、负责人、费用、内部描述。
-    // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 publicStepNames）。
+    // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 orderPublicStepNames：建单时记下的，老单按对照表）。
     const internalSteps = db.prepare(
-      "SELECT step_order, step_name, status FROM order_steps WHERE order_id = ? ORDER BY step_order"
-    ).all(orderId) as { step_order: number; step_name: string; status: string }[];
-    const publicNames = publicStepNames(internalSteps.map(step => step.step_name));
+      "SELECT step_order, step_name, status, public_name FROM order_steps WHERE order_id = ? ORDER BY step_order"
+    ).all(orderId) as { step_order: number; step_name: string; status: string; public_name: string | null }[];
+    const publicNames = orderPublicStepNames(internalSteps);
     const steps = internalSteps.map((step, i) => ({ step_order: step.step_order, step_name: publicNames[i], status: step.status }));
     const insert = db.prepare("INSERT INTO sync_progress_outbox (id, inbox_id, payload) VALUES (?, ?, ?)");
     const bump = db.prepare("UPDATE sync_inbox SET progress_seq = progress_seq + 1 WHERE id = ?");
@@ -94,6 +95,7 @@ export async function flushProgress(): Promise<FlushResult> {
       "SELECT id, payload, attempts FROM sync_progress_outbox WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now')) ORDER BY next_attempt_at, created_at, rowid LIMIT 100"
     ).all() as PendingProgress[];
     let sent = 0, failed = 0;
+    const stuck: StuckItem[] = [];
     for (const row of rows) {
       try {
         const resp = await fetch(`${url.replace(/\/$/, "")}/api/sync/progress`, {
@@ -118,8 +120,10 @@ export async function flushProgress(): Promise<FlushResult> {
         db.prepare("UPDATE sync_progress_outbox SET attempts=?,next_attempt_at=datetime('now','+' || ? || ' seconds'),last_error=? WHERE id=?")
           .run(attempts,delay,String(error).slice(0,500),row.id);
         console.error("[progress] 推送失败，退避后重试:", error);
+        if (attempts === ALERT_ATTEMPTS) stuck.push({ sourceOrderNo: sourceOrderOfPayload(db, row.payload), what: "办理进度", error: String(error) });
       }
     }
+    alertStuck(db, stuck);
     return { sent, failed, skipped: false };
   } finally {
     state.flushing = false;
@@ -143,6 +147,48 @@ export function queueDocumentReview(db: Database.Database, submissionId: string,
   return true;
 }
 
+/**
+ * 回传客户站一直失败时提醒管理员（2026-10-15）。原来只打日志：补件、交付、取消结果没送到客户那边，谁都不知道。
+ * 每条事件只在第 ALERT_ATTEMPTS 次失败时算一次（约 5 分钟连续失败），之后照常退避重试、不再重复提醒；
+ * 同一轮扫到的合成一条，客户站整个连不上时不会一单一条刷屏。不改表结构。
+ */
+const ALERT_ATTEMPTS = 6;
+type StuckItem = { sourceOrderNo: string; what: string; error: string };
+
+function sourceOrderOfPayload(db: Database.Database, payload: string): string {
+  try {
+    const event = JSON.parse(payload) as { source_order_no?: unknown; submission_id?: unknown };
+    if (typeof event.source_order_no === "string" && event.source_order_no) return event.source_order_no;
+    if (typeof event.submission_id === "string") {
+      const row = db.prepare("SELECT source_order_no FROM sync_documents WHERE submission_id = ? LIMIT 1").get(event.submission_id) as { source_order_no: string } | undefined;
+      if (row?.source_order_no) return row.source_order_no;
+    }
+  } catch { /* 坏数据就不带单号 */ }
+  return "";
+}
+
+function documentEventLabel(payload: string): string {
+  try {
+    const kind = (JSON.parse(payload) as { event?: string }).event;
+    return kind === "request" ? "补件要求" : kind === "delivery" ? "交付文件" : kind === "cancel" ? "取消申请结果" : "资料审核结果";
+  } catch { return "资料审核结果"; }
+}
+
+function alertStuck(db: Database.Database, stuck: StuckItem[]): void {
+  if (!stuck.length) return;
+  try {
+    const orders = [...new Set(stuck.map(x => x.sourceOrderNo).filter(Boolean))];
+    const what = [...new Set(stuck.map(x => x.what))].join("、");
+    const lastError = stuck[stuck.length - 1].error.slice(0, 200);
+    const detail = orders.length <= 1
+      ? `客户站订单 ${orders[0] || "（单号不明）"} 的${what}连续 ${ALERT_ATTEMPTS} 次没送到客户站，系统会继续重试。客户那边暂时看不到这次更新。最近错误：${lastError}`
+      : `${orders.length} 张客户站订单的${what}连续 ${ALERT_ATTEMPTS} 次没送到客户站（可能是客户站连不上），系统会继续重试：${orders.slice(0, 5).join("、")}${orders.length > 5 ? " 等" : ""}。最近错误：${lastError}`;
+    notifySyncBackFailure(db, orders[0] || "", detail);
+  } catch (error) {
+    console.error("[progress] 失败提醒写入失败:", error);
+  }
+}
+
 export async function flushDocumentReviews(): Promise<FlushResult> {
   const state = workerState();
   if (state.docFlushing) return { sent: 0, failed: 0, skipped: true };
@@ -156,6 +202,7 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
       "SELECT id, payload, attempts FROM sync_document_outbox WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now')) ORDER BY created_at, rowid LIMIT 100"
     ).all() as PendingProgress[];
     let sent = 0, failed = 0;
+    const stuck: StuckItem[] = [];
     for (const row of rows) {
       try {
         // 同一个发件箱四类事件：资料审核结果（旧行无 event）、补件要求、交付文件、取消申请结果（2026-10-03）
@@ -185,8 +232,10 @@ export async function flushDocumentReviews(): Promise<FlushResult> {
         db.prepare("UPDATE sync_document_outbox SET attempts=?,next_attempt_at=datetime('now','+' || ? || ' seconds'),last_error=? WHERE id=?")
           .run(attempts, delay, String(error).slice(0, 500), row.id);
         console.error("[documents] 资料审核/补件/交付/取消结果回传失败，退避后重试:", error);
+        if (attempts === ALERT_ATTEMPTS) stuck.push({ sourceOrderNo: sourceOrderOfPayload(db, row.payload), what: documentEventLabel(row.payload), error: String(error) });
       }
     }
+    alertStuck(db, stuck);
     return { sent, failed, skipped: false };
   } finally {
     state.docFlushing = false;

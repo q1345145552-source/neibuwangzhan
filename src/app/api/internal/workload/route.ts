@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     const orderSteps = (db.prepare(
       `SELECT COUNT(DISTINCT os.order_id) as c FROM order_steps os
        JOIN orders o ON os.order_id = o.id
-       WHERE (${cond}) AND os.status NOT IN ('已完成','已停止')`
+       WHERE (${cond}) AND os.status NOT IN ('已完成','已停止','已跳过')`
     ).all() as { c: number }[])[0]?.c || 0;
 
     // 达人个数：该员工参与且未完成的达人（去重计数，不是步骤数）

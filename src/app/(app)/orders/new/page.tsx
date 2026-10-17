@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Search, ChevronDown } from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
 import { fetchBusinessTypes, fetchEmployees, createOrder, fetchWithAuth } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
+import { CustomerPicker, customerExists, isKnownCustomer, type PoolCustomer } from "@/components/customer-picker";
 import { subServices } from "@/lib/constants";
 import type { BusinessType, Employee } from "@/lib/api";
 
@@ -20,9 +22,10 @@ export default function NewOrderPage() {
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [appliedBizName, setAppliedBizName] = useState<string | null>(null);
-  const [customerPool, setCustomerPool] = useState<{id:number;company_name:string;industry:string;handler_name:string;owner_name:string}[]>([]);
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-  const [customerSearch, setCustomerSearch] = useState("");
+  const { user } = useAuth();
+  const [customerPool, setCustomerPool] = useState<PoolCustomer[]>([]);
+  // 客户管理里没有、在下拉里点了「新建客户」（2A）
+  const [newCustomer, setNewCustomer] = useState(false);
   const [form, setForm] = useState({
     business_type_id: "",
     customer_name: "",
@@ -63,14 +66,14 @@ export default function NewOrderPage() {
     const { name, value } = e.target;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
-      // 切换业务线时，清空子类型（除非从 URL 自动填充）
+      // 切换业务线时，清空子类型（除非从 URL 自动填充；只有一种可选时直接选上）
       if (name === "business_type_id" && value !== prev.business_type_id) {
         const urlSub = searchParams.get("sub");
         const newSubs = subServices[Number(value)] || [];
         if (urlSub && newSubs.some(s => s.key === urlSub)) {
           next.sub_service_type = urlSub;
         } else {
-          next.sub_service_type = "";
+          next.sub_service_type = newSubs.length === 1 ? newSubs[0].key : "";
         }
       }
       return next;
@@ -80,12 +83,18 @@ export default function NewOrderPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!form.customer_name.trim()) { setError("客户名不能为空"); return; }
+    if (!form.customer_name.trim()) { setError("请选择客户"); return; }
+    // 客户要从客户管理里选，没有的点「新建客户」（2026-10-16，2A）
+    const known = isKnownCustomer(customerPool, form.customer_name) || (!newCustomer && await customerExists(form.customer_name));
+    if (!known && !newCustomer) { setError("客户要从下拉里选客户管理里的客户" + (user?.role === "admin" ? "，没有的点「新建客户」" : "；客户管理里还没有的，请管理员先新建")); return; }
     if (!form.business_type_id) { setError("请选择业务线"); return; }
+    // 有具体服务的业务线必须选一个：不选会套成通用流程（如 FDA 不选就是通用 5 步），建完改不了（2026-10-15）
+    if (availableSubServices.length > 0 && !form.sub_service_type) { setError("请选择子类型"); return; }
     setLoading(true);
     try {
-      await createOrder({
-        customer_name: form.customer_name,
+      const created = await createOrder({
+        customer_name: form.customer_name.trim(),
+        new_customer: newCustomer && !known,
         business_type_id: Number(form.business_type_id),
         responsible_person: form.responsible_person,
         description: form.description,
@@ -96,7 +105,8 @@ export default function NewOrderPage() {
         address_type: isAddressBiz ? form.address_type : "client",
         monthly_rent: isAddressBiz && form.address_type === "xiangtai" ? Number(form.monthly_rent) || 0 : 0,
       });
-      router.push("/orders");
+      // 建完直接进这张单（接着派人、传资料）；用 replace，详情页点返回回到原来的列表而不是空表单
+      router.replace(created?.id ? `/orders/${created.id}` : "/orders");
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建订单失败，稍后再试");
     } finally {
@@ -123,13 +133,14 @@ export default function NewOrderPage() {
             <Label htmlFor="business_type_id" className="text-sm font-medium">业务线</Label>
             <select id="business_type_id" name="business_type_id" value={form.business_type_id} onChange={handleChange} required className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
               <option value="">请选择业务线</option>
-              {businessTypes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {/* 「待分类」只给客户站、商城转来的单用：手建的待分类单改派不了、只能取消重建 */}
+              {businessTypes.filter((b) => b.name !== "待分类").map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           {availableSubServices.length > 0 && (
           <div className="flex flex-col gap-2">
             <Label htmlFor="sub_service_type" className="text-sm font-medium">子类型</Label>
-            <select id="sub_service_type" name="sub_service_type" value={form.sub_service_type} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+            <select id="sub_service_type" name="sub_service_type" value={form.sub_service_type} onChange={handleChange} required className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
               <option value="">请选择子类型</option>
               {availableSubServices.map((s: { key: string; label: string }) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
@@ -150,37 +161,10 @@ export default function NewOrderPage() {
             <Input id="monthly_rent" name="monthly_rent" type="number" value={form.monthly_rent} onChange={handleChange} className="h-10" placeholder="0" />
           </div>
           )}
-          <div className="flex flex-col gap-2 relative">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="customer_name" className="text-sm font-medium">客户名称</Label>
-            <div className="relative">
-              <Input id="customer_name" name="customer_name" value={form.customer_name} onChange={handleChange} required className="h-10 pr-8" placeholder="输入或从客户池选择"
-                onFocus={() => setShowCustomerDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-              />
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-[var(--muted-foreground)] pointer-events-none" />
-            </div>
-            {showCustomerDropdown && customerPool.length > 0 && (
-              <div className="absolute top-[72px] left-0 right-0 z-30 rounded-lg border border-[var(--border)] bg-[var(--background)] shadow-xl max-h-48 overflow-y-auto">
-                {customerPool
-                  .filter(c => !customerSearch || c.company_name.toLowerCase().includes(customerSearch.toLowerCase()))
-                  .slice(0, 20)
-                  .map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--muted)] border-b last:border-b-0 flex items-center justify-between"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setForm(prev => ({ ...prev, customer_name: c.company_name }));
-                        setShowCustomerDropdown(false);
-                      }}
-                    >
-                      <span>{c.company_name}</span>
-                      {c.handler_name && <span className="text-xs text-[var(--muted-foreground)]">{c.handler_name}</span>}
-                    </button>
-                  ))}
-              </div>
-            )}
+            <CustomerPicker id="customer_name" value={form.customer_name} isNew={newCustomer} pool={customerPool} canCreate={user?.role === "admin"}
+              onChange={(name, isNew) => { setForm(prev => ({ ...prev, customer_name: name })); setNewCustomer(isNew); }} />
           </div>
           {form.business_type_id === "2" && (
           <div className="flex flex-col gap-2">
@@ -192,7 +176,7 @@ export default function NewOrderPage() {
             <Label htmlFor="responsible_person" className="text-sm font-medium">负责人</Label>
             <select id="responsible_person" name="responsible_person" value={form.responsible_person} onChange={handleChange} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
               <option value="">选择负责人</option>
-              {employees.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
+              {employees.filter((e) => e.role !== "client").map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2">

@@ -6,7 +6,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { queueDocumentReview, requestProgressFlush } from "@/lib/progress-sync";
-import { syncDocumentDelivery } from "@/lib/delivery-sync";
+import { customerDocumentDeleteError, isLiveCustomerSubmission, syncDocumentDelivery } from "@/lib/delivery-sync";
 
 export async function GET(
   req: NextRequest,
@@ -20,7 +20,8 @@ export async function GET(
     return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
   const db = getDb();
-  const rows = db.prepare("SELECT * FROM documents WHERE order_id = ? ORDER BY created_at DESC").all(id);
+  // live_submission：客户在客户站交来、客户还没撤回的资料（不能直接删，页面不显示删除按钮，2026-10-16）
+  const rows = db.prepare("SELECT d.*, EXISTS (SELECT 1 FROM sync_documents sd WHERE sd.document_id = d.id AND sd.withdrawn = 0) AS live_submission FROM documents d WHERE d.order_id = ? ORDER BY d.created_at DESC").all(id);
   return NextResponse.json(auth.role === "client" ? rows.filter(row => isPublicDocument(row, auth.id)).map(publicDocument) : rows);
 }
 
@@ -80,6 +81,7 @@ export async function DELETE(
 
   const existing = db.prepare("SELECT * FROM documents WHERE id = ? AND order_id = ?").get(document_id, id) as Parameters<typeof syncDocumentDelivery>[2];
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
+  if (isLiveCustomerSubmission(db, document_id)) return NextResponse.json({ error: customerDocumentDeleteError((existing as { status?: string }).status) }, { status: 409 });
 
   // 已交付给客户站客户的文件被删：同时撤回（2026-10-03）
   const withdrawn = db.transaction(() => {

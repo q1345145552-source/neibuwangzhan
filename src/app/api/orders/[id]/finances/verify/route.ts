@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { notifyIncomeNotArrived } from "@/lib/order-alerts";
 
 // POST /api/orders/[id]/finances/verify — 老板核对收入到账
 // body: { finance_id, action: 'arrived'|'not_arrived', note? }
@@ -24,6 +25,7 @@ export async function POST(
 
   const fin = db.prepare("SELECT * FROM finances WHERE id = ? AND order_id = ?").get(finance_id, id) as any;
   if (!fin) return NextResponse.json({ error: "费用记录不存在" }, { status: 404 });
+  if (fin.type !== "income") return NextResponse.json({ error: "只有收入需要核对到账" }, { status: 400 });
 
   let status: string;
   let verifyNote = "";
@@ -38,5 +40,9 @@ export async function POST(
   const now = new Date().toISOString();
   db.prepare("UPDATE finances SET status = ?, verify_by = ?, verify_at = ?, verify_note = ? WHERE id = ?").run(status, auth.name, now, verifyNote, Number(finance_id));
   logOperation(auth.name, action === "arrived" ? "收入到账" : "收入未到账", "finance", String(finance_id), verifyNote);
+  // 未到账：告诉录入人和负责人去问客户（提醒失败不影响核对结果）
+  if (action === "not_arrived") {
+    try { notifyIncomeNotArrived(db, id, Number(finance_id), auth.name || ""); } catch (error) { console.error("[finances] 未到账提醒失败:", error); }
+  }
   return NextResponse.json(db.prepare("SELECT * FROM finances WHERE id = ?").get(Number(finance_id)));
 }

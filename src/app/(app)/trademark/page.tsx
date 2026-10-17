@@ -47,6 +47,7 @@ export default function TrademarkPage() {
           label="TM标注册"
           accentHue={30}
           description="检索查重、分类申请、一路到拿TM标。第35类和第42类问得最多，记得提醒客户提前准备商标使用证据。"
+          subServiceTypes={["tm-reg", ""]}
         />
       )}
     </div>

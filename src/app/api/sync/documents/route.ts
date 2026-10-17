@@ -121,14 +121,15 @@ export async function POST(req: NextRequest) {
       const names: string[] = [];
       const insertDoc = db.prepare(`INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url, client_author_id, publication_verified)
         VALUES (?, ?, ?, '待审核', 'client_to_us', ?, ?, NULL, 0)`);
-      const insertLink = db.prepare('INSERT INTO sync_documents (source_order_no, submission_id, internal_order_id, document_id) VALUES (?, ?, ?, ?)');
+      const insertLink = db.prepare('INSERT INTO sync_documents (source_order_no, submission_id, internal_order_id, document_id, requirement_id) VALUES (?, ?, ?, ?, ?)');
       const insertUpload = db.prepare("INSERT OR IGNORE INTO file_uploads (filename, uploaded_by_id, uploaded_by_role, mime_type, size) VALUES (?, 0, 'storefront-sync', ?, ?)");
       for (const s of staged) {
         if (known.get(s.item.submission_id)) { duplicates.push(s.safeName); results.push({ submission_id: s.item.submission_id, kind: 'submit', status: 'duplicate' }); continue; }
         insertUpload.run(s.safeName, s.item.type === 'text' ? 'text/plain' : 'application/octet-stream', s.size);
         for (const orderId of orderIds) {
           const doc = insertDoc.run(orderId, displayName(s.item), s.item.type === 'text' ? 'text' : s.ext.replace('.', ''), `客户站：${customerName || '客户'}`, `/api/files/${s.safeName}`);
-          insertLink.run(sourceOrderNo, s.item.submission_id, orderId, Number(doc.lastInsertRowid));
+          insertLink.run(sourceOrderNo, s.item.submission_id, orderId, Number(doc.lastInsertRowid),
+            typeof s.item.requirement_id === 'string' && s.item.requirement_id.startsWith('sreq-') ? s.item.requirement_id : null);
         }
         names.push(displayName(s.item));
         markRequestSubmitted(db, s.item.requirement_id, sourceOrderNo); // 客户按本站发的补件要求交的：标记「客户已交」

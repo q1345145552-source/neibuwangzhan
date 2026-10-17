@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
-import { Ticket, ListTodo, BookOpen, Bell, EyeOff } from "lucide-react";
+import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
+import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
 
 interface Notice {
   id: number;
@@ -16,6 +17,8 @@ interface Notice {
   related_type: string;
   is_read: number;
   created_at: string;
+  /** 客户站订单提醒：后端换算好的内部办理单号（找不到为 null） */
+  order_id?: string | null;
 }
 
 // 消息中心几类通知的图标与跳转目标
@@ -27,6 +30,24 @@ const TYPE_META: Record<string, { label: string; icon: typeof Ticket; href: (n: 
   规则更新: { label: "规则", icon: BookOpen, href: () => `/rules` },
   老板通知: { label: "老板通知", icon: Bell, href: () => `/announcements` },
 };
+
+// 客户站同步来的订单提醒（type 为空，按标题认，见 lib/notification-types.ts）：点开进对应订单，找不到单就进订单列表
+const orderHref = (n: Notice) => (n.order_id ? `/orders/${n.order_id}` : "/orders");
+// 键用 CUSTOMER_SITE_ALERT_TITLES 的类型：以后加了新提醒标题忘了配这里，类型检查直接报错（10-15 漏过一次）
+const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { label: string; icon: typeof Ticket; href: (n: Notice) => string }> = {
+  客户站新订单: { label: "客户站", icon: ShoppingCart, href: orderHref },
+  待分类订单待领取: { label: "客户站", icon: ShoppingCart, href: orderHref },
+  客户提交了资料: { label: "客户站", icon: FileText, href: orderHref },
+  客户申请取消: { label: "客户站", icon: XCircle, href: orderHref },
+  商城新订单: { label: "商城", icon: ShoppingCart, href: orderHref },
+  客户站同步失败: { label: "客户站", icon: XCircle, href: orderHref },
+  轮到你了: { label: "订单", icon: ListTodo, href: orderHref },
+  证书快到期: { label: "证书", icon: FileText, href: orderHref },
+  步骤超时: { label: "订单", icon: XCircle, href: orderHref },
+  收入未到账: { label: "收款", icon: XCircle, href: orderHref },
+};
+const metaOf = (n: Notice) =>
+  TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
 
 export default function NotificationsPage() {
   const { user } = useAuth();
@@ -55,7 +76,7 @@ export default function NotificationsPage() {
       }).catch(() => {});
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: 1 } : x)));
     }
-    const meta = TYPE_META[n.type];
+    const meta = metaOf(n);
     if (meta) router.push(meta.href(n));
   };
 
@@ -74,7 +95,7 @@ export default function NotificationsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息中心</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">工单、待办、规则、老板通知的系统提醒都在这</p>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">工单、待办、规则、老板通知和客户站订单的系统提醒都在这</p>
       </div>
 
       {loading ? (
@@ -84,7 +105,7 @@ export default function NotificationsPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {items.map((n) => {
-            const meta = TYPE_META[n.type];
+            const meta = metaOf(n);
             const Icon = meta?.icon || Bell;
             const unread = !n.is_read;
             return (

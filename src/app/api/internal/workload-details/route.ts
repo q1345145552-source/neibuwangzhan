@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       FROM orders o
       JOIN order_steps os ON os.order_id = o.id
       LEFT JOIN business_types bt ON o.business_type_id = bt.id
-      WHERE (${clause}) AND os.status NOT IN ('已完成','已停止')
+      WHERE (${clause}) AND os.status NOT IN ('已完成','已停止','已跳过')
       GROUP BY o.id
       ORDER BY o.created_at DESC
     `).all(...params);

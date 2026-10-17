@@ -80,9 +80,11 @@ export async function DELETE(
   if (!note_id) return NextResponse.json({ error: "缺少 note_id" }, { status: 400 });
 
   const numId = Number(note_id);
-  const existing = db.prepare("SELECT * FROM step_notes WHERE id = ? AND order_id = ? AND step_id = ?").get(numId, id, stepId);
+  const existing = db.prepare("SELECT * FROM step_notes WHERE id = ? AND order_id = ? AND step_id = ?").get(numId, id, stepId) as { content?: string } | undefined;
   if (!existing) return NextResponse.json({ error: "备注不存在" }, { status: 404 });
 
   db.prepare("DELETE FROM step_notes WHERE id = ?").run(numId);
+  // 删备注留个记录（跳过原因、卡住原因也在备注里，删了要查得到是谁删的、原来写的什么，2026-10-16）
+  logOperation(auth.name, "删除订单步骤备注", "step_note", String(numId), `订单:${id} 步骤:${stepId} 原内容:${String(existing.content || "").slice(0, 500)}`);
   return NextResponse.json({ success: true });
 }

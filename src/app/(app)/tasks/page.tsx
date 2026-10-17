@@ -10,11 +10,18 @@ import type { Task } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 
+// 我的环节：卡住的放最前面（原来没有「阻塞」这一栏，卡住的环节整个不显示）；
+// 接口本来就不返回已完成的环节，「已完成」栏永远是空的，去掉（2026-10-15）
 const stepStatusColumns = [
-  { key: "待处理" as const, label: "待处理" },
+  { key: "阻塞" as const, label: "卡住" },
   { key: "进行中" as const, label: "进行中" },
-  { key: "已完成" as const, label: "已完成" },
+  { key: "待处理" as const, label: "待处理" },
 ];
+const stepColumnBg: Record<string, string> = {
+  "阻塞": "bg-[color-mix(in_oklch,var(--destructive),var(--background)_94%)]",
+  "进行中": "bg-[color-mix(in_oklch,var(--info),var(--background)_95%)]",
+  "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_95%)]",
+};
 const statusColumns = [
   { key: "pending" as const, label: "待处理" },
   { key: "in_progress" as const, label: "进行中" },
@@ -50,7 +57,7 @@ export default function TasksPage() {
   const [deletingTask, setDeletingTask] = useState(false);
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState<string[]>([]);
-  const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string; influencerId?: number; phase?: string }>>([]);
+  const [assignedSteps, setAssignedSteps] = useState<Array<{ orderId: string; stepName: string; status: string; businessType: string; influencerId?: number; phase?: string; customer?: string; viaOwner?: boolean; waiting?: boolean }>>([]);
 
   useEffect(() => {
     // ignore 标记：切换业务线筛选时，旧请求的结果不能覆盖新的
@@ -80,7 +87,8 @@ export default function TasksPage() {
           ]);
           const merged = [
             ...(Array.isArray(orderSteps) ? orderSteps : []).map((s: any) => ({
-              orderId: s.order_id, stepName: s.step_name, status: s.status, businessType: s.business_type_name || "订单"
+              orderId: s.order_id, stepName: s.step_name, status: s.status, businessType: s.business_type_name || "订单",
+              customer: s.customer_name || "", viaOwner: !!s.via_owner, waiting: s.status === "待处理" && !s.can_start,
             })),
             ...(Array.isArray(infSteps) ? infSteps : []).map((s: any) => ({
               orderId: `INF-${s.influencer_id}`, stepName: s.step_name, status: s.status, businessType: s.phase || "达人", influencerId: s.influencer_id
@@ -131,11 +139,13 @@ export default function TasksPage() {
   }, [filter, businessFilter, taskList]);
 
   const groupedSteps = useMemo(() => {
-    const result: Record<string, typeof assignedSteps> = { "待处理": [], "进行中": [], "已完成": [] };
+    const result: Record<string, typeof assignedSteps> = { "阻塞": [], "进行中": [], "待处理": [] };
     for (const step of assignedSteps) {
       const status = step.status || "待处理";
       if (result[status]) result[status].push(step);
     }
+    // 待处理里现在就能做的排前面，等前一步的排后面
+    result["待处理"].sort((a, b) => Number(!!a.waiting) - Number(!!b.waiting));
     return result;
   }, [assignedSteps]);
 
@@ -245,7 +255,11 @@ export default function TasksPage() {
       <div className="rounded-xl border border-[var(--border)] bg-[color-mix(in_oklch,var(--muted),var(--background)_50%)] p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-medium text-[var(--foreground)]">我的环节</h2>
-          <span className="text-xs text-[var(--muted-foreground)]">{assignedSteps.length} 个环节</span>
+          {(() => {
+            const shown = stepStatusColumns.reduce((n, c) => n + (groupedSteps[c.key]?.length || 0), 0);
+            const waiting = (groupedSteps["待处理"] || []).filter((x) => x.waiting).length;
+            return <span className="text-xs text-[var(--muted-foreground)]">{shown} 个环节{waiting ? `，其中 ${waiting} 个要等前一步做完` : ""}</span>;
+          })()}
         </div>
         {assignedSteps.length > 0 ? (
           <div className="grid gap-4 lg:grid-cols-3">
@@ -253,7 +267,7 @@ export default function TasksPage() {
               const colSteps = groupedSteps[col.key] || [];
               return (
                 <div key={col.key} className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]">
-                  <div className={cn("flex items-center justify-between rounded-t-xl px-4 py-3", columnBg[col.key])}>
+                  <div className={cn("flex items-center justify-between rounded-t-xl px-4 py-3", stepColumnBg[col.key])}>
                     <h3 className="text-sm font-medium text-[var(--foreground)]">{col.label}</h3>
                     <span className="inline-flex size-5 items-center justify-center rounded-full bg-[var(--muted)] text-xs font-mono tabular-nums text-[var(--muted-foreground)]">{colSteps.length}</span>
                   </div>
@@ -278,7 +292,13 @@ export default function TasksPage() {
                           )}>{item.status}</span>
                         </div>
                         <p className="text-sm text-[var(--foreground)] truncate">{item.stepName}</p>
-                        <span className="text-xs text-[var(--muted-foreground)]">{item.businessType}</span>
+                        <span className="text-xs text-[var(--muted-foreground)] truncate">{item.businessType}{item.customer ? ` · ${item.customer}` : ""}</span>
+                        {(item.waiting || item.viaOwner) && (
+                          <span className="flex flex-wrap gap-1">
+                            {item.waiting && <span className="rounded bg-[var(--muted)] px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)]">等前一步</span>}
+                            {item.viaOwner && <span className="rounded bg-[var(--muted)] px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)]" title="这一步没写经办人，算这张单负责人的">我是负责人</span>}
+                          </span>
+                        )}
                       </button>
                     ))}
                     {colSteps.length === 0 && (

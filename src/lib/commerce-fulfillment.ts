@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
-import { getOrderStepsWithDocs } from "./db";
+import { getLegacyOrderStepsWithDocs, getOrderStepsWithDocs } from "./db";
 import type { CommerceTerms } from "./commerce-types";
 
 export class CommerceTemplateError extends Error {}
@@ -89,6 +89,10 @@ const DEFINITIONS = {
  * 这里复用上面已审核、hash 锁定的公开名：整套步骤与某个模板一致就逐条套用；员工增删改过的步骤，
  * 只有所有模板对该原名给出同一公开名时才套用，其余一律显示中性名。模板变了而公开名没复核的，整套不收录。
  * 待分类单改派后是「方案确认、确认归属」+ 新业务线模板去掉其「方案确认」的整段，也按两段模板各自的公开名套用。
+ *
+ * 流程设置第 4 期（2026-10-16 老板选 1A）：流程能改名、增删、调顺序，每步在页面上填「客户看到的名字」，建单时记进 order_steps.public_name。
+ * 有记下名字的步骤直接用它（orderPublicStepNames）；老单没记，照旧按下面这张对照表算。对照表固定按「程序里的原样流程」建，
+ * 不跟着流程设置变：流程改了名，老单客户看到的名字也不变，不会因此给客户发一轮进度通知。
  */
 export const NEUTRAL_PUBLIC_STEP_NAME = "办理事项";
 type PublicNameSpec = {
@@ -107,7 +111,7 @@ function buildPublicNameIndex(): PublicNameIndex {
   const byTail = new Map<string, readonly string[]>();
   let claimed: PublicNameIndex["claimed"];
   const add = (businessId: number, subService: string, addressType: string, namesHash: string, publicNames: readonly string[]) => {
-    const names = getOrderStepsWithDocs(businessId, subService, addressType).map(step => step.name);
+    const names = getLegacyOrderStepsWithDocs(businessId, subService, addressType).map(step => step.name);
     if (names.length !== publicNames.length || createHash("sha256").update(JSON.stringify(names)).digest("hex") !== namesHash) return;
     byTemplate.set(JSON.stringify(names), publicNames);
     if (subService === "storefront-unclassified") claimed = { names: names.slice(0, 2), publicNames: publicNames.slice(0, 2) };
@@ -128,6 +132,11 @@ function buildPublicNameIndex(): PublicNameIndex {
   }
   return { byTemplate, byName, byTail, claimed };
 }
+/** 这一整套步骤是否在上面已审核的模板里（流程设置只读页用来标「客户看到的名字已核对」） */
+export function isReviewedStepTemplate(names: readonly string[]): boolean {
+  const index = publicNameIndex ??= buildPublicNameIndex();
+  return index.byTemplate.has(JSON.stringify(names));
+}
 export function publicStepNames(names: readonly string[]): string[] {
   const index = publicNameIndex ??= buildPublicNameIndex();
   const whole = index.byTemplate.get(JSON.stringify(names));
@@ -138,6 +147,17 @@ export function publicStepNames(names: readonly string[]): string[] {
     if (tail) return [...claimed.publicNames, ...tail];
   }
   return names.map(name => index.byName.get(name) ?? NEUTRAL_PUBLIC_STEP_NAME);
+}
+
+/**
+ * 一张单给客户看的步骤名：建单时记下了「客户看到的名字」的步骤用记下的（流程设置第 4 期起建的单每步都有）；
+ * 没记的（老单）照旧按对照表算，跟以前一模一样。
+ */
+export function orderPublicStepNames(rows: readonly { step_name: string; public_name?: string | null }[]): string[] {
+  const saved = rows.map(row => (row.public_name || "").trim());
+  if (saved.every(Boolean)) return saved;
+  const legacy = publicStepNames(rows.map(row => row.step_name));
+  return rows.map((_, i) => saved[i] || legacy[i]);
 }
 
 /** Select only a reviewed original workflow; nothing in a product name controls dispatch. */
@@ -163,7 +183,10 @@ export function commerceWorkflow(db: Database.Database, terms: CommerceTerms) {
   if (!business) throw new CommerceTemplateError(definition.businessName + "业务线不存在，订单尚未创建");
   if (definition.businessId >= 0 && business.id !== definition.businessId) throw new CommerceTemplateError(definition.businessName + "流程编号需核对，订单尚未创建");
   const steps = getOrderStepsWithDocs(business.id, subService, definition.addressType);
-  if (steps.length !== publicNames.length || createHash("sha256").update(JSON.stringify(steps.map(s=>s.name))).digest("hex") !== namesHash)
+  // 流程设置里发布过的版本每步都带「客户看到的名字」：照它建单（改了名、增减了步骤也照常接单，1A）；
+  // 程序里的原样流程没有这一栏，照旧核对步骤名指纹、用上面审核过的名字，对不上就不接（程序里被改过、还没导入）
+  const saved = steps.every(step => (step.public_name || "").trim()) ? steps.map(step => step.public_name!.trim()) : null;
+  if (!saved && (steps.length !== publicNames.length || createHash("sha256").update(JSON.stringify(steps.map(s=>s.name))).digest("hex") !== namesHash))
     throw new CommerceTemplateError(definition.businessName + "流程已变化，公开步骤映射需复核");
-  return { ...definition, subService, namesHash, publicNames, businessId: business.id, steps };
+  return { ...definition, subService, namesHash, publicNames: saved ?? publicNames, businessId: business.id, steps };
 }

@@ -20,6 +20,12 @@ export interface Order {
   created_at: string;
   updated_at: string;
   steps?: OrderStep[];
+  /** 订单列表摘要（只有员工拿到，2026-10-16） */
+  source_order_no?: string;
+  progress?: { total: number; closed: number; current_step: string; current_assignee: string; more_active: number; blocked: string[]; overdue?: { step: string; elapsed: number; expected: number } | null };
+  payment?: { arrived: number; arrived_other: number; waiting: number; has_income: boolean; has_arrived: boolean; client_billing?: string | null };
+  /** 订单详情：客户站来的单，客户站账单 paid / unpaid */
+  client_billing?: string | null;
 }
 
 export interface OrderStep {
@@ -38,6 +44,9 @@ export interface OrderStep {
   completed_at: string | null;
   created_at: string;
   started_at?: string | null;
+  /** 按流程设置里哪一版建的（2026-10-16）；导入前建的单没有 */
+  template_version_id?: number | null;
+  expected_days?: number | null;
 }
 
 export interface BusinessType {
@@ -299,6 +308,8 @@ export interface EmployeeFile {
 
 export interface Document {
   publication_verified?: number;
+  /** 客户在客户站交来、客户还没撤回（不能直接删，要退回） */
+  live_submission?: number;
   id: number;
   order_id: string;
   name: string;
@@ -420,6 +431,8 @@ export async function createOrder(data: {
   monthly_rent?: number;
   currency?: string;
   trademark_name?: string;
+  /** 客户管理里没有、当场新建（2A） */
+  new_customer?: boolean;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -431,7 +444,7 @@ export async function createOrder(data: {
   return resData as Order;
 }
 
-export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string; cancel?: boolean; restore?: boolean; cancel_reason?: string }>) {
+export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string; cancel?: boolean; restore?: boolean; cancel_reason?: string; new_customer?: boolean }>) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -447,7 +460,7 @@ export async function deleteOrder(id: string) {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error("删除订单失败");
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error || "删除订单失败");
   return res.json();
 }
 
@@ -474,7 +487,7 @@ export async function createEmployee(data: { name: string; email: string; role?:
   return res.json();
 }
 
-export async function updateStep(orderId: string, stepId: number, data: { status?: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number }) {
+export async function updateStep(orderId: string, stepId: number, data: { status?: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number; reason?: string }) {
   const res = await fetch(`/api/orders/${orderId}/steps`, {
     method: "PATCH",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -516,7 +529,7 @@ export async function deleteDocument(orderId: string, documentId: number) {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ document_id: documentId }),
   });
-  if (!res.ok) throw new Error("删除文档失败");
+  if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || "删除文档失败");
   return res.json();
 }
 
@@ -542,7 +555,7 @@ export async function updateFinance(orderId: string, financeId: number, data: Pa
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ finance_id: financeId, ...data }),
   });
-  if (!res.ok) throw new Error("更新费用失败");
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error || "更新费用失败");
   return res.json() as Promise<Finance>;
 }
 
@@ -552,7 +565,7 @@ export async function deleteFinance(orderId: string, financeId: number) {
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ finance_id: financeId }),
   });
-  if (!res.ok) throw new Error("删除费用失败");
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error || "删除费用失败");
   return res.json();
 }
 
@@ -737,7 +750,7 @@ export async function deleteGlobalDocument(id: number) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('删除文档失败');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || '删除文档失败');
   return res.json();
 }
 

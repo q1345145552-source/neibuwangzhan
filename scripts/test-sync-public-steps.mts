@@ -26,7 +26,9 @@ async function main() {
   db.prepare("INSERT INTO employees(name,email,role,password,status) VALUES ('LEFT_STAFF','left@example.invalid','employee','x','离职')").run();
   const activeStaff = (db.prepare("SELECT DISTINCT name FROM employees WHERE role IN ('admin','employee') AND status='在职' AND name<>''").all() as { name: string }[]).map(r => r.name).sort();
   const UNCLASSIFIED = '待分类订单待领取';
-  const recipients = (no: string, title: string) => (db.prepare('SELECT recipient FROM notifications WHERE related_id=? AND title=? ORDER BY recipient').all(no, title) as { recipient: string }[]).map(r => r.recipient);
+  // 10-16 起提醒挂办理单号：按客户站单号找它拆出来的办理单
+  const OF_SOURCE = "(related_id=? OR related_id IN (SELECT internal_order_id FROM sync_inbox WHERE source_order_no=? AND internal_order_id IS NOT NULL))";
+  const recipients = (no: string, title: string) => (db.prepare(`SELECT recipient FROM notifications WHERE ${OF_SOURCE} AND title=? ORDER BY recipient`).all(no, no, title) as { recipient: string }[]).map(r => r.recipient);
   const buyer = { id: 'buyer-public-steps', name: 'SYNTHETIC_BUYER', email: 'buyer@example.invalid' };
   let serial = 0;
   function payload(no: string, skus: string[], source = 'storefront') {
@@ -43,7 +45,7 @@ async function main() {
     return json;
   }
   const countAlerts = (no: string, title: string) =>
-    (db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE related_id=? AND title=?').get(no, title) as { n: number }).n;
+    (db.prepare(`SELECT COUNT(*) AS n FROM notifications WHERE ${OF_SOURCE} AND title=?`).get(no, no, title) as { n: number }).n;
   async function order(sku: string) {
     const no = `PUB-${++serial}-${sku}`;
     const json = await send(payload(no, [sku]));
@@ -148,7 +150,7 @@ async function main() {
     await send(payload(no, ['COM-005', 'OTH-003']));
     assert.deepEqual(recipientsOf(no), activeStaff);
     assert(!recipientsOf(no).includes('LEFT_STAFF') && !recipientsOf(no).includes(''));
-    const body = (db.prepare('SELECT body FROM notifications WHERE related_id=? AND title=? LIMIT 1').get(no, NEW_ORDER) as { body: string }).body;
+    const body = (db.prepare(`SELECT body FROM notifications WHERE ${OF_SOURCE} AND title=? LIMIT 1`).get(no, no, NEW_ORDER) as { body: string }).body;
     assert.match(body, /公司注册/); assert.match(body, /地址认证/); assert.match(body, /SYNTHETIC_BUYER/);
     assert.equal(countAlerts(no, UNCLASSIFIED), 0);
   });
@@ -160,9 +162,14 @@ async function main() {
   });
   await test('mixed order: each staff member gets one new-order and one 待领取 reminder', async () => {
     const no = `NEW-${++serial}`;
-    await send(payload(no, ['COM-001', 'TAX-005', 'OTH-007']));
+    const json = await send(payload(no, ['COM-001', 'TAX-005', 'OTH-007']));
     assert.deepEqual(recipientsOf(no), activeStaff);
     assert.deepEqual(recipients(no, UNCLASSIFIED), activeStaff);
+    // 点开进对的单：待领取提醒挂待分类那张，新单提醒挂第一张对上业务线的
+    const idOf = (line: number) => json.results.find((r: { line_no: number }) => r.line_no === line).order_id as string;
+    const linked = (title: string) => [...new Set((db.prepare(`SELECT related_id FROM notifications WHERE ${OF_SOURCE} AND title=?`).all(no, no, title) as { related_id: string }[]).map(r => r.related_id))];
+    assert.deepEqual(linked(UNCLASSIFIED), [idOf(2)]);
+    assert.deepEqual(linked(NEW_ORDER), [idOf(1)]);
   });
   await test('resending the same order does not repeat reminders', async () => {
     const no = `NEW-${++serial}`;
@@ -187,11 +194,15 @@ async function main() {
     const response = await notifications.PATCH(new NextRequest('http://fixture.invalid/api/notifications', { method: 'PATCH',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ markAll: true }) }));
     assert.equal(response.status, 200);
-    const unread = (name: string) => (db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE related_id=? AND recipient=? AND is_read=0').get(no, name) as { n: number }).n;
+    const unread = (name: string) => (db.prepare(`SELECT COUNT(*) AS n FROM notifications WHERE ${OF_SOURCE} AND recipient=? AND is_read=0`).get(no, no, name) as { n: number }).n;
+    const ids = new Set((db.prepare('SELECT internal_order_id AS id FROM sync_inbox WHERE source_order_no=?').all(no) as { id: string }[]).map(r => r.id));
     assert.equal(unread(reader), 0);
     assert.equal(unread(other), 2);
-    const list = await notifications.GET(new NextRequest('http://fixture.invalid/api/notifications?unread=1', { headers: { authorization: `Bearer ${token}` } }));
-    assert(!(await list.json() as { related_id: string }[]).some(n => n.related_id === no));
+    // 10-10 起消息中心列表已读、未读都返回（不再认 unread 参数）：这两条照样列出，但必须都是已读
+    const list = await notifications.GET(new NextRequest('http://fixture.invalid/api/notifications', { headers: { authorization: `Bearer ${token}` } }));
+    const listed = (await list.json() as { related_id: string; is_read: number }[]).filter(n => ids.has(n.related_id));
+    assert.equal(listed.length, 2, JSON.stringify(listed));
+    assert(listed.every(n => n.is_read === 1), JSON.stringify(listed));
   });
 
   await test('internal-site customer views show public step names, staff views keep originals', async () => {
@@ -272,9 +283,11 @@ async function main() {
     assert.equal(published.length, steps.length);
     assert(!published.includes('办理事项'), JSON.stringify(published));
     for (const name of published) assert(!internalMarkers.test(name), name);
+    // 2026-10-15 起：改派过一次后再改业务线不再当普通编辑放行（步骤不会跟着换），直接拦下，也不会第二次重建流程
     const again = await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('商标'), sub_service_type: 'tm-reg' });
-    assert.equal(again.status, 200);
-    assert.equal(stepsOf(o.orderId).length, steps.length, 'second change is a plain edit, no second regeneration');
+    assert.equal(again.status, 409, JSON.stringify(again.body));
+    assert.equal(stepsOf(o.orderId).length, steps.length, 'second change does not regenerate');
+    assert.equal(orderRow(o.orderId).business_type_id, btId('FDA认证'));
   });
   await test('reassign guards: started 办理并交付, cancelled order', async () => {
     const started = await order('TAX-008');
@@ -298,10 +311,14 @@ async function main() {
     assert.equal((await edit(n.orderId, { ...formOf(n.orderId), business_type_id: btId('NBTC'), sub_service_type: '' })).status, 200);
     assert.equal(stepsOf(n.orderId).length, 2 + getOrderStepsWithDocs(btId('NBTC'), '', 'client').length - 1);
   });
-  await test('ordinary edits of non-待分类 synced orders are unchanged', async () => {
+  await test('ordinary edits of non-待分类 synced orders never regenerate; moving the business line is refused', async () => {
     const o = await order('COM-001');
     const before = stepsOf(o.orderId).length;
-    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('商标') })).status, 200);
+    const bt = orderRow(o.orderId).business_type_id;
+    // 2026-10-15：改业务线步骤不会跟着换，拦下（409）；原样保存照常
+    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('商标') })).status, 409);
+    assert.equal(orderRow(o.orderId).business_type_id, bt);
+    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), description: 'note' })).status, 200);
     assert.equal(stepsOf(o.orderId).length, before);
   });
   await test('internal shop 待分类 workflow still passes its hash lock', async () => {
