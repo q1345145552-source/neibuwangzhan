@@ -31,6 +31,7 @@ export function syncMeetingReminders(): { todos: number; notifications: number }
   const now = new Date().toISOString();
 
   const hasReflection = db.prepare("SELECT id FROM meeting_reflections WHERE meeting_id = ? AND employee_name = ?");
+  const hasLinkedTodo = db.prepare("SELECT 1 FROM todos WHERE source_type='meeting' AND source_id=? AND assignee=?");
   const insReminder = db.prepare(
     "INSERT OR IGNORE INTO meeting_reminders (meeting_id, employee_name, kind) VALUES (?, ?, ?)"
   );
@@ -45,6 +46,8 @@ export function syncMeetingReminders(): { todos: number; notifications: number }
   const yesterdayMeetings = db.prepare("SELECT id, title, participants FROM meetings WHERE meeting_date = ?").all(yesterday) as { id: number; title: string; participants: string }[];
   for (const m of yesterdayMeetings) {
     for (const name of parseParticipants(m.participants)) {
+      // 新会议在安排时就已派单，次日不再额外生成一条补交待办。
+      if (hasLinkedTodo.get(String(m.id), name)) continue;
       if (hasReflection.get(m.id, name)) continue;
       const ins = insReminder.run(m.id, name, "todo");
       if (ins.changes === 0) continue;

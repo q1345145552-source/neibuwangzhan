@@ -184,6 +184,11 @@ export default function MeetingsPage() {
   const [refLoading, setRefLoading] = useState(false);
   const [storyGenerating, setStoryGenerating] = useState(false);
   const [storyError, setStoryError] = useState("");
+  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [addedParticipants, setAddedParticipants] = useState<string[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsSaving, setParticipantsSaving] = useState(false);
+  const [participantsError, setParticipantsError] = useState("");
   const onTranslated = (id: number, content: string) => {
     setReflections((rows) => rows.map((row) => row.id === id ? { ...row, content_zh: content } : row));
   };
@@ -248,7 +253,7 @@ export default function MeetingsPage() {
     setFormOpen(true);
     fetchWithAuth("/api/employees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setEmployees((Array.isArray(d) ? d : []).filter((e: any) => e.role === "employee" && e.status === "在职").map((e: any) => ({ id: e.id, name: e.name }))))
+      .then((d) => setEmployees((Array.isArray(d) ? d : []).filter((e: any) => e.role === "employee" && ["在职", "试用期", "待离职"].includes(e.status)).map((e: any) => ({ id: e.id, name: e.name }))))
       .catch(() => setEmployees([]));
   };
 
@@ -285,9 +290,45 @@ export default function MeetingsPage() {
 
   const openMeeting = (m: Meeting) => {
     setDetailMeeting(m);
+    setParticipantsOpen(false);
     setStoryError("");
     setReflections([]);
     loadReflections(m.id);
+  };
+
+  const openAddParticipants = async () => {
+    setParticipantsOpen(true);
+    setAddedParticipants([]);
+    setParticipantsError("");
+    setParticipantsLoading(true);
+    setEmployees([]);
+    try {
+      const res = await fetchWithAuth("/api/employees", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "员工列表加载失败，请重试");
+      setEmployees((Array.isArray(data) ? data : []).filter((e: any) => e.role === "employee" && ["在职", "试用期", "待离职"].includes(e.status)).map((e: any) => ({ id: e.id, name: e.name })));
+    } catch (error) {
+      setParticipantsError(error instanceof Error ? error.message : "员工列表加载失败，请重试");
+    } finally { setParticipantsLoading(false); }
+  };
+
+  const saveAddedParticipants = async () => {
+    if (!detailMeeting || participantsSaving || !addedParticipants.length) return;
+    const meetingId = detailMeeting.id;
+    setParticipantsSaving(true);
+    setParticipantsError("");
+    try {
+      const res = await fetchWithAuth(`/api/meetings/${meetingId}/participants`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ participants: addedParticipants }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "新增参会人失败，请重试");
+      setDetailMeeting(meeting => meeting?.id === meetingId ? { ...meeting, participants: data.participants } : meeting);
+      setParticipantsOpen(false);
+      load();
+    } catch (error) {
+      setParticipantsError(error instanceof Error ? error.message : "新增参会人失败，请重试");
+    } finally { setParticipantsSaving(false); }
   };
 
   const generateStory = async () => {
@@ -482,9 +523,31 @@ export default function MeetingsPage() {
 
             {isAdmin ? (
               <>
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-sm font-medium text-[var(--foreground)]">参会人提交情况（{parseList(detailMeeting.participants).length} 人）</h4>
+                  <Button size="sm" variant="outline" onClick={openAddParticipants} disabled={participantsLoading || participantsSaving}>新增参会人</Button>
                 </div>
+                {participantsOpen && (
+                  <section aria-label="新增参会人" className="mt-2 min-w-0 rounded-xl border border-[var(--border)] p-3">
+                    <p className="text-xs text-[var(--muted-foreground)]">新增后自动派发会议紧急待办</p>
+                    {participantsLoading ? <p className="mt-2 text-sm">加载中…</p> : (
+                      <div className="mt-2 flex max-h-48 flex-col overflow-y-auto">
+                        {employees.filter(e => !parseList(detailMeeting.participants).includes(e.name)).map(e => (
+                          <label key={e.id} className="flex min-w-0 cursor-pointer items-center gap-2 py-2 text-sm">
+                            <input type="checkbox" className="size-4 shrink-0" checked={addedParticipants.includes(e.name)} disabled={participantsSaving} onChange={() => setAddedParticipants(names => names.includes(e.name) ? names.filter(name => name !== e.name) : [...names, e.name])} />
+                            <span className="min-w-0 break-words">{e.name}</span>
+                          </label>
+                        ))}
+                        {!employees.some(e => !parseList(detailMeeting.participants).includes(e.name)) && !participantsError && <p className="py-2 text-sm text-[var(--muted-foreground)]">没有可新增的员工</p>}
+                      </div>
+                    )}
+                    {participantsError && <p role="alert" className="mt-2 break-words text-xs text-[var(--destructive)]">{participantsError}</p>}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" onClick={saveAddedParticipants} disabled={participantsLoading || participantsSaving || !addedParticipants.length}>{participantsSaving ? "保存中…" : "确认新增"}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setParticipantsOpen(false)} disabled={participantsSaving}>取消</Button>
+                    </div>
+                  </section>
+                )}
                 {refLoading ? (
                   <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
                 ) : (

@@ -1,4 +1,5 @@
 import { publishBossSubmission } from "@/lib/boss-submissions";
+import { completeMeetingTodos } from "@/lib/meeting-todos";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -51,7 +52,10 @@ export async function PATCH(
     const saved = db.prepare(
     "UPDATE meeting_reflections SET content = ?, content_zh = '', images = ?, status = '已提交', updated_at = datetime('now') WHERE id = ? AND status = '退回'"
   ).run(String(content).trim(), JSON.stringify(imgUrls), reflection.id);
-    if (saved.changes) publishBossSubmission(db, "meeting", reflection.id, auth.name, `重新提交了会议心得（会议 #${id}）`);
+    if (saved.changes) {
+      publishBossSubmission(db, "meeting", reflection.id, auth.name, `重新提交了会议心得（会议 #${id}）`);
+      completeMeetingTodos(db, auth.name, reflection.meeting_id);
+    }
     return saved.changes;
   })();
   if (!submitted) return NextResponse.json({ error: "心得状态已变化，请刷新后重试" }, { status: 409 });

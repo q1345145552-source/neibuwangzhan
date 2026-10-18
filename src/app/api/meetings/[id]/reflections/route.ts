@@ -1,4 +1,5 @@
 import { publishBossSubmission } from "@/lib/boss-submissions";
+import { completeMeetingTodos } from "@/lib/meeting-todos";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -65,6 +66,7 @@ export async function POST(
   ).run(meeting.id, auth.name, String(content).trim(), JSON.stringify(imgUrls));
 
     publishBossSubmission(db, "meeting", Number(saved.lastInsertRowid), auth.name, `提交了会议「${meeting.title}」的心得`);
+    completeMeetingTodos(db, auth.name, meeting.id);
     return saved;
   })();
   logOperation(auth.name, "提交会议心得", "meeting_reflection", String(result.lastInsertRowid), meeting.title);

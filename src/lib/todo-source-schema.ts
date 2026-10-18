@@ -9,6 +9,8 @@ export function ensureTodoSourceSchema(db: Database.Database) {
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_todos_source ON todos(source_type,source_id,assignee);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_work_report_source ON todos(source_id,assignee)
-      WHERE source_type='work_report' AND source_id<>''`);
+      WHERE source_type='work_report' AND source_id<>'';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_meeting_source ON todos(source_id,assignee)
+      WHERE source_type='meeting' AND source_id<>''`);
   })();
 }
