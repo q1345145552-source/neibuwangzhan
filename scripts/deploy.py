@@ -83,6 +83,27 @@ BUILD_FLAGS = "--no-cache" if NO_CACHE else ""
 SKIP_PUSH = os.environ.get("SKIP_PUSH", "0") == "1"
 SKIP_BACKUP = os.environ.get("SKIP_BACKUP", "0") == "1"
 
+# ── 作用域硬限制 ────────────────────────────────────────────────────────────
+# 本系统在 187.127.108.58 上只有一个容器 neibuxitong。
+# 同机还有 shuiwuxitong(税务) / zijianzhan / postiz-* / hermes-agent-* 等**其他项目**，
+# 一律不得触碰。这里做硬锁：容器名与 compose 服务名必须都等于 ALLOWED_CONTAINER，
+# 否则直接拒绝执行。要换目标必须改源码，不能靠环境变量绕过。
+ALLOWED_CONTAINER = "neibuxitong"
+
+
+def assert_scope() -> None:
+    if CONTAINER != ALLOWED_CONTAINER:
+        die(
+            f"作用域被限制为容器 '{ALLOWED_CONTAINER}'，拒绝操作 '{CONTAINER}'。\n"
+            "  本机还有 shuiwuxitong / zijianzhan / postiz-* / hermes-agent-* 等其他项目的容器，"
+            "不允许触碰。\n"
+            "  确需更换目标请修改 scripts/deploy.py 的 ALLOWED_CONTAINER，不要用环境变量绕过。"
+        )
+    if SVC != ALLOWED_CONTAINER:
+        die(
+            f"作用域被限制为 compose 服务 '{ALLOWED_CONTAINER}'，拒绝操作 '{SVC}'。"
+        )
+
 REPO_DIR = Path(__file__).resolve().parent.parent
 
 # 每条远端命令都强制 bash + ERR 陷阱，链式命令中间失败也会立刻中止。
@@ -331,6 +352,11 @@ def main() -> int:
         print(f"已加载配置文件：{_env_file}")
     os.chdir(REPO_DIR)
 
+    # 作用域硬锁：只允许操作 neibuxitong，绝不碰同机其他项目的容器
+    assert_scope()
+    print(f"作用域确认：容器={CONTAINER}  compose服务={SVC}  目录={APP_DIR}  数据={DATA_DIR}")
+    print("（同机的 shuiwuxitong / zijianzhan / postiz-* / hermes-agent-* 不在本次操作范围内）")
+
     global client
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -493,7 +519,14 @@ def main() -> int:
             print(run(f"tail -40 {build_log} 2>/dev/null || true", check=False, quiet=True))
             die(f"镜像构建失败（docker compose build 退出码 {build_rc_value}，详见上方日志）")
         ok(f"镜像构建完成（build 退出码 0，用时约 {time.monotonic() - (deadline - 1800):.0f}s）")
-        run(f"cd {APP_DIR} && docker compose up -d {SVC} && docker image prune -f >/dev/null", timeout=600)
+        # 只启动本项目的服务。镜像清理**必须**限定在 neibuxitong 这个 compose 项目，
+        # 不能用全局 `docker image prune -f`——那会删掉同机其他项目的悬空镜像。
+        run(f"cd {APP_DIR} && docker compose up -d {SVC}", timeout=600)
+        run(
+            "docker image prune -f --filter 'label=com.docker.compose.project=neibuxitong' "
+            ">/dev/null 2>&1 || true",
+            check=False, quiet=True,
+        )
         ok("容器已启动")
 
         # ── 7) 验证 ──────────────────────────────────────────────────────────

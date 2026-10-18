@@ -164,6 +164,16 @@ RUN_ID=""
 # ─────────────────────────────────────────────────────────────
 # 1) git push
 # ─────────────────────────────────────────────────────────────
+# ── 作用域硬限制 ────────────────────────────────────────────────────────────
+# 本系统在 187.127.108.58 上只有一个容器 neibuxitong。
+# 同机还有 shuiwuxitong(税务) / zijianzhan / postiz-* / hermes-agent-* 等**其他项目**，
+# 一律不得触碰。容器名与 compose 服务名必须都等于 ALLOWED_CONTAINER，否则拒绝执行。
+ALLOWED_CONTAINER="neibuxitong"
+[ "${CONTAINER}" = "$ALLOWED_CONTAINER" ] || die "作用域被限制为容器 '$ALLOWED_CONTAINER'，拒绝操作 '$CONTAINER'（同机其他项目的容器不允许触碰）"
+[ "${SVC}" = "$ALLOWED_CONTAINER" ] || die "作用域被限制为 compose 服务 '$ALLOWED_CONTAINER'，拒绝操作 '$SVC'"
+echo "作用域确认：容器=$CONTAINER  compose服务=$SVC  目录=$APP_DIR  数据=$DATA_DIR"
+echo "（同机的 shuiwuxitong / zijianzhan / postiz-* / hermes-agent-* 不在本次操作范围内）"
+
 step 1 "git push（本地 -> origin/$BRANCH）"
 if [ "$SKIP_PUSH" = "1" ]; then
   echo "（SKIP_PUSH=1，跳过）"
@@ -314,8 +324,10 @@ if [ "$BUILD_FAILED" = "1" ]; then
 fi
 [ "$BUILT" = "1" ] || { ssh_exec "tail -30 '$BUILD_LOG' 2>/dev/null" || true; die "镜像构建超时（1800s）或未出现完成标记"; }
 ok "镜像构建完成"
-ssh_exec "cd '$APP_DIR' && docker compose up -d '$SVC' && docker image prune -f >/dev/null" \
+ssh_exec "cd '$APP_DIR' && docker compose up -d '$SVC'" \
   || die "容器启动失败，请上去看 docker compose logs"
+# 镜像清理必须限定在本 compose 项目内，不能全局 prune（会删其他项目的悬空镜像）
+ssh_exec "docker image prune -f --filter 'label=com.docker.compose.project=neibuxitong' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
 ok "容器已启动"
 
 # ─────────────────────────────────────────────────────────────

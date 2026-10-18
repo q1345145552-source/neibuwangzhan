@@ -9,6 +9,26 @@
 
 > **怎么选**：如果跑 `sshpass` 报 `Failed to get a pseudo terminal`，说明当前环境不给伪终端（沙箱常见），换 `deploy.py`。
 
+## ⛔ 作用域限制：只允许操作 `neibuxitong`
+
+服务器 `187.127.108.58` 上**只有 `neibuxitong` 这一个容器属于本系统**。同机还跑着
+`shuiwuxitong`（税务系统）、`zijianzhan`、`postiz-*`、`hermes-agent-*` 等**其他项目**，
+**一律不得触碰**。
+
+脚本里做了**硬锁**（`ALLOWED_CONTAINER = "neibuxitong"`）：
+容器名或 compose 服务名只要不等于 `neibuxitong`，**在连接服务器之前就直接拒绝执行**。
+不能用环境变量 `CONTAINER=` / `SVC=` 绕过——要换目标必须改源码。
+
+已明确消除的越界操作：
+
+| 原操作 | 问题 | 现在 |
+|---|---|---|
+| `docker image prune -f` | **全局**清理，会删掉整台机器上所有项目的悬空镜像 | 改为按 compose 项目标签定向清理：`--filter 'label=com.docker.compose.project=neibuxitong'` |
+| `docker compose build/up` | 默认只作用于本项目 compose 项目 | 保持，且 `up -d` 明确指定服务名 |
+| `docker stop/inspect/logs/exec` | 均显式指定 `neibuxitong` | 保持 |
+
+允许的读操作例外：诊断时可读其他容器的 `docker ps` / `logs`（只读），但**不执行任何写操作**。
+
 ## 用法
 
 ```bash
