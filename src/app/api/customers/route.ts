@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
@@ -349,7 +350,10 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const total = db.prepare("SELECT COALESCE(SUM(points), 0) as total FROM points_records WHERE employee_name = ? AND rule_key IN ('customer_followup','customer_claim','customer_activate','customer_upgrade','customer_deal') AND status != '已撤销'").get(auth.name!) as { total: number };
     if (total.total < amount) return NextResponse.json({ error: `积分不足，当前销售积分: ${total.total}` }, { status: 400 });
-    db.prepare("INSERT INTO point_withdrawals (employee_name, amount) VALUES (?, ?)").run(auth.name!, amount);
+    db.transaction(() => {
+      const saved = db.prepare("INSERT INTO point_withdrawals (employee_name, amount) VALUES (?, ?)").run(auth.name!, amount);
+      publishBossSubmission(db, "withdrawal", Number(saved.lastInsertRowid), auth.name, `提交了 ${amount} 积分的提现申请`);
+    })();
     return NextResponse.json({ success: true, message: "提现申请已提交，等待管理员审核" });
   }
 

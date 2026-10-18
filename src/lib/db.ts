@@ -4,6 +4,7 @@ import { initializeSyncSchema } from "./sync-schema";
 import { ensureAccessSchema } from "./access-schema";
 import { ensureWorkflowSchema } from "./workflow-schema";
 import { ensureShopeeAftercareSchema } from "./shopee-aftercare-schema";
+import { ensureBossSubmissionSchema } from "./boss-submissions";
 import { expandLegacyCheck } from "./legacy-check-schema";
 import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
@@ -23,6 +24,7 @@ export function getDb(): Database.Database {
       database.pragma("foreign_keys = ON");
       initTables(database);
       ensureShopeeAftercareSchema(database);
+      ensureBossSubmissionSchema(database);
       seedData(database);
       migrateInfluencersCheck(database);
       migrateEmployeeStatusCheck(database);

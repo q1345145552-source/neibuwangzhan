@@ -1206,7 +1206,7 @@ export default function InternalPage() {
 
       {/* ── 补卡审批 (管理员) ── */}
       {isAdmin && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div id="attendance-requests" className="scroll-mt-4 rounded-xl border border-[var(--border)] bg-[var(--background)]">
           <div className="px-5 py-4 border-b border-[var(--border)]">
             <h2 className="text-sm font-medium flex items-center gap-2"><History className="size-4" />补卡审批</h2>
           </div>

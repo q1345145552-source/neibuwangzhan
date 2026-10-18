@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchWithAuth } from "@/lib/api";
+import { reflectionSubmissionRevision } from "@/lib/boss-submission-types";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
@@ -273,7 +274,11 @@ export default function MeetingsPage() {
     setRefLoading(true);
     fetchWithAuth(`/api/meetings/${meetingId}/reflections`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setReflections(Array.isArray(d) ? d : []))
+      .then((d) => {
+        const rows: Reflection[] = Array.isArray(d) ? d : [];
+        setReflections(rows);
+        if (isAdmin) void fetchWithAuth("/api/boss-supervision/pending/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: "meeting", items: rows.filter(row => row.status === "已提交").map(row => ({ id: row.id, revision: reflectionSubmissionRevision(row) })) }) }).catch(() => {});
+      })
       .catch(() => setReflections([]))
       .finally(() => setRefLoading(false));
   };

@@ -320,6 +320,9 @@ export default function WorkReportsPage() {
 
   const openDetail = (r: WorkReport) => {
     setDetail(r);
+    if (isAdmin && r.status === "已提交") {
+      void fetchWithAuth("/api/boss-supervision/pending/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: "report", items: [{ id: r.id, revision: r.submitted_at || r.created_at || "" }] }) }).catch(() => {});
+    }
     setReviewRating(r.boss_rating || 0);
     setReviewComment(r.boss_comment || "");
     setReviewErr("");

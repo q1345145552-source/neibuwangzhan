@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -58,10 +59,14 @@ export async function POST(
   if (!content || !String(content).trim()) return NextResponse.json({ error: "请填写心得内容" }, { status: 400 });
 
   const imgUrls = [...new Set(parseList(images))];
-  const result = db.prepare(
+  const result = db.transaction(() => {
+    const saved = db.prepare(
     "INSERT INTO meeting_reflections (meeting_id, employee_name, content, images, status) VALUES (?, ?, ?, ?, '已提交')"
   ).run(meeting.id, auth.name, String(content).trim(), JSON.stringify(imgUrls));
 
+    publishBossSubmission(db, "meeting", Number(saved.lastInsertRowid), auth.name, `提交了会议「${meeting.title}」的心得`);
+    return saved;
+  })();
   logOperation(auth.name, "提交会议心得", "meeting_reflection", String(result.lastInsertRowid), meeting.title);
   return NextResponse.json(db.prepare("SELECT * FROM meeting_reflections WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
 }

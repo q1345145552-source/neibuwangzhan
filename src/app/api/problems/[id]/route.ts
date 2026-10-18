@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation, sendNotification } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -166,9 +167,14 @@ export async function PATCH(
     if (!resolve_note?.trim()) {
       return NextResponse.json({ error: "请填写解决说明" }, { status: 400 });
     }
-    db.prepare(
-      "UPDATE problems SET status = '老板验收', resolve_note = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(resolve_note.trim(), id);
+    const submitted = db.transaction(() => {
+      const saved = db.prepare(
+        "UPDATE problems SET status = '老板验收', resolve_note = ?, updated_at = datetime('now') WHERE id = ? AND status = '跟进中'"
+      ).run(resolve_note.trim(), id);
+      if (saved.changes) publishBossSubmission(db, "problem", Number(id), problem.assignee, `解决了问题 ${problem.problem_number}，等待验收：${resolve_note.trim()}`);
+      return saved.changes;
+    })();
+    if (!submitted) return NextResponse.json({ error: "问题状态已变化，请刷新后重试" }, { status: 409 });
     logOperation(auth.name, "标记问题已解决（待老板验收）", "problem", String(id), resolve_note.trim());
   } else if (status === "搁置") {
     // 搁置：必须填搁置原因（已解决/搁置中不可再搁置）

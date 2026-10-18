@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
-import { isSupervisionAlert } from "@/lib/notification-types";
+import { isSupervisionAlert, bossSubmissionNoticeHref } from "@/lib/notification-types";
 import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
 
 interface Notice {
@@ -48,7 +48,7 @@ const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { 
   收入未到账: { label: "收款", icon: XCircle, href: orderHref },
 };
 const metaOf = (n: Notice) =>
-  (isSupervisionAlert(n) ? { label: "老板监督", icon: Bell, href: () => "/boss-supervision" } : undefined) || TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
+  (bossSubmissionNoticeHref(n) ? { label: "待处理", icon: Bell, href: () => bossSubmissionNoticeHref(n)! } : undefined) || (isSupervisionAlert(n) ? { label: "老板监督", icon: Bell, href: () => "/boss-supervision" } : undefined) || TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
 
 export default function NotificationsPage() {
   const { user } = useAuth();
@@ -93,10 +93,10 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <div>
         <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息中心</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">工单、待办、规则、老板通知和客户站订单的系统提醒都在这</p>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">工单、待办、规则、老板通知、员工提交和客户站订单的系统提醒都在这</p>
       </div>
 
       {loading ? (
@@ -128,7 +128,7 @@ export default function NotificationsPage() {
                         {unread && <span className="size-1.5 rounded-full bg-red-500" />}
                       </span>
                       <span className={cn("mt-0.5 block truncate text-sm text-[var(--foreground)]", unread && "font-semibold")}>{n.title}</span>
-                      {n.body && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", isSupervisionAlert(n) ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>{n.body}</span>}
+                      {n.body && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", isSupervisionAlert(n) || bossSubmissionNoticeHref(n) ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>{n.body}</span>}
                       <span className="mt-1 block text-xs text-[var(--muted-foreground)]/70">{toThaiTime(n.created_at)}</span>
                     </span>
                   </button>

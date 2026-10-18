@@ -6,6 +6,7 @@ import { existsSync, unlinkSync } from "fs";
 import path from "path";
 import os from "os";
 import { uploadsDir } from "@/lib/uploads";
+import { publishBossSubmission, acknowledgeBossSubmission } from "@/lib/boss-submissions";
 
 const UPLOAD_DIRS = [uploadsDir, path.join(os.tmpdir(), "xiangtai-uploads")];
 
@@ -34,7 +35,7 @@ export async function PATCH(
 
   const { id } = await params;
   const db = getDb();
-  const todo = db.prepare("SELECT assignee, content, created_by FROM todos WHERE id = ?").get(id) as { assignee: string; content: string; created_by: string } | undefined;
+  const todo = db.prepare("SELECT assignee, content, created_by, status FROM todos WHERE id = ?").get(id) as { assignee: string; content: string; created_by: string; status: string } | undefined;
   if (!todo) return NextResponse.json({ error: "待办不存在" }, { status: 404 });
 
   // 权限：员工操作自己，管理员任何人
@@ -44,6 +45,19 @@ export async function PATCH(
 
   const body = await readJson(req);
   const { status, content, priority, assignee, category_id } = body;
+
+  // 独立的老板确认，不把打开详情或员工自己点完成当成老板验收。
+  if (body.action === "confirm") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可确认待办完成" }, { status: 403 });
+    const confirmed = db.transaction(() => {
+      const current = db.prepare("SELECT status FROM todos WHERE id=?").get(id) as { status: string };
+      if (current?.status !== "已完成") return false;
+      acknowledgeBossSubmission(db, "todo", Number(id), auth.name);
+      return true;
+    })();
+    if (!confirmed) return NextResponse.json({ error: "只能确认已完成的待办" }, { status: 400 });
+    return NextResponse.json({ success: true });
+  }
 
   // 编辑模式：不带 status 时，编辑工作内容/紧急程度/负责人/分类
   if (status === undefined) {
@@ -79,20 +93,31 @@ export async function PATCH(
   }
 
   if (status === "已完成") {
-    db.prepare(
-      "UPDATE todos SET status = '已完成', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
-    ).run(id);
+    const completed = db.transaction(() => {
+      const saved = db.prepare(
+        "UPDATE todos SET status = '已完成', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = '未完成'"
+      ).run(id);
+      if (saved.changes) {
+        if (auth.role === "employee") publishBossSubmission(db, "todo", Number(id), auth.name, `完成了待办「${todo.content}」，等待确认`);
+        else acknowledgeBossSubmission(db, "todo", Number(id), auth.name);
+      }
+      return saved.changes;
+    })();
+    if (!completed) return NextResponse.json(db.prepare("SELECT * FROM todos WHERE id=?").get(id));
     logOperation(auth.name, "标记待办完成", "todo", String(id));
     // 通知创建这条待办的人（跳过自己完成的）
-    if (todo.created_by && todo.created_by !== auth.name) {
+    if (todo.created_by && todo.created_by !== auth.name && !(auth.role === "employee" && db.prepare("SELECT 1 FROM employees WHERE name=? AND role='admin'").get(todo.created_by))) {
       db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
         "待办完成", "你建的待办已完成", `待办「${todo.content}」已由 ${auth.name} 完成`, todo.created_by, String(id), "todo"
       );
     }
   } else if (status === "未完成") {
-    db.prepare(
-      "UPDATE todos SET status = '未完成', completed_at = '', updated_at = datetime('now') WHERE id = ?"
-    ).run(id);
+    db.transaction(() => {
+      db.prepare(
+        "UPDATE todos SET status = '未完成', completed_at = '', updated_at = datetime('now') WHERE id = ?"
+      ).run(id);
+      db.prepare("UPDATE boss_submission_state SET confirmed_at='',confirmed_by='' WHERE category='todo' AND source_id=?").run(id);
+    })();
     logOperation(auth.name, "待办恢复未完成", "todo", String(id));
   } else {
     return NextResponse.json({ error: "无效的状态" }, { status: 400 });

@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -131,16 +132,14 @@ export async function POST(req: NextRequest) {
   }
 
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
-  const result = db.prepare(
-    "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, start_time, end_time, destination, reason, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(employee_name, leave_type || "事假", start_date, end_date, start_time || "09:00", end_time || "17:00", destination || "", reason || "", imagesJson);
+  const result = db.transaction(() => {
+    const saved = db.prepare(
+      "INSERT INTO leave_requests (employee_name, leave_type, start_date, end_date, start_time, end_time, destination, reason, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(employee_name, leave_type || "事假", start_date, end_date, start_time || "09:00", end_time || "17:00", destination || "", reason || "", imagesJson);
+    publishBossSubmission(db, "leave", Number(saved.lastInsertRowid), employee_name, `提交了${leave_type || "事假"}申请（${start_date} 至 ${end_date}）`);
+    return saved;
+  })();
   logOperation(employee_name, "提交请假", "leave", String(result.lastInsertRowid), `${leave_type || "事假"} ${start_date} ~ ${end_date}`);
-  const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
-  for (const admin of admins) {
-    db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
-      "leave_requested", "请假申请", `${employee_name} 申请${leave_type || "事假"} (${start_date} ~ ${end_date})`, admin.name, String(result.lastInsertRowid), "leave"
-    );
-  }
   return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
 }
 

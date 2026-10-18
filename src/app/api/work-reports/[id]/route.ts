@@ -1,3 +1,5 @@
+import { publishBossSubmission, acknowledgeBossSubmission } from "@/lib/boss-submissions";
+import { reportSubmissionRevision } from "@/lib/boss-submission-types";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -69,6 +71,7 @@ export async function PATCH(
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return NextResponse.json({ error: "请打 1-5 星" }, { status: 400 });
     const comment = String(body.comment || "").trim();
     db.prepare("UPDATE work_reports SET boss_rating = ?, boss_comment = ?, updated_at = datetime('now') WHERE id = ?").run(rating, comment, id);
+    if (report.status === "已提交") acknowledgeBossSubmission(db, "report", Number(id), auth.name, reportSubmissionRevision(report));
     logOperation(auth.name, "点评工作记录", "work_report", String(id), `${rating}星 ${comment}`);
 
     // 通知被点评的员工（每次点评都通知，改了也通知）
@@ -96,9 +99,14 @@ export async function PATCH(
   const planText = String(tomorrow_plan || "").trim();
   const problemsText = String(problems || "").trim();
   const now = new Date().toISOString();
-  db.prepare(
-    "UPDATE work_reports SET completed_items = ?, summary = ?, tomorrow_plan = ?, problems = ?, related_objects = ?, completed_items_zh = '', summary_zh = '', tomorrow_plan_zh = '', problems_zh = '', status = '已提交', submitted_at = ?, updated_at = datetime('now') WHERE id = ?"
+  const submitted = db.transaction(() => {
+    const saved = db.prepare(
+    "UPDATE work_reports SET completed_items = ?, summary = ?, tomorrow_plan = ?, problems = ?, related_objects = ?, completed_items_zh = '', summary_zh = '', tomorrow_plan_zh = '', problems_zh = '', status = '已提交', submitted_at = ?, updated_at = datetime('now') WHERE id = ? AND status = '退回'"
   ).run(JSON.stringify(items), summaryText, planText, problemsText, relatedJson, now, id);
+    if (saved.changes) publishBossSubmission(db, "report", Number(id), auth.name, `重新提交了 ${report.report_date} 的日报`);
+    return saved.changes;
+  })();
+  if (!submitted) return NextResponse.json({ error: "记录状态已变化，请刷新后重试" }, { status: 409 });
   logOperation(auth.name, "重新提交工作记录", "work_report", String(id), String(report.report_date));
 
   // 重新提交后重新用 AI 评估质量 + 判断风险（失败不阻断）

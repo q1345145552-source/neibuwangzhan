@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -35,19 +36,14 @@ export async function POST(req: NextRequest) {
   if (!employee_name || !date || !time) {
     return NextResponse.json({ error: "请填写必填字段" }, { status: 400 });
   }
-  // 注意：占位符数量必须与传值一致（此前漏传 photo 导致 500）
-  const result = db.prepare(
-    "INSERT INTO attendance_requests (employee_name, date, time, type, reason, photo) VALUES (?, ?, ?, '补签', ?, ?)"
-  ).run(employee_name, date, time, reason || "", body.photo || "");
+  const result = db.transaction(() => {
+    const saved = db.prepare(
+      "INSERT INTO attendance_requests (employee_name, date, time, type, reason, photo) VALUES (?, ?, ?, '补签', ?, ?)"
+    ).run(employee_name, date, time, reason || "", body.photo || "");
+    publishBossSubmission(db, "attendance", Number(saved.lastInsertRowid), employee_name, `提交了补签申请（${date} ${time}）`);
+    return saved;
+  })();
   logOperation(employee_name, "补签申请", "attendance_request", String(result.lastInsertRowid), `${date} ${time}`);
-
-  // 通知管理员
-  const admins = db.prepare("SELECT name FROM employees WHERE role = 'admin'").all() as { name: string }[];
-  for (const admin of admins) {
-    db.prepare(
-      "INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run("leave_requested", "补卡申请", `${employee_name} 申请补卡 ${date} ${time}`, admin.name, String(result.lastInsertRowid), "attendance_request");
-  }
 
   return NextResponse.json(
     db.prepare("SELECT * FROM attendance_requests WHERE id = ?").get(result.lastInsertRowid),

@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -97,9 +98,13 @@ export async function POST(req: NextRequest) {
   const planText = String(tomorrow_plan || "").trim();
   const problemsText = String(problems || "").trim();
   const now = new Date().toISOString();
-  const result = db.prepare(
+  const result = db.transaction(() => {
+    const saved = db.prepare(
     "INSERT INTO work_reports (employee_name, report_date, completed_items, summary, tomorrow_plan, problems, related_objects, status, is_backfill, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, '已提交', ?, ?)"
   ).run(auth.name, date, JSON.stringify(items), summaryText, planText, problemsText, relatedJson, isBackfill, now);
+    publishBossSubmission(db, "report", Number(saved.lastInsertRowid), auth.name, `提交了 ${date} 的日报`);
+    return saved;
+  })();
   logOperation(auth.name, "提交工作记录", "work_report", String(result.lastInsertRowid), date);
 
   // 提交后自动用 AI 评估质量 + 判断风险（失败不阻断提交，标签/风险留空）

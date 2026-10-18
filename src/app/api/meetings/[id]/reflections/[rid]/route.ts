@@ -1,3 +1,4 @@
+import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -46,9 +47,14 @@ export async function PATCH(
   if (!content || !String(content).trim()) return NextResponse.json({ error: "请填写心得内容" }, { status: 400 });
   const imgUrls = [...new Set(parseList(images))];
 
-  db.prepare(
-    "UPDATE meeting_reflections SET content = ?, content_zh = '', images = ?, status = '已提交', updated_at = datetime('now') WHERE id = ?"
+  const submitted = db.transaction(() => {
+    const saved = db.prepare(
+    "UPDATE meeting_reflections SET content = ?, content_zh = '', images = ?, status = '已提交', updated_at = datetime('now') WHERE id = ? AND status = '退回'"
   ).run(String(content).trim(), JSON.stringify(imgUrls), reflection.id);
+    if (saved.changes) publishBossSubmission(db, "meeting", reflection.id, auth.name, `重新提交了会议心得（会议 #${id}）`);
+    return saved.changes;
+  })();
+  if (!submitted) return NextResponse.json({ error: "心得状态已变化，请刷新后重试" }, { status: 409 });
   logOperation(auth.name, "重新提交会议心得", "meeting_reflection", String(reflection.id));
   return NextResponse.json(db.prepare("SELECT * FROM meeting_reflections WHERE id = ?").get(reflection.id));
 }

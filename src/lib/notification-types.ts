@@ -1,4 +1,6 @@
-// 消息中心只显示这几类通知（工单/待办/规则/老板通知），其余请假/考勤/VAT/业务线等过滤掉
+import { BOSS_SUBMISSION_TYPES, bossSubmissionHref, type BossSubmissionCategory } from "./boss-submission-types";
+
+// 通用消息类型，老板提交提醒由独立 related_type 识别。
 export const MESSAGE_CENTER_TYPES = ["工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知"] as const;
 
 // 客户站同步来的订单提醒（src/lib/order-alerts.ts 写入）。10-03 老板定：客户站新单、待分类待领取、
@@ -15,12 +17,21 @@ export function isSupervisionAlert(notice: { type: string; related_type: string;
   return notice.type === "" && notice.related_type === "boss_supervision" && SUPERVISION_ALERT_TITLES.some(title => title === notice.title);
 }
 
+export function bossSubmissionNoticeHref(notice: { type: string; related_type: string; title: string; related_id: string }): string | undefined {
+  if (notice.type !== "" || notice.related_type !== "boss_submission") return;
+  const [category, id] = notice.related_id.split(":");
+  if (!Object.hasOwn(BOSS_SUBMISSION_TYPES, category) || !/^\d+$/.test(id || "")) return;
+  const key = category as BossSubmissionCategory;
+  if (notice.title !== BOSS_SUBMISSION_TYPES[key].title) return;
+  return bossSubmissionHref(key, id);
+}
+
 /** 消息中心的筛选条件：列表和侧栏未读角标共用，保证两边口径一致 */
 export function messageCenterFilter(includeSupervision = true): { sql: string; params: string[] } {
   const types = MESSAGE_CENTER_TYPES.map(() => "?").join(",");
   const titles = CUSTOMER_SITE_ALERT_TITLES.map(() => "?").join(",");
   return {
-    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")}))` : ""})`,
-    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...(includeSupervision ? SUPERVISION_ALERT_TITLES : [])],
+    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'boss_submission' AND title IN (${Object.values(BOSS_SUBMISSION_TYPES).map(() => "?").join(",")}))` : ""})`,
+    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...(includeSupervision ? [...SUPERVISION_ALERT_TITLES, ...Object.values(BOSS_SUBMISSION_TYPES).map(type => type.title)] : [])],
   };
 }

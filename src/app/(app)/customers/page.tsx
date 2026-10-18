@@ -165,6 +165,9 @@ export default function CustomersPage() {
   const [withdrawMsg, setWithdrawMsg] = useState("");
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
+  useEffect(() => {
+    if (user?.role === "admin" && new URLSearchParams(window.location.search).get("withdrawals") === "1") setShowReviewPanel(true);
+  }, [user?.role]);
   const [dashboard, setDashboard] = useState<{potential:number;following:number;cooperated:number;dormant:number;new_this_month:number;alerts:any[];dormant_with_deals:number;dormant_no_deals:number} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [reassignTarget, setReassignTarget] = useState("");

@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest) {
   const recipient = auth.role === "admin" && body.recipient ? body.recipient : auth.name;
 
   if (markAll) {
-    db.prepare("UPDATE notifications SET is_read = 1 WHERE recipient = ?").run(recipient);
+    db.prepare(`UPDATE notifications SET is_read = 1 WHERE recipient = ?${auth.role === "admin" ? "" : " AND related_type NOT IN ('boss_submission','boss_supervision')"}`).run(recipient);
     return NextResponse.json({ success: true });
   }
   if (id) {
@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest) {
     if (auth.role === "admin") {
       db.prepare(`UPDATE notifications SET ${setClause} WHERE id = ?`).run(id);
     } else {
-      db.prepare(`UPDATE notifications SET ${setClause} WHERE id = ? AND (recipient = ? OR recipient = '')`).run(id, auth.name);
+      db.prepare(`UPDATE notifications SET ${setClause} WHERE id = ? AND (recipient = ? OR recipient = '') AND related_type NOT IN ('boss_submission','boss_supervision')`).run(id, auth.name);
     }
     return NextResponse.json({ success: true });
   }
