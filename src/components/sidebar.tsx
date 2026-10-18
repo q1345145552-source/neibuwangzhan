@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { getStoredAuthToken } from "@/lib/auth-storage";
+import { useBossPending } from "@/lib/use-boss-pending";
 import {
   BarChart3,
   Layers,
@@ -171,7 +172,7 @@ function NavSection({ items, pathname, onClose, badgeMap }: { items: typeof navi
               <item.icon className="size-4 shrink-0" />
               <span className="flex-1">{item.name}</span>
               {badge != null && badge > 0 && (
-                <span className="flex items-center justify-center size-5 rounded-full bg-red-500 text-[10px] font-semibold text-white">{badge > 99 ? "99+" : badge}</span>
+                <span aria-label={item.href === "/boss-supervision" ? `${badge} 条待处理` : undefined} className={cn("flex h-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold text-white", item.href === "/boss-supervision" ? "min-w-5 px-1" : "w-5")}>{item.href === "/boss-supervision" ? badge : badge > 99 ? "99+" : badge}</span>
               )}
             </Link>
           </li>
@@ -186,6 +187,7 @@ export function Sidebar() {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const { user, logout } = useAuth();
+  const { data: bossPending } = useBossPending();
   const router = useRouter();
   const [todoCount, setTodoCount] = useState(0);
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
@@ -314,7 +316,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "监督看板" && n.name !== "员工动态" && n.name !== "我的项目" && !(user?.role === "client" && n.name === "通知/规则"))} pathname={pathname} onClose={close} badgeMap={{ "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => n.name !== "监督看板" && n.name !== "员工动态" && n.name !== "我的项目" && !(user?.role === "client" && n.name === "通知/规则"))} pathname={pathname} onClose={close} badgeMap={{ "监督看板": bossPending?.total ?? 0, "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
