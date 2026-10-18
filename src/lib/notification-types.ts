@@ -9,12 +9,18 @@ export const MESSAGE_CENTER_TYPES = ["工单指派", "工单完成", "待办指�
 // 10-16 再加：证书快到期（到期前 60、30 天）、步骤超时（超过流程设置里的预计天数）、收入未到账（老板核对为未到账，告诉录入人和负责人）。
 export const CUSTOMER_SITE_ALERT_TITLES = ["客户站新订单", "待分类订单待领取", "客户提交了资料", "客户申请取消", "商城新订单", "客户站同步失败", "轮到你了", "证书快到期", "步骤超时", "收入未到账"] as const;
 
+// 老板监督复用空类型通知，按独立 related_type + 明确标题白名单识别，不改旧类型约束。
+export const SUPERVISION_ALERT_TITLES = ["监督关键逾期", "监督每日汇总"] as const;
+export function isSupervisionAlert(notice: { type: string; related_type: string; title: string }): boolean {
+  return notice.type === "" && notice.related_type === "boss_supervision" && SUPERVISION_ALERT_TITLES.some(title => title === notice.title);
+}
+
 /** 消息中心的筛选条件：列表和侧栏未读角标共用，保证两边口径一致 */
-export function messageCenterFilter(): { sql: string; params: string[] } {
+export function messageCenterFilter(includeSupervision = true): { sql: string; params: string[] } {
   const types = MESSAGE_CENTER_TYPES.map(() => "?").join(",");
   const titles = CUSTOMER_SITE_ALERT_TITLES.map(() => "?").join(",");
   return {
-    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})))`,
-    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES],
+    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")}))` : ""})`,
+    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...(includeSupervision ? SUPERVISION_ALERT_TITLES : [])],
   };
 }

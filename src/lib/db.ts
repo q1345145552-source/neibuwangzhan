@@ -1359,6 +1359,17 @@ function initTables(database: Database.Database) {
     );
   `);
 
+  // 老板监督提醒：仅新增状态表；实际推送去重复用现有 reminder_log。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS supervision_reminder_state (
+      item_key TEXT PRIMARY KEY,
+      fingerprint TEXT NOT NULL,
+      generation INTEGER NOT NULL DEFAULT 1,
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+      last_seen_at TEXT NOT NULL
+    );
+  `);
+
   // 通知/规则：独立于旧通知的落实流程；仅增表，保留旧数据。
   database.exec(`
     CREATE TABLE IF NOT EXISTS notice_rules (

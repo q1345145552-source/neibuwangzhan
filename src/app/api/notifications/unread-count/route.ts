@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
 
   const db = getDb();
-  const filter = messageCenterFilter();
+  const filter = messageCenterFilter(auth.role === "admin");
   const row = db.prepare(
     `SELECT COUNT(*) AS count FROM notifications
      WHERE hidden = 0 AND is_read = 0

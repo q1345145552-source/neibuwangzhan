@@ -6,6 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
+import { isSupervisionAlert } from "@/lib/notification-types";
 import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
 
 interface Notice {
@@ -47,7 +48,7 @@ const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { 
   收入未到账: { label: "收款", icon: XCircle, href: orderHref },
 };
 const metaOf = (n: Notice) =>
-  TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
+  (isSupervisionAlert(n) ? { label: "老板监督", icon: Bell, href: () => "/boss-supervision" } : undefined) || TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
 
 export default function NotificationsPage() {
   const { user } = useAuth();
@@ -127,7 +128,7 @@ export default function NotificationsPage() {
                         {unread && <span className="size-1.5 rounded-full bg-red-500" />}
                       </span>
                       <span className={cn("mt-0.5 block truncate text-sm text-[var(--foreground)]", unread && "font-semibold")}>{n.title}</span>
-                      {n.body && <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{n.body}</span>}
+                      {n.body && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", isSupervisionAlert(n) ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>{n.body}</span>}
                       <span className="mt-1 block text-xs text-[var(--muted-foreground)]/70">{toThaiTime(n.created_at)}</span>
                     </span>
                   </button>
