@@ -115,6 +115,18 @@ export default function FinancePage() {
   const [showShopDetail, setShowShopDetail] = useState(false);
 
   useEffect(() => {
+    if (loading) return;
+    const openShopGroup = () => {
+      if (window.location.hash !== "#shop-fees") return;
+      setShowShopDetail(true);
+      document.getElementById("shop-fees")?.scrollIntoView({ block: "start" });
+    };
+    openShopGroup();
+    window.addEventListener("hashchange", openShopGroup);
+    return () => window.removeEventListener("hashchange", openShopGroup);
+  }, [loading]);
+
+  useEffect(() => {
     fetchWithAuth("/api/shop-fees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setShopFees(previous => [...new Map([...(Array.isArray(d) ? d as ShopFeeRecord[] : []), ...previous].map(fee => [fee.id, fee])).values()]))
@@ -375,7 +387,7 @@ export default function FinancePage() {
       </div>
 
       {/* 店铺管理分组 */}
-      <div>
+      <div id="shop-fees" className="scroll-mt-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-medium text-[var(--foreground)]">店铺管理分组</h2>{canRecordShopFee && <Button type="button" size="sm" className="min-h-11" onClick={() => setShopEntryOpen(true)}>录入</Button>}</div>
         <div
           onClick={() => setShowShopDetail((v) => !v)}

@@ -11,7 +11,6 @@ import { SimTab } from "./sim-tab";
 import { EmailTab } from "./email-tab";
 import { DailyCountTab } from "./daily-count-tab";
 import { OrdersTab } from "./orders-tab";
-import { BillingTab } from "./billing-tab";
 
 type ShopeeTab = "stores" | "sim" | "email" | "scan" | "register" | "orders" | "billing";
 
@@ -49,7 +48,9 @@ export default function ShopeePage() {
 
       {/* Tab 切换 */}
       <div className="flex flex-wrap w-full sm:w-fit gap-0.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
-        {tabs.map((t) => (
+        {tabs.map((t) => t.key === "billing" ? (
+          <Link key={t.key} href="/finance#shop-fees" className="rounded px-3 py-1.5 text-sm font-medium whitespace-nowrap text-[var(--muted-foreground)] hover:text-[var(--foreground)]">{t.label}</Link>
+        ) : (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -73,8 +74,6 @@ export default function ShopeePage() {
         <DailyCountTab apiPath="/api/scan-verifications" countLabel="完成数量" emptyText="暂无扫描验证记录" addTitle="新增扫描验证" />
       ) : tab === "register" ? (
         <DailyCountTab apiPath="/api/registrations" countLabel="注册数量" emptyText="暂无注册记录" addTitle="新增注册" />
-      ) : tab === "billing" ? (
-        <BillingTab />
       ) : (
         <OrdersTab />
       )}
