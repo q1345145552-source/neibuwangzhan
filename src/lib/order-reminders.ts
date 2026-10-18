@@ -1,7 +1,6 @@
 import type Database from "better-sqlite3";
 import { getDb } from "@/lib/db";
 import { bangkokToday } from "@/lib/time";
-import { runSupervisionReminders, supervisionSchedule } from "@/lib/supervision-reminders";
 import { currentStepTimings } from "@/lib/step-overdue";
 
 /**
@@ -88,7 +87,7 @@ export function runStepOverdueReminders(db: Database.Database, now = new Date())
   return sent;
 }
 
-type ReminderState = { timer?: ReturnType<typeof setInterval>; running?: boolean; ticking?: boolean; lastOrderAt?: number; supervisionSlot?: number; digestDate?: string };
+type ReminderState = { timer?: ReturnType<typeof setInterval>; running?: boolean; ticking?: boolean; lastOrderAt?: number };
 function state(): ReminderState {
   const g = globalThis as typeof globalThis & { __xtOrderReminders?: ReminderState };
   return (g.__xtOrderReminders ??= {});
@@ -109,9 +108,7 @@ export function runOrderReminders(): void {
   }
 }
 
-/** 同一提醒worker每分钟调度：订单仍每小时一次，监督每半小时一次，17:30汇总。
- * 每分钟只判断时钟，不会每分钟查询整份监督清单；失败的检查下一分钟重试。
- */
+/** 每分钟判断时钟，订单提醒每小时检查一次；监督逾期调度已停用。 */
 export function runReminderTick(now = Date.now()): void {
   const s = state();
   if (s.ticking) return;
@@ -120,18 +117,6 @@ export function runReminderTick(now = Date.now()): void {
     if (s.lastOrderAt === undefined || now - s.lastOrderAt >= 3_600_000) {
       runOrderReminders();
       s.lastOrderAt = now;
-    }
-    const schedule = supervisionSchedule(now);
-    const critical = s.supervisionSlot !== schedule.slot;
-    const digest = schedule.digestDue && s.digestDate !== schedule.date;
-    if (critical || digest) {
-      try {
-        runSupervisionReminders(getDb(), now, { critical, digest });
-        s.supervisionSlot = schedule.slot;
-        if (digest) s.digestDate = schedule.date;
-      } catch (error) {
-        console.error("[reminders] 老板监督检查失败，下一分钟重试:", error);
-      }
     }
   } finally {
     s.ticking = false;
