@@ -8,6 +8,7 @@ import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "luci
 import { fetchAllFinances, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, toThaiDate, bangkokDateStr, fileUrl } from "@/lib/utils";
+import { ShopFeeEntryDialog, ShopFeeReviewDialog, ShopFeeDetails, type ShopFeeRecord } from "@/components/finance-shop-fees";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
@@ -107,14 +108,17 @@ export default function FinancePage() {
   const [verifying, setVerifying] = useState(false);
 
   // 店铺管理费用（收付款 Tab 的数据）
-  const [shopFees, setShopFees] = useState<any[]>([]);
+  const [shopFees, setShopFees] = useState<ShopFeeRecord[]>([]);
+  const [shopEntryOpen, setShopEntryOpen] = useState(false);
+  const [shopReviewTarget, setShopReviewTarget] = useState<ShopFeeRecord | null>(null);
+  const canRecordShopFee = user?.role === "admin" || user?.role === "employee";
   const [showShopDetail, setShowShopDetail] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/shop-fees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setShopFees(Array.isArray(d) ? d : []))
-      .catch(() => setShopFees([]));
+      .then((d) => setShopFees(previous => [...new Map([...(Array.isArray(d) ? d as ShopFeeRecord[] : []), ...previous].map(fee => [fee.id, fee])).values()]))
+      .catch(() => { /* 保留本页刚录入或核对成功的记录。 */ });
   }, []);
 
   const reload = async () => {
@@ -372,7 +376,7 @@ export default function FinancePage() {
 
       {/* 店铺管理分组 */}
       <div>
-        <h2 className="mb-3 text-sm font-medium text-[var(--foreground)]">店铺管理分组</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-medium text-[var(--foreground)]">店铺管理分组</h2>{canRecordShopFee && <Button type="button" size="sm" className="min-h-11" onClick={() => setShopEntryOpen(true)}>录入</Button>}</div>
         <div
           onClick={() => setShowShopDetail((v) => !v)}
           role="button"
@@ -425,52 +429,12 @@ export default function FinancePage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-left">
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">类型</th>
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">业务</th>
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">金额</th>
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">状态</th>
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)] max-md:hidden">说明</th>
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)] max-lg:hidden">录入人</th>
-                  <th className="px-4 py-2.5 font-medium text-[var(--muted-foreground)]">时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shopDetails.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-[var(--muted-foreground)]">暂无店铺收付款明细</td>
-                  </tr>
-                ) : (
-                  shopDetails.map((r) => (
-                    <tr key={r.id} className="border-b border-[var(--border)] last:border-0">
-                      <td className="px-4 py-2.5">
-                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", r.fee_type === "收入" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]" : "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]")}>
-                          {r.fee_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-[var(--foreground)]">{r.business_type || "-"}</td>
-                      <td className="px-4 py-2.5 font-mono tabular-nums">{r.currency === "THB" ? "฿" : "¥"}{Number(r.amount).toLocaleString()}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs",
-                          r.status === "已到账" ? "bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] text-[oklch(0.38_0.14_155)]"
-                          : r.status === "未到账" ? "bg-[color-mix(in_oklch,var(--destructive),var(--background)_92%)] text-[oklch(0.35_0.18_25)]"
-                          : r.status === "待核对" ? "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]"
-                          : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{r.status}</span>
-                      </td>
-                      <td className="px-4 py-2.5 max-w-[200px] truncate text-[var(--muted-foreground)] max-md:hidden">{r.note || "-"}</td>
-                      <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)] max-lg:hidden">{r.created_by || "-"}</td>
-                      <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at) || "-"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ShopFeeDetails fees={shopDetails} isAdmin={isAdmin} onReview={setShopReviewTarget} />
         </div>
       )}
+
+      {shopEntryOpen && canRecordShopFee && <ShopFeeEntryDialog onClose={() => setShopEntryOpen(false)} onSaved={fee => { setShopFees(previous => [fee, ...previous.filter(row => row.id !== fee.id)]); setShowShopDetail(true); }} />}
+      {shopReviewTarget && isAdmin && <ShopFeeReviewDialog key={shopReviewTarget.id} fee={shopReviewTarget} onClose={() => setShopReviewTarget(null)} onSaved={fee => setShopFees(previous => previous.map(row => row.id === fee.id ? fee : row))} />}
 
       {/* 业务线明细 */}
       {selectedGroup && (
