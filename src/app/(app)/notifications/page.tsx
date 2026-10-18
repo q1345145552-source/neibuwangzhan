@@ -8,6 +8,7 @@ import { cn, toThaiTime } from "@/lib/utils";
 import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
 import { isSupervisionAlert, bossSubmissionNoticeHref } from "@/lib/notification-types";
 import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
+import { SubmissionNoticeDialog } from "@/components/submission-notice-dialog";
 
 interface Notice {
   id: number;
@@ -55,6 +56,7 @@ export default function NotificationsPage() {
   const router = useRouter();
   const [items, setItems] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submission, setSubmission] = useState<Notice | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -68,6 +70,10 @@ export default function NotificationsPage() {
   useEffect(() => { load(); }, [user?.name]);
 
   const handleClick = (n: Notice) => {
+    if (user?.role === "admin" && bossSubmissionNoticeHref(n)) {
+      setSubmission(n);
+      return;
+    }
     // 点哪条标哪条已读
     if (!n.is_read) {
       fetchWithAuth("/api/notifications", {
@@ -126,6 +132,7 @@ export default function NotificationsPage() {
                       <span className="flex items-center gap-2">
                         <span className="text-xs text-[var(--muted-foreground)]">{meta?.label || n.type}</span>
                         {unread && <span className="size-1.5 rounded-full bg-red-500" />}
+                        {bossSubmissionNoticeHref(n) && <span className={cn("text-xs", unread ? "text-red-600" : "text-emerald-600")}>{unread ? "未观看" : "已观看"}</span>}
                       </span>
                       <span className={cn("mt-0.5 block truncate text-sm text-[var(--foreground)]", unread && "font-semibold")}>{n.title}</span>
                       {n.body && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", isSupervisionAlert(n) || bossSubmissionNoticeHref(n) ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>{n.body}</span>}
@@ -145,6 +152,12 @@ export default function NotificationsPage() {
           })}
         </div>
       )}
+      {user?.role === "admin" && submission && bossSubmissionNoticeHref(submission) && <SubmissionNoticeDialog key={submission.id}
+        notice={submission} href={bossSubmissionNoticeHref(submission)!} onClose={() => setSubmission(null)}
+        onConfirmed={id => {
+          setItems(previous => previous.map(item => item.id === id ? { ...item, is_read: 1 } : item));
+          setSubmission(previous => previous?.id === id ? { ...previous, is_read: 1 } : previous);
+        }} />}
     </div>
   );
 }
