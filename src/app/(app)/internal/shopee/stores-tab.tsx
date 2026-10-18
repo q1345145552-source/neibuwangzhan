@@ -16,7 +16,10 @@ interface ShopeeStore {
   cost: number;
   purchase_date: string;
   sell_price: number;
-  status: "可售" | "等待扫描" | "被封";
+  status: "可售" | "等待扫描" | "被封" | "售后";
+  aftercare_order_id: number | null;
+  aftercare_customer_name?: string | null;
+  aftercare_order_date?: string | null;
   sold: "已出售" | "未出售";
   ban_reason: string;
   created_by: string;
@@ -27,6 +30,7 @@ const STATUS_BADGE: Record<ShopeeStore["status"], string> = {
   可售: "bg-emerald-500/15 text-emerald-600",
   等待扫描: "bg-amber-500/15 text-amber-600",
   被封: "bg-red-500/15 text-red-600",
+  售后: "bg-blue-500/15 text-blue-600",
 };
 
 const SOLD_BADGE: Record<ShopeeStore["sold"], string> = {
@@ -44,7 +48,14 @@ const SOURCE_BADGE: Record<ShopeeStore["source"], string> = {
   外购: "bg-purple-500/15 text-purple-600",
 };
 
+interface LinkedOrder { id: number; customer_name: string; order_date: string }
+const orderLabel = (order: LinkedOrder) => `${order.customer_name || "未填客户"} ｜ ${order.order_date || "未填日期"} ｜ #${order.id}`;
+const storeOrderLabel = (store: ShopeeStore) => store.status === "售后" && store.aftercare_order_id ? orderLabel({ id: store.aftercare_order_id, customer_name: store.aftercare_customer_name || "", order_date: store.aftercare_order_date || "" }) : "—";
+
 export function StoreLedgerTab() {
+  const [orders, setOrders] = useState<LinkedOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
   const [stores, setStores] = useState<ShopeeStore[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -59,6 +70,7 @@ export function StoreLedgerTab() {
     status: "可售" as ShopeeStore["status"],
     sold: "未出售" as ShopeeStore["sold"],
     ban_reason: "",
+    aftercare_order_id: "",
   });
   const [err, setErr] = useState("");
 
@@ -72,11 +84,23 @@ export function StoreLedgerTab() {
 
   useEffect(() => { load(); }, []);
 
+  const loadOrders = async () => {
+    setOrdersLoading(true); setOrdersError("");
+    try {
+      const response = await fetchWithAuth("/api/shopee-orders", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "客户订单加载失败");
+      setOrders(data);
+    } catch (error) { setOrdersError(error instanceof Error ? error.message : "客户订单加载失败"); }
+    finally { setOrdersLoading(false); }
+  };
+
   const openCreate = () => {
     setEditId(null);
-    setForm({ platform: "Shopee", store_name: "", source: "自营", supplier: "", cost: "", purchase_date: "", sell_price: "", status: "可售", sold: "未出售", ban_reason: "" });
+    setForm({ platform: "Shopee", store_name: "", source: "自营", supplier: "", cost: "", purchase_date: "", sell_price: "", status: "可售", sold: "未出售", ban_reason: "", aftercare_order_id: "" });
     setErr("");
     setShowForm(true);
+    void loadOrders();
   };
 
   const openEdit = (s: ShopeeStore) => {
@@ -92,14 +116,17 @@ export function StoreLedgerTab() {
       status: s.status,
       sold: s.sold,
       ban_reason: s.ban_reason || "",
+      aftercare_order_id: s.aftercare_order_id ? String(s.aftercare_order_id) : "",
     });
     setErr("");
     setShowForm(true);
+    void loadOrders();
   };
 
   const handleSave = async () => {
     const name = form.store_name.trim();
     if (!name) { setErr("请填写店铺名称"); return; }
+    if (form.status === "售后" && !form.aftercare_order_id) { setErr("售后店铺必须选择关联单号"); return; }
     if (form.status === "被封" && !form.ban_reason.trim()) { setErr("店铺被封时必须填写封禁原因"); return; }
     if (form.source === "外购") {
       if (!form.supplier.trim()) { setErr("外购店铺必须填写供应商"); return; }
@@ -118,7 +145,8 @@ export function StoreLedgerTab() {
       purchase_date: form.source === "外购" ? form.purchase_date : "",
       sell_price: form.source === "外购" ? Number(form.sell_price) : 0,
       status: form.status,
-      sold: form.sold,
+      sold: form.status === "售后" ? "已出售" : form.sold,
+      aftercare_order_id: form.status === "售后" ? Number(form.aftercare_order_id) : null,
       ban_reason: form.status === "被封" ? form.ban_reason.trim() : "",
     };
     const ok = await apiCall("/api/shopee-stores", {
@@ -197,21 +225,33 @@ export function StoreLedgerTab() {
             </div>
             <div>
               <label className="text-xs font-medium">店铺状态</label>
-              <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as ShopeeStore["status"], ban_reason: e.target.value === "被封" ? p.ban_reason : "" }))}
+              <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as ShopeeStore["status"], ban_reason: e.target.value === "被封" ? p.ban_reason : "", sold: e.target.value === "售后" ? "已出售" : p.sold, aftercare_order_id: e.target.value === "售后" ? p.aftercare_order_id : "" }))}
                 className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
                 <option value="可售">可售</option>
                 <option value="等待扫描">等待扫描</option>
                 <option value="被封">被封</option>
+                <option value="售后">售后</option>
               </select>
             </div>
             <div>
               <label className="text-xs font-medium">是否已售</label>
-              <select value={form.sold} onChange={(e) => setForm((p) => ({ ...p, sold: e.target.value as ShopeeStore["sold"] }))}
+              <select disabled={form.status === "售后"} value={form.sold} onChange={(e) => setForm((p) => ({ ...p, sold: e.target.value as ShopeeStore["sold"] }))}
                 className="mt-1 w-full h-9 rounded border border-[var(--border)] px-3 text-sm">
                 <option value="未出售">未出售</option>
                 <option value="已出售">已出售</option>
               </select>
             </div>
+
+            {form.status === "售后" && <div className="min-w-0 sm:col-span-2">
+              <label htmlFor="store-aftercare-order" className="text-xs font-medium">关联单号（必填）</label>
+              <select id="store-aftercare-order" required value={form.aftercare_order_id} disabled={ordersLoading || !!ordersError} onChange={e => setForm(previous => ({ ...previous, aftercare_order_id: e.target.value }))} className="mt-1 min-h-11 w-full min-w-0 max-w-full rounded border border-[var(--border)] px-3 text-sm">
+                <option value="">{ordersLoading ? "正在加载客户订单…" : "请选择客户订单"}</option>
+                {orders.map(order => <option key={order.id} value={order.id}>{orderLabel(order)}</option>)}
+              </select>
+              {form.aftercare_order_id && <p className="mt-1 text-xs text-[var(--muted-foreground)] [overflow-wrap:anywhere]">已选择：{orders.find(order => order.id === Number(form.aftercare_order_id)) ? orderLabel(orders.find(order => order.id === Number(form.aftercare_order_id))!) : `#${form.aftercare_order_id}`}</p>}
+              {ordersError && <div role="alert" className="mt-2 text-xs text-red-600">{ordersError}<Button type="button" size="sm" variant="ghost" onClick={() => void loadOrders()}>重试</Button></div>}
+              {!ordersLoading && !ordersError && !orders.length && <p className="mt-1 text-xs text-[var(--muted-foreground)]">暂无客户订单，请先在“客户订单”中新增订单。</p>}
+            </div>}
 
             {form.source === "外购" && (
               <>
@@ -253,7 +293,7 @@ export function StoreLedgerTab() {
           </div>
           {err && <p className="mt-2 text-xs text-[var(--destructive)]">{err}</p>}
           <div className="mt-3 flex gap-2">
-            <Button size="sm" onClick={handleSave}>保存</Button>
+            <Button size="sm" disabled={form.status === "售后" && (ordersLoading || !!ordersError)} onClick={handleSave}>保存</Button>
             <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>取消</Button>
           </div>
         </div>
@@ -264,7 +304,7 @@ export function StoreLedgerTab() {
           <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无店铺，点击右上角「新增店铺」录入</div>
         ) : (
           <>
-            <table className="w-full text-sm hidden md:table">
+            <div className="hidden overflow-x-auto md:block"><table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]/30">
                   <th className="py-2.5 px-5 text-left text-xs font-medium">店铺编号</th>
@@ -273,6 +313,7 @@ export function StoreLedgerTab() {
                   <th className="py-2.5 px-4 text-left text-xs font-medium">来源</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">店铺状态</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">是否已售</th>
+                  <th className="py-2.5 px-4 text-left text-xs font-medium">关联单号</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">封禁原因</th>
                   <th className="py-2.5 px-4 text-left text-xs font-medium">操作</th>
                 </tr>
@@ -299,6 +340,7 @@ export function StoreLedgerTab() {
                     <td className="py-2.5 px-4">
                       <span className={`text-xs px-1.5 py-0.5 rounded ${SOLD_BADGE[s.sold]}`}>{s.sold}</span>
                     </td>
+                    <td className="max-w-64 py-2.5 px-4 text-xs text-[var(--muted-foreground)] [overflow-wrap:anywhere]">{storeOrderLabel(s)}</td>
                     <td className="py-2.5 px-4 text-[var(--muted-foreground)]">{s.ban_reason || "—"}</td>
                     <td className="py-2.5 px-4 flex gap-1.5">
                       <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => openEdit(s)}><Edit3 className="size-3" /></Button>
@@ -307,7 +349,7 @@ export function StoreLedgerTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             {/* 手机端卡片 */}
             <div className="md:hidden flex flex-col gap-2 p-3">
               {stores.map((s) => (
@@ -325,6 +367,7 @@ export function StoreLedgerTab() {
                     <span className={`text-xs px-1.5 py-0.5 rounded ${SOLD_BADGE[s.sold]}`}>{s.sold}</span>
                   </div>
                   <div className="mt-3 space-y-1.5 text-sm">
+                    <div className="flex min-w-0 justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">关联单号</span><span className="min-w-0 text-right [overflow-wrap:anywhere]">{storeOrderLabel(s)}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">封禁原因</span><span className="text-right">{s.ban_reason || "—"}</span></div>
                     {s.source === "外购" && (
                       <>

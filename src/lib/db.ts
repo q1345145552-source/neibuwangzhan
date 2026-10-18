@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { initializeSyncSchema } from "./sync-schema";
 import { ensureAccessSchema } from "./access-schema";
 import { ensureWorkflowSchema } from "./workflow-schema";
+import { ensureShopeeAftercareSchema } from "./shopee-aftercare-schema";
 import { expandLegacyCheck } from "./legacy-check-schema";
 import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
@@ -21,6 +22,7 @@ export function getDb(): Database.Database {
       database.pragma("journal_mode = DELETE");
       database.pragma("foreign_keys = ON");
       initTables(database);
+      ensureShopeeAftercareSchema(database);
       seedData(database);
       migrateInfluencersCheck(database);
       migrateEmployeeStatusCheck(database);
@@ -993,8 +995,9 @@ function initTables(database: Database.Database) {
       cost REAL DEFAULT 0,
       purchase_date TEXT DEFAULT '',
       sell_price REAL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT '可售' CHECK(status IN ('可售','等待扫描','被封')),
+      status TEXT NOT NULL DEFAULT '可售' CHECK(status IN ('可售','等待扫描','被封','售后')),
       sold TEXT NOT NULL DEFAULT '未出售' CHECK(sold IN ('已出售','未出售')),
+      aftercare_order_id INTEGER REFERENCES shopee_orders(id) ON DELETE RESTRICT,
       ban_reason TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),

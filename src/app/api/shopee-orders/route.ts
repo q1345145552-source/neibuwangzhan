@@ -83,7 +83,9 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
-  getDb().prepare("DELETE FROM shopee_orders WHERE id = ?").run(id);
+  const db = getDb();
+  if (db.prepare("SELECT 1 FROM shopee_stores WHERE aftercare_order_id=? LIMIT 1").get(id)) return NextResponse.json({ error: "该订单已关联售后店铺，请先在店铺台账解除关联" }, { status: 409 });
+  db.prepare("DELETE FROM shopee_orders WHERE id = ?").run(id);
   logOperation(auth.name, "删除客户订单", "shopee_order", String(id));
   return NextResponse.json({ success: true });
 }

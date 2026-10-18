@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest) {
       db.prepare(`UPDATE shopee_order_items SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
       // 记封禁处理：把台账店铺状态改成「被封」，封禁原因同步
       if (ban_status !== undefined && ban_status !== "") {
-        db.prepare("UPDATE shopee_stores SET status = '被封', ban_reason = ?, updated_at = datetime('now') WHERE id = ?")
+        db.prepare("UPDATE shopee_stores SET status = '被封', aftercare_order_id = NULL, ban_reason = ?, updated_at = datetime('now') WHERE id = ?")
           .run(String(ban_reason || "").trim(), item.store_id);
       }
     });
@@ -115,7 +115,7 @@ export async function DELETE(req: NextRequest) {
       if (!item) throw new Error("记录不存在");
       db.prepare("DELETE FROM shopee_order_items WHERE id = ?").run(id);
       // 移除后：台账店铺恢复可售、未出售
-      db.prepare("UPDATE shopee_stores SET sold = '未出售', status = '可售', ban_reason = '', updated_at = datetime('now') WHERE id = ?").run(item.store_id);
+      db.prepare("UPDATE shopee_stores SET sold = '未出售', status = '可售', aftercare_order_id = NULL, ban_reason = '', updated_at = datetime('now') WHERE id = ?").run(item.store_id);
     });
     run();
     logOperation(auth.name, "订单移除店铺", "shopee_order_item", String(id));

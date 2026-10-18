@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const db = getDb();
-  const rows = db.prepare("SELECT * FROM shopee_stores ORDER BY id DESC").all();
+  const rows = db.prepare("SELECT s.*, o.customer_name AS aftercare_customer_name, o.order_date AS aftercare_order_date FROM shopee_stores s LEFT JOIN shopee_orders o ON o.id=s.aftercare_order_id AND s.status='售后' ORDER BY s.id DESC").all();
   return NextResponse.json(rows);
 }
 
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const db = getDb();
   const body = await readJson(req);
-  const { store_name, platform, source, status, sold, ban_reason, supplier, cost, purchase_date, sell_price } = body;
+  const { store_name, platform, source, status, sold, ban_reason, supplier, cost, purchase_date, sell_price, aftercare_order_id } = body;
 
   const plat = platform || "Shopee";
   const src = source || "自营";
@@ -43,6 +43,12 @@ export async function POST(req: NextRequest) {
   if (!store_name || !String(store_name).trim()) return NextResponse.json({ error: "请填写店铺名称" }, { status: 400 });
   if (status === "被封" && !String(ban_reason || "").trim()) {
     return NextResponse.json({ error: "店铺被封时必须填写封禁原因" }, { status: 400 });
+  }
+
+  let linkedOrder: number | null = null;
+  if (status === "售后") {
+    linkedOrder = typeof aftercare_order_id === "number" ? aftercare_order_id : typeof aftercare_order_id === "string" && /^\d+$/.test(aftercare_order_id) ? Number(aftercare_order_id) : NaN;
+    if (!Number.isSafeInteger(linkedOrder) || linkedOrder <= 0 || !db.prepare("SELECT id FROM shopee_orders WHERE id=?").get(linkedOrder)) return NextResponse.json({ error: "售后店铺必须从客户订单中选择有效的关联单号" }, { status: 400 });
   }
 
   const supplierVal = String(supplier || "").trim();
@@ -65,7 +71,7 @@ export async function POST(req: NextRequest) {
   const store_code = `${prefix}-${datePart}${cnt.c + 1}`;
 
   const result = db.prepare(
-    "INSERT INTO shopee_stores (store_code, store_name, platform, source, supplier, cost, purchase_date, sell_price, status, sold, ban_reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO shopee_stores (store_code, store_name, platform, source, supplier, cost, purchase_date, sell_price, status, sold, ban_reason, created_by, aftercare_order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(
     store_code,
     String(store_name).trim(),
@@ -76,9 +82,10 @@ export async function POST(req: NextRequest) {
     src === "外购" ? purchaseVal : "",
     src === "外购" ? Number(sell_price) : 0,
     status || "可售",
-    sold || "未出售",
+    status === "售后" ? "已出售" : sold || "未出售",
     status === "被封" ? String(ban_reason || "").trim() : "",
-    auth.name
+    auth.name,
+    linkedOrder
   );
   logOperation(auth.name, "新增Shopee店铺", "shopee_store", String(result.lastInsertRowid), String(store_name));
   return NextResponse.json(db.prepare("SELECT * FROM shopee_stores WHERE id = ?").get(result.lastInsertRowid), { status: 201 });
@@ -90,7 +97,7 @@ export async function PATCH(req: NextRequest) {
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const db = getDb();
   const body = await readJson(req);
-  const { id, store_name, platform, source, status, sold, ban_reason, supplier, cost, purchase_date, sell_price } = body;
+  const { id, store_name, platform, source, status, sold, ban_reason, supplier, cost, purchase_date, sell_price, aftercare_order_id } = body;
   if (!id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
 
   const _e = validateEnums({
@@ -101,13 +108,24 @@ export async function PATCH(req: NextRequest) {
   });
   if (_e) return NextResponse.json({ error: _e }, { status: 400 });
 
+  const current = db.prepare("SELECT status, aftercare_order_id FROM shopee_stores WHERE id=?").get(id) as { status: string; aftercare_order_id: number | null } | undefined;
+  if (!current) return NextResponse.json({ error: "店铺不存在" }, { status: 404 });
+  const effectiveStatus = status ?? current.status;
+  let linkedOrder: number | null = null;
+  if (effectiveStatus === "售后") {
+    const raw = aftercare_order_id === undefined ? current.aftercare_order_id : aftercare_order_id;
+    linkedOrder = typeof raw === "number" ? raw : typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(linkedOrder) || linkedOrder <= 0 || !db.prepare("SELECT id FROM shopee_orders WHERE id=?").get(linkedOrder)) return NextResponse.json({ error: "售后店铺必须从客户订单中选择有效的关联单号" }, { status: 400 });
+  }
+
   const sets: string[] = [];
   const vals: any[] = [];
   if (store_name !== undefined) { sets.push("store_name = ?"); vals.push(String(store_name).trim()); }
   if (platform !== undefined) { sets.push("platform = ?"); vals.push(platform); }
   if (source !== undefined) { sets.push("source = ?"); vals.push(source); }
   if (status !== undefined) { sets.push("status = ?"); vals.push(status); }
-  if (sold !== undefined) { sets.push("sold = ?"); vals.push(sold); }
+  if (effectiveStatus === "售后" || sold !== undefined) { sets.push("sold = ?"); vals.push(effectiveStatus === "售后" ? "已出售" : sold); }
+  if (status !== undefined || aftercare_order_id !== undefined || effectiveStatus === "售后") { sets.push("aftercare_order_id = ?"); vals.push(linkedOrder); }
 
   // 外购四个字段：来源明确为外购时必填；自营时清空；来源未传时只更新传入的字段
   if (source === "外购") {
