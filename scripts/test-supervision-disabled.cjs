@@ -53,6 +53,8 @@ const db = require('../src/lib/db.ts').getDb();
     if (id === '@/lib/db') return { getDb: () => fakeDb };
     if (id === '@/lib/time') return { bangkokToday: () => '2026-10-20' };
     if (id === '@/lib/step-overdue') return { currentStepTimings: () => [] };
+    if (id === '@/lib/work-report-sync') return { runDailyWorkReportTodos() {} };
+    if (id === '@/lib/work-report-policy') return require('../src/lib/work-report-policy.ts');
     throw Error('Unexpected worker dependency: ' + id);
   }, Date, Map, Set, console, setInterval: (fn, ms) => { const timer = { fn, ms, unref() {} }; timers.push(timer); return timer; } });
   vm.runInContext(compile(fs.readFileSync(path.join(root, 'src/lib/order-reminders.ts'), 'utf8')), context);

@@ -1,5 +1,6 @@
 import { publishBossSubmission, acknowledgeBossSubmission } from "@/lib/boss-submissions";
 import { reportSubmissionRevision } from "@/lib/boss-submission-types";
+import { completeWorkReportTodos } from "@/lib/work-report-sync";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -103,7 +104,10 @@ export async function PATCH(
     const saved = db.prepare(
     "UPDATE work_reports SET completed_items = ?, summary = ?, tomorrow_plan = ?, problems = ?, related_objects = ?, completed_items_zh = '', summary_zh = '', tomorrow_plan_zh = '', problems_zh = '', status = '已提交', submitted_at = ?, updated_at = datetime('now') WHERE id = ? AND status = '退回'"
   ).run(JSON.stringify(items), summaryText, planText, problemsText, relatedJson, now, id);
-    if (saved.changes) publishBossSubmission(db, "report", Number(id), auth.name, `重新提交了 ${report.report_date} 的日报`);
+    if (saved.changes) {
+      publishBossSubmission(db, "report", Number(id), auth.name, `重新提交了 ${report.report_date} 的日报`);
+      completeWorkReportTodos(db, auth.name, report.report_date, now);
+    }
     return saved.changes;
   })();
   if (!submitted) return NextResponse.json({ error: "记录状态已变化，请刷新后重试" }, { status: 409 });

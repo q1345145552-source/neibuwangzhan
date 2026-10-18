@@ -5,6 +5,7 @@ import { ensureAccessSchema } from "./access-schema";
 import { ensureWorkflowSchema } from "./workflow-schema";
 import { ensureShopeeAftercareSchema } from "./shopee-aftercare-schema";
 import { ensureBossSubmissionSchema } from "./boss-submissions";
+import { ensureTodoSourceSchema } from "./todo-source-schema";
 import { expandLegacyCheck } from "./legacy-check-schema";
 import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
@@ -25,6 +26,7 @@ export function getDb(): Database.Database {
       initTables(database);
       ensureShopeeAftercareSchema(database);
       ensureBossSubmissionSchema(database);
+      ensureTodoSourceSchema(database);
       seedData(database);
       migrateInfluencersCheck(database);
       migrateEmployeeStatusCheck(database);

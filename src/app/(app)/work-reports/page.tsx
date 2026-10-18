@@ -8,6 +8,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, bangkokDateStr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus, X, ClipboardList, ChevronDown } from "lucide-react";
+import { WORK_REPORT_REQUIRED_FROM } from "@/lib/work-report-policy";
 
 interface WorkReport {
   id: number;
@@ -215,6 +216,7 @@ export default function WorkReportsPage() {
 
   // 员工：自己的日报列表
   const [reports, setReports] = useState<WorkReport[]>([]);
+  const [pendingDates, setPendingDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 老板：看板（按日期看所有在职员工状态）
@@ -287,6 +289,10 @@ export default function WorkReportsPage() {
 
   const loadEmployee = () => {
     setLoading(true);
+    fetchWithAuth("/api/work-reports?pending_dates=1", { cache: "no-store" })
+      .then(response => response.ok ? response.json() : [])
+      .then(dates => setPendingDates(Array.isArray(dates) ? dates : []))
+      .catch(() => setPendingDates([]));
     fetchWithAuth("/api/work-reports", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setReports(Array.isArray(d) ? d : []))
@@ -605,8 +611,9 @@ export default function WorkReportsPage() {
     setStorySummary(typeof data.summary === "string" ? data.summary : "");
   };
 
-  // 员工：最近 30 天（含今天）的每日状态
-  const dayList = Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i));
+  // 最近30天与系统待补交日期；启用日前只保留实际已有的历史日报。
+  const dayList = [...new Set([...Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i))
+    .filter(day => day === today || day >= WORK_REPORT_REQUIRED_FROM || reports.some(report => report.report_date === day)), ...pendingDates])].sort().reverse();
 
   // 订单组筛选：负责人 + 业务线
   const orderItems = autoGroups.find((g) => g.type === "order")?.items || [];
@@ -719,11 +726,23 @@ export default function WorkReportsPage() {
                 <ClipboardList className="size-4" />填写今日工作记录
               </Button>
             )}
-            {!reports.some((r) => r.report_date === yesterday) && (
+            {yesterday >= WORK_REPORT_REQUIRED_FROM && !reports.some((r) => r.report_date === yesterday) && (
               <Button size="sm" variant="outline" onClick={() => openCreate(yesterday)}>
                 补交昨日工作记录
               </Button>
             )}
+            {pendingDates.some(date => date < yesterday) && <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">补交历史日报
+              <select aria-label="选择待补交日期" defaultValue="" onChange={event => {
+                const date = event.target.value;
+                if (date) {
+                  const returned = reports.find(report => report.report_date === date && report.status === "退回");
+                  if (returned) openResubmit(returned); else openCreate(date);
+                }
+                event.target.value = "";
+              }} className="min-h-11 min-w-0 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm">
+                <option value="">选择待补交日期</option>{pendingDates.filter(date => date < yesterday).map(date => <option key={date} value={date}>{date}</option>)}
+              </select>
+            </label>}
           </div>
 
           {loading ? (
@@ -745,7 +764,7 @@ export default function WorkReportsPage() {
                     <span className="text-sm text-[var(--foreground)]">{day}</span>
                     <div className="flex items-center gap-2">
                       {!r && day === today && <Button size="sm" onClick={(e) => { e.stopPropagation(); openCreate(today); }}>去填写</Button>}
-                      {!r && day === yesterday && <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openCreate(yesterday); }}>去补交</Button>}
+                      {!r && day !== today && (day === yesterday || pendingDates.includes(day)) && <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openCreate(day); }}>去补交</Button>}
                       {r && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openDetail(r); }}>查看</Button>}
                       <StatusBadge st={st} />
                     </div>
@@ -818,7 +837,7 @@ export default function WorkReportsPage() {
           <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="text-base font-semibold text-[var(--foreground)]">
-                {formMode === "create" ? (formDate === yesterday ? "补交昨日工作记录" : "填写今日工作记录") : "重新提交工作记录"}
+                {formMode === "create" ? (formDate === today ? "填写今日工作记录" : formDate === yesterday ? "补交昨日工作记录" : "补交历史工作记录") : "重新提交工作记录"}
               </h3>
               <button onClick={() => setFormOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>

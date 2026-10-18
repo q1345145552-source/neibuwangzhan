@@ -2,6 +2,8 @@ import type Database from "better-sqlite3";
 import { getDb } from "@/lib/db";
 import { bangkokToday } from "@/lib/time";
 import { currentStepTimings } from "@/lib/step-overdue";
+import { runDailyWorkReportTodos } from "@/lib/work-report-sync";
+import { workReportTodoSchedule } from "@/lib/work-report-policy";
 
 /**
  * 订单提醒（2026-10-16 老板定）：
@@ -87,7 +89,7 @@ export function runStepOverdueReminders(db: Database.Database, now = new Date())
   return sent;
 }
 
-type ReminderState = { timer?: ReturnType<typeof setInterval>; running?: boolean; ticking?: boolean; lastOrderAt?: number };
+type ReminderState = { timer?: ReturnType<typeof setInterval>; running?: boolean; ticking?: boolean; lastOrderAt?: number; lastReportDate?: string };
 function state(): ReminderState {
   const g = globalThis as typeof globalThis & { __xtOrderReminders?: ReminderState };
   return (g.__xtOrderReminders ??= {});
@@ -108,7 +110,7 @@ export function runOrderReminders(): void {
   }
 }
 
-/** 每分钟判断时钟，订单提醒每小时检查一次；监督逾期调度已停用。 */
+/** 每分钟判断时钟：订单仍每小时检查；日报每天曼谷17:00检查，启动晚于17:00则补跑当天。 */
 export function runReminderTick(now = Date.now()): void {
   const s = state();
   if (s.ticking) return;
@@ -117,6 +119,15 @@ export function runReminderTick(now = Date.now()): void {
     if (s.lastOrderAt === undefined || now - s.lastOrderAt >= 3_600_000) {
       runOrderReminders();
       s.lastOrderAt = now;
+    }
+    const schedule = workReportTodoSchedule(now);
+    if (schedule.due && s.lastReportDate !== schedule.date) {
+      try {
+        runDailyWorkReportTodos(getDb(), now);
+        s.lastReportDate = schedule.date;
+      } catch (error) {
+        console.error("[reminders] 日报补交待办检查失败，下一分钟重试:", error);
+      }
     }
   } finally {
     s.ticking = false;

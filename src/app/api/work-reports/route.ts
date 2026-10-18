@@ -4,7 +4,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { bangkokToday } from "@/lib/time";
-import { syncWorkReportReminders } from "@/lib/work-report-sync";
+import { completeWorkReportTodos, pendingWorkReportDates } from "@/lib/work-report-sync";
 import { analyzeWorkReport } from "@/lib/deepseek";
 import { normalizeCompletedItems, completedItemText } from "@/lib/work-report-items";
 
@@ -55,8 +55,9 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const isAdmin = auth.role === "admin";
 
-  // 顺带触发提醒同步：昨天没交的生成补交待办，当天下午没交的发通知
-  try { syncWorkReportReminders(); } catch {}
+  if (new URL(req.url).searchParams.get("pending_dates") === "1") {
+    return NextResponse.json(pendingWorkReportDates(db, auth.name, bangkokToday()), { headers: { "Cache-Control": "private, no-store" } });
+  }
 
   const rows = isAdmin
     ? db.prepare("SELECT * FROM work_reports ORDER BY report_date DESC, id DESC").all()
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(rows);
 }
 
-// POST /api/work-reports — 员工提交今日 / 补交昨日工作记录
+// POST /api/work-reports — 今日、昨日，或系统已派补交待办对应的历史日期
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -79,20 +80,20 @@ export async function POST(req: NextRequest) {
 
   if (!report_date || !String(report_date).trim()) return NextResponse.json({ error: "缺少日报日期" }, { status: 400 });
   const date = String(report_date).trim();
-  if (date !== today && date !== yesterday) {
-    return NextResponse.json({ error: "只能填今天或补交昨天" }, { status: 400 });
+  if (date !== today && date !== yesterday && !pendingWorkReportDates(db, auth.name, today).includes(date)) {
+    return NextResponse.json({ error: "只能填今天、补交昨天或系统待办对应的历史日报" }, { status: 400 });
   }
 
   const existing = db.prepare("SELECT id FROM work_reports WHERE employee_name = ? AND report_date = ?").get(auth.name, date);
   if (existing) {
-    return NextResponse.json({ error: date === today ? "今天已经提交过了" : "昨天已经提交过了" }, { status: 400 });
+    return NextResponse.json({ error: date === today ? "今天已经提交过了" : date === yesterday ? "昨天已经提交过了" : "该日期已有日报，请在原记录中重新提交" }, { status: 400 });
   }
 
   // 今日已完成：手动文本 + 勾选带出的结构化条目（至少一条）
   const items = normalizeCompletedItems(completed_items);
   if (items.length === 0) return NextResponse.json({ error: "请至少填写一条今日已完成" }, { status: 400 });
 
-  const isBackfill = date === yesterday ? 1 : 0;
+  const isBackfill = date < today ? 1 : 0;
   const relatedJson = parseRelatedObjects(related_objects);
   const summaryText = String(summary || "").trim();
   const planText = String(tomorrow_plan || "").trim();
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
     "INSERT INTO work_reports (employee_name, report_date, completed_items, summary, tomorrow_plan, problems, related_objects, status, is_backfill, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, '已提交', ?, ?)"
   ).run(auth.name, date, JSON.stringify(items), summaryText, planText, problemsText, relatedJson, isBackfill, now);
     publishBossSubmission(db, "report", Number(saved.lastInsertRowid), auth.name, `提交了 ${date} 的日报`);
+    completeWorkReportTodos(db, auth.name, date, now);
     return saved;
   })();
   logOperation(auth.name, "提交工作记录", "work_report", String(result.lastInsertRowid), date);

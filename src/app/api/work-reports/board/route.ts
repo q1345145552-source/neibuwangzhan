@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
 import { bangkokToday } from "@/lib/time";
-import { syncWorkReportReminders } from "@/lib/work-report-sync";
 
 // GET /api/work-reports/board?date=YYYY-MM-DD — 老板看板：某一天所有在职员工的提交状态（仅管理员）
 export async function GET(req: NextRequest) {
@@ -15,9 +14,6 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "日期格式不对" }, { status: 400 });
 
   const db = getDb();
-
-  // 顺带触发提醒同步
-  try { syncWorkReportReminders(); } catch {}
 
   const employees = db.prepare(
     "SELECT name FROM employees WHERE role = 'employee' AND status = '在职' ORDER BY name"
