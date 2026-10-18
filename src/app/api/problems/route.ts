@@ -3,6 +3,7 @@ import { getDb, generateProblemNumber, logOperation, sendNotification } from "@/
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { validateEnums } from "@/lib/enums";
+import { assignProblemTodo } from "@/lib/submission-todos";
 
 // GET /api/problems — 问题列表（紧急的排前面）
 // 支持筛选：status / problem_type / priority / assignee，可组合
@@ -58,36 +59,39 @@ export async function POST(req: NextRequest) {
   });
   if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
 
-  const problemNumber = generateProblemNumber();
-  const result = db.prepare(
-    "INSERT INTO problems (problem_number, company_name, problem_type, status, assignee, priority, source, description, customer_requirement, deadline, created_by) VALUES (?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
-  ).run(
-    problemNumber,
-    company_name.trim(),
-    problem_type || "税务问题",
-    assignee.trim(),
-    priority || "普通",
-    source.trim(),
-    description.trim(),
-    customer_requirement || "",
-    deadline || "",
-    auth.name
-  );
-
-  const problem = db.prepare("SELECT * FROM problems WHERE id = ?").get(result.lastInsertRowid);
-  logOperation(auth.name, "新建问题", "problem", String(result.lastInsertRowid), `编号:${problemNumber}`);
-
-  // 通知联动：指派问题给员工时，自动给该员工发通知
-  if (assignee.trim() !== auth.name) {
-    sendNotification(
-      "problem_assigned",
-      "新问题指派",
-      `问题 ${problemNumber}（${company_name.trim()}）已指派给你，请尽快跟进`,
+  const result = db.transaction(() => {
+    const problemNumber = generateProblemNumber();
+    const saved = db.prepare(
+      "INSERT INTO problems (problem_number, company_name, problem_type, status, assignee, priority, source, description, customer_requirement, deadline, created_by) VALUES (?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
+    ).run(
+      problemNumber,
+      company_name.trim(),
+      problem_type || "税务问题",
       assignee.trim(),
-      String(result.lastInsertRowid),
-      "problem"
+      priority || "普通",
+      source.trim(),
+      description.trim(),
+      customer_requirement || "",
+      deadline || "",
+      auth.name
     );
-  }
 
-  return NextResponse.json(problem, { status: 201 });
+    assignProblemTodo(db, Number(saved.lastInsertRowid));
+    logOperation(auth.name, "新建问题", "problem", String(saved.lastInsertRowid), `编号:${problemNumber}`);
+
+    // 保留原有的问题指派通知，与问题和待办一并提交。
+    if (assignee.trim() !== auth.name) {
+      sendNotification(
+        "problem_assigned",
+        "新问题指派",
+        `问题 ${problemNumber}（${company_name.trim()}）已指派给你，请尽快跟进`,
+        assignee.trim(),
+        String(saved.lastInsertRowid),
+        "problem"
+      );
+    }
+
+    return db.prepare("SELECT * FROM problems WHERE id=?").get(saved.lastInsertRowid);
+  }).immediate();
+  return NextResponse.json(result, { status: 201 });
 }

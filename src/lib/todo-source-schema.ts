@@ -11,6 +11,10 @@ export function ensureTodoSourceSchema(db: Database.Database) {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_work_report_source ON todos(source_id,assignee)
       WHERE source_type='work_report' AND source_id<>'';
       CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_meeting_source ON todos(source_id,assignee)
-      WHERE source_type='meeting' AND source_id<>''`);
+      WHERE source_type='meeting' AND source_id<>'';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_notice_source ON todos(source_id)
+      WHERE source_type='notice' AND source_id<>'';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_problem_source ON todos(source_id)
+      WHERE source_type='problem' AND source_id<>''`);
   })();
 }

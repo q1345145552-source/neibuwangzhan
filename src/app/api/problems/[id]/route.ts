@@ -1,4 +1,5 @@
 import { publishBossSubmission } from "@/lib/boss-submissions";
+import { retireProblemTodo, syncProblemTodo } from "@/lib/submission-todos";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation, sendNotification } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -62,6 +63,7 @@ export async function PATCH(
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可用" }, { status: 403 });
 
   const { id } = await params;
+  const body = await readJson(req);
   const db = getDb();
   const problem = db.prepare("SELECT assignee, status, problem_number FROM problems WHERE id = ?").get(id) as { assignee: string; status: string; problem_number: string } | undefined;
   if (!problem) return NextResponse.json({ error: "问题不存在" }, { status: 404 });
@@ -72,7 +74,6 @@ export async function PATCH(
     return NextResponse.json({ error: "只有负责人或管理员能操作" }, { status: 403 });
   }
 
-  const body = await readJson(req);
   const { status, resolve_note, suspend_reason, order_id } = body;
 
   // 关联/修改关联订单：请求只带 order_id（不触发状态流转，跟进过程中随时可加可改）
@@ -105,19 +106,22 @@ export async function PATCH(
     });
     if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
 
-    db.prepare(
-      "UPDATE problems SET company_name = ?, description = ?, problem_type = ?, source = ?, assignee = ?, priority = ?, deadline = ?, customer_requirement = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(
-      company_name.trim(),
-      description.trim(),
-      problem_type || "税务问题",
-      source.trim(),
-      assignee.trim(),
-      priority || "普通",
-      deadline || "",
-      customer_requirement || "",
-      id
-    );
+    db.transaction(() => {
+      db.prepare(
+        "UPDATE problems SET company_name = ?, description = ?, problem_type = ?, source = ?, assignee = ?, priority = ?, deadline = ?, customer_requirement = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(
+        company_name.trim(),
+        description.trim(),
+        problem_type || "税务问题",
+        source.trim(),
+        assignee.trim(),
+        priority || "普通",
+        deadline || "",
+        customer_requirement || "",
+        id
+      );
+      syncProblemTodo(db, Number(id));
+    }).immediate();
     logOperation(auth.name, "编辑问题", "problem", String(id));
     const edited = db.prepare("SELECT * FROM problems WHERE id = ?").get(id);
     return NextResponse.json(edited);
@@ -141,24 +145,30 @@ export async function PATCH(
     if (current !== "老板验收") {
       return NextResponse.json({ error: "只有待老板验收的问题才能验收" }, { status: 400 });
     }
-    db.prepare(
-      "UPDATE problems SET status = '已解决', resolved_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
-    ).run(id);
+    const accepted = db.transaction(() => {
+      const saved = db.prepare(
+        "UPDATE problems SET status = '已解决', resolved_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status='老板验收'"
+      ).run(id);
+      if (!saved.changes) return false;
+      syncProblemTodo(db, Number(id));
+      if (problem.assignee) sendNotification("problem_accepted", "问题验收通过", `问题 ${problem.problem_number} 已通过老板验收`, problem.assignee, String(id), "problem");
+      return true;
+    }).immediate();
+    if (!accepted) return NextResponse.json({ error: "问题状态已变化，请刷新后重试" }, { status: 409 });
     logOperation(auth.name, "老板验收问题", "problem", String(id));
-    // 通知联动：验收通过后通知负责人
-    if (problem.assignee) {
-      sendNotification("problem_accepted", "问题验收通过", `问题 ${problem.problem_number} 已通过老板验收`, problem.assignee, String(id), "problem");
-    }
   } else if (isReject) {
     // 老板退回：待老板验收 → 跟进中（负责人继续处理）
-    db.prepare(
-      "UPDATE problems SET status = '跟进中', updated_at = datetime('now') WHERE id = ?"
-    ).run(id);
+    const rejected = db.transaction(() => {
+      const saved = db.prepare(
+        "UPDATE problems SET status = '跟进中', updated_at = datetime('now') WHERE id = ? AND status='老板验收'"
+      ).run(id);
+      if (!saved.changes) return false;
+      syncProblemTodo(db, Number(id));
+      if (problem.assignee) sendNotification("problem_rejected", "问题被退回", `问题 ${problem.problem_number} 被老板退回，请继续跟进`, problem.assignee, String(id), "problem");
+      return true;
+    }).immediate();
+    if (!rejected) return NextResponse.json({ error: "问题状态已变化，请刷新后重试" }, { status: 409 });
     logOperation(auth.name, "老板退回问题", "problem", String(id));
-    // 通知联动：退回后通知负责人
-    if (problem.assignee) {
-      sendNotification("problem_rejected", "问题被退回", `问题 ${problem.problem_number} 被老板退回，请继续跟进`, problem.assignee, String(id), "problem");
-    }
   } else if (status === "老板验收") {
     // 负责人标记已解决：跟进中 → 待老板验收（必须填解决说明）
     if (current !== "跟进中") {
@@ -171,7 +181,10 @@ export async function PATCH(
       const saved = db.prepare(
         "UPDATE problems SET status = '老板验收', resolve_note = ?, updated_at = datetime('now') WHERE id = ? AND status = '跟进中'"
       ).run(resolve_note.trim(), id);
-      if (saved.changes) publishBossSubmission(db, "problem", Number(id), problem.assignee, `解决了问题 ${problem.problem_number}，等待验收：${resolve_note.trim()}`);
+      if (saved.changes) {
+        publishBossSubmission(db, "problem", Number(id), problem.assignee, `解决了问题 ${problem.problem_number}，等待验收：${resolve_note.trim()}`);
+        syncProblemTodo(db, Number(id));
+      }
       return saved.changes;
     })();
     if (!submitted) return NextResponse.json({ error: "问题状态已变化，请刷新后重试" }, { status: 409 });
@@ -184,9 +197,12 @@ export async function PATCH(
     if (!suspend_reason?.trim()) {
       return NextResponse.json({ error: "请填写搁置原因" }, { status: 400 });
     }
-    db.prepare(
-      "UPDATE problems SET status = '搁置', suspend_reason = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(suspend_reason.trim(), id);
+    db.transaction(() => {
+      db.prepare(
+        "UPDATE problems SET status = '搁置', suspend_reason = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(suspend_reason.trim(), id);
+      syncProblemTodo(db, Number(id));
+    }).immediate();
     logOperation(auth.name, "搁置问题", "problem", String(id), suspend_reason.trim());
   } else if (status === "跟进中") {
     // 开始处理（待处理→跟进中）或 重新激活（搁置→跟进中）
@@ -241,6 +257,7 @@ export async function DELETE(
   const attachments = db.prepare("SELECT url FROM problem_attachments WHERE problem_id = ?").all(id) as { url: string }[];
 
   db.transaction(() => {
+    retireProblemTodo(db, Number(id));
     db.prepare("DELETE FROM problem_follow_ups WHERE problem_id = ?").run(id);
     db.prepare("DELETE FROM problem_attachments WHERE problem_id = ?").run(id);
     db.prepare("DELETE FROM problems WHERE id = ?").run(id);

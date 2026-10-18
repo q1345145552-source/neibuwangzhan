@@ -3,6 +3,7 @@ import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { readJson } from "@/lib/req";
 import { REVIEW_COLUMNS, reviewDetails, submissionToken, type ReviewRecord } from "@/lib/notice-rule-review";
+import { syncNoticeTodo } from "@/lib/submission-todos";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string; recordId: string }> }) {
   const auth = await verifyAuth(req);
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     db.prepare(`UPDATE notice_rule_implementations SET review_status=?, boss_comment=?,
       reviewed_at=strftime('%Y-%m-%d %H:%M:%f','now'), updated_at=strftime('%Y-%m-%d %H:%M:%f','now') WHERE id=? AND notice_id=?`)
       .run(body.decision, (body.comment || "").trim(), recordId, id);
+    syncNoticeTodo(db, recordId);
     return { data: reviewDetails(db, id) };
   }).immediate();
   if (result.error) return NextResponse.json({ error: result.error }, { status: result.status });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { readJson } from "@/lib/req";
+import { assignNoticeTodo } from "@/lib/submission-todos";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -42,9 +43,12 @@ export async function POST(req: NextRequest) {
     const created = db.prepare("INSERT INTO notice_rules (title, body, type, publisher_id, publisher_name, recipient_mode, recipient_ids) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(title, content, body.type, auth.id, auth.name, body.recipient_mode, JSON.stringify(recipients.map(e => e.id)));
     const insert = db.prepare("INSERT INTO notice_rule_implementations (notice_id, employee_id, employee_name) VALUES (?, ?, ?)");
-    for (const employee of recipients) insert.run(created.lastInsertRowid, employee.id, employee.name);
+    for (const employee of recipients) {
+      const record = insert.run(created.lastInsertRowid, employee.id, employee.name);
+      assignNoticeTodo(db, Number(record.lastInsertRowid));
+    }
     return { id: Number(created.lastInsertRowid), recipient_count: recipients.length };
-  })();
+  }).immediate();
   if (!result) return NextResponse.json({ error: "没有可接收的员工，或所选员工已离职/不是普通员工，请重新选择" }, { status: 400 });
   return NextResponse.json(result, { status: 201 });
 }

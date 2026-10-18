@@ -1,4 +1,5 @@
 import { publishBossSubmission } from "@/lib/boss-submissions";
+import { syncNoticeTodo } from "@/lib/submission-todos";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (updated.changes) {
       const record = db.prepare("SELECT id FROM notice_rule_implementations WHERE notice_id=? AND employee_id=?").get(result.notice.id, auth.id) as { id: number };
       publishBossSubmission(db, "notice", record.id, auth.name, `提交了通知/规则「${result.notice.title}」的落实照片和说明`);
+      syncNoticeTodo(db, record.id);
     }
     return updated;
   })();
