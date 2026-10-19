@@ -21,6 +21,7 @@ import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { isStepClosed, isParallelFlow } from "@/lib/step-status";
+import { COMPANY_REGISTRATION_STEP_COPY } from "@/lib/company-registration-step-copy";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -1000,6 +1001,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div className="flex flex-col gap-0">
                 {steps.map((step, i) => {
                   const hasPlanConfirm = steps.find(s => s.step_order === 1)?.step_name === "方案确认";
+                  // 老单可能没有方案确认，待分类改派单会保留归属步骤，均不占用业务步骤的文案序号。
+                  const classificationName = "确认归属并派单（客户站同步单，未匹配业务线）";
+                  const companyCopyIndex = step.step_order - (hasPlanConfirm ? 1 : 0)
+                    - steps.filter(s => s.step_order < step.step_order && s.step_name === classificationName).length;
+                  const companyStepCopy = order.business_type_id === 1 && order.sub_service_type !== "change"
+                    && order.sub_service_type !== UNCLASSIFIED_SUB && step.step_name !== classificationName
+                    ? COMPANY_REGISTRATION_STEP_COPY[companyCopyIndex] : undefined;
                   // 按流程设置建的单（带版本号）资料以库里为准，没有就是真没有，不回退程序里的清单（2026-10-16）
                   const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0) || steps.some(s => s.template_version_id != null);
                   const notes = stepNotes[step.id] || [];
@@ -1124,6 +1132,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <span className="text-xs font-medium text-[var(--info)]">提交 {step.submission_count}/2 · 剩{2 - step.submission_count}次</span>
                           )}
                         </div>
+                        {companyStepCopy && (
+                          <div className="mt-1 min-w-0 space-y-1 break-words text-xs leading-5 text-[var(--muted-foreground)] max-sm:max-w-[calc(100vw-7.5rem)]">
+                            <p className="font-medium text-[var(--foreground)]">{companyStepCopy.title}</p>
+                            <p>{companyStepCopy.description}</p>
+                          </div>
+                        )}
                         {!isCommerceCancelled && !isStepClosed(step.status) && step.status !== "阻塞" && (
                           <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             {confirmingStepId === step.id ? (
