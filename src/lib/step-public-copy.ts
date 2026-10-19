@@ -80,11 +80,16 @@ export function resolveStepCopies(order: OrderKey, steps: readonly StepKey[]): (
   return steps.map(step => {
     const k = seen.get(step.step_name) ?? 0;
     seen.set(step.step_name, k + 1);
-    const entry = index.get(step.step_name)?.[k];
-    if (!entry) return null;
+    const candidates = index.get(step.step_name) ?? [];
+    const byOrder = candidates[k];
     const saved = (step.public_name || "").trim();
-    if (saved && saved !== entry.legacyPublic && saved !== entry.copy.title) return null;
-    return { ...entry.copy };
+    if (!saved) return byOrder ? { ...byOrder.copy } : null;
+    // 记下了客户名字：要跟这一步原来的客户名或子标题对得上，否则是流程设置里另填的，不套文案。
+    // 同名步骤（如 FDA 两个「再次等待官方审核」）删了一个、调了顺序：按记下的客户名认是原来哪一步，不按第几次出现
+    const fits = (e: Entry | undefined): e is NonNullable<Entry> => !!e && (saved === e.legacyPublic || saved === e.copy.title);
+    if (fits(byOrder)) return { ...byOrder.copy };
+    const matches = candidates.filter(fits);
+    return matches.length === 1 ? { ...matches[0].copy } : null;
   });
 }
 

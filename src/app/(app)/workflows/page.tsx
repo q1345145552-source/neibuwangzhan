@@ -6,6 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import type { CatalogEntry } from "@/lib/workflow-catalog";
+import { publicNameToSubmit } from "@/lib/workflow-public-name";
 
 const chip = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 const input = "w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)] disabled:opacity-60";
@@ -117,7 +118,7 @@ export default function WorkflowsPage() {
     setBusy(true); setMessage(null);
     try {
       const steps = editing.rows.map(r => ({
-        from: r.from, name: r.name.trim(), public_name: r.publicName.trim(), assignee: r.assignee, notes: r.notes,
+        from: r.from, name: r.name.trim(), public_name: publicNameToSubmit(r.from !== null ? current.steps[r.from - 1] : undefined, r), assignee: r.assignee, notes: r.notes,
         docs: r.docsText.split("\n").map(x => x.trim()).filter(Boolean),
         expected_days: r.days.trim() === "" ? null : Number(r.days),
       }));
@@ -252,11 +253,12 @@ export default function WorkflowsPage() {
                               : <input value={row.publicName} onChange={e => setRow(i, { publicName: e.target.value })} maxLength={40} placeholder="必填，客户看到的" aria-label={`第 ${i + 1} 步客户看到的名字`} className={cn(input, !row.publicName.trim() && "border-[var(--destructive)]")} />}
                             {!lockName && row.publicName.trim() === NEUTRAL && <span className="mt-1 block text-xs text-[var(--destructive)]">写成「办理事项」，客户看不出办到哪了</span>}
                             {(() => {
-                              // 这一步原来客户能看到统一说明：步骤名或客户名字一改就对不上了，客户不再看到说明
+                              // 这一步原来客户能看到统一说明：步骤名或客户名字一改就对不上了，客户不再看到说明。
+                              // 客户名字改回原来存的那个（比如老对照表的名字）跟没改一样，客户照样看到子标题和说明
                               const orig = row.from !== null ? current.steps[row.from - 1] : undefined;
                               if (!orig?.publicDesc) return null;
-                              const kept = row.name.trim() === orig.name && row.publicName.trim() === orig.publicName;
-                              return <span className={cn("mt-1 block text-xs", kept ? "text-[var(--muted-foreground)]" : "text-[oklch(0.40_0.14_85)]")}>{kept ? "客户还会看到这一步的说明" : "改了名字，客户就看不到这一步的说明了"}</span>;
+                              const kept = row.name.trim() === orig.name && (row.publicName.trim() === orig.publicName || row.publicName.trim() === orig.savedPublicName);
+                              return <span className={cn("mt-1 block text-xs", kept ? "text-[var(--muted-foreground)]" : "text-[oklch(0.40_0.14_85)]")}>{kept ? `客户看到「${orig.publicName}」和下面的说明` : "改了名字，客户就看不到这一步的说明了"}</span>;
                             })()}
                             {!lockName && warnStaff.length > 0 && <span className="mt-1 block text-xs text-[oklch(0.40_0.14_85)]">里面有员工名字 {warnStaff.join("、")}，客户会看到</span>}
                           </td>

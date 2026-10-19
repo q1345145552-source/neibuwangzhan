@@ -30,11 +30,11 @@ Object.assign(process.env, {
 });
 
 // ── 内部：真路由 + 本进程转发服务 ──
-const [syncOrders, confirmRoute, stepsRoute, orderRoute, importRoute, publishRoute, { getDb, getLegacyOrderStepsWithDocs, templateSignature }, { signToken }, progress, { publicStepNames }, { COMPANY_REGISTRATION_STEP_COPY: RAW_COPY }] = await Promise.all([
+const [syncOrders, confirmRoute, stepsRoute, orderRoute, importRoute, publishRoute, { getDb, getLegacyOrderStepsWithDocs, templateSignature }, { signToken }, progress, { publicStepNames }, { COMPANY_REGISTRATION_STEP_COPY: RAW_COPY }, { buildWorkflowCatalog }, { publicNameToSubmit }] = await Promise.all([
   import('../src/app/api/sync/orders/route'), import('../src/app/api/orders/[id]/confirm/route'), import('../src/app/api/orders/[id]/steps/route'),
   import('../src/app/api/orders/[id]/route'), import('../src/app/api/workflows/import/route'), import('../src/app/api/workflows/[id]/publish/route'),
   import('../src/lib/db'), import('../src/lib/auth'), import('../src/lib/progress-sync'), import('../src/lib/commerce-fulfillment'),
-  import('../src/lib/company-registration-step-copy'),
+  import('../src/lib/company-registration-step-copy'), import('../src/lib/workflow-catalog'), import('../src/lib/workflow-public-name'),
 ]);
 const internalDir = path.join(dir, 'internal-cwd'); fs.mkdirSync(internalDir); process.chdir(internalDir);
 const idb = getDb();
@@ -131,7 +131,10 @@ try {
     const last = idb.prepare('SELECT p.id, p.payload FROM sync_progress_outbox p JOIN sync_inbox i ON i.id=p.inbox_id WHERE i.internal_order_id=? ORDER BY p.rowid DESC LIMIT 1').get(first.internalId) as { id: string; payload: string };
     idb.prepare('UPDATE sync_progress_outbox SET payload=? WHERE id=?').run(JSON.stringify({ ...JSON.parse(last.payload), steps: oldSteps }), last.id);
     cdb.prepare('UPDATE sync_progress SET steps_json=? WHERE order_id=?').run(JSON.stringify(oldSteps), first.id);
-    const statusBefore = cdb.prepare('SELECT status FROM orders WHERE id=?').get(first.id).status;
+    // 客户站整单状态故意跟进度对不上（模拟以前某次没同步好）：只换字的补发也不能顺手去改它
+    cdb.prepare("UPDATE orders SET status='confirmed' WHERE id=?").run(first.id);
+    cdb.prepare("UPDATE sync_progress SET updated_at='2026-10-01 01:00:00' WHERE order_id=?").run(first.id);
+    const statusBefore = 'confirmed';
     const notesBefore = notesFor(first.order_no), outBefore = outboxCount(first.internalId);
     assert.equal(progress.resendChangedPublicText(idb), 1);
     assert.equal(outboxCount(first.internalId), outBefore + 1);
@@ -139,8 +142,10 @@ try {
     const steps = await until('客户站换成子标题', () => { const s = customerSteps(first.id); return s[1]?.step_name === COPY[1].title ? s : null; });
     assert.equal(steps[1].description, COPY[1].description);
     assert.equal(notesFor(first.order_no), notesBefore, 'no 办理进度更新 notice for a wording-only change');
-    assert.equal(cdb.prepare('SELECT status FROM orders WHERE id=?').get(first.id).status, statusBefore);
+    assert.equal(cdb.prepare('SELECT status FROM orders WHERE id=?').get(first.id).status, statusBefore, 'wording-only resend never touches the order status');
+    assert.equal(cdb.prepare('SELECT updated_at FROM sync_progress WHERE order_id=?').get(first.id).updated_at, '2026-10-01 01:00:00', '「更新于」 stays, nothing really progressed');
     assert.equal(progress.resendChangedPublicText(idb), 0, 'nothing left to resend');
+    cdb.prepare("UPDATE orders SET status='pending' WHERE id=?").run(first.id);
   });
 
   await test('the resend never pushes a real status change that was not sent before', async () => {
@@ -169,6 +174,18 @@ try {
     const rows = (idb.prepare('SELECT step_order, name, public_name, assignee, notes, docs_json, expected_days FROM workflow_template_steps WHERE version_id=? ORDER BY step_order').all(tpl.v) as
       { step_order: number; name: string; public_name: string | null; assignee: string; notes: string; docs_json: string; expected_days: number | null }[])
       .map(s => ({ from: s.step_order, name: s.name, public_name: s.public_name || legacyPublic[s.step_order - 1], assignee: s.assignee, notes: s.notes, docs: JSON.parse(s.docs_json), expected_days: s.expected_days }));
+    // 页面上点「修改」什么都不动直接发布：交上去的跟原来一样，拦下「没有改动」；只改备注也不把子标题写进流程
+    const entry = buildWorkflowCatalog(idb).find(e => e.templateId === tpl.id)!;
+    assert.equal(entry.steps[4].publicName, COPY[4].title, '流程设置显示客户实际看到的子标题');
+    const pageRows = (notes: (i: number) => string) => entry.steps.map((s, i) => ({ from: i + 1, name: s.name, public_name: publicNameToSubmit(s, { name: s.name, publicName: s.publicName }),
+      assignee: s.assignee, notes: notes(i), docs: s.docs, expected_days: s.expectedDays }));
+    const noop = await call(publishRoute.POST as never, admin, 'POST', `/api/workflows/${tpl.id}/publish`, String(tpl.id), { steps: pageRows(i => entry.steps[i].notes), base_version_id: tpl.v });
+    assert.equal(noop.status, 400, JSON.stringify(noop.json)); assert.match(noop.json.error, /没有改动/);
+    const notesOnly = await call(publishRoute.POST as never, admin, 'POST', `/api/workflows/${tpl.id}/publish`, String(tpl.id), { steps: pageRows(i => i === 3 ? '备注改了' : entry.steps[i].notes), base_version_id: tpl.v });
+    assert.equal(notesOnly.status, 200, JSON.stringify(notesOnly.json));
+    tpl.v = (idb.prepare('SELECT current_version_id v FROM workflow_templates WHERE id=?').get(tpl.id) as { v: number }).v;
+    const savedNames = (idb.prepare('SELECT public_name FROM workflow_template_steps WHERE version_id=? ORDER BY step_order').all(tpl.v) as { public_name: string | null }[]).map(r => r.public_name || '');
+    assert.deepEqual(savedNames.map((n, i) => n || legacyPublic[i]), legacyPublic, 'subtitles are not written into the flow');
     // 删第 2 步（信息采集）；第 3 步改步骤名；第 4 步另填客户名字；其余照旧
     const edited = [rows[0], { ...rows[2], name: `${rows[2].name}（新写法）`, public_name: '开通政府系统账号' }, { ...rows[3], public_name: '本人实名验证' }, ...rows.slice(4)];
     const pub = await call(publishRoute.POST as never, admin, 'POST', `/api/workflows/${tpl.id}/publish`, String(tpl.id), { steps: edited, base_version_id: tpl.v });
@@ -195,6 +212,28 @@ try {
     assert.equal(saved[0].description, undefined);
     assert.equal(saved[1].description?.length, 1000);
     assert.equal(saved[2].description, COPY[2].description);
+  });
+  await test('same-name steps (FDA cosmetics has two 「再次等待官方审核」): delete or swap one, each keeps its own copy', async () => {
+    const { resolveStepCopies } = await import('../src/lib/step-public-copy');
+    const { FDA_STEP_COPY } = await import('../src/lib/fda-step-copy');
+    const fda = FDA_STEP_COPY.cosmetics!;
+    const names = getLegacyOrderStepsWithDocs(3, 'cosmetics').map(s => s.name);
+    const pubs = publicStepNames(names);
+    const dup = names.map((n, i) => n === '再次等待官方审核' ? i : -1).filter(i => i >= 0);
+    assert.equal(dup.length, 2, 'fixture really has two same-name steps');
+    const key = { business_type_id: 3, sub_service_type: 'cosmetics', address_type: '' };
+    const asSaved = (idx: number[]) => idx.map(i => ({ step_name: names[i], public_name: pubs[i] }));
+    // 原样（老单没记客户名 / 新单记了）：按第几次出现
+    assert.deepEqual(resolveStepCopies(key, names.map(n => ({ step_name: n }))).map(c => c?.title), fda.map(c => c.title));
+    assert.deepEqual(resolveStepCopies(key, asSaved(names.map((_, i) => i))).map(c => c?.title), fda.map(c => c.title));
+    // 删掉第一个同名步骤：剩下那个还是自己的文案
+    const without = names.map((_, i) => i).filter(i => i !== dup[0]);
+    const r1 = resolveStepCopies(key, asSaved(without));
+    assert.equal(r1[without.indexOf(dup[1])]?.title, fda[dup[1]].title);
+    // 两个同名步骤对调：各自跟着自己走
+    const swapped = names.map((_, i) => i === dup[0] ? dup[1] : i === dup[1] ? dup[0] : i);
+    const r2 = resolveStepCopies(key, asSaved(swapped));
+    assert.equal(r2[dup[0]]?.title, fda[dup[1]].title); assert.equal(r2[dup[1]]?.title, fda[dup[0]].title);
   });
 } finally {
   child.kill('SIGTERM');

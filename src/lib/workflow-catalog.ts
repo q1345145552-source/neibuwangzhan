@@ -10,8 +10,9 @@ import { resolveStepCopies } from "@/lib/step-public-copy";
  * 第 2 期搬进数据库、第 3 期开放改经办人和天数、第 4 期（2026-10-16）开放改名/增删/调顺序和「客户看到的名字」。
  */
 
-/** publicName：客户实际看到的名字（有统一子标题的是子标题）；publicDesc：客户看到的说明，没有是空 */
-export type CatalogStep = { name: string; publicName: string; publicDesc: string; assignee: string; docs: string[]; notes: string; external: boolean; locked: boolean; expectedDays: number | null };
+/** publicName：客户实际看到的名字（有统一子标题的是子标题）；publicDesc：客户看到的说明，没有是空；
+ *  savedPublicName：这一版里存的客户名字（没存的按对照表算）——页面上没动的步骤发布时原样交回这个，不把子标题写进流程 */
+export type CatalogStep = { name: string; publicName: string; publicDesc: string; savedPublicName: string; assignee: string; docs: string[]; notes: string; external: boolean; locked: boolean; expectedDays: number | null };
 export type CatalogEntry = {
   key: string;
   business: string;
@@ -97,6 +98,7 @@ export function buildWorkflowCatalog(db: Database.Database): CatalogEntry[] {
           name: s.name,
           publicName: shown[i],
           publicDesc: copies[i]?.description ?? "",
+          savedPublicName: pub[i],
           assignee: s.assignee || "",
           docs: s.docs || [],
           notes: s.notes || "",
