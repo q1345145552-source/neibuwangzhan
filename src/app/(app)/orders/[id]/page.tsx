@@ -21,16 +21,6 @@ import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { isStepClosed, isParallelFlow } from "@/lib/step-status";
-import { COMPANY_REGISTRATION_STEP_COPY } from "@/lib/company-registration-step-copy";
-import { WORK_VISA_STEP_COPY } from "@/lib/work-visa-step-copy";
-import { SOCIAL_SECURITY_STEP_COPY } from "@/lib/social-security-step-copy";
-import { TM_REGISTRATION_STEP_COPY } from "@/lib/tm-registration-step-copy";
-import { INTERNATIONAL_TRADEMARK_STEP_COPY } from "@/lib/international-trademark-step-copy";
-import { BUY_R_TRADEMARK_STEP_COPY } from "@/lib/buy-r-trademark-step-copy";
-import { FDA_STEP_COPY } from "@/lib/fda-step-copy";
-import { TISI_STEP_COPY } from "@/lib/tisi-step-copy";
-import { CUSTOMER_ADDRESS_STEP_COPY, XIANGTAI_ADDRESS_STEP_COPY } from "@/lib/address-certification-step-copy";
-import { MALL_STEP_COPY } from "@/lib/mall-store-step-copy";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -1010,35 +1000,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div className="flex flex-col gap-0">
                 {steps.map((step, i) => {
                   const hasPlanConfirm = steps.find(s => s.step_order === 1)?.step_name === "方案确认";
-                  // 老单可能没有方案确认，待分类改派单会保留归属步骤，均不占用业务步骤的文案序号。
-                  const classificationName = "确认归属并派单（客户站同步单，未匹配业务线）";
-                  const companyCopyIndex = step.step_order - (hasPlanConfirm ? 1 : 0)
-                    - steps.filter(s => s.step_order < step.step_order && s.step_name === classificationName).length;
-                  const companyStepCopy = order.business_type_id === 1 && order.sub_service_type !== "change"
-                    && order.sub_service_type !== UNCLASSIFIED_SUB && step.step_name !== classificationName
-                    ? COMPANY_REGISTRATION_STEP_COPY[companyCopyIndex] : undefined;
-                  const fdaStepCopy = order.business_type_id === 3 && step.step_name !== classificationName
-                    ? FDA_STEP_COPY[order.sub_service_type || ""]?.[companyCopyIndex] : undefined;
-                  const tisiStepCopy = order.business_type_id === 4 && order.sub_service_type !== UNCLASSIFIED_SUB
-                    && step.step_name !== classificationName ? TISI_STEP_COPY[companyCopyIndex] : undefined;
-                  const addressStepCopy = order.business_type_id === 7 && order.sub_service_type !== UNCLASSIFIED_SUB
-                    && step.step_name !== classificationName
-                    ? (order.address_type === "xiangtai" ? XIANGTAI_ADDRESS_STEP_COPY
-                      : !order.address_type || order.address_type === "client" ? CUSTOMER_ADDRESS_STEP_COPY : undefined)?.[companyCopyIndex]
-                    : undefined;
-                  const mallStepCopy = order.business_type_id === 8 && step.step_name !== classificationName
-                    ? MALL_STEP_COPY[order.sub_service_type || "shopee"]?.[companyCopyIndex] : undefined;
-                  const businessStepCopy = order.business_type_id === 10 ? WORK_VISA_STEP_COPY
-                    : order.business_type_id === 11 ? SOCIAL_SECURITY_STEP_COPY
-                    : order.business_type_id === 2 && (order.sub_service_type === "tm-reg" || !order.sub_service_type)
-                      ? TM_REGISTRATION_STEP_COPY
-                    : order.business_type_id === 2 && order.sub_service_type === "international"
-                      ? INTERNATIONAL_TRADEMARK_STEP_COPY
-                    : order.business_type_id === 2 && order.sub_service_type === "buy-r"
-                      ? BUY_R_TRADEMARK_STEP_COPY : undefined;
-                  const stepCopy = mallStepCopy ?? addressStepCopy ?? tisiStepCopy ?? fdaStepCopy ?? companyStepCopy ?? (businessStepCopy && order.sub_service_type !== UNCLASSIFIED_SUB
-                    && step.step_name !== classificationName && !(hasPlanConfirm && step.step_order === 1)
-                    ? businessStepCopy[companyCopyIndex - 1] : undefined);
+                  // 客户在业务系统看到的子标题和说明（2026-10-20）：接口按步骤名对好的，流程设置里增删步、调顺序也不会挂错
+                  const stepCopy = step.customer_copy;
                   // 按流程设置建的单（带版本号）资料以库里为准，没有就是真没有，不回退程序里的清单（2026-10-16）
                   const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0) || steps.some(s => s.template_version_id != null);
                   const notes = stepNotes[step.id] || [];

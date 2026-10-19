@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
-import { orderPublicStepNames } from "./commerce-fulfillment";
+import { customerStepView } from "./step-public-copy";
 import { notifySyncBackFailure } from "./order-alerts";
 import { isAwaitingConfirmation } from "./order-confirm";
 
@@ -22,25 +22,29 @@ interface InboxRow {
  * 传入业务事务所用连接；嵌套调用使用 savepoint，独立调用也保证 seq/outbox 原子。
  * 入队错误必须向外抛出，由业务事务回滚，禁止吞掉后继续返回成功。
  */
-export function queueProgressEventsForOrder(orderId: string, db: Database.Database = getDb()): number {
+export function queueProgressEventsForOrder(orderId: string, db: Database.Database = getDb(), options: { textOnly?: boolean } = {}): number {
   return db.transaction(() => {
     const rows = db.prepare(
       "SELECT id, source_order_no, line_no, copy_no, progress_seq FROM sync_inbox WHERE internal_order_id = ?"
     ).all(orderId) as InboxRow[];
     if (rows.length === 0) return 0;
 
-    const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId) as { status: string } | undefined;
+    const order = db.prepare("SELECT status, business_type_id, sub_service_type, address_type FROM orders WHERE id = ?").get(orderId) as
+      { status: string; business_type_id: number; sub_service_type: string | null; address_type: string | null } | undefined;
     if (!order) return 0;
     // 已确认、还没开始办（2026-10-19）：内部状态仍是「待处理」，回传「已确认」，客户站据此从「待确认」变「已确认」。
     // 还在等确认的照旧回传「待处理」。老版客户站不认识「已确认」只会不改整单状态，不会改错。
     const status = order.status === "待处理" && !isAwaitingConfirmation(db, orderId) ? "已确认" : order.status;
     // 白名单：禁止 SELECT * 或带入备注、负责人、费用、内部描述。
     // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 orderPublicStepNames：建单时记下的，老单按对照表）。
+    // 有统一子标题的步骤（2026-10-20 老板 1A）：客户看到子标题，多带一段说明；没有的照旧，不带 description（老版客户站只认三个字段，多的会丢掉）。
     const internalSteps = db.prepare(
       "SELECT step_order, step_name, status, public_name FROM order_steps WHERE order_id = ? ORDER BY step_order"
     ).all(orderId) as { step_order: number; step_name: string; status: string; public_name: string | null }[];
-    const publicNames = orderPublicStepNames(internalSteps);
-    const steps = internalSteps.map((step, i) => ({ step_order: step.step_order, step_name: publicNames[i], status: step.status }));
+    const view = customerStepView(order, internalSteps);
+    const steps = internalSteps.map((step, i) => view[i].description
+      ? { step_order: step.step_order, step_name: view[i].name, status: step.status, description: view[i].description }
+      : { step_order: step.step_order, step_name: view[i].name, status: step.status });
     const insert = db.prepare("INSERT INTO sync_progress_outbox (id, inbox_id, payload) VALUES (?, ?, ?)");
     const bump = db.prepare("UPDATE sync_inbox SET progress_seq = progress_seq + 1 WHERE id = ?");
     const latest = db.prepare("SELECT payload FROM sync_progress_outbox WHERE inbox_id = ? ORDER BY rowid DESC LIMIT 1");
@@ -54,8 +58,10 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
         try {
           const previous = JSON.parse(last.payload) as { status?: unknown; steps?: unknown };
           if (JSON.stringify({ status: previous.status, steps: previous.steps }) === publicState) continue;
-        } catch { /* 照发 */ }
-      }
+          // 只补发名字/说明变了的（textOnly）：状态或哪一步办到哪变了却没发过，不归这里管，不顺手推给客户
+          if (options.textOnly && JSON.stringify({ status: previous.status, steps: statusesOf(previous.steps) }) !== JSON.stringify({ status, steps: statusesOf(steps) })) continue;
+        } catch { if (options.textOnly) continue; /* 照发 */ }
+      } else if (options.textOnly) continue;
       queued++;
       bump.run(row.id);
       insert.run(`PGR-${randomUUID()}`, row.id, JSON.stringify({
@@ -69,6 +75,28 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
     }
     return queued;
   })();
+}
+
+/** 每一步办到哪（不看名字、说明）：用来分辨「只是名字/说明变了」 */
+function statusesOf(steps: unknown): unknown {
+  return Array.isArray(steps) ? steps.map(step => [(step as { step_order?: unknown })?.step_order, (step as { status?: unknown })?.status]) : steps;
+}
+
+/**
+ * 客户看到的步骤名字/说明改了（程序里的子标题改了、2A 老单换子标题），客户站存的还是旧的：
+ * 每次启动给已经回传过进度的客户站单补发一次，只补「名字/说明变了、状态没变」的；没变的不发，所以只会补一次。
+ * 客户站收到这种只改字的进度不给客户发通知（客户站 progress.ts）。
+ */
+export function resendChangedPublicText(db: Database.Database = getDb()): number {
+  const ids = db.prepare(
+    "SELECT DISTINCT internal_order_id AS id FROM sync_inbox si WHERE internal_order_id IS NOT NULL AND internal_order_id <> '' AND EXISTS (SELECT 1 FROM sync_progress_outbox o WHERE o.inbox_id = si.id)"
+  ).all() as { id: string }[];
+  let queued = 0;
+  for (const { id } of ids) {
+    try { queued += queueProgressEventsForOrder(id, db, { textOnly: true }); }
+    catch (error) { console.error("[sync] 补发客户看到的步骤名失败:", id, error); }
+  }
+  return queued;
 }
 
 interface FlushResult { sent: number; failed: number; skipped: boolean }
@@ -262,6 +290,10 @@ export function ensureProgressWorker(): void {
   if (!process.env.CUSTOMER_SYNC_URL || !process.env.SYNC_SECRET) return;
   const state = workerState();
   if (state.timer) return;
+  try {
+    const queued = resendChangedPublicText();
+    if (queued > 0) console.log(`[sync] 客户看到的步骤名/说明有更新，补发 ${queued} 条进度`);
+  } catch (error) { console.error("[sync] 补发客户看到的步骤名失败:", error); }
   state.timer = setInterval(requestProgressFlush, 15_000);
   state.timer.unref?.();
   requestProgressFlush();

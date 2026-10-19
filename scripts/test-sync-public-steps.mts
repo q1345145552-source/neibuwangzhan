@@ -60,6 +60,12 @@ async function main() {
       WHERE i.internal_order_id=? ORDER BY p.rowid DESC LIMIT 1`).get(orderId) as { payload: string };
     return (JSON.parse(row.payload).steps as { step_name: string }[]).map(s => s.step_name);
   }
+  // 2026-10-20：有统一子标题的步骤多带一段说明，也不能漏内部的人名、合作方、金额
+  function latestDescriptions(orderId: string): string[] {
+    const row = db.prepare(`SELECT p.payload FROM sync_progress_outbox p JOIN sync_inbox i ON i.id=p.inbox_id
+      WHERE i.internal_order_id=? ORDER BY p.rowid DESC LIMIT 1`).get(orderId) as { payload: string };
+    return (JSON.parse(row.payload).steps as { description?: string }[]).map(s => s.description || '');
+  }
   // 内部步骤名里出现过的员工名/合作方/内部金额字样（取自 db.ts 现有模板）
   const internalMarkers = /Bam|Pop|Ing[^a-z]|Fern|K\.Fai|Khun|Next|泰铢|代办收|公司代考|确认归属并派单/;
 
@@ -115,14 +121,17 @@ async function main() {
       assert.equal(published.length, o.steps.length, sku);
       assert(!published.includes('办理事项'), `${sku}: reviewed template should map every step`);
       for (const name of published) assert(!internalMarkers.test(name), `${sku} leaked: ${name}`);
+      for (const text of latestDescriptions(o.orderId)) assert(!internalMarkers.test(text) && !/我/.test(text), `${sku} description leaked: ${text}`);
       leakyInternalSteps += o.steps.filter(name => internalMarkers.test(name)).length;
     }
     assert(leakyInternalSteps > 10, 'fixture must actually contain internal-only step names');
   });
-  await test('Shopee payment step is published under its reviewed public name', async () => {
+  // 2026-10-20 老板 1A：客户看到的是统一子标题（原来对照表是「确认套餐与付款」）
+  await test('Shopee payment step is published under its customer subtitle', async () => {
     const o = await order('PLA-001');
     assert.match(o.steps[7], /K\.Fai.*32,100泰铢/);
-    assert.equal(o.published()[7], '确认套餐与付款');
+    assert.equal(o.published()[7], '入驻套餐确认与开通');
+    assert(latestDescriptions(o.orderId)[7].length > 10);
   });
   await test('staff-edited step falls back to the neutral name; untouched steps keep public names', async () => {
     const o = await order('PLA-001');
@@ -134,7 +143,8 @@ async function main() {
     assert.equal(published[0], '方案确认');
     assert.equal(published[1], '办理事项');
     assert.equal(published[published.length - 1], '办理事项');
-    assert.equal(published[7], '确认套餐与付款');
+    assert.equal(latestDescriptions(o.orderId)[1], '', 'edited step carries no description');
+    assert.equal(published[7], '入驻套餐确认与开通');
   });
   await test('internal staff still see the original step names', async () => {
     const o = await order('PLA-001');
@@ -220,7 +230,7 @@ async function main() {
       const response = await handler(new NextRequest(url, { headers }), params);
       assert.equal(response.status, 200, label);
       const steps = (await response.json()).steps as { step_name: string; assignee?: string }[];
-      assert.equal(steps[7].step_name, '确认套餐与付款', label);
+      assert.equal(steps[7].step_name, '入驻套餐确认与开通', label);
       for (const step of steps) { assert(!internalMarkers.test(step.step_name), `${label} leaked ${step.step_name}`); assert.equal(step.assignee, undefined); }
     }
     const admin = db.prepare("SELECT id,name,auth_version FROM employees WHERE role='admin' LIMIT 1").get() as { id: number; name: string; auth_version: number };

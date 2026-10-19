@@ -57,7 +57,7 @@ export async function GET(
 
   return corsResponse({
     ...publicOrder(order),
-    steps: publicSteps(steps),
+    steps: publicSteps(steps, order),
     documents: documents.filter(row => isPublicDocument(row, payload.id)).map(publicDocument),
     certificates: certificates.map(publicCertificate),
   }, 200, origin);

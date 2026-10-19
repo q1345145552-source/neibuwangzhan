@@ -3,13 +3,15 @@ import { getOrderStepsWithDocs, getLegacyOrderStepsWithDocs, templateSignature }
 import { subServices } from "@/lib/constants";
 import { publicStepNames, isReviewedStepTemplate, NEUTRAL_PUBLIC_STEP_NAME } from "@/lib/commerce-fulfillment";
 import { isExternalWait } from "@/lib/handling-report";
+import { resolveStepCopies } from "@/lib/step-public-copy";
 
 /**
  * 流程设置只读清单（2026-10-15，第 1 期）：把现在写在程序里的流程原样列出来给老板核对。
  * 第 2 期搬进数据库、第 3 期开放改经办人和天数、第 4 期（2026-10-16）开放改名/增删/调顺序和「客户看到的名字」。
  */
 
-export type CatalogStep = { name: string; publicName: string; assignee: string; docs: string[]; notes: string; external: boolean; locked: boolean; expectedDays: number | null };
+/** publicName：客户实际看到的名字（有统一子标题的是子标题）；publicDesc：客户看到的说明，没有是空 */
+export type CatalogStep = { name: string; publicName: string; publicDesc: string; assignee: string; docs: string[]; notes: string; external: boolean; locked: boolean; expectedDays: number | null };
 export type CatalogEntry = {
   key: string;
   business: string;
@@ -17,8 +19,10 @@ export type CatalogEntry = {
   steps: CatalogStep[];
   /** 整套步骤在已审核模板里：客户站/商城给客户看的名字都核对过 */
   reviewed: boolean;
-  /** 客户看到的名字在流程设置里改过（跟原来对照表算出来的不一样） */
+  /** 客户看到的名字在流程设置里改过（跟原来对照表算出来的不一样，也不是统一子标题） */
   customPublicNames: boolean;
+  /** 客户看到统一子标题和说明的步骤数（2026-10-20） */
+  copiedSteps: number;
   /** 步骤名和顺序不能改（「待分类」那套：改派按名字找步骤） */
   structureLocked: boolean;
   /** 客户看到的是「办理事项」的步骤数 */
@@ -72,6 +76,9 @@ export function buildWorkflowCatalog(db: Database.Database): CatalogEntry[] {
       // 客户看到的名字：系统里这一版记下的；没记的（程序里的原样流程、早先导入的）按对照表算，跟客户现在看到的一样
       const legacyPub = publicStepNames(names);
       const pub = tpl.map((s, i) => (s.public_name || "").trim() || legacyPub[i]);
+      // 客户实际看到的（2026-10-20）：有统一子标题的步骤换成子标题、带说明；第一步「方案确认」名字固定不换
+      const copies = resolveStepCopies({ business_type_id: bt.id, sub_service_type: c.sub, address_type: c.addr }, tpl.map(s => ({ step_name: s.name, public_name: s.public_name })));
+      const shown = pub.map((p, i) => (i > 0 && copies[i]?.title) || p);
       // 步骤名、步骤数跟程序里的原样流程不一样：在流程设置里改过
       const renamed = JSON.stringify(names) !== JSON.stringify(getLegacyOrderStepsWithDocs(bt.id, c.sub || undefined, c.addr || undefined).map(s => s.name));
       const sig = legacySig(bt.id, c.sub, c.addr);
@@ -88,7 +95,8 @@ export function buildWorkflowCatalog(db: Database.Database): CatalogEntry[] {
         services: [c.label],
         steps: tpl.map((s, i) => ({
           name: s.name,
-          publicName: pub[i],
+          publicName: shown[i],
+          publicDesc: copies[i]?.description ?? "",
           assignee: s.assignee || "",
           docs: s.docs || [],
           notes: s.notes || "",
@@ -97,9 +105,10 @@ export function buildWorkflowCatalog(db: Database.Database): CatalogEntry[] {
           expectedDays: s.expected_days ?? null,
         })),
         reviewed: isReviewedStepTemplate(names) && pub.every((p, i) => p === legacyPub[i]),
-        customPublicNames: tpl.some(s => !!s.public_name) && (renamed || pub.some((p, i) => p !== legacyPub[i])),
+        customPublicNames: tpl.some((s, i) => !copies[i] && !!(s.public_name || "").trim() && (renamed || pub[i] !== legacyPub[i])),
+        copiedSteps: copies.filter(Boolean).length,
         structureLocked: bt.name === "待分类",
-        neutralSteps: pub.filter(p => p === NEUTRAL_PUBLIC_STEP_NAME).length,
+        neutralSteps: shown.filter(p => p === NEUTRAL_PUBLIC_STEP_NAME).length,
         personNames: staff.filter(n => names.some(x => x.includes(n))),
         unconfigured: names.length === 2 && names[1] === "待定",
         inProgress: 0,

@@ -121,13 +121,17 @@ await check('超时：停在「提交申请」远超平时的单被列出；样�
   assert.equal(sep.summary.overdue, sep.overdue.length);
 });
 
-await check('流程清单：商标已核对客户名、FDA 代理显示「办理事项」、地址认证分两套、公司注册几种服务合并', () => {
+await check('流程清单：商标已核对客户名、FDA 代理原来客户看到「办理事项」现在是统一子标题、地址认证分两套、公司注册几种服务合并', () => {
   const list = buildWorkflowCatalog(db);
   const tm = list.find(e => e.business === '商标' && e.services.includes('TM标注册'))!;
   assert.ok(tm.reviewed); assert.equal(tm.steps[0].name, '方案确认'); assert.ok(tm.steps[0].locked);
-  assert.equal(tm.steps.find(s => s.name === '收费开票')?.publicName, '账单核对');
+  // 2026-10-20：流程设置显示客户实际看到的（统一子标题 + 说明）
+  assert.equal(tm.steps.find(s => s.name === '收费开票')?.publicName, '收费与开票');
+  assert.ok((tm.steps.find(s => s.name === '收费开票')?.publicDesc || '').length > 5);
   const agency = list.find(e => e.services.includes('FDA代理'))!;
-  assert.ok(!agency.reviewed && agency.neutralSteps > 0);
+  assert.ok(!agency.reviewed);
+  assert.equal(agency.neutralSteps, 0, '2026-10-20 起有统一子标题，客户不再看到「办理事项」');
+  assert.equal(agency.copiedSteps, agency.steps.length);
   assert.equal(list.filter(e => e.business === '地址认证').length, 2);
   const co = list.find(e => e.business === '公司注册' && e.services.includes('新公司注册'))!;
   assert.ok(co.services.includes('VAT注册') && co.services.length >= 4, co.services.join('/'));

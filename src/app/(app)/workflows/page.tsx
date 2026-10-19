@@ -203,9 +203,10 @@ export default function WorkflowsPage() {
                 <div className="flex flex-wrap gap-1.5">
                   <span className={cn(chip, "border border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]")}>共 {current.steps.length} 步</span>
                   <span className={cn(chip, "bg-[color-mix(in_oklch,var(--success),var(--background)_88%)] text-[var(--success)]")}>现在还在办 {current.inProgress} 单</span>
+                  {current.copiedSteps > 0 && <span className={cn(chip, "bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]")}>{current.copiedSteps} 步客户看到统一写好的名字和说明</span>}
                   {current.customPublicNames
-                    ? <span className={cn(chip, "bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]")}>客户看到的名字是在这里填的</span>
-                    : current.reviewed && <span className={cn(chip, "bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]")}>客户看到的名字是 9 月商城开放时写的</span>}
+                    ? <span className={cn(chip, "bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]")}>有的步骤客户看到的名字是在这里填的</span>
+                    : current.reviewed && current.copiedSteps === 0 && <span className={cn(chip, "bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]")}>客户看到的名字是 9 月商城开放时写的</span>}
                   {current.neutralSteps > 0 && <span className={cn(chip, "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[var(--destructive)]")}>客户看到「办理事项」的有 {current.neutralSteps} 步</span>}
                   {current.structureLocked && <span className={cn(chip, "border border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]")}>步骤名和顺序不能改（改派要按名字找步骤）</span>}
                   {current.unconfigured && <span className={cn(chip, "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]")}>还没配流程</span>}
@@ -250,6 +251,13 @@ export default function WorkflowsPage() {
                               ? <span className="text-[var(--muted-foreground)]">{row.publicName}</span>
                               : <input value={row.publicName} onChange={e => setRow(i, { publicName: e.target.value })} maxLength={40} placeholder="必填，客户看到的" aria-label={`第 ${i + 1} 步客户看到的名字`} className={cn(input, !row.publicName.trim() && "border-[var(--destructive)]")} />}
                             {!lockName && row.publicName.trim() === NEUTRAL && <span className="mt-1 block text-xs text-[var(--destructive)]">写成「办理事项」，客户看不出办到哪了</span>}
+                            {(() => {
+                              // 这一步原来客户能看到统一说明：步骤名或客户名字一改就对不上了，客户不再看到说明
+                              const orig = row.from !== null ? current.steps[row.from - 1] : undefined;
+                              if (!orig?.publicDesc) return null;
+                              const kept = row.name.trim() === orig.name && row.publicName.trim() === orig.publicName;
+                              return <span className={cn("mt-1 block text-xs", kept ? "text-[var(--muted-foreground)]" : "text-[oklch(0.40_0.14_85)]")}>{kept ? "客户还会看到这一步的说明" : "改了名字，客户就看不到这一步的说明了"}</span>;
+                            })()}
                             {!lockName && warnStaff.length > 0 && <span className="mt-1 block text-xs text-[oklch(0.40_0.14_85)]">里面有员工名字 {warnStaff.join("、")}，客户会看到</span>}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
@@ -285,7 +293,10 @@ export default function WorkflowsPage() {
                           {i === 0 && <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">固定第一步</span>}
                           {s.notes && <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">{s.notes}</span>}
                         </td>
-                        <td className={cn("py-3 px-4", s.publicName === NEUTRAL ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]")}>{s.publicName}</td>
+                        <td className={cn("py-3 px-4 min-w-[160px]", s.publicName === NEUTRAL ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]")}>
+                          {s.publicName}
+                          {s.publicDesc && <span className="mt-0.5 block max-w-[320px] text-xs leading-5 text-[var(--muted-foreground)]">{s.publicDesc}</span>}
+                        </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           {s.assignee ? <span className={isGone(s.assignee) ? "text-[var(--destructive)]" : undefined}>{s.assignee}{isGone(s.assignee) ? "（已不在岗，要换人）" : ""}</span> : <span className="text-[var(--muted-foreground)]">不预设</span>}
                         </td>

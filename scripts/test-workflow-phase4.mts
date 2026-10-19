@@ -72,6 +72,14 @@ const publishedCount = (orderId: string) => (db.prepare('SELECT COUNT(*) AS n FR
 // 页面提交的整套步骤（from = 原来第几步）
 type Row = { from: number | null; name: string; public_name: string; assignee: string; notes: string; docs: string[]; expected_days: number | null };
 const rowsOf = (templateId: number): Row[] => versionSteps(currentVersion(templateId)).map(s => ({ from: s.step_order, name: s.name, public_name: s.public_name || '', assignee: s.assignee, notes: s.notes, docs: JSON.parse(s.docs_json), expected_days: s.expected_days }));
+// 2026-10-20 老板 1A：没在流程设置里另填客户名字的原样步骤，客户看到统一子标题；另填过的照填的
+const { TM_REGISTRATION_STEP_COPY } = await import('../src/lib/tm-registration-step-copy');
+const { SOCIAL_SECURITY_STEP_COPY } = await import('../src/lib/social-security-step-copy');
+const tmLegacy = getLegacyOrderStepsWithDocs(TM, 'tm-reg').map(s => s.name);
+const tmLegacyPub = publicStepNames(tmLegacy);
+const tmTitle = new Map(tmLegacy.slice(1).map((n, i) => [n, TM_REGISTRATION_STEP_COPY[i].title]));
+const tmDefault = new Map(tmLegacy.map((n, i) => [n, tmLegacyPub[i]]));
+const shownTM = (name: string, pub: string | null | undefined) => { const t = tmTitle.get(name); return t && (!pub || pub === tmDefault.get(name) || pub === t) ? t : pub; };
 const publish = (templateId: number, steps: unknown[], who = admin) => call(publishRoute.POST as never, who, 'POST', `/api/workflows/${templateId}/publish`, { steps, base_version_id: currentVersion(templateId) }, String(templateId));
 
 // ---------- 改流程之前：老单 ----------
@@ -87,7 +95,7 @@ const oldStaff = await (async () => {
   const r = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { customer_name: '老客户甲', business_type_id: TM, sub_service_type: 'tm-reg' });
   assert.equal(r.status, 201, JSON.stringify(r.json)); return r.json.id as string;
 })();
-const oldStaffPublic = publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(oldStaff)).map(s => s.step_name);
+const oldStaffPublic = publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(oldStaff), db.prepare('SELECT * FROM orders WHERE id=?').get(oldStaff)).map(s => s.step_name);
 
 await check('导入：每一步都记下客户看到的名字，跟导入前客户看到的一模一样；商城每一类服务客户看到的名字也不变', async () => {
   assert.equal((await call(importRoute.POST as never, admin, 'POST', '/api/workflows/import', {})).status, 200);
@@ -141,7 +149,7 @@ await check('改名、加一步、删一步、调顺序：发布成新版本，�
   const steps = stepsOf(o.json.id);
   assert.deepEqual(steps.map(s => s.step_name), renamed.map(s => s.name));
   assert.deepEqual(steps.map(s => s.public_name), renamed.map(s => s.public_name));
-  assert.deepEqual(publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(o.json.id)).map(s => s.step_name), renamed.map(s => s.public_name));
+  assert.deepEqual(publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(o.json.id), db.prepare('SELECT * FROM orders WHERE id=?').get(o.json.id)).map(s => s.step_name), renamed.map(s => shownTM(s.name, s.public_name)));
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM step_documents d JOIN order_steps s ON s.id=d.step_id WHERE d.order_id=? AND s.step_name='跟客户确认商标图样' AND d.document_name='商标图样'").get(o.json.id) as { n: number }).n, 1);
 });
 
@@ -150,7 +158,7 @@ await check('老单一点不变：步骤名、客户看到的名字都不变，�
   assert.equal(queueProgressEventsForOrder(oldSynced, db), 0);
   assert.equal(publishedCount(oldSynced), before);
   assert.deepEqual(latestPublished(oldSynced), oldSyncedNames);
-  assert.deepEqual(publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(oldStaff)).map(s => s.step_name), oldStaffPublic);
+  assert.deepEqual(publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(oldStaff), db.prepare('SELECT * FROM orders WHERE id=?').get(oldStaff)).map(s => s.step_name), oldStaffPublic);
   assert.deepEqual(stepsOf(oldStaff).map(s => s.step_name), getLegacyOrderStepsWithDocs(TM, 'tm-reg').map(s => s.name));
 });
 
@@ -159,7 +167,7 @@ await check('客户站同步来的新单：按新流程建，回传给客户站�
   const flow = getOrderStepsWithDocs(TM, '');
   assert.deepEqual(stepsOf(o).map(s => s.step_name), flow.map(s => s.name));
   const pub = publicStepNames(flow.map(x => x.name));
-  assert.deepEqual(latestPublished(o), flow.map((s, i) => s.public_name || pub[i]));
+  assert.deepEqual(latestPublished(o), flow.map((s, i) => shownTM(s.name, s.public_name || pub[i])));
 });
 
 await check('商城：流程改了名照常接单，按新流程、客户看到填的名字', () => {
@@ -184,6 +192,15 @@ await check('只改客户看到的名字（员工步骤名不动）：新单、�
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(commerceWorkflow(db, { quantity_basis: 'trademark' } as never).publicNames[3], '查重核对');
   assert.equal(getOrderStepsWithDocs(TM, 'tm-reg')[3].public_name, '查重核对');
+  // 客户那边：另填的名字照填的、不带说明；没动的步骤照样是统一子标题和说明
+  const o = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { customer_name: '新客户乙', business_type_id: TM, sub_service_type: 'tm-reg' });
+  assert.equal(o.status, 201, JSON.stringify(o.json));
+  const shown = publicSteps(db.prepare('SELECT * FROM order_steps WHERE order_id=? ORDER BY step_order').all(o.json.id), db.prepare('SELECT * FROM orders WHERE id=?').get(o.json.id)) as { step_name: string; description?: string }[];
+  assert.equal(shown[3].step_name, '查重核对');
+  assert.equal(shown[3].description, undefined);
+  const last = shown[shown.length - 1];
+  assert.equal(last.step_name, tmTitle.get(getOrderStepsWithDocs(TM, 'tm-reg').at(-1)!.name));
+  assert.ok(last.description && last.description.length > 5);
 });
 
 await check('待分类：结构锁住（不能改名、加减、调顺序），经办人、天数照样能改；改派到改过名的流程，接上的步骤带新名字', async () => {
@@ -200,7 +217,7 @@ await check('待分类：结构锁住（不能改名、加减、调顺序），�
   const tm = getOrderStepsWithDocs(TM, 'tm-reg');
   assert.deepEqual(stepsOf(o).map(s => s.step_name), [...claimed.map(s => s.step_name), ...tm.slice(1).map(s => s.name)]);
   assert.ok(claimed.every(s => s.public_name), '待分类两步建单时也记下了客户名');
-  assert.deepEqual(latestPublished(o), [...claimed.map(s => s.public_name), ...tm.slice(1).map(s => s.public_name)]);
+  assert.deepEqual(latestPublished(o), [...claimed.map(s => s.public_name), ...tm.slice(1).map(s => shownTM(s.name, s.public_name))]);
 });
 
 await check('流程清单：显示改过的名字、客户看到的名字是在这里填的；待分类标结构锁住', () => {
@@ -212,6 +229,11 @@ await check('流程清单：显示改过的名字、客户看到的名字是在�
   assert.equal(entries.find(e => e.business === '待分类')!.structureLocked, true);
   const untouched = entries.find(e => e.business === '社保开户')!;
   assert.equal(untouched.customPublicNames, false);
+  // 没改过的流程：除第一步外每步都显示统一子标题和说明（客户实际看到的）
+  assert.equal(untouched.copiedSteps, untouched.steps.length - 1);
+  assert.deepEqual(untouched.steps.slice(1).map(s => s.publicName), SOCIAL_SECURITY_STEP_COPY.map(c => c.title));
+  assert.ok(untouched.steps.slice(1).every(s => s.publicDesc.length > 5));
+  assert.equal(untouched.steps[0].publicName, '方案确认');
 });
 
 await check('老写法（只带 step_order、不带名字）照样能改经办人/天数', async () => {

@@ -51,6 +51,8 @@ export interface OrderStep {
   /** 按流程设置里哪一版建的（2026-10-16）；导入前建的单没有 */
   template_version_id?: number | null;
   expected_days?: number | null;
+  /** 客户在业务系统看到的子标题和说明（2026-10-20）；没有统一文案或流程设置里另填了客户名字的是 null */
+  customer_copy?: { title: string; description: string } | null;
 }
 
 export interface BusinessType {

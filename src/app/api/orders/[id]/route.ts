@@ -12,6 +12,7 @@ import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progres
 import { approvePending } from "@/lib/cancel-sync";
 import { isClientOrderVisible } from "@/lib/client-scope";
 import { AWAITING_CONFIRMATION_ERROR, confirmationOf, isAwaitingConfirmation } from "@/lib/order-confirm";
+import { resolveStepCopies } from "@/lib/step-public-copy";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
 const UNCLASSIFIED_SUB = "storefront-unclassified";
@@ -42,7 +43,7 @@ export async function GET(
     "SELECT * FROM order_steps WHERE order_id = ? ORDER BY step_order"
   ).all(id);
 
-  if (auth.role === "client") return NextResponse.json({ ...publicOrder(order), steps: publicSteps(steps) });
+  if (auth.role === "client") return NextResponse.json({ ...publicOrder(order), steps: publicSteps(steps, order) });
   // 客户站来的单：带上客户站单号和客户站账单付没付（跟订单列表同一个查法，只读，2026-10-16）
   const source = db.prepare("SELECT source_order_no FROM sync_inbox WHERE internal_order_id = ? ORDER BY line_no, copy_no LIMIT 1").get(id) as { source_order_no: string } | undefined;
   let clientBilling: string | null = null;
@@ -55,7 +56,10 @@ export async function GET(
   // 订单确认（2026-10-19）：还在等确认 → 页面显示「待确认」和「确认订单」；同一笔客户订单拆出几张（确认时一起确认）
   const awaitingConfirmation = isAwaitingConfirmation(db, id);
   const confirmGroupSize = source ? (db.prepare("SELECT COUNT(DISTINCT internal_order_id) AS n FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> ''").get(source.source_order_no) as { n: number }).n : 0;
-  return NextResponse.json({ ...order as object, steps, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling,
+  // 每一步客户看到的子标题和说明（2026-10-20）：订单详情里显示在步骤名下面，跟客户站看到的是同一份
+  const copies = resolveStepCopies(order as Record<string, unknown>, steps as { step_name: string; public_name?: string | null }[]);
+  const stepsWithCopy = (steps as Record<string, unknown>[]).map((step, i) => ({ ...step, customer_copy: copies[i] }));
+  return NextResponse.json({ ...order as object, steps: stepsWithCopy, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling,
     awaiting_confirmation: awaitingConfirmation, confirmation: confirmationOf(db, id), confirm_group_size: confirmGroupSize });
 }
 
