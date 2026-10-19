@@ -22,6 +22,8 @@ import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { isStepClosed, isParallelFlow } from "@/lib/step-status";
 import { COMPANY_REGISTRATION_STEP_COPY } from "@/lib/company-registration-step-copy";
+import { WORK_VISA_STEP_COPY } from "@/lib/work-visa-step-copy";
+import { SOCIAL_SECURITY_STEP_COPY } from "@/lib/social-security-step-copy";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -1008,6 +1010,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   const companyStepCopy = order.business_type_id === 1 && order.sub_service_type !== "change"
                     && order.sub_service_type !== UNCLASSIFIED_SUB && step.step_name !== classificationName
                     ? COMPANY_REGISTRATION_STEP_COPY[companyCopyIndex] : undefined;
+                  const businessStepCopy = order.business_type_id === 10 ? WORK_VISA_STEP_COPY
+                    : order.business_type_id === 11 ? SOCIAL_SECURITY_STEP_COPY : undefined;
+                  const stepCopy = companyStepCopy ?? (businessStepCopy && order.sub_service_type !== UNCLASSIFIED_SUB
+                    && step.step_name !== classificationName && !(hasPlanConfirm && step.step_order === 1)
+                    ? businessStepCopy[companyCopyIndex - 1] : undefined);
                   // 按流程设置建的单（带版本号）资料以库里为准，没有就是真没有，不回退程序里的清单（2026-10-16）
                   const orderHasStepDocs = Object.values(stepDocs).some(list => (list || []).length > 0) || steps.some(s => s.template_version_id != null);
                   const notes = stepNotes[step.id] || [];
@@ -1132,10 +1139,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <span className="text-xs font-medium text-[var(--info)]">提交 {step.submission_count}/2 · 剩{2 - step.submission_count}次</span>
                           )}
                         </div>
-                        {companyStepCopy && (
+                        {stepCopy && (
                           <div className="mt-1 min-w-0 space-y-1 break-words text-xs leading-5 text-[var(--muted-foreground)] max-sm:max-w-[calc(100vw-7.5rem)]">
-                            <p className="font-medium text-[var(--foreground)]">{companyStepCopy.title}</p>
-                            <p>{companyStepCopy.description}</p>
+                            <p className="font-medium text-[var(--foreground)]">{stepCopy.title}</p>
+                            <p>{stepCopy.description}</p>
                           </div>
                         )}
                         {!isCommerceCancelled && !isStepClosed(step.status) && step.status !== "阻塞" && (
