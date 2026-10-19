@@ -241,13 +241,31 @@ async function main() {
     const r = await stepRoute.PATCH(new NextRequest(`http://fixture.invalid/api/orders/${orderId}/steps`, { method: 'PATCH', headers: staffHeaders, body: JSON.stringify({ step_id: stepId, status }) }), { params: Promise.resolve({ id: orderId }) });
     assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
   }
+  // 2026-10-19 起客户站来的单要先点「确认订单」才能办理、改派
+  const confirmRoute = await import('../src/app/api/orders/[id]/confirm/route');
+  async function confirm(orderId: string) {
+    const r = await confirmRoute.POST(new NextRequest(`http://fixture.invalid/api/orders/${orderId}/confirm`, { method: 'POST', headers: staffHeaders }), { params: Promise.resolve({ id: orderId }) });
+    assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  }
   async function edit(orderId: string, body: Record<string, unknown>) {
     const r = await orderDetail.PATCH(new NextRequest(`http://fixture.invalid/api/orders/${orderId}`, { method: 'PATCH', headers: staffHeaders, body: JSON.stringify(body) }), { params: Promise.resolve({ id: orderId }) });
     return { status: r.status, body: await r.json() };
   }
   const formOf = (id: string) => { const r = orderRow(id); return { business_type_id: r.business_type_id, sub_service_type: r.sub_service_type, address_type: r.address_type, description: 'edited' }; };
+  await test('unconfirmed 待分类 order cannot be started or reassigned; after 确认订单 it can', async () => {
+    const o = await order('TAX-006');
+    const [plan] = stepsOf(o.orderId);
+    const blocked = await stepRoute.PATCH(new NextRequest(`http://fixture.invalid/api/orders/${o.orderId}/steps`, { method: 'PATCH', headers: staffHeaders, body: JSON.stringify({ step_id: plan.id, status: '已完成' }) }), { params: Promise.resolve({ id: o.orderId }) });
+    assert.equal(blocked.status, 409);
+    const reassign = await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('FDA认证'), sub_service_type: 'food' });
+    assert.equal(reassign.status, 409); assert.match(reassign.body.error, /确认订单/);
+    assert.equal(orderRow(o.orderId).sub_service_type, 'storefront-unclassified');
+    await confirm(o.orderId);
+    assert.equal((await edit(o.orderId, { ...formOf(o.orderId), business_type_id: btId('FDA认证'), sub_service_type: 'food' })).status, 200);
+  });
   await test('待分类: finishing 方案确认 + 确认归属 no longer marks the order 已完成', async () => {
     const o = await order('TAX-006');
+    await confirm(o.orderId);
     const [plan, claim, deliver] = stepsOf(o.orderId);
     assert.deepEqual([plan.step_name, deliver.step_name], ['方案确认', '办理并交付']);
     await setStep(o.orderId, plan.id, '已完成'); await setStep(o.orderId, claim.id, '已完成');
@@ -257,6 +275,7 @@ async function main() {
   });
   await test('reassign 待分类 → FDA 食品: full workflow appended, notes kept, customer names right, only once', async () => {
     const o = await order('TAX-007');
+    await confirm(o.orderId);
     const [plan, claim, deliver] = stepsOf(o.orderId);
     await setStep(o.orderId, plan.id, '已完成');
     db.prepare("INSERT INTO step_notes(step_id,order_id,content,created_by) VALUES (?,?,'NOTE-ON-PLAN','staff'),(?,?,'NOTE-ON-DELIVER','staff')").run(plan.id, o.orderId, deliver.id, o.orderId);
@@ -291,28 +310,33 @@ async function main() {
   });
   await test('reassign guards: started 办理并交付, cancelled order', async () => {
     const started = await order('TAX-008');
+    await confirm(started.orderId);
     await setStep(started.orderId, stepsOf(started.orderId)[2].id, '进行中');
     const r1 = await edit(started.orderId, { ...formOf(started.orderId), business_type_id: btId('NBTC'), sub_service_type: '' });
     assert.equal(r1.status, 409); assert.match(r1.body.error, /办理并交付/);
     assert.equal(stepsOf(started.orderId).length, 3);
     const cancelled = await order('TAX-009');
+    await confirm(cancelled.orderId);
     assert.equal((await edit(cancelled.orderId, { cancel: true, cancel_reason: 'fixture' })).status, 200);
     const r2 = await edit(cancelled.orderId, { ...formOf(cancelled.orderId), business_type_id: btId('NBTC'), sub_service_type: '' });
     assert.equal(r2.status, 409); assert.match(r2.body.error, /已取消/);
   });
   await test('reassign to 地址认证 with 湘泰地址 adds the lease steps; line without sub-services needs none', async () => {
     const a = await order('TAX-010');
+    await confirm(a.orderId);
     const r = await edit(a.orderId, { ...formOf(a.orderId), business_type_id: btId('地址认证'), sub_service_type: '', address_type: 'xiangtai' });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const names = stepsOf(a.orderId).map(s => s.step_name);
     assert(names.includes('签订租赁合同') && names.includes('收取首月租金'));
     assert.equal(orderRow(a.orderId).address_type, 'xiangtai');
     const n = await order('TAX-011');
+    await confirm(n.orderId);
     assert.equal((await edit(n.orderId, { ...formOf(n.orderId), business_type_id: btId('NBTC'), sub_service_type: '' })).status, 200);
     assert.equal(stepsOf(n.orderId).length, 2 + getOrderStepsWithDocs(btId('NBTC'), '', 'client').length - 1);
   });
   await test('ordinary edits of non-待分类 synced orders never regenerate; moving the business line is refused', async () => {
     const o = await order('COM-001');
+    await confirm(o.orderId);
     const before = stepsOf(o.orderId).length;
     const bt = orderRow(o.orderId).business_type_id;
     // 2026-10-15：改业务线步骤不会跟着换，拦下（409）；原样保存照常

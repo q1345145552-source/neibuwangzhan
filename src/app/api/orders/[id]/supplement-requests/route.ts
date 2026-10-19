@@ -4,6 +4,7 @@ import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { requestProgressFlush } from "@/lib/progress-sync";
 import { queueDocumentRequest } from "@/lib/delivery-sync";
+import { AWAITING_CONFIRMATION_ERROR, isAwaitingConfirmation } from "@/lib/order-confirm";
 
 // 补件要求（2026-10-03，规则 13）：员工给客户站客户发「还要补什么」，客户在业务网站的资料待办里看到并按它交。
 
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (description !== undefined && (typeof description !== "string" || description.length > 500)) return NextResponse.json({ error: "说明最多 500 字" }, { status: 400 });
   const db = getDb();
   if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
+  // 客户确认前传不了资料，补件发了也交不上：先确认订单（2026-10-19）
+  if (isAwaitingConfirmation(db, id)) return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
   const created = db.transaction(() => queueDocumentRequest(db, id, name.trim(), String(description || "").trim(), auth.name))();
   if (!created) return NextResponse.json({ error: "只有客户网站同步过来的单能发补件要求" }, { status: 409 });
   logOperation(auth.name, "发补件要求", "order", id, name.trim());

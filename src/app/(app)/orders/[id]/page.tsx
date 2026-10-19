@@ -10,7 +10,7 @@ import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
 import { CustomerPicker, customerExists, isKnownCustomer, type PoolCustomer } from "@/components/customer-picker";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
-import { statusClass, statusLabels } from "@/lib/api";
+import { orderStatusClass, orderStatusLabel, confirmOrder } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepDocs, subServices } from "@/lib/constants";
@@ -557,6 +557,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch (e) { console.error("[订单] 步骤状态修改失败", e); setError(e instanceof Error ? e.message : "更新失败"); }
   };
 
+  // 确认订单（2026-10-19 老板拍板，防客户恶意下单）：客户网站来的单确认后才能开始办理，所有员工都能点
+  const [confirming, setConfirming] = useState(false);
+  const handleConfirmOrder = async () => {
+    if (!order) return;
+    const group = order.confirm_group_size || 1;
+    const tip = `确认这是客户真实下的单？\n确认后才能开始办理；客户网站会显示「已确认」，客户就能上传资料和付款水单。${group > 1 ? `\n这笔客户订单拆出的 ${group} 张办理单会一起确认。` : ""}\n不想接的单请不要确认，由管理员取消。`;
+    if (!window.confirm(tip)) return;
+    setConfirming(true);
+    try {
+      await confirmOrder(id);
+      reload();
+    } catch (e) { console.error("[订单] 确认订单失败", e); setError(e instanceof Error ? e.message : "确认订单失败"); }
+    finally { setConfirming(false); }
+  };
+
   // 编辑订单
   const startEdit = () => {
     try {
@@ -706,13 +721,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className="flex-1">
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{order.id}</h1>
             <div className="mt-1 flex items-center gap-2">
-              <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
+              <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(order))}>{orderStatusLabel(order)}</span>
+              {order.confirmation && <span className="text-xs text-[var(--muted-foreground)]" title={`客户站单号 ${order.confirmation.source_order_no}`}>{order.confirmation.confirmed_by || "员工"} {toThaiTime(order.confirmation.confirmed_at)} 已确认</span>}
               {order.address_type === "xiangtai" && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--primary),var(--background)_88%)] text-[var(--primary)]">湘泰地址</span>}
               {order.address_type === "client" && order.business_type_id === 7 && <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-[color-mix(in_oklch,var(--info),var(--background)_88%)] text-[var(--info)]">客户地址</span>}
               <span className="text-xs text-[var(--muted-foreground)]">{formatCurrency(order.total_amount, order.currency)}</span>
               <span className="text-xs text-[var(--muted-foreground)]">· {steps.filter(s => isStepClosed(s.status)).length}/{steps.length} 已完成</span>
+              {/* 客户网站来的单先确认，确认后才出「开始任务」（2026-10-19） */}
+              {order.awaiting_confirmation && !isClient && (
+                <button onClick={handleConfirmOrder} disabled={confirming} className="rounded border border-[color-mix(in_oklch,var(--success),var(--background)_55%)] bg-[var(--success)] px-3 py-1 text-xs font-medium text-[var(--success-foreground)] hover:bg-[color-mix(in_oklch,var(--success),var(--foreground)_15%)] disabled:opacity-60 transition-colors">{confirming ? "确认中…" : "确认订单"}</button>
+              )}
               {/* 任务级"开始"按钮：仅第一步待处理时显示 */}
-              {steps.length > 0 && steps[0].status === "待处理" && !isClient && !isCommerceCancelled && (
+              {steps.length > 0 && steps[0].status === "待处理" && !isClient && !isCommerceCancelled && !order.awaiting_confirmation && (
                 <button onClick={() => handleStepUpdate(steps[0].id, "进行中")} className="rounded border border-[color-mix(in_oklch,var(--primary),var(--background)_60%)] bg-[color-mix(in_oklch,var(--primary),var(--background)_90%)] px-3 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_82%)] transition-colors">开始任务</button>
               )}
             </div>
@@ -900,6 +920,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           {/* Progress steps with notes + required docs */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
             <h3 className="mb-4 text-sm font-medium text-[var(--foreground)]">进度追踪</h3>
+            {order.awaiting_confirmation && !isClient && (
+              <p role="status" className="mb-4 rounded-md border border-[color-mix(in_oklch,var(--warning),var(--background)_60%)] bg-[color-mix(in_oklch,var(--warning),var(--background)_90%)] px-3 py-2 text-xs text-[var(--foreground)]">
+                这张单是客户在客户网站下的，还没确认。先核对是不是真实客户，再点上面的「确认订单」，确认后才能开始办理、发补件和给客户文件。不想接的单不要确认，由管理员取消。
+              </p>
+            )}
             {steps.length > 0 && (
               <div className="mb-5 flex items-center gap-3">
                 <span className="text-xs text-[var(--muted-foreground)] shrink-0">已完成 {steps.filter(s => isStepClosed(s.status)).length}/{steps.length}{steps.some(s => s.status === "已跳过") ? `（其中跳过 ${steps.filter(s => s.status === "已跳过").length}）` : ""}</span>

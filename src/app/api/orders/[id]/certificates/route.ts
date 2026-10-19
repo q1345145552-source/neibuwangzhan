@@ -6,6 +6,7 @@ import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { requestProgressFlush } from "@/lib/progress-sync";
 import { syncCertificateDelivery } from "@/lib/delivery-sync";
+import { AWAITING_CONFIRMATION_ERROR, isAwaitingConfirmation } from "@/lib/order-confirm";
 
 export async function GET(
   req: NextRequest,
@@ -40,6 +41,8 @@ export async function POST(
   const body = await readJson(req);
   const { certificate_number, product_name, issue_date, expiry_date, notes, file_url } = body;
   if (!certificate_number) return NextResponse.json({ error: "请输入证书编号" }, { status: 400 });
+  // 证书会直接交付给客户站客户：没确认的单先确认（2026-10-19）
+  if (isAwaitingConfirmation(db, id)) return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
 
   // 按到期日自动计算初始状态（此前恒为 valid，即使已过期）
   let initialStatus = "valid";

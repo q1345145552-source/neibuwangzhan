@@ -9,6 +9,7 @@ import { subServices } from "@/lib/constants";
 import { isStepClosed, currentOpenSteps } from "@/lib/step-status";
 import { currentStepTimings } from "@/lib/step-overdue";
 import { checkOrderCustomer, createOrderCustomer } from "@/lib/order-customer";
+import { awaitingConfirmationSql } from "@/lib/order-confirm";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -84,6 +85,8 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
       if (t.overdue && t.expectedDays != null && !overdueBy.has(t.orderId)) overdueBy.set(t.orderId, { step: t.stepName, elapsed: t.elapsedDays, expected: t.expectedDays });
     }
   } catch (error) { console.error("[orders] 超时计算失败:", error); }
+  // 客户站来的单还在等确认（2026-10-19）：列表显示「待确认」
+  const awaiting = new Set((db.prepare(`SELECT o.id FROM orders o WHERE ${awaitingConfirmationSql("o")}`).all() as { id: string }[]).map((r) => r.id));
   return rows.map((o) => {
     const list = stepsBy.get(o.id) || [];
     const closed = list.filter((x) => isStepClosed(x.status));
@@ -95,6 +98,7 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
     return {
       ...o,
       source_order_no: sources.get(o.id) || "",
+      awaiting_confirmation: awaiting.has(o.id),
       progress: {
         total: list.length,
         closed: closed.length,

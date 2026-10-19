@@ -3,8 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { Plus, FileText, ClipboardList, Search, ArrowLeft } from "lucide-react";
-import { fetchOrders, fetchBusinessTypes } from "@/lib/api";
-import { statusClass, statusLabels } from "@/lib/api";
+import { fetchOrders, fetchBusinessTypes, orderStatusLabel, orderStatusClass } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 
@@ -174,7 +173,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
                   <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.responsible_person}</td>
                   <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>
                   <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
-                  <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span></td>
+                  <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(order))}>{orderStatusLabel(order)}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -185,7 +184,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
               <div key={order.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                 <div className="flex items-center justify-between gap-2">
                   <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
-                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
+                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(order))}>{orderStatusLabel(order)}</span>
                 </div>
                 <div className="mt-2 space-y-1.5 text-sm">
                   {businessKey === "商标" && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">商标名称</span><span>{order.trademark_name || "—"}</span></div>}

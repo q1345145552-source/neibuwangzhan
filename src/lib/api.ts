@@ -26,6 +26,10 @@ export interface Order {
   payment?: { arrived: number; arrived_other: number; waiting: number; has_income: boolean; has_arrived: boolean; client_billing?: string | null };
   /** 订单详情：客户站来的单，客户站账单 paid / unpaid */
   client_billing?: string | null;
+  /** 客户网站来的单还没点「确认订单」（2026-10-19）；详情另带确认记录和同一笔订单拆出几张 */
+  awaiting_confirmation?: boolean;
+  confirmation?: { source_order_no: string; confirmed_by: string; confirmed_at: string } | null;
+  confirm_group_size?: number;
 }
 
 export interface OrderStep {
@@ -455,6 +459,14 @@ export async function updateOrder(id: string, data: Partial<{ customer_name: str
   return updateData as Order;
 }
 
+// 确认订单（2026-10-19）：客户网站来的单确认后才能开始办理，同一笔客户订单拆出的几张一起确认
+export async function confirmOrder(id: string) {
+  const res = await fetch(`/api/orders/${id}/confirm`, { method: "POST", headers: authHeaders() });
+  const data = await res.json().catch(() => null) as { error?: string; source_order_no?: string; order_ids?: string[] } | null;
+  if (!res.ok) throw new Error(data?.error || "确认订单失败");
+  return data as { source_order_no: string; order_ids: string[] };
+}
+
 export async function deleteOrder(id: string) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "DELETE",
@@ -665,7 +677,14 @@ export const statusClass: Record<string, string> = {
   "客户取消": "bg-[var(--muted)] text-[var(--muted-foreground)]",
 };
 
-
+// 客户网站来的单还没确认时显示「待确认」（2026-10-19）；数据里的状态仍是「待处理」，只改显示
+const AWAITING_CONFIRMATION_CLASS = "bg-[color-mix(in_oklch,var(--destructive),var(--background)_90%)] text-[oklch(0.42_0.16_35)]";
+export function orderStatusLabel(o: { status: string; awaiting_confirmation?: boolean }): string {
+  return o.awaiting_confirmation ? "待确认" : statusLabels[o.status] || o.status;
+}
+export function orderStatusClass(o: { status: string; awaiting_confirmation?: boolean }): string {
+  return o.awaiting_confirmation ? AWAITING_CONFIRMATION_CLASS : statusClass[o.status] || "";
+}
 
 export interface Task {
   id: string;

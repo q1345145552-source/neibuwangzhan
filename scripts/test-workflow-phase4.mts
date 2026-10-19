@@ -29,6 +29,8 @@ const publishRoute = await import('../src/app/api/workflows/[id]/publish/route')
 const rollbackRoute = await import('../src/app/api/workflows/[id]/rollback/route');
 const ordersRoute = await import('../src/app/api/orders/route');
 const orderRoute = await import('../src/app/api/orders/[id]/route');
+// 2026-10-19 起客户站来的单要先点「确认订单」才能改派、办理
+const confirmRoute = await import('../src/app/api/orders/[id]/confirm/route');
 const syncRoute = await import('../src/app/api/sync/orders/route');
 const db = getDb();
 
@@ -191,6 +193,7 @@ await check('待分类：结构锁住（不能改名、加减、调顺序），�
   assert.equal((await publish(unId, [...cur, { from: null, name: '多一步', public_name: '多一步', assignee: '', notes: '', docs: [], expected_days: null }])).status, 400);
   assert.equal((await publish(unId, cur.map((s, i) => i === 1 ? { ...s, expected_days: 1 } : s))).status, 200);
   const o = await sync('P4-UNC-1', 'ZZZ-999');
+  assert.equal((await call(confirmRoute.POST as never, admin, 'POST', `/api/orders/${o}/confirm`, undefined, o)).status, 200);
   const claimed = stepsOf(o).slice(0, 2);
   const ok = await call(orderRoute.PATCH as never, admin, 'PATCH', `/api/orders/${o}`, { business_type_id: TM, sub_service_type: 'tm-reg', address_type: 'client', description: 'x' }, o);
   assert.equal(ok.status, 200, JSON.stringify(ok.json));

@@ -210,11 +210,11 @@ export async function POST(req: NextRequest) {
       // 待分类提醒（规则 6）：全体在职员工每人一条，谁看到谁领取（订单列表按「待分类」业务线筛选即待领取队列）。
       // 提醒挂这一行建出来的办理单（2026-10-16）：挂客户站单号时点开会进同一单里排第一的那张，可能是已对上业务线的那张
       if (mapping.kind === 'unclassified')
-        notifyUnclassifiedOrder(db, lineIds[0], `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}${lineIds.length > 1 ? `，共 ${lineIds.length} 张办理单` : ''}。请在左边菜单「待分类（待领取）」里认领并改派。`);
+        notifyUnclassifiedOrder(db, lineIds[0], `客户站同步单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）的 SKU ${line.sku_code ?? '无'} 未匹配业务线${note ? '：' + note : ''}${lineIds.length > 1 ? `，共 ${lineIds.length} 张办理单` : ''}。请先打开订单核对并点「确认订单」，再在左边菜单「待分类（待领取）」里认领并改派。`);
     }
     // 新单提醒（2026-10-03 老板定：对上业务线的新单也提醒全体员工；待分类行已有上面的待领取提醒）
     if (mappedLines.length && firstMappedId)
-      notifyNewSyncedOrder(db, firstMappedId, `客户站新订单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）：${mappedLines.join('；')}。已按流程建好办理单，可在订单列表查看。`);
+      notifyNewSyncedOrder(db, firstMappedId, `客户站新订单 ${sourceOrderNo}（${order.customerName || order.customerEmail}）：${mappedLines.join('；')}。已按流程建好办理单，请先打开订单核对并点「确认订单」，确认后才能开始办理。`);
     assertLedgerTotal();
   });
   try { ingest(); }

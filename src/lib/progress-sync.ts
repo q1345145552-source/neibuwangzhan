@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { getDb } from "./db";
 import { orderPublicStepNames } from "./commerce-fulfillment";
 import { notifySyncBackFailure } from "./order-alerts";
+import { isAwaitingConfirmation } from "./order-confirm";
 
 /**
  * 内部 → 客户站：业务写入与 seq/outbox 必须在同一数据库事务中提交；
@@ -30,6 +31,9 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
 
     const order = db.prepare("SELECT status FROM orders WHERE id = ?").get(orderId) as { status: string } | undefined;
     if (!order) return 0;
+    // 已确认、还没开始办（2026-10-19）：内部状态仍是「待处理」，回传「已确认」，客户站据此从「待确认」变「已确认」。
+    // 还在等确认的照旧回传「待处理」。老版客户站不认识「已确认」只会不改整单状态，不会改错。
+    const status = order.status === "待处理" && !isAwaitingConfirmation(db, orderId) ? "已确认" : order.status;
     // 白名单：禁止 SELECT * 或带入备注、负责人、费用、内部描述。
     // 内部步骤名本身就带员工名和内部费用，只回传客户可见名（见 orderPublicStepNames：建单时记下的，老单按对照表）。
     const internalSteps = db.prepare(
@@ -40,7 +44,7 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
     const insert = db.prepare("INSERT INTO sync_progress_outbox (id, inbox_id, payload) VALUES (?, ?, ?)");
     const bump = db.prepare("UPDATE sync_inbox SET progress_seq = progress_seq + 1 WHERE id = ?");
     const latest = db.prepare("SELECT payload FROM sync_progress_outbox WHERE inbox_id = ? ORDER BY rowid DESC LIMIT 1");
-    const publicState = JSON.stringify({ status: order.status, steps });
+    const publicState = JSON.stringify({ status, steps });
     let queued = 0;
     for (const row of rows) {
       // 客户看得到的内容（状态、步骤名、步骤状态）没变就不发：客户站每收到一次都会给客户发「办理进度更新」通知，
@@ -59,7 +63,7 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
         line_no: row.line_no,
         copy_no: row.copy_no,
         seq: row.progress_seq + 1,
-        status: order.status,
+        status,
         steps,
       }));
     }

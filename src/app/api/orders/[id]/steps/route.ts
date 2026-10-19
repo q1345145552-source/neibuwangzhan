@@ -5,6 +5,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
 import { STEP_STATUSES, STEP_SKIPPED, isStepClosed, isParallelFlow, orderStatusFromSteps } from "@/lib/step-status";
 import { notifyNextStep } from "@/lib/order-alerts";
+import { AWAITING_CONFIRMATION_ERROR, isAwaitingConfirmation } from "@/lib/order-confirm";
 
 // PATCH /api/orders/:id/steps
 export async function PATCH(
@@ -35,6 +36,10 @@ export async function PATCH(
   const step = db.prepare("SELECT * FROM order_steps WHERE id = ? AND order_id = ?").get(step_id, id) as { status: string; step_order: number; step_name: string; assignee: string } | undefined;
   if (!step) {
     return NextResponse.json({ error: "步骤不存在" }, { status: 404 });
+  }
+  // 客户网站来的单没确认前不能开始办理（2026-10-19）；只改经办人、备注不拦
+  if (status !== undefined && status !== step.status && isAwaitingConfirmation(db, id)) {
+    return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
   }
   if (status === STEP_SKIPPED && step.status !== STEP_SKIPPED) {
     if (!reason) return NextResponse.json({ error: "跳过要写原因" }, { status: 400 });

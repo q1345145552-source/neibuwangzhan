@@ -106,6 +106,13 @@ export function initializeSyncSchema(database: Database.Database): void {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_sync_cancel_requests_order ON sync_cancel_requests(internal_order_id, status);
+      -- 订单确认（2026-10-19 老板拍板，防客户恶意下单）：按客户站订单号记，一笔客户订单拆出的几张办理单一起确认。
+      -- 新表只加不改；老单不回填，是否还在等确认由 order-confirm.ts 按状态和步骤现算。
+      CREATE TABLE IF NOT EXISTS sync_order_confirmations (
+        source_order_no TEXT PRIMARY KEY,
+        confirmed_by TEXT NOT NULL DEFAULT '',
+        confirmed_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
       -- 回传客户站的发送队列（与业务写入同事务入队，提交后再发）：资料审核结果、补件要求、交付文件、取消申请结果。
       -- submission_id 列作通用键（审核=客户站资料号，补件=request_id，交付=delivery_id，取消=客户站申请号），payload.event 决定发往哪个接口。
       CREATE TABLE IF NOT EXISTS sync_document_outbox (

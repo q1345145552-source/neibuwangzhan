@@ -11,6 +11,7 @@ import { notifyNextStep } from "@/lib/order-alerts";
 import { queueProgressEventsForOrder, requestProgressFlush } from "@/lib/progress-sync";
 import { approvePending } from "@/lib/cancel-sync";
 import { isClientOrderVisible } from "@/lib/client-scope";
+import { AWAITING_CONFIRMATION_ERROR, confirmationOf, isAwaitingConfirmation } from "@/lib/order-confirm";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
 const UNCLASSIFIED_SUB = "storefront-unclassified";
@@ -51,7 +52,11 @@ export async function GET(
       clientBilling = row ? (JSON.parse(row.financial_json) as { billingStatus?: string }).billingStatus || null : null;
     } catch { /* 坏数据不显示 */ }
   }
-  return NextResponse.json({ ...order as object, steps, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling });
+  // 订单确认（2026-10-19）：还在等确认 → 页面显示「待确认」和「确认订单」；同一笔客户订单拆出几张（确认时一起确认）
+  const awaitingConfirmation = isAwaitingConfirmation(db, id);
+  const confirmGroupSize = source ? (db.prepare("SELECT COUNT(DISTINCT internal_order_id) AS n FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> ''").get(source.source_order_no) as { n: number }).n : 0;
+  return NextResponse.json({ ...order as object, steps, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling,
+    awaiting_confirmation: awaitingConfirmation, confirmation: confirmationOf(db, id), confirm_group_size: confirmGroupSize });
 }
 
 // PATCH /api/orders/:id
@@ -115,6 +120,8 @@ export async function PATCH(
       reassign = { businessTypeId: target.id, subServiceType: sub, addressType: target.name === "地址认证" && body.address_type === "xiangtai" ? "xiangtai" : "client" };
     }
   }
+  // 改派会把「确认归属」点完、整单变进行中，等于开始办理：没确认的客户站单先确认（2026-10-19）
+  if (reassign && isAwaitingConfirmation(db, id)) return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
 
   // 非改派的普通编辑：改业务线、具体服务或地址类型时步骤不会跟着换，单子会跑到别的业务线列表里、步骤却还是原来那套。
   // 只在新组合的流程步骤和这张单现有步骤完全一样时放行（比如给没选具体服务的老单补选同一套流程的服务），否则拦下（2026-10-15）

@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Plus, ArrowLeft } from "lucide-react";
-import { fetchOrders } from "@/lib/api";
-import { statusClass, statusLabels } from "@/lib/api";
+import { fetchOrders, orderStatusLabel, orderStatusClass } from "@/lib/api";
 import type { Order } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -52,7 +51,7 @@ export default function LazadaMallPage() {
                 <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link></td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td>
                 <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">{formatCurrency(o.total_amount, o.currency)}</td>
-                <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span></td>
+                <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(o))}>{orderStatusLabel(o)}</span></td>
               </tr>
             ))}
           </tbody>
@@ -63,7 +62,7 @@ export default function LazadaMallPage() {
             <div key={o.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex items-center justify-between gap-2">
                 <Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link>
-                <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span>
+                <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(o))}>{orderStatusLabel(o)}</span>
               </div>
               <div className="mt-2 space-y-1.5 text-sm">
                 <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">客户</span><span>{o.customer_name || "—"}</span></div>

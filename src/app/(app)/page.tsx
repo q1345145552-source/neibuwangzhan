@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TodoList } from "@/components/dashboard/todo-list";
-import { fetchDashboardStats, fetchOrders, fetchAssignedSteps, fetchWithAuth, fetchBusinessTypes, statusLabels, statusClass } from "@/lib/api";
+import { fetchDashboardStats, fetchOrders, fetchAssignedSteps, fetchWithAuth, fetchBusinessTypes, orderStatusLabel, orderStatusClass } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 
 const BusinessChart = dynamic(
@@ -143,7 +143,7 @@ export default function DashboardPage() {
                         >
                           <span className="font-mono text-sm font-medium text-[var(--primary)]">{o.id}</span>
                           <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{o.customer_name}</span>
-                          <span className={cn("inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", statusClass[o.status])}>{statusLabels[o.status]}</span>
+                          <span className={cn("inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", orderStatusClass(o))}>{orderStatusLabel(o)}</span>
                         </Link>
                       ))}
                     </div>

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import type { Order } from "@/lib/api";
-import { statusClass, statusLabels } from "@/lib/api";
+import { orderStatusLabel, orderStatusClass } from "@/lib/api";
 
 interface Props {
   orders: Order[];
@@ -24,8 +24,8 @@ export function TodoList({ orders, title = "近期待办" }: Props) {
           </thead>
           <tbody>
             {orders.map((order) => {
-              const cls = statusClass[order.status] || "";
-              const label = statusLabels[order.status] || order.status;
+              const cls = orderStatusClass(order);
+              const label = orderStatusLabel(order);
               return (
                 <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
                   <td className="py-3 pr-4 font-mono text-xs font-medium tabular-nums"><Link href={`/orders/${order.id}`} className="text-[var(--accent-foreground)] hover:underline">{order.id}</Link></td>

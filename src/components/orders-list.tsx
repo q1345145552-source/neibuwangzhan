@@ -4,9 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, ArrowUpDown, Trash2, Download } from "lucide-react";
-import { fetchOrders, fetchBusinessTypes, deleteOrder } from "@/lib/api";
+import { fetchOrders, fetchBusinessTypes, deleteOrder, orderStatusLabel, orderStatusClass } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
-import { statusClass, statusLabels } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
@@ -136,7 +135,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
       { header: "进度", render: (r) => r.progress ? `${r.progress.closed}/${r.progress.total} ${r.progress.current_step}` : "—" },
       { header: "金额", render: (r) => formatCurrency(r.total_amount, r.currency) },
       { header: "已到账", render: (r) => r.payment ? formatCurrency(r.payment.arrived, r.currency) : "—" },
-      { header: "状态", render: (r) => statusLabels[r.status] || r.status },
+      { header: "状态", render: (r) => orderStatusLabel(r) },
       { header: "创建时间", render: (r) => toThaiTime(r.created_at) },
     ];
     exportToExcel(filtered_, cols, `订单列表_${bangkokDateStr()}`);
@@ -274,7 +273,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
                 </td>
                 <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
                 <td className="py-3 px-4">
-                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", statusClass[order.status])}>{statusLabels[order.status]}</span>
+                  <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(order))}>{orderStatusLabel(order)}</span>
                 </td>
                 {/* 10-16 老板定：只有管理员能删订单，员工只能在订单里「取消订单」 */}
                 {user?.role === "admin" && (

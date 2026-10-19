@@ -7,6 +7,7 @@ import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
 import { queueDocumentReview, requestProgressFlush } from "@/lib/progress-sync";
 import { customerDocumentDeleteError, isLiveCustomerSubmission, syncDocumentDelivery } from "@/lib/delivery-sync";
+import { AWAITING_CONFIRMATION_ERROR, isAwaitingConfirmation } from "@/lib/order-confirm";
 
 export async function GET(
   req: NextRequest,
@@ -42,6 +43,8 @@ export async function POST(
   if (!name) return NextResponse.json({ error: "请提供文档名称" }, { status: 400 });
 
   if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
+  // 直接对客公开的文件会交付给客户站客户：没确认的单先确认（2026-10-19）；只是内部存档的照常加
+  if (isStaff(auth) && direction === "us_to_client" && isAwaitingConfirmation(db, id)) return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
   if (auth.role === "client" && file_url && !canClientAttachFile(auth.id, auth.name, file_url)) {
     return NextResponse.json({ error: "请上传自己的文件，或选择已公开且有权查看的资料" }, { status: 403 });
   }
@@ -107,6 +110,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const db = getDb();
   const existing = db.prepare('SELECT * FROM documents WHERE id = ? AND order_id = ?').get(document_id, id) as (Parameters<typeof syncDocumentDelivery>[2] & { status: string; direction: string; publication_verified: number }) | undefined;
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
+  // 审核结果、对客公开都会回传客户站：没确认的单先确认（2026-10-19）
+  if (isAwaitingConfirmation(db, id)) return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
   const nextStatus = status ?? existing.status;
   const nextDirection = direction ?? existing.direction;
   const queued = db.transaction(() => {

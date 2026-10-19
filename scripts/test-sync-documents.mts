@@ -85,6 +85,14 @@ async function until<T>(label: string, fn: () => T | undefined | null | false | 
 const staff = idb.prepare("SELECT id,name,auth_version FROM employees WHERE role='admin' LIMIT 1").get() as { id: number; name: string; auth_version: number };
 idb.prepare('UPDATE employees SET must_change_password=0 WHERE id=?').run(staff.id);
 const staffToken = await signToken({ id: staff.id, name: staff.name, role: 'admin', auth_version: staff.auth_version, must_change_password: 0 });
+// 2026-10-19 起客户站来的单要先在内部点「确认订单」，客户才能传资料、付款水单
+const confirmRoute = await import('../src/app/api/orders/[id]/confirm/route');
+async function confirmOrder(sourceOrderNo: string, clientOrderId: string) {
+  const first = (idb.prepare('SELECT internal_order_id id FROM sync_inbox WHERE source_order_no=? ORDER BY line_no, copy_no LIMIT 1').get(sourceOrderNo) as { id: string }).id;
+  const r = await confirmRoute.POST(new NextRequest(`http://127.0.0.1/api/orders/${first}/confirm`, { method: 'POST', headers: { authorization: `Bearer ${staffToken}` } }), { params: Promise.resolve({ id: first }) });
+  assert.equal(r.status, 200, await r.clone().text());
+  await until('客户站已确认', () => cdb.prepare('SELECT status FROM orders WHERE id=?').get(clientOrderId)?.status === 'confirmed');
+}
 async function review(orderId: string, documentId: number, status: string, note?: string) {
   const r = await documents.PATCH(new NextRequest(`http://127.0.0.1/api/orders/${orderId}/documents`, { method: 'PATCH',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${staffToken}` }, body: JSON.stringify({ document_id: documentId, status, ...(note ? { review_note: note } : {}) }) }), { params: Promise.resolve({ id: orderId }) });
@@ -100,6 +108,7 @@ try {
   assert.equal(created.status, 200, JSON.stringify(created.body));
   const order = cdb.prepare("SELECT id,order_no FROM orders WHERE sku_code='COM-001' ORDER BY rowid DESC LIMIT 1").get() as { id: string; order_no: string };
   await until('内部接单回执', () => cdb.prepare('SELECT receipt FROM sync_outbox WHERE order_id=?').get(order.id)?.receipt);
+  await confirmOrder(order.order_no, order.id);
   const internalOrders = (idb.prepare('SELECT DISTINCT internal_order_id id FROM sync_inbox WHERE source_order_no=? AND internal_order_id IS NOT NULL').all(order.order_no) as { id: string }[]).map(r => r.id);
   assert.equal(internalOrders.length, 2);
   const reqId = 'req-license';
@@ -172,6 +181,7 @@ try {
     assert.equal(taxCreated.status, 200, JSON.stringify(taxCreated.body));
     const tax = cdb.prepare("SELECT id,order_no FROM orders WHERE sku_code='TAX-005' ORDER BY rowid DESC LIMIT 1").get() as { id: string; order_no: string };
     await until('税务单接单回执', () => cdb.prepare('SELECT receipt FROM sync_outbox WHERE order_id=?').get(tax.id)?.receipt);
+    await confirmOrder(tax.order_no, tax.id);
     const internalTax = (idb.prepare('SELECT internal_order_id id FROM sync_inbox WHERE source_order_no=?').get(tax.order_no) as { id: string }).id;
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('synthetic')]);
     const form = new FormData(); form.append('images', new Blob([png], { type: 'image/png' }), '银行流水.png');
@@ -257,6 +267,7 @@ try {
     assert.equal(second.status, 200, JSON.stringify(second.body));
     const order2 = cdb.prepare("SELECT id,order_no FROM orders WHERE sku_code='TAX-005' ORDER BY rowid DESC LIMIT 1").get() as { id: string; order_no: string };
     await until('第二张单接单回执', () => cdb.prepare('SELECT receipt FROM sync_outbox WHERE order_id=?').get(order2.id)?.receipt);
+    await confirmOrder(order2.order_no, order2.id);
     const added = await staffCall(documents.POST, internalOrders[0], 'POST', { name: '换单前的文件', direction: 'us_to_client', status: '已审核', file_url: '/api/files/deliv-cert.pdf' });
     assert.equal(added.status, 201);
     const row = await until('第一张单收到交付', () => cdb.prepare("SELECT delivery_id,seq,file_path FROM order_deliveries WHERE order_id=? AND name='换单前的文件' AND status='active' AND file_path IS NOT NULL").get(order.id) as { delivery_id: string; seq: number; file_path: string } | undefined);
