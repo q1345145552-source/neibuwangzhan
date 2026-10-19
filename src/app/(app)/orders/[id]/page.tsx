@@ -29,6 +29,7 @@ import { INTERNATIONAL_TRADEMARK_STEP_COPY } from "@/lib/international-trademark
 import { BUY_R_TRADEMARK_STEP_COPY } from "@/lib/buy-r-trademark-step-copy";
 import { FDA_STEP_COPY } from "@/lib/fda-step-copy";
 import { TISI_STEP_COPY } from "@/lib/tisi-step-copy";
+import { CUSTOMER_ADDRESS_STEP_COPY, XIANGTAI_ADDRESS_STEP_COPY } from "@/lib/address-certification-step-copy";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -1019,6 +1020,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     ? FDA_STEP_COPY[order.sub_service_type || ""]?.[companyCopyIndex] : undefined;
                   const tisiStepCopy = order.business_type_id === 4 && order.sub_service_type !== UNCLASSIFIED_SUB
                     && step.step_name !== classificationName ? TISI_STEP_COPY[companyCopyIndex] : undefined;
+                  const addressStepCopy = order.business_type_id === 7 && order.sub_service_type !== UNCLASSIFIED_SUB
+                    && step.step_name !== classificationName
+                    ? (order.address_type === "xiangtai" ? XIANGTAI_ADDRESS_STEP_COPY
+                      : !order.address_type || order.address_type === "client" ? CUSTOMER_ADDRESS_STEP_COPY : undefined)?.[companyCopyIndex]
+                    : undefined;
                   const businessStepCopy = order.business_type_id === 10 ? WORK_VISA_STEP_COPY
                     : order.business_type_id === 11 ? SOCIAL_SECURITY_STEP_COPY
                     : order.business_type_id === 2 && (order.sub_service_type === "tm-reg" || !order.sub_service_type)
@@ -1027,7 +1033,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       ? INTERNATIONAL_TRADEMARK_STEP_COPY
                     : order.business_type_id === 2 && order.sub_service_type === "buy-r"
                       ? BUY_R_TRADEMARK_STEP_COPY : undefined;
-                  const stepCopy = tisiStepCopy ?? fdaStepCopy ?? companyStepCopy ?? (businessStepCopy && order.sub_service_type !== UNCLASSIFIED_SUB
+                  const stepCopy = addressStepCopy ?? tisiStepCopy ?? fdaStepCopy ?? companyStepCopy ?? (businessStepCopy && order.sub_service_type !== UNCLASSIFIED_SUB
                     && step.step_name !== classificationName && !(hasPlanConfirm && step.step_order === 1)
                     ? businessStepCopy[companyCopyIndex - 1] : undefined);
                   // 按流程设置建的单（带版本号）资料以库里为准，没有就是真没有，不回退程序里的清单（2026-10-16）
