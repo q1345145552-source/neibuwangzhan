@@ -25,6 +25,7 @@ import { COMPANY_REGISTRATION_STEP_COPY } from "@/lib/company-registration-step-
 import { WORK_VISA_STEP_COPY } from "@/lib/work-visa-step-copy";
 import { SOCIAL_SECURITY_STEP_COPY } from "@/lib/social-security-step-copy";
 import { TM_REGISTRATION_STEP_COPY } from "@/lib/tm-registration-step-copy";
+import { INTERNATIONAL_TRADEMARK_STEP_COPY } from "@/lib/international-trademark-step-copy";
 
 const stepStatusClass: Record<string, string> = {
   "待处理": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -1014,7 +1015,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   const businessStepCopy = order.business_type_id === 10 ? WORK_VISA_STEP_COPY
                     : order.business_type_id === 11 ? SOCIAL_SECURITY_STEP_COPY
                     : order.business_type_id === 2 && (order.sub_service_type === "tm-reg" || !order.sub_service_type)
-                      ? TM_REGISTRATION_STEP_COPY : undefined;
+                      ? TM_REGISTRATION_STEP_COPY
+                    : order.business_type_id === 2 && order.sub_service_type === "international"
+                      ? INTERNATIONAL_TRADEMARK_STEP_COPY : undefined;
                   const stepCopy = companyStepCopy ?? (businessStepCopy && order.sub_service_type !== UNCLASSIFIED_SUB
                     && step.step_name !== classificationName && !(hasPlanConfirm && step.step_order === 1)
                     ? businessStepCopy[companyCopyIndex - 1] : undefined);
