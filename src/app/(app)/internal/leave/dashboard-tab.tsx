@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
@@ -12,7 +12,7 @@ const AI_BADGE: Record<string, string> = {
   建议不批准: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
 
-export function LeaveDashboardTab() {
+export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: string | null }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [dashboard, setDashboard] = useState<any>(null);
@@ -31,6 +31,11 @@ export function LeaveDashboardTab() {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   // 请假记录筛选
   const [records, setRecords] = useState<any[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(true);
+  const [recordsError, setRecordsError] = useState("");
+  const [jumpError, setJumpError] = useState("");
+  const [highlightLeaveId, setHighlightLeaveId] = useState<number | null>(null);
+  const jumpedLeave = useRef<string | null>(null);
   const [recordsFrom, setRecordsFrom] = useState("");
   const [recordsTo, setRecordsTo] = useState("");
   const [recordsEmployee, setRecordsEmployee] = useState("");
@@ -45,14 +50,80 @@ export function LeaveDashboardTab() {
   };
 
   const loadRecords = () => {
+    setRecordsLoading(true);
     fetchWithAuth("/api/leave", { cache: "no-store" })
-      .then(r => r.json())
-      .then(d => setRecords(Array.isArray(d) ? d : []))
-      .catch(() => setRecords([]));
+      .then(r => {
+        if (!r.ok) throw new Error(r.status === 403 ? "无权查看请假记录。" : "请假记录加载失败，请刷新后重试。");
+        return r.json();
+      })
+      .then(d => {
+        if (!Array.isArray(d)) throw new Error("请假记录加载失败，请刷新后重试。");
+        setRecords(d);
+        setRecordsError("");
+      })
+      .catch(e => { setRecords([]); setRecordsError(e instanceof Error ? e.message : "请假记录加载失败，请刷新后重试。"); })
+      .finally(() => setRecordsLoading(false));
   };
 
   useEffect(() => { loadDashboard(); }, [selectedMonth]);
   useEffect(() => { loadRecords(); }, []);
+
+  useEffect(() => {
+    jumpedLeave.current = null;
+    setHighlightLeaveId(null);
+    setJumpError("");
+    if (targetLeaveId !== null) {
+      setPendingDetail(null);
+      setDetailModal(null);
+      setRejectModal(null);
+      setProofLeaveId(null);
+    }
+  }, [targetLeaveId]);
+
+  // 只在原权限返回的完整记录中查编号；历史审批状态不影响定位权限。
+  useEffect(() => {
+    if (targetLeaveId === null || jumpedLeave.current === targetLeaveId) return;
+    const id = Number(targetLeaveId);
+    if (!/^\d+$/.test(targetLeaveId) || !Number.isSafeInteger(id) || id <= 0) {
+      setJumpError("请假编号无效。");
+      return;
+    }
+    if (recordsLoading || !user) return;
+    if (recordsError) { setJumpError(recordsError); return; }
+    const target = records.find(record => record.id === id);
+    if (!target || (!isAdmin && target.employee_name !== user.name)) {
+      setJumpError("请假记录不存在或你无权查看。");
+      return;
+    }
+    if (loading) return;
+    if (!dashboard) { setJumpError("请假看板加载失败或你无权查看，请刷新后重试。"); return; }
+    if (recordsFrom && target.start_date < recordsFrom) setRecordsFrom("");
+    if (recordsTo && target.start_date > recordsTo) setRecordsTo("");
+    if (recordsEmployee && target.employee_name !== recordsEmployee) setRecordsEmployee("");
+    if (recordsStatus && target.status !== recordsStatus) setRecordsStatus("");
+    jumpedLeave.current = targetLeaveId;
+    setJumpError("");
+    setHighlightLeaveId(id);
+  }, [targetLeaveId, records, recordsLoading, recordsError, user, isAdmin, loading, dashboard, recordsFrom, recordsTo, recordsEmployee, recordsStatus]);
+
+  // 两端只滚动真正显示的记录行/卡片，记录出现后再开始计算高亮时间。
+  useEffect(() => {
+    if (highlightLeaveId === null) return;
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const target = [...document.querySelectorAll<HTMLElement>(`[data-leave-id="${highlightLeaveId}"]`)]
+        .find(element => element.getClientRects().length > 0);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        clearTimer = setTimeout(() => setHighlightLeaveId(null), 3000);
+      } else if (performance.now() < deadline) frame = requestAnimationFrame(locate);
+      else { setHighlightLeaveId(null); setJumpError("暂时无法定位该请假记录，请刷新后重试。"); }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [highlightLeaveId]);
 
   const changeMonth = (delta: number) => {
     const [y, m] = selectedMonth.split("-").map(Number);
@@ -217,6 +288,7 @@ export function LeaveDashboardTab() {
     return cells;
   };
 
+  if (targetLeaveId !== null && jumpError) return <p role="alert" className="text-sm text-red-600">{jumpError}</p>;
   if (loading) return <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">加载中…</div>;
   if (!dashboard) return <div className="text-center py-12 text-sm text-[var(--muted-foreground)]">暂无数据或没有权限</div>;
 
@@ -453,7 +525,7 @@ export function LeaveDashboardTab() {
                 </thead>
                 <tbody>
                   {filtered.map(r => (
-                    <tr key={r.id} className="border-b border-[var(--border)] last:border-0">
+                    <tr key={r.id} id={`leave-record-${r.id}`} data-leave-id={r.id} className={cn("border-b border-[var(--border)] last:border-0", r.id === highlightLeaveId && "bg-amber-100 dark:bg-amber-900/30")}>
                       <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>
                       <td className="py-2.5 px-4">{r.leave_type}</td>
                       <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{r.start_date || "—"} {r.start_time || "09:00"} ~ {r.end_date || "—"} {r.end_time || "17:00"}</td>
@@ -469,7 +541,7 @@ export function LeaveDashboardTab() {
               {/* 手机端卡片 */}
               <div className="md:hidden flex flex-col gap-2 p-3">
                 {filtered.map(r => (
-                  <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div key={r.id} id={`leave-record-${r.id}-mobile`} data-leave-id={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", r.id === highlightLeaveId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">{r.employee_name}</span>
                       <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>

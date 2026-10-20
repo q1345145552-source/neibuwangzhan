@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { LeaveDashboardTab } from "./dashboard-tab";
@@ -11,8 +12,12 @@ type LeaveTab = "dashboard" | "analysis" | "submit";
 
 export default function LeavePage() {
   const { user } = useAuth();
+  const leaveIdParam = useSearchParams().get("leave");
   // 员工默认进「提交请假」，管理员/老板默认进「看板」
-  const [tab, setTab] = useState<LeaveTab>(user?.role === "admin" ? "dashboard" : "submit");
+  const [tab, setTab] = useState<LeaveTab>(leaveIdParam !== null || user?.role === "admin" ? "dashboard" : "submit");
+  useEffect(() => {
+    if (leaveIdParam !== null) setTab("dashboard");
+  }, [leaveIdParam]);
 
   const tabs: { key: LeaveTab; label: string }[] = [
     { key: "dashboard", label: "看板" },
@@ -43,7 +48,7 @@ export default function LeavePage() {
         ))}
       </div>
 
-      {tab === "dashboard" ? <LeaveDashboardTab /> : tab === "analysis" ? <LeaveAnalysisTab /> : <LeaveSubmitTab />}
+      {tab === "dashboard" ? <LeaveDashboardTab targetLeaveId={leaveIdParam} /> : tab === "analysis" ? <LeaveAnalysisTab /> : <LeaveSubmitTab />}
     </div>
   );
 }
