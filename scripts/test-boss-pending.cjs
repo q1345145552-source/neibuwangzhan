@@ -42,6 +42,7 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
   db.prepare("INSERT INTO file_uploads(filename,uploaded_by_id,uploaded_by_role,mime_type,size) VALUES ('pending.png',?,'employee','image/png',100)").run(users.employee.id);
   const meetingId = Number(db.prepare("INSERT INTO meetings(title,meeting_date,participants) VALUES ('测试会议',?,?)").run(current, JSON.stringify([employee])).lastInsertRowid);
   const todoId = Number(db.prepare('INSERT INTO todos(content,assignee,created_by) VALUES (?,?,?)').run('完成后待确认', employee, users.admin.name).lastInsertRowid);
+  const unfinishedTodoId = Number(db.prepare('INSERT INTO todos(content,assignee,created_by) VALUES (?,?,?)').run('保持未完成的普通待办', employee, employee).lastInsertRowid);
   const problemId = Number(db.prepare("INSERT INTO problems(problem_number,company_name,assignee,status) VALUES ('PROB-TEST','测试公司',?,'跟进中')").run(employee).lastInsertRowid);
   db.prepare("INSERT INTO points_records(employee_name,points,reason,rule_key) VALUES (?,100,'测试积分','customer_claim')").run(employee);
   const ids = { notice: noticeRecord, todo: todoId, problem: problemId };
@@ -64,7 +65,9 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
   await check('Pending response includes all eight categories, employee/summary/time/href and newest-first sorting', async () => {
     const r = await call('pending', 'GET', 'admin'); assert.equal(r.status, 200); assert.equal(r.response.headers.get('cache-control'), 'private, no-store');
     assert.equal(r.body.total, 9);
-    for (const category of Object.keys(BOSS_SUBMISSION_TYPES)) assert(r.body.items.some(i => i.category === category && i.source_id === ids[category]), category);
+    for (const category of Object.keys(BOSS_SUBMISSION_TYPES)) assert(r.body.items.some(i => i.category === category && i.source_id === (category === 'todo' ? unfinishedTodoId : ids[category])), category);
+    assert(!r.body.items.some(i => i.category === 'todo' && i.source_id === todoId), 'Completed todo excluded even before boss confirmation');
+    assert.equal(r.body.items.find(i => i.category === 'todo').category_label, '未完成待办');
     for (const item of r.body.items) { assert.equal(item.employee_name, employee); assert.equal(item.employee_id, users.employee.id); assert(item.summary && item.category_label && item.href.startsWith('/') && !isNaN(Date.parse(item.submitted_at))); }
     assert.deepEqual(r.body.items.map(i => i.submitted_at), r.body.items.map(i => i.submitted_at).sort().reverse());
     assert.equal(messages().length, 16, 'Reading pending does not send reminders');
@@ -101,15 +104,17 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
     assert((await pending()).items.some(i => i.id === `report:${report.id}`)); assert((await pending()).items.some(i => i.id === `meeting:${reflection.id}`));
     assert.equal(db.prepare("SELECT generation FROM boss_submission_state WHERE category='report' AND source_id=?").get(report.id).generation, 2);
   });
-  await check('Todo repeat completion sends no duplicate; admin confirmation is separate, reopen/completion creates a new round', async () => {
+  await check('Todo completion notification remains unchanged; reopening enters unfinished list and completion removes it', async () => {
     const before = messages().length;
     await call('todo', 'PATCH', 'employee', { status: '已完成' }, { id: String(todoId) }); assert.equal(messages().length, before);
     assert.equal((await call('todo', 'PATCH', 'employee', { action: 'confirm' }, { id: String(todoId) })).status, 403);
     assert.equal((await call('todo', 'PATCH', 'admin', { action: 'confirm' }, { id: String(todoId) })).status, 200);
-    assert(!(await pending()).items.some(i => i.category === 'todo'));
+    assert(!(await pending()).items.some(i => i.category === 'todo' && i.source_id === todoId));
     await call('todo', 'PATCH', 'employee', { status: '未完成' }, { id: String(todoId) });
+    assert((await pending()).items.some(i => i.category === 'todo' && i.source_id === todoId));
     await call('todo', 'PATCH', 'employee', { status: '已完成' }, { id: String(todoId) }); assert.equal(messages().length, before + 2);
-    assert((await pending()).items.some(i => i.category === 'todo'));
+    assert(!(await pending()).items.some(i => i.category === 'todo' && i.source_id === todoId));
+    assert((await pending()).items.some(i => i.category === 'todo' && i.source_id === unfinishedTodoId));
   });
   await check('Approvals/returns/acceptance remove pending entries; returned notice and problem submissions notify again', async () => {
     await call('leave', 'PATCH', 'admin', { id: ids.leave, status: '已驳回' });

@@ -4,7 +4,7 @@ export const BOSS_SUBMISSION_TYPES = {
   notice: { label: "通知/规则落实", title: "员工提交了通知落实" },
   report: { label: "日报", title: "员工提交了日报" },
   meeting: { label: "会议心得", title: "员工提交了会议心得" },
-  todo: { label: "待办完成", title: "员工完成了待办" },
+  todo: { label: "未完成待办", title: "员工完成了待办" },
   problem: { label: "问题跟踪", title: "员工提交了问题验收" },
   withdrawal: { label: "积分提现", title: "员工提交了积分提现" },
 } as const;

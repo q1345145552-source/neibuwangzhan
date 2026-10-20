@@ -71,9 +71,8 @@ export function bossPendingSubmissions(db: Database.Database) {
     FROM meeting_reflections r JOIN meetings m ON m.id=r.meeting_id
     LEFT JOIN boss_submission_state s ON s.category='meeting' AND s.source_id=r.id WHERE r.status='已提交'`).all() as Reflection[];
   add("meeting", reflections.filter(r => r.viewed_revision !== reflectionSubmissionRevision(r)).map(r => ({ ...r, submitted_at: r.last_submitted_at || r.updated_at || r.created_at })));
-  add("todo", db.prepare(`SELECT t.id,t.assignee employee_name,COALESCE(NULLIF(s.submitted_at,''),NULLIF(t.completed_at,''),t.updated_at) submitted_at,t.content summary
-    FROM todos t LEFT JOIN boss_submission_state s ON s.category='todo' AND s.source_id=t.id
-    WHERE t.status='已完成' AND COALESCE(s.confirmed_at,'')=''`).all() as Candidate[]);
+  add("todo", db.prepare(`SELECT t.id,t.assignee employee_name,t.created_at submitted_at,t.content summary
+    FROM todos t WHERE t.status='未完成'`).all() as Candidate[]);
   add("problem", db.prepare(`SELECT p.id,p.assignee employee_name,COALESCE(NULLIF(s.submitted_at,''),p.updated_at) submitted_at,
     p.problem_number||' '||p.company_name||'：'||p.resolve_note summary FROM problems p
     LEFT JOIN boss_submission_state s ON s.category='problem' AND s.source_id=p.id WHERE p.status='老板验收'`).all() as Candidate[]);
