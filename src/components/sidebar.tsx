@@ -327,7 +327,7 @@ export function Sidebar() {
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">客户</span>
-          <NavSection items={customerNav} pathname={pathname} onClose={close} />
+          <NavSection items={user?.role === "client" ? customerNav.filter((n) => n.name !== "客户评价") : customerNav} pathname={pathname} onClose={close} />
 
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">业务线</span>
         </div>

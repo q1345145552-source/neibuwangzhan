@@ -258,6 +258,22 @@ try {
     assert.equal((await call(giftsRoute.POST as never, emp, 'POST', '/api/customer-ratings/gifts', {}, { source_order_no: mall.order_no })).status, 409);
     assert.equal((idb.prepare('SELECT sent_by FROM rating_gifts WHERE source_order_no=?').get(mall.order_no) as { sent_by: string }).sent_by, emp.name);
   });
+  await test('gift: rating every finished step and then skipping the one left still counts — both sides agree', async () => {
+    const o = await placeOrder('PLA-004', 'p-mall', '企业店入驻', 500);
+    assert.equal((await call(confirmRoute.POST as never, emp, 'POST', `/api/orders/${o.internalId}/confirm`, { id: o.internalId })).status, 200);
+    const ss = stepRows(o.internalId);
+    for (const st of [ss[0], ss[1], ss[3]]) await finishStep(o.internalId, st.id);
+    const done = (x: { status: string }) => x.status === '已完成';
+    await untilSent('第 1、2、4 步完成到客户站', () => { const st = JSON.parse(cdb.prepare('SELECT steps_json FROM sync_progress WHERE order_id=?').get(o.id).steps_json); return done(st[0]) && done(st[1]) && done(st[3]); });
+    for (const n of [1, 2, 4]) assert.equal((await client('POST', `/api/orders/${o.id}/step-ratings`, { line_no: 1, copy_no: 1, step_order: n, stars: 5, comment: '' })).status, 200);
+    await until('内部收到 3 条评价', () => (idb.prepare('SELECT COUNT(*) n FROM step_ratings WHERE source_order_no=?').get(o.order_no) as { n: number }).n === 3);
+    assert.equal(idb.prepare('SELECT 1 FROM rating_gifts WHERE source_order_no=?').get(o.order_no), undefined, 'step 3 still open');
+    const skip = await call(stepsRoute.PATCH as never, admin, 'PATCH', `/api/orders/${o.internalId}/steps`, { id: o.internalId }, { step_id: ss[2].id, status: '已跳过', reason: '客户自己已经加好仓库地址' });
+    assert.equal(skip.status, 200, JSON.stringify(skip.json));
+    assert.ok(idb.prepare('SELECT 1 FROM rating_gifts WHERE source_order_no=?').get(o.order_no), 'skipping the open step completes the gift');
+    await untilSent('第 3 步跳过到客户站', () => JSON.parse(cdb.prepare('SELECT steps_json FROM sync_progress WHERE order_id=?').get(o.id).steps_json)[2].status === '已跳过');
+    assert.equal((await client('GET', `/api/orders/${o.id}/step-ratings`)).body.gift.qualified, true);
+  });
 } finally {
   child.kill('SIGTERM');
   shim.close();

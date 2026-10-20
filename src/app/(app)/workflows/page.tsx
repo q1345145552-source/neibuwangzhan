@@ -323,7 +323,7 @@ export default function WorkflowsPage() {
                   </div>
                 </div>
               )}
-              {templateId && !current.structureLocked && <WorkflowKitFiles templateId={templateId} />}
+              {templateId && !current.structureLocked && <WorkflowKitFiles key={templateId} templateId={templateId} />}
               {templateId && versionList.length > 0 && (
                 <div className="border-t border-[var(--border)] px-5 py-4">
                   <h3 className="mb-2 text-xs font-medium text-[var(--foreground)]">版本历史</h3>

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
 import { customerStepView } from "./step-public-copy";
+import { checkRatingGift } from "./step-ratings";
 import { notifySyncBackFailure } from "./order-alerts";
 import { isAwaitingConfirmation } from "./order-confirm";
 
@@ -72,6 +73,15 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
         status,
         steps,
       }));
+    }
+    // 每步打分送特产（2026-10-20）：客户评完最后一条之后，员工又跳过了剩下的步骤、或取消了某一份，
+    // 也算「每一步都评完」——不能只在收到评价时判断，否则客户那边说送、这边永远不登记
+    for (const no of new Set(rows.map(r => r.source_order_no))) {
+      if (db.prepare("SELECT 1 FROM step_ratings WHERE source_order_no = ? LIMIT 1").get(no)) {
+        const name = (db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(orderId) as { customer_name?: string } | undefined)?.customer_name || "";
+        try { checkRatingGift(db, no, name); }
+        catch (error) { console.error("[sync] 评完送特产补查失败（不影响保存）:", no, error); }
+      }
     }
     return queued;
   })();

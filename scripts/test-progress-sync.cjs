@@ -75,6 +75,7 @@ function harness(db) {
       // 真实映射由 scripts/test-sync-public-steps.mts 端到端覆盖。
       if (id === '@/lib/commerce-terms') return { readOrderPurchase: () => null };
       if (id === './commerce-fulfillment') return { publicStepNames: names => names.map(() => '办理事项') };
+      if (id === './step-ratings') return { checkRatingGift: () => false }; // 夹具没有客户评价
       if (id === './step-public-copy') return { customerStepView: (_order, rows) => rows.map(() => ({ name: '办理事项', description: null })) }; // 2026-10-20 起回传走这里；真实文案由 test-step-copy.mts 端到端覆盖
       if (id === './commerce-schema') return { isCommerceBuyer: () => false }; // 夹具未开商城试点，真实实现同为 false
       if (id === '@/lib/constants') return { subServices: {} }; // 仅待分类改派用，夹具订单不是待分类单

@@ -1375,7 +1375,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
           {/* 客户站来的单：看客户传的付款水单、管理员确认收款（2026-10-20） */}
           {!isClient && sidebarTab === "finances" && order.source_order_no && (
-            <OrderPaymentCard orderId={order.id} isAdmin={user?.role === "admin"} awaitingConfirmation={!!order.awaiting_confirmation} onPreview={setPreviewUrl} />
+            <OrderPaymentCard key={order.id} orderId={order.id} isAdmin={user?.role === "admin"} awaitingConfirmation={!!order.awaiting_confirmation} onPreview={setPreviewUrl} />
           )}
           {!isClient && sidebarTab === "finances" && (() => {
               const toTHB = (amount: number, cur?: string) => cur === "CNY" ? amount * (exchangeRate || 1) : amount;
@@ -1569,7 +1569,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {!isClient && order.source_order_no && (
                   <div className="mb-3 border-b border-[var(--border)] pb-2 text-xs text-[var(--muted-foreground)]">
                     <p className="font-medium text-[var(--foreground)]">客户能看到的固定资料</p>
-                    {(order.customer_kit || []).length === 0 ? <p className="mt-0.5">这套流程还没配说明书、资料收集表{user?.role === "admin" ? "（在「流程设置」里配）" : ""}</p> : (
+                    {(order.customer_kit || []).length === 0 ? <p className="mt-0.5">{order.sub_service_type === UNCLASSIFIED_SUB ? "还没分业务线，分好后客户看到那条业务线的说明书、资料收集表" : `这套流程还没配说明书、资料收集表${user?.role === "admin" ? "（在「流程设置」里配）" : ""}`}</p> : (
                       <ul className="mt-1 flex flex-col gap-0.5">
                         {(order.customer_kit || []).map(f => <li key={f.id}>{f.kind}：<a href={fileUrl(f.file_url)} target="_blank" rel="noreferrer" className="text-[var(--primary)] hover:underline">{f.name}</a></li>)}
                       </ul>

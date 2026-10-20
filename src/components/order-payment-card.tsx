@@ -22,14 +22,16 @@ export function OrderPaymentCard({ orderId, isAdmin, awaitingConfirmation, onPre
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // 只认这张单的返回：切到别的单后，旧单的账单晚回来也不能贴到新单上（父页另按单号换新卡片）
   const load = useCallback(() => {
-    setLoading(true);
+    let alive = true;
     fetchOrderPayment(orderId)
-      .then(setData)
-      .catch((e) => setData({ available: false, reason: e instanceof Error ? e.message : "取客户的账单失败" }))
-      .finally(() => setLoading(false));
+      .then(d => { if (alive) setData(d); })
+      .catch((e) => { if (alive) setData({ available: false, reason: e instanceof Error ? e.message : "取客户的账单失败" }); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, [orderId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => load(), [load]);
 
   const invoice = data?.invoice;
   const paid = invoice?.status === "paid";

@@ -62,7 +62,7 @@ export function checkRatingGift(db: Database.Database, sourceOrderNo: string, cu
     if (!steps.length) return false;
     for (const s of steps) if (s.status !== "已完成" || !rated.get(sourceOrderNo, copy.line_no, copy.copy_no, s.step_order)) return false;
   }
-  db.prepare("INSERT INTO rating_gifts (source_order_no, customer_name) VALUES (?, ?)").run(sourceOrderNo, customerName);
+  if (!db.prepare("INSERT OR IGNORE INTO rating_gifts (source_order_no, customer_name) VALUES (?, ?)").run(sourceOrderNo, customerName).changes) return false;
   const admins = db.prepare("SELECT DISTINCT name FROM employees WHERE role = 'admin' AND status = '在职' AND name <> ''").all() as { name: string }[];
   const notify = db.prepare("INSERT INTO notifications (type,title,body,recipient,related_id,related_type) VALUES ('',?,?,?,?,'order')");
   for (const { name } of admins) notify.run("客户评价送特产", `客户 ${customerName || ""}（客户站单号 ${sourceOrderNo}）每一步都评价完了，要送一份泰国特产。送了请到「客户评价」→「特产待送」点「已送出」。`, name, copies[0].internal_order_id);

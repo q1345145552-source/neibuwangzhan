@@ -18,13 +18,16 @@ export function WorkflowKitFiles({ templateId }: { templateId: number }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // 只认这套流程的返回：切到别的流程后，旧流程的清单晚回来也不能显示在新流程下（父页另按流程换新组件）
   const load = useCallback(() => {
+    let alive = true;
     fetchWithAuth(`/api/workflows/${templateId}/files`)
       .then(r => r.json())
-      .then((d: { files?: KitFile[] }) => setFiles(d.files || []))
-      .catch(() => setFiles([]));
+      .then((d: { files?: KitFile[] }) => { if (alive) setFiles(d.files || []); })
+      .catch(() => { if (alive) setFiles([]); });
+    return () => { alive = false; };
   }, [templateId]);
-  useEffect(() => { setMessage(null); load(); }, [load]);
+  useEffect(() => load(), [load]);
 
   const upload = async (kind: typeof KINDS[number], file: File) => {
     setBusy(kind); setMessage(null);

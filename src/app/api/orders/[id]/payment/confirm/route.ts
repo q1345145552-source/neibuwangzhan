@@ -18,7 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (isAwaitingConfirmation(db, id)) return NextResponse.json({ error: "这张单还没确认订单，请先点「确认订单」" }, { status: 409 });
   try {
     const result = await confirmCustomerPayment(sourceOrderNo, auth.name || "");
-    if (!result.already) logOperation(auth.name || "", "确认收款", "order", id, `客户站单号 ${sourceOrderNo}`);
+    // 已经是已付款也记一笔：上一次可能是超时了但业务系统其实改成功了，不记就查不到是谁确认的
+    logOperation(auth.name || "", "确认收款", "order", id, `客户站单号 ${sourceOrderNo}${result.already ? "（业务系统已是已付款）" : ""}`);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof CustomerPaymentError) return NextResponse.json({ error: error.message }, { status: error.status });
