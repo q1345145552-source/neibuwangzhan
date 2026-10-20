@@ -75,6 +75,8 @@ export default function TodosPage() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [employees, setEmployees] = useState<{ id: number; name: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [jumpError, setJumpError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ content: "", assignee: "", priority: "普通", images: [] as string[], category_id: "" });
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -132,9 +134,16 @@ export default function TodosPage() {
 
   const load = useCallback(() => {
     fetchWithAuth("/api/todos", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setTodos(Array.isArray(d) ? d : []))
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(r.status === 403 ? "无权查看待办。" : "待办加载失败，请刷新后重试。");
+        return r.json();
+      })
+      .then((d) => {
+        if (!Array.isArray(d)) throw new Error("待办加载失败，请刷新后重试。");
+        setTodos(d);
+        setLoadError("");
+      })
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "待办加载失败，请刷新后重试。"))
       .finally(() => setLoading(false));
     loadStats();
   }, [loadStats]);
@@ -207,32 +216,39 @@ export default function TodosPage() {
   // 点积压提醒：进入对应负责人的待办列表，并定位+高亮那条待办
   const jumpToTodo = (assignee: string, todoId: number) => {
     setSelectedAssignee(assignee || "未分配");
+    setCategoryFilter("all");
     setHighlightTodoId(todoId);
   };
 
-  // 定位并高亮：等列表渲染后滚动到目标待办，高亮几秒后淡出
+  // 同页切换通知编号时取消旧定位，允许再次打开之前的编号。
+  useEffect(() => {
+    autoJumpedTodo.current = null;
+    setJumpError("");
+    setHighlightTodoId(null);
+  }, [todoIdParam]);
+
+  // 只定位当前屏幕实际渲染的表格行/卡片；找到目标后才开始计算高亮时间。
   useEffect(() => {
     if (highlightTodoId == null) return;
-    const scrollTimer = setTimeout(() => {
-      const el = document.getElementById(`todo-${highlightTodoId}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 120);
-    const clearTimer = setTimeout(() => setHighlightTodoId(null), 3000);
-    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer); };
-  }, [highlightTodoId, selectedAssignee]);
-
-  // 消息中心跳转：待办列表加载后，自动定位并高亮指定的待办
-  useEffect(() => {
-    if (!todoIdParam || autoJumpedTodo.current === todoIdParam) return;
-    const id = Number(todoIdParam);
-    if (!Number.isInteger(id)) return;
-    const t = todos.find((x) => x.id === id);
-    if (t) {
-      autoJumpedTodo.current = todoIdParam;
-      setSelectedAssignee(t.assignee || "未分配");
-      setHighlightTodoId(id);
-    }
-  }, [todos, todoIdParam]);
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const el = [...document.querySelectorAll<HTMLElement>(`[data-todo-id="${highlightTodoId}"]`)]
+        .find((node) => node.getClientRects().length > 0);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        clearTimer = setTimeout(() => setHighlightTodoId(null), 3000);
+      } else if (performance.now() < deadline) {
+        frame = requestAnimationFrame(locate);
+      } else {
+        setHighlightTodoId(null);
+        setJumpError("暂时无法定位该待办，请刷新后重试。");
+      }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [highlightTodoId]);
 
   // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
   const completedFiltered = useMemo(() => {
@@ -244,6 +260,30 @@ export default function TodosPage() {
       return d >= start && d <= today;
     });
   }, [completed, completedRange]);
+
+  // 只在原权限返回的完整列表里找目标，不按通知编号额外获取其他人的记录。
+  useEffect(() => {
+    if (todoIdParam === null || autoJumpedTodo.current === todoIdParam) return;
+    const id = Number(todoIdParam);
+    if (!/^\d+$/.test(todoIdParam) || !Number.isSafeInteger(id) || id <= 0) {
+      setJumpError("待办编号无效。");
+      return;
+    }
+    if (loading || !user) return;
+    if (loadError) { setJumpError(loadError); return; }
+    const target = todos.find((t) => t.id === id);
+    if (!target) { setJumpError("待办不存在或你无权查看。"); return; }
+    if (target.status === "已完成") {
+      setCompletedOpen(true);
+      if (!completedFiltered.some((t) => t.id === id)) setCompletedRange("all");
+    } else {
+      setSelectedAssignee(target.assignee || "未分配");
+      setCategoryFilter("all");
+    }
+    autoJumpedTodo.current = todoIdParam;
+    setJumpError("");
+    setHighlightTodoId(id);
+  }, [todoIdParam, loading, loadError, todos, user, completedFiltered]);
 
   const openForm = () => {
     setForm({ content: "", assignee: user?.name || "", priority: "普通", images: [], category_id: "" });
@@ -601,7 +641,7 @@ export default function TodosPage() {
         </thead>
         <tbody>
           {list.map((t) => (
-            <tr key={t.id} id={`todo-${t.id}`} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
+            <tr key={t.id} id={`todo-${t.id}`} data-todo-id={t.id} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
               <td className="py-3 px-5">
                 <div className="text-base font-semibold text-[var(--foreground)]">{t.content}</div>
                 {t.latest_follow_content && (
@@ -666,7 +706,7 @@ export default function TodosPage() {
       {/* 手机端卡片 */}
       <div className="md:hidden flex flex-col gap-3 p-4">
         {list.map((t) => (
-          <div key={t.id} id={`todo-${t.id}`} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
+          <div key={t.id} id={`todo-${t.id}-mobile`} data-todo-id={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
             <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 flex-1 break-words text-base font-semibold text-[var(--foreground)]">{t.content}</span>
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
@@ -778,6 +818,8 @@ export default function TodosPage() {
           </Button>
         </div>
       </div>
+
+      {jumpError && <p role="alert" className="text-sm text-red-600">{jumpError}</p>}
 
       {/* 待办看板（仅管理员/老板可见） */}
       {isAdmin && (
@@ -1093,7 +1135,7 @@ export default function TodosPage() {
                 </thead>
                 <tbody>
                   {completedFiltered.map((t) => (
-                    <tr key={t.id} className="border-b border-[var(--border)]">
+                    <tr key={t.id} id={`todo-${t.id}`} data-todo-id={t.id} className={cn("border-b border-[var(--border)]", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
                       <td className="py-3 px-5 text-[var(--muted-foreground)] line-through">{t.content}</td>
                       <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
                       <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.completed_at) || "—"}</td>
@@ -1109,7 +1151,7 @@ export default function TodosPage() {
               {/* 手机端卡片 */}
               <div className="md:hidden flex flex-col gap-3 p-4">
                 {completedFiltered.map((t) => (
-                  <div key={t.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div key={t.id} id={`todo-${t.id}-mobile`} data-todo-id={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                     <div className="flex items-start justify-between gap-2">
                       <span className="min-w-0 flex-1 break-words text-[var(--muted-foreground)] line-through">{t.content}</span>
                       <span className="text-xs text-[var(--muted-foreground)] shrink-0">{t.assignee || "—"}</span>
