@@ -512,7 +512,8 @@ export function openAuthedFile(url: string, name: string): void {
     .then(b => {
       const objectUrl = URL.createObjectURL(b);
       if (win) { win.location.href = objectUrl; return; }
-      const a = document.createElement("a"); a.href = objectUrl; a.download = name;
+      const ext = /\.[a-z0-9]{1,8}$/i.exec(url)?.[0] || "";
+      const a = document.createElement("a"); a.href = objectUrl; a.download = ext && !name.toLowerCase().endsWith(ext.toLowerCase()) ? name + ext : name;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     })

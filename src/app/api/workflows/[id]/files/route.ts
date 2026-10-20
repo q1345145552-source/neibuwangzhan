@@ -38,7 +38,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const safeName = /^\/api\/files\/([A-Za-z0-9._-]+)$/.exec(fileUrl)?.[1];
   if (!safeName || !EXTS.has(path.extname(safeName).toLowerCase())) return NextResponse.json({ error: "文件不对，请重新上传（PDF、图片、Word、Excel）" }, { status: 400 });
   if (!r.db.prepare("SELECT 1 FROM file_uploads WHERE filename = ?").get(safeName)) return NextResponse.json({ error: "文件没传上来，请重新上传" }, { status: 400 });
-  const name = String(body.name || "").trim().slice(0, 100) || kind;
+  // 名字最长 100 字，截的时候保住扩展名（下载时按这个名字存，扩展名丢了电脑认不出文件）
+  const ext = path.extname(safeName).toLowerCase();
+  let name = String(body.name || "").trim() || kind;
+  if (!name.toLowerCase().endsWith(ext)) name += ext;
+  if (name.length > 100) name = name.slice(0, 100 - ext.length) + ext;
   const info = r.db.prepare("INSERT INTO workflow_template_files (template_id, kind, name, file_url, uploaded_by) VALUES (?, ?, ?, ?, ?)")
     .run(r.tpl.id, kind, name, fileUrl, r.auth.name || "");
   logOperation(r.auth.name || "", "流程资料", "workflow", String(r.tpl.id), `${r.tpl.label} 加${kind}「${name}」`);
