@@ -42,8 +42,9 @@ export function recordStepRating(db: Database.Database, input: RatingInput, cust
         input.step_name, names.join("、"), input.stars, input.comment, names.length ? points : 0, customerName, input.rated_at);
     if (orderId && names.length) {
       const reason = `客户评价: 订单 ${orderId} 第${input.step_order}步「${input.step_name}」${stars(input.stars)}，${points > 0 ? `+${points}` : points}分`;
-      const insert = db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_id, ref_type, status) VALUES (?, ?, ?, 'client_step_rating', ?, 'order', '有效')");
-      for (const name of names) insert.run(name, points, reason, orderId);
+      // 积分记在客户打分的时间（客户站带来的 UTC 时间），不记送到内部的时间：同步晚到跨了月也算进打分那个月
+      const insert = db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_id, ref_type, status, created_at) VALUES (?, ?, ?, 'client_step_rating', ?, 'order', '有效', ?)");
+      for (const name of names) insert.run(name, points, reason, orderId, input.rated_at);
     }
     const gift = checkRatingGift(db, input.source_order_no, customerName);
     return { id: input.id, status: "created", points: names.length ? points : 0, gift };

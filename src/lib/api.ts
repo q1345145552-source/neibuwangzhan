@@ -500,6 +500,15 @@ export async function confirmOrderPayment(id: string): Promise<OrderPayment & { 
   return data as OrderPayment & { already?: boolean };
 }
 
+/** 打开站内文件（/api/files/...）：带登录凭证取回来再在新窗口打开，凭证不放进网址（2026-10-20 起新加的入口用这个） */
+export function openAuthedFile(url: string): void {
+  const win = window.open("", "_blank");
+  fetchWithAuth(url, { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error(""); return r.blob(); })
+    .then(b => { const objectUrl = URL.createObjectURL(b); if (win) win.location.href = objectUrl; else window.location.href = objectUrl; })
+    .catch(() => { win?.close(); window.alert("打开文件失败，请稍后再试"); });
+}
+
 /** 客户传的水单：带登录凭证取回来（凭证在请求头里，不放进网址），返回文件内容 */
 export async function fetchOrderReceipt(orderId: string, receiptId: string): Promise<Blob> {
   const res = await fetchWithAuth(`/api/orders/${encodeURIComponent(orderId)}/payment/receipts/${encodeURIComponent(receiptId)}`, { cache: "no-store" });

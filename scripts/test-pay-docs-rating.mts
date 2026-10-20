@@ -225,6 +225,9 @@ try {
     assert.equal((await client('POST', `/api/orders/${mall.id}/step-ratings`, { line_no: 1, copy_no: 1, step_order: 2, stars: 1, comment: '' })).status, 409, 'one rating per step');
     await until('内部收到评价', () => idb.prepare('SELECT 1 FROM step_ratings WHERE source_order_no=? AND step_order=2').get(mall.order_no));
     assert.equal(pointsOf(emp.name), 3);
+    // 积分记在客户打分那一刻（不是送到内部的时刻）
+    const r2 = idb.prepare('SELECT rated_at FROM step_ratings WHERE source_order_no=? AND step_order=2').get(mall.order_no) as { rated_at: string };
+    assert.equal((idb.prepare("SELECT created_at FROM points_records WHERE rule_key='client_step_rating' AND employee_name=? ORDER BY id LIMIT 1").get(emp.name) as { created_at: string }).created_at, r2.rated_at);
     const detail = await call(orderRoute.GET as never, emp, 'GET', `/api/orders/${mall.internalId}`, { id: mall.internalId });
     assert.deepEqual({ stars: detail.json.steps[1].customer_rating.stars, comment: detail.json.steps[1].customer_rating.comment }, { stars: 5, comment: '很专业' });
     const listed = await client('GET', `/api/orders/${mall.id}/step-ratings`);

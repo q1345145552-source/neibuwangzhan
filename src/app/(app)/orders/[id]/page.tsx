@@ -10,7 +10,7 @@ import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
 import { CustomerPicker, customerExists, isKnownCustomer, type PoolCustomer } from "@/components/customer-picker";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
-import { orderStatusClass, orderStatusLabel, confirmOrder } from "@/lib/api";
+import { orderStatusClass, orderStatusLabel, confirmOrder, openAuthedFile } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
 import type { Order, OrderStep, Document, Finance, StepNote, StepDocument, Certificate } from "@/lib/api";
 import { getStepDocs, subServices } from "@/lib/constants";
@@ -1571,7 +1571,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium text-[var(--foreground)]">客户能看到的固定资料</p>
                     {(order.customer_kit || []).length === 0 ? <p className="mt-0.5">{order.sub_service_type === UNCLASSIFIED_SUB ? "还没分业务线，分好后客户看到那条业务线的说明书、资料收集表" : `这套流程还没配说明书、资料收集表${user?.role === "admin" ? "（在「流程设置」里配）" : ""}`}</p> : (
                       <ul className="mt-1 flex flex-col gap-0.5">
-                        {(order.customer_kit || []).map(f => <li key={f.id}>{f.kind}：<a href={fileUrl(f.file_url)} target="_blank" rel="noreferrer" className="text-[var(--primary)] hover:underline">{f.name}</a></li>)}
+                        {(order.customer_kit || []).map(f => <li key={f.id}>{f.kind}：<button type="button" onClick={() => openAuthedFile(f.file_url)} className="text-left text-[var(--primary)] hover:underline">{f.name}</button></li>)}
                       </ul>
                     )}
                   </div>
