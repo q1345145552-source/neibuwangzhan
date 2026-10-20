@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
 import { apiCall } from "@/lib/api-call";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,12 @@ interface MonthlySummary {
 
 export default function InternalPage() {
   const { user } = useAuth();
+  const attendanceRequestParam = useSearchParams().get("attendance_request");
+  const [attendanceRequestsLoading, setAttendanceRequestsLoading] = useState(true);
+  const [attendanceRequestsError, setAttendanceRequestsError] = useState("");
+  const [attendanceJumpError, setAttendanceJumpError] = useState("");
+  const [highlightAttendanceRequestId, setHighlightAttendanceRequestId] = useState<number | null>(null);
+  const jumpedAttendanceRequest = useRef<string | null>(null);
   const [staffNames, setStaffNames] = useState<string[]>([]);
   const [wl, setWl] = useState<WorkloadData | null>(null);
   // 机构业务总开关：关闭时工作量里隐藏达人相关列
@@ -143,7 +150,21 @@ export default function InternalPage() {
   const latestAttendance = useLatestRequest();
   const loadAttendance = async () => {
     const run = latestAttendance();
+    setAttendanceRequestsLoading(true);
     const today = new Date().toISOString().split("T")[0];
+    let requestError = "";
+    const loadRequests = async () => {
+      try {
+        const response = await fetchWithAuth("/api/attendance/request", { cache: "no-store" });
+        if (!response.ok) throw new Error(response.status === 403 ? "无权查看补卡申请。" : "补卡申请加载失败，请刷新后重试。");
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error("补卡申请加载失败，请刷新后重试。");
+        return data;
+      } catch (error) {
+        requestError = error instanceof Error ? error.message : "补卡申请加载失败，请刷新后重试。";
+        return [];
+      }
+    };
 
     // 四个考勤接口各自独立加载，互不拖垮
     const safeFetch = async (url: string, label: string) => {
@@ -159,7 +180,7 @@ export default function InternalPage() {
       safeFetch(`/api/attendance?employee=${user?.name || ""}`, "考勤记录"),
       safeFetch("/api/attendance/today", "今日考勤"),
       safeFetch(`/api/attendance/summary?month=${summaryMonth}`, "考勤汇总"),
-      safeFetch("/api/attendance/request", "补卡请求"),
+      loadRequests(),
     ]);
 
     if (!run.isLatest()) return;
@@ -167,6 +188,8 @@ export default function InternalPage() {
     setTodayStatuses(todayData);
     setMonthlySummaries(sumData);
     setAttendanceRequests(reqData);
+    setAttendanceRequestsError(requestError);
+    setAttendanceRequestsLoading(false);
   };
 
   useEffect(() => {
@@ -379,6 +402,61 @@ export default function InternalPage() {
   };
 
   const isAdmin = user?.role === "admin";
+
+  useEffect(() => {
+    jumpedAttendanceRequest.current = null;
+    setHighlightAttendanceRequestId(null);
+    setAttendanceJumpError("");
+    if (attendanceRequestParam !== null) {
+      setCalDetailDay(null);
+      setAnomalyModal(null);
+      setPhotoModal(null);
+      setWlDetailModal(null);
+      setLightboxImages(null);
+    }
+  }, [attendanceRequestParam]);
+
+  // 此编号是补签申请编号；只在原接口返回的列表中找，不查询或改动打卡记录。
+  useEffect(() => {
+    if (attendanceRequestParam === null || jumpedAttendanceRequest.current === attendanceRequestParam || !user) return;
+    if (!isAdmin) { setAttendanceJumpError("补卡审批仅管理员可查看。"); return; }
+    const id = Number(attendanceRequestParam);
+    if (!/^\d+$/.test(attendanceRequestParam) || !Number.isSafeInteger(id) || id <= 0) {
+      setAttendanceJumpError("补卡申请编号无效。");
+      return;
+    }
+    if (attendanceRequestsLoading) return;
+    if (attendanceRequestsError) { setAttendanceJumpError(attendanceRequestsError); return; }
+    const target = attendanceRequests.find(request => request.id === id);
+    if (!target) { setAttendanceJumpError("补卡申请不存在或你无权查看。"); return; }
+    if (target.status !== "待审批") {
+      setShowAtdHistory(true);
+      if (atdHistoryFilter !== "all" && !isWithinDays(target.created_at, atdHistoryFilter === "7d" ? 7 : 30)) {
+        setAtdHistoryFilter("all");
+      }
+    }
+    jumpedAttendanceRequest.current = attendanceRequestParam;
+    setAttendanceJumpError("");
+    setHighlightAttendanceRequestId(id);
+  }, [attendanceRequestParam, user, isAdmin, attendanceRequestsLoading, attendanceRequestsError, attendanceRequests, atdHistoryFilter]);
+
+  useEffect(() => {
+    if (highlightAttendanceRequestId === null) return;
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const target = [...document.querySelectorAll<HTMLElement>(`[data-attendance-request-id="${highlightAttendanceRequestId}"]`)]
+        .find(element => element.getClientRects().length > 0);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        clearTimer = setTimeout(() => setHighlightAttendanceRequestId(null), 3000);
+      } else if (performance.now() < deadline) frame = requestAnimationFrame(locate);
+      else { setHighlightAttendanceRequestId(null); setAttendanceJumpError("暂时无法定位该补卡申请，请刷新后重试。"); }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [highlightAttendanceRequestId]);
   // 考勤导出选中的月份（默认当前曼谷月，切换后明细/汇总导出都按这个月导出）
   const [attendanceMonth, setAttendanceMonth] = useState(bangkokMonthKey());
 
@@ -519,6 +597,8 @@ export default function InternalPage() {
           </div>
         </div>
       </div>
+
+      {attendanceJumpError && <p role="alert" className="text-sm text-red-600">{attendanceJumpError}</p>}
 
       {/* ── 工作证 / 签证到期提醒（管理员） ── */}
       {isAdmin && expiryAlerts.length > 0 && (
@@ -1206,7 +1286,7 @@ export default function InternalPage() {
 
       {/* ── 补卡审批 (管理员) ── */}
       {isAdmin && (
-        <div id="attendance-requests" className="scroll-mt-4 rounded-xl border border-[var(--border)] bg-[var(--background)]">
+        <div id="attendance-requests" className="max-w-[calc(100vw-2rem)] scroll-mt-4 rounded-xl border border-[var(--border)] bg-[var(--background)] md:max-w-none">
           <div className="px-5 py-4 border-b border-[var(--border)]">
             <h2 className="text-sm font-medium flex items-center gap-2"><History className="size-4" />补卡审批</h2>
           </div>
@@ -1230,7 +1310,7 @@ export default function InternalPage() {
                 </thead>
                 <tbody>
                   {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status === "待审批").map(r => (
-                    <tr key={r.id} className="border-b border-[var(--border)]">
+                    <tr key={r.id} id={`attendance-request-${r.id}`} data-attendance-request-id={r.id} className={cn("border-b border-[var(--border)]", r.id === highlightAttendanceRequestId && "bg-amber-100 dark:bg-amber-900/30")}>
                       <td className="py-2.5 px-4 font-medium">{r.employee_name}</td>
                       <td className="py-2.5 px-4">{r.date}</td>
                       <td className="py-2.5 px-4">{r.time}</td>
@@ -1249,7 +1329,7 @@ export default function InternalPage() {
               {/* 手机端卡片 */}
               <div className="md:hidden flex flex-col gap-2 p-3">
                 {(Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status === "待审批").map(r => (
-                  <div key={r.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+                  <div key={r.id} id={`attendance-request-${r.id}-mobile`} data-attendance-request-id={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", r.id === highlightAttendanceRequestId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-[var(--foreground)]">{r.employee_name}</span>
                       <span className="text-xs text-[var(--muted-foreground)]">{r.date} {r.time}</span>
@@ -1309,7 +1389,7 @@ export default function InternalPage() {
                     ? (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
                     : (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批")
                   ).map(r => (
-                    <div key={r.id} className="flex items-center justify-between py-1 text-xs">
+                    <div key={r.id} id={`attendance-request-${r.id}`} data-attendance-request-id={r.id} className={cn("flex items-center justify-between py-1 text-xs", r.id === highlightAttendanceRequestId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                       <span>{r.employee_name} · {r.date} {r.time}</span>
                       <span className={cn(r.status === "已通过" ? "text-green-600" : "text-red-500")}>{r.status}{r.approved_by ? ` · ${r.approved_by}` : ""}</span>
                     </div>
