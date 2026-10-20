@@ -83,7 +83,7 @@ export function WorkflowKitFiles({ templateId }: { templateId: number }) {
                   {list.map(f => (
                     <li key={f.id} className="flex items-center gap-2 text-xs">
                       <FileText className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
-                      <button type="button" onClick={() => openAuthedFile(f.file_url)} className="min-w-0 flex-1 truncate text-left text-[var(--primary)] hover:underline" title={f.name}>{f.name}</button>
+                      <button type="button" onClick={() => openAuthedFile(f.file_url, f.name)} className="min-w-0 flex-1 truncate text-left text-[var(--primary)] hover:underline" title={f.name}>{f.name}</button>
                       <button type="button" onClick={() => remove(f)} disabled={!!busy} title="删掉" aria-label={`删掉${f.kind}${f.name}`} className="rounded p-1 text-[var(--destructive)] hover:bg-[var(--muted)] disabled:opacity-40"><Trash2 className="size-3.5" /></button>
                     </li>
                   ))}

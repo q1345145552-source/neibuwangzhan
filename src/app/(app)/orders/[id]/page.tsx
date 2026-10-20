@@ -1571,7 +1571,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium text-[var(--foreground)]">客户能看到的固定资料</p>
                     {(order.customer_kit || []).length === 0 ? <p className="mt-0.5">{order.sub_service_type === UNCLASSIFIED_SUB ? "还没分业务线，分好后客户看到那条业务线的说明书、资料收集表" : `这套流程还没配说明书、资料收集表${user?.role === "admin" ? "（在「流程设置」里配）" : ""}`}</p> : (
                       <ul className="mt-1 flex flex-col gap-0.5">
-                        {(order.customer_kit || []).map(f => <li key={f.id}>{f.kind}：<button type="button" onClick={() => openAuthedFile(f.file_url)} className="text-left text-[var(--primary)] hover:underline">{f.name}</button></li>)}
+                        {(order.customer_kit || []).map(f => <li key={f.id}>{f.kind}：<button type="button" onClick={() => openAuthedFile(f.file_url, f.name)} className="text-left text-[var(--primary)] hover:underline">{f.name}</button></li>)}
                       </ul>
                     )}
                   </div>

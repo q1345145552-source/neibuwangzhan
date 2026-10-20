@@ -500,12 +500,22 @@ export async function confirmOrderPayment(id: string): Promise<OrderPayment & { 
   return data as OrderPayment & { already?: boolean };
 }
 
-/** 打开站内文件（/api/files/...）：带登录凭证取回来再在新窗口打开，凭证不放进网址（2026-10-20 起新加的入口用这个） */
-export function openAuthedFile(url: string): void {
-  const win = window.open("", "_blank");
+/**
+ * 打开站内文件（/api/files/...）：带登录凭证取回来再给浏览器，凭证不放进网址（2026-10-20 起新加的入口用这个）。
+ * PDF、图片在新标签页打开；Word、Excel 这类浏览器打不开的直接按原名下载（不留空白标签页）。
+ */
+export function openAuthedFile(url: string, name: string): void {
+  const previewable = /\.(pdf|jpe?g|png|webp|gif)$/i.test(url);
+  const win = previewable ? window.open("", "_blank") : null;
   fetchWithAuth(url, { cache: "no-store" })
     .then(r => { if (!r.ok) throw new Error(""); return r.blob(); })
-    .then(b => { const objectUrl = URL.createObjectURL(b); if (win) win.location.href = objectUrl; else window.location.href = objectUrl; })
+    .then(b => {
+      const objectUrl = URL.createObjectURL(b);
+      if (win) { win.location.href = objectUrl; return; }
+      const a = document.createElement("a"); a.href = objectUrl; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    })
     .catch(() => { win?.close(); window.alert("打开文件失败，请稍后再试"); });
 }
 
