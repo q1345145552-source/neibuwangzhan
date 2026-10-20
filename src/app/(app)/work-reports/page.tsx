@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
@@ -213,6 +214,12 @@ function ReviewStatus({ report }: { report: ReportReview }) {
 export default function WorkReportsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const reportIdParam = useSearchParams().get("report");
+  const [linkedReport, setLinkedReport] = useState<{ key: string; report: WorkReport } | null>(null);
+  const [jumpError, setJumpError] = useState("");
+  const [highlightReportId, setHighlightReportId] = useState<number | null>(null);
+  const jumpedReport = useRef<string | null>(null);
+  const notificationReport = linkedReport?.key === reportIdParam ? linkedReport.report : null;
 
   // 员工：自己的日报列表
   const [reports, setReports] = useState<WorkReport[]>([]);
@@ -223,6 +230,9 @@ export default function WorkReportsPage() {
   const [boardDate, setBoardDate] = useState(bangkokDateStr());
   const [board, setBoard] = useState<BoardRow[]>([]);
   const [boardLoading, setBoardLoading] = useState(true);
+  const [boardLoadedDate, setBoardLoadedDate] = useState("");
+  const [boardError, setBoardError] = useState("");
+  const boardRequest = useRef(0);
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [reviews, setReviews] = useState<ReportReview[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
@@ -274,6 +284,7 @@ export default function WorkReportsPage() {
   const [timeline, setTimeline] = useState<WorkReport[]>([]);
   const onTranslated = (id: number, field: TranslationField, value: string) => {
     const update = (report: WorkReport) => report.id === id ? { ...report, [`${field}_zh`]: value } : report;
+    setLinkedReport(target => target ? { ...target, report: update(target.report) } : target);
     setDetail((report) => report ? update(report) : report);
     setReports((rows) => rows.map(update));
     setBoard((rows) => rows.map((row) => ({ ...row, report: row.report ? update(row.report) : null })));
@@ -301,12 +312,30 @@ export default function WorkReportsPage() {
   };
 
   const loadBoard = () => {
+    const request = ++boardRequest.current;
+    const date = boardDate;
     setBoardLoading(true);
-    fetchWithAuth(`/api/work-reports/board?date=${boardDate}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setBoard(d && Array.isArray(d.employees) ? d.employees : []))
-      .catch(() => setBoard([]))
-      .finally(() => setBoardLoading(false));
+    fetchWithAuth(`/api/work-reports/board?date=${date}`, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error("日报看板加载失败，请刷新后重试。");
+        return r.json();
+      })
+      .then((d) => {
+        if (!d || !Array.isArray(d.employees)) throw new Error("日报看板加载失败，请刷新后重试。");
+        if (request !== boardRequest.current) return;
+        setBoard(d.employees);
+        setBoardError("");
+      })
+      .catch(() => {
+        if (request !== boardRequest.current) return;
+        setBoard([]);
+        setBoardError("日报看板加载失败，请刷新后重试。");
+      })
+      .finally(() => {
+        if (request !== boardRequest.current) return;
+        setBoardLoadedDate(date);
+        setBoardLoading(false);
+      });
   };
 
   const refresh = () => { if (isAdmin) loadBoard(); else loadEmployee(); };
@@ -338,8 +367,75 @@ export default function WorkReportsPage() {
   useEffect(() => {
     if (isAdmin) loadBoard();
     else loadEmployee();
+    return () => { ++boardRequest.current; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.name, isAdmin, boardDate]);
+
+  // 编号查原记录，取其真实日期；不从通知文字/员工姓名猜日期，也不自动打开详情。
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    jumpedReport.current = null;
+    setLinkedReport(null);
+    setHighlightReportId(null);
+    setJumpError("");
+    if (reportIdParam === null || !user) return;
+    setStoryOpen(false);
+    setReviewsOpen(false);
+    setDetail(null);
+    const id = Number(reportIdParam);
+    if (!/^\d+$/.test(reportIdParam) || !Number.isSafeInteger(id) || id <= 0) {
+      setJumpError("日报编号无效。");
+      return;
+    }
+    fetchWithAuth(`/api/work-reports/${id}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(response.status === 403 || response.status === 404
+          ? "日报不存在或你无权查看。" : "日报加载失败，请刷新后重试。");
+        const report: WorkReport = await response.json();
+        if (report.id !== id || !/^\d{4}-\d{2}-\d{2}$/.test(report.report_date)
+          || (!isAdmin && report.employee_name !== user.name)) throw new Error("日报不存在或你无权查看。");
+        if (!active) return;
+        setLinkedReport({ key: reportIdParam, report });
+        if (isAdmin) setBoardDate(report.report_date);
+      })
+      .catch((error) => {
+        if (active) setJumpError(error instanceof Error ? error.message : "日报加载失败，请刷新后重试。");
+      });
+    return () => { active = false; controller.abort(); };
+  }, [reportIdParam, user?.name, isAdmin]);
+
+  // 等对应日期看板或员工列表就绪，再让目标所在视图显示并开始定位。
+  useEffect(() => {
+    if (!notificationReport || jumpedReport.current === reportIdParam) return;
+    if (isAdmin) {
+      if (boardDate !== notificationReport.report_date || boardLoading || boardLoadedDate !== boardDate) return;
+      if (boardError) { setJumpError(boardError); return; }
+    } else if (loading) return;
+    setStoryOpen(false);
+    setReviewsOpen(false);
+    setDetail(null);
+    jumpedReport.current = reportIdParam;
+    setHighlightReportId(notificationReport.id);
+  }, [notificationReport, reportIdParam, isAdmin, boardDate, boardLoading, boardLoadedDate, boardError, loading]);
+
+  useEffect(() => {
+    if (highlightReportId === null) return;
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const target = [...document.querySelectorAll<HTMLElement>(`[data-report-id="${highlightReportId}"]`)]
+        .find((element) => element.getClientRects().length > 0);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        clearTimer = setTimeout(() => setHighlightReportId(null), 3000);
+      } else if (performance.now() < deadline) frame = requestAnimationFrame(locate);
+      else { setHighlightReportId(null); setJumpError("暂时无法定位该日报，请刷新后重试。"); }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [highlightReportId]);
 
   // 加载某类型业务对象列表（项目/客户/订单）
   const loadPickerObjects = (type: string) => {
@@ -524,7 +620,11 @@ export default function WorkReportsPage() {
   const reject = async (r: WorkReport) => {
     if (!confirm(`确定退回 ${r.employee_name} ${r.report_date} 的工作记录？`)) return;
     const ok = await apiCall(`/api/work-reports/${r.id}`, { method: "PATCH", body: { action: "reject" } });
-    if (ok) { setDetail(null); refresh(); }
+    if (ok) {
+      setLinkedReport(target => target?.report.id === r.id ? { ...target, report: { ...target.report, status: "退回" } } : target);
+      setDetail(null);
+      refresh();
+    }
   };
 
   const submitReview = async () => {
@@ -538,6 +638,7 @@ export default function WorkReportsPage() {
     setReviewing(false);
     if (ok) {
       const update = (report: WorkReport) => report.id === reportId ? { ...report, boss_rating: rating, boss_comment: comment } : report;
+      setLinkedReport(target => target ? { ...target, report: update(target.report) } : target);
       setDetail((report) => report ? update(report) : report);
       setBoard((rows) => rows.map((row) => ({ ...row, report: row.report ? update(row.report) : null })));
       setReports((rows) => rows.map(update));
@@ -612,8 +713,17 @@ export default function WorkReportsPage() {
   };
 
   // 最近30天与系统待补交日期；启用日前只保留实际已有的历史日报。
+  const employeeTarget = !isAdmin && notificationReport?.employee_name === user?.name ? notificationReport : null;
+  const visibleReports = employeeTarget && !reports.some(report => report.id === employeeTarget.id) ? [...reports, employeeTarget] : reports;
   const dayList = [...new Set([...Array.from({ length: 30 }, (_, i) => dateMinusDays(today, i))
-    .filter(day => day === today || day >= WORK_REPORT_REQUIRED_FROM || reports.some(report => report.report_date === day)), ...pendingDates])].sort().reverse();
+    .filter(day => day === today || day >= WORK_REPORT_REQUIRED_FROM || reports.some(report => report.report_date === day)), ...pendingDates,
+    ...(employeeTarget ? [employeeTarget.report_date] : [])])].sort().reverse();
+  // 默认在职人员查询保持原样；只有通知中的目标日报可临时补入（含离职员工历史日报）。
+  const boardTarget = isAdmin && notificationReport?.report_date === boardDate ? notificationReport : null;
+  const visibleBoard = !boardTarget || board.some(row => row.report?.id === boardTarget.id) ? board
+    : board.some(row => row.name === boardTarget.employee_name)
+      ? board.map(row => row.name === boardTarget.employee_name ? { ...row, report: boardTarget } : row)
+      : [...board, { name: boardTarget.employee_name, report: boardTarget }];
 
   // 订单组筛选：负责人 + 业务线
   const orderItems = autoGroups.find((g) => g.type === "order")?.items || [];
@@ -638,6 +748,8 @@ export default function WorkReportsPage() {
         <Button size="sm" variant={storyOpen ? "default" : "ghost"} onClick={openStory}>按业务对象看</Button>
       </div>
 
+      {jumpError && <p role="alert" className="text-sm text-[var(--destructive)]">{jumpError}</p>}
+
       {/* 老板看板 */}
       {!storyOpen && !reviewsOpen && isAdmin && (
         <div className="flex flex-col gap-3">
@@ -651,23 +763,25 @@ export default function WorkReportsPage() {
             <span className="text-xs text-[var(--muted-foreground)]">共 {board.length} 名在职员工</span>
           </div>
 
-          {boardLoading ? (
+          {boardLoading || boardLoadedDate !== boardDate ? (
             <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
-          ) : board.length === 0 ? (
+          ) : visibleBoard.length === 0 ? (
             <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无在职员工</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {board.map((row) => {
+              {visibleBoard.map((row) => {
                 const st = reportStatus(row.report);
                 const risky = row.report?.risk_flag === 1;
                 return (
                   <div
                     key={row.name}
+                    data-report-id={row.report?.id}
                     onClick={() => row.report && openDetail(row.report)}
                     className={cn(
                       "flex items-center justify-between gap-2 rounded-xl border p-3",
                       risky ? "border-red-400 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30" : "border-[var(--border)] bg-[var(--background)]",
-                      row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]"
+                      row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]",
+                      row.report?.id === highlightReportId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30"
                     )}
                   >
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -750,15 +864,17 @@ export default function WorkReportsPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {dayList.map((day) => {
-                const r = reports.find((x) => x.report_date === day);
+                const r = visibleReports.find((x) => x.report_date === day);
                 const st = reportStatus(r);
                 return (
                   <div
                     key={day}
+                    data-report-id={r?.id}
                     onClick={() => r && openDetail(r)}
                     className={cn(
                       "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
-                      r && "cursor-pointer transition-colors hover:border-[var(--primary)]"
+                      r && "cursor-pointer transition-colors hover:border-[var(--primary)]",
+                      r?.id === highlightReportId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30"
                     )}
                   >
                     <span className="text-sm text-[var(--foreground)]">{day}</span>

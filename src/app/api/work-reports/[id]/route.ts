@@ -39,6 +39,24 @@ function notifyRisk(db: ReturnType<typeof getDb>, reportId: number, employeeName
   }
 }
 
+// 通知定位只读查询；不记录已阅，已阅仍由用户打开详情时的原有流程处理。
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await verifyAuth(req);
+  if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
+  const { id: rawId } = await params;
+  const id = Number(rawId);
+  if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "日报编号无效" }, { status: 400 });
+  }
+  const db = getDb();
+  const report = auth.role === "admin"
+    ? db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id)
+    : db.prepare("SELECT * FROM work_reports WHERE id = ? AND employee_name = ?").get(id, auth.name);
+  if (!report) return NextResponse.json({ error: "日报不存在或你无权查看" }, { status: 404 });
+  return NextResponse.json(report, { headers: { "Cache-Control": "private, no-store" } });
+}
+
 // PATCH /api/work-reports/[id] — 老板退回 / 员工退回后重新提交
 export async function PATCH(
   req: NextRequest,
