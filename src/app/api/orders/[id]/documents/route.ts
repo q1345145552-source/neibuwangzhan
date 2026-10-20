@@ -41,6 +41,8 @@ export async function POST(
   const body = await readJson(req);
   const { name, file_type, direction, file_url, status } = body;
   if (!name) return NextResponse.json({ error: "请提供文档名称" }, { status: 400 });
+  // 给客户的文件分类（2026-10-20 老板 2A）：现在只有「合同」，空 = 普通文件；客户自己传的不分类
+  const category = isStaff(auth) && body.category === "合同" ? "合同" : "";
 
   if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
   // 直接对客公开的文件会交付给客户站客户：没确认的单先确认（2026-10-19）；只是内部存档的照常加
@@ -51,8 +53,8 @@ export async function POST(
   const docStatus = auth.role === "client" ? "待审核" : status || "已审核";
   const { doc, delivered } = db.transaction(() => {
     const result = db.prepare(
-      "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url, client_author_id, publication_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).run(id, name, file_type || "", docStatus, auth.role === "client" ? "client_to_us" : direction || "client_to_us", auth.name, file_url || "", auth.role === "client" ? auth.id : null, isStaff(auth) && direction === "us_to_client" && docStatus === "已审核" ? 1 : 0);
+      "INSERT INTO documents (order_id, name, file_type, status, direction, uploaded_by, file_url, client_author_id, publication_verified, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(id, name, file_type || "", docStatus, auth.role === "client" ? "client_to_us" : direction || "client_to_us", auth.name, file_url || "", auth.role === "client" ? auth.id : null, isStaff(auth) && direction === "us_to_client" && docStatus === "已审核" ? 1 : 0, category);
     const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(result.lastInsertRowid) as Parameters<typeof syncDocumentDelivery>[3];
     // 员工直接加的已核对公开文件：客户站同步单同时交付给客户（2026-10-03）
     return { doc, delivered: syncDocumentDelivery(db, id, undefined, doc) };
@@ -102,14 +104,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
-  const { document_id, status, direction, review_note } = await readJson(req);
-  if (!document_id || (status === undefined && direction === undefined)) return NextResponse.json({ error: "请提供文档及审核动作" }, { status: 400 });
+  const { document_id, status, direction, review_note, category } = await readJson(req);
+  if (!document_id || (status === undefined && direction === undefined && category === undefined)) return NextResponse.json({ error: "请提供文档及审核动作" }, { status: 400 });
+  if (category !== undefined && category !== "合同" && category !== "") return NextResponse.json({ error: "文件分类只能是合同或普通文件" }, { status: 400 });
   if (review_note !== undefined && (typeof review_note !== "string" || review_note.length > 500)) return NextResponse.json({ error: "退回原因最多 500 字" }, { status: 400 });
   if (status !== undefined && !['待审核', '已审核', '已退回'].includes(status)) return NextResponse.json({ error: "审核状态无效" }, { status: 400 });
   if (direction !== undefined && !['client_to_us', 'us_to_client'].includes(direction)) return NextResponse.json({ error: "资料方向无效" }, { status: 400 });
   const db = getDb();
   const existing = db.prepare('SELECT * FROM documents WHERE id = ? AND order_id = ?').get(document_id, id) as (Parameters<typeof syncDocumentDelivery>[2] & { status: string; direction: string; publication_verified: number }) | undefined;
   if (!existing) return NextResponse.json({ error: "文档不存在" }, { status: 404 });
+  // 只改分类（标成合同 / 改回普通文件）：不算审核，没确认的单也能改；已经对客公开的，客户那边跟着换到对应分类
+  if (status === undefined && direction === undefined) {
+    const queuedCategory = db.transaction(() => {
+      db.prepare("UPDATE documents SET category = ? WHERE id = ? AND order_id = ?").run(category, document_id, id);
+      const after = db.prepare("SELECT * FROM documents WHERE id = ? AND order_id = ?").get(document_id, id) as Parameters<typeof syncDocumentDelivery>[3];
+      logOperation(auth.name, "文档分类", "document", String(document_id), `订单:${id} ${category ? "标成合同" : "改回普通文件"}`);
+      return syncDocumentDelivery(db, id, existing, after);
+    })();
+    if (queuedCategory) requestProgressFlush();
+    return NextResponse.json(db.prepare('SELECT * FROM documents WHERE id = ? AND order_id = ?').get(document_id, id));
+  }
   // 审核结果、对客公开都会回传客户站：没确认的单先确认（2026-10-19）
   if (isAwaitingConfirmation(db, id)) return NextResponse.json({ error: AWAITING_CONFIRMATION_ERROR }, { status: 409 });
   const nextStatus = status ?? existing.status;

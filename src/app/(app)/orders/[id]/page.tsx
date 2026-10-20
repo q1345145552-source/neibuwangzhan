@@ -18,6 +18,7 @@ import { getStepDocs, subServices } from "@/lib/constants";
 // 客户站同步的待分类单（2026-10-03 起可改派：换到正式业务线时服务端换成该线整套流程）
 const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
+import { OrderPaymentCard } from "@/components/order-payment-card";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { isStepClosed, isParallelFlow } from "@/lib/step-status";
@@ -167,6 +168,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return Object.entries(personHours).sort((a, b) => b[1] - a[1]);
   })();
   const [newDocName, setNewDocName] = useState("");
+  // 给客户的文件分类（2026-10-20）：合同放在客户订单的「合同」一栏
+  const [newDocIsContract, setNewDocIsContract] = useState(false);
   const [newCertNo, setNewCertNo] = useState("");
   // 签发、到期日照证书填；不再自动填「今天签发、一年后到期」，那是假日期，到期提醒会跟着错（2026-10-15）
   const [newCertIssue, setNewCertIssue] = useState("");
@@ -463,6 +466,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } catch (e) { console.error("[订单] 删除证书失败", e); setError("删除证书失败"); setDeletingCert(false); setDeleteCertTarget(null); }
   };
 
+  const handleDocCategory = async (docId: number, category: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/orders/${id}/documents`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: docId, category }) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; setDocErrorMsg(d.error || "改分类失败"); return; }
+      reload();
+    } catch { setDocErrorMsg("改分类失败"); }
+  };
   const handleReviewDocument = async (documentId: number, publish: boolean) => {
     if (publish && !window.confirm("确认已核对这份资料，可向该订单客户公开？")) return;
     setDocErrorMsg("");
@@ -1132,6 +1142,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             <p>{stepCopy.description}</p>
                           </div>
                         )}
+                        {step.customer_rating && (
+                          <p className="mt-1 text-xs text-[var(--muted-foreground)]" title={toThaiTime(step.customer_rating.rated_at)}>
+                            客户评价 <span className={step.customer_rating.stars <= 2 ? "text-[var(--destructive)]" : "text-[oklch(0.70_0.16_75)]"}>{"★".repeat(step.customer_rating.stars)}{"☆".repeat(5 - step.customer_rating.stars)}</span>
+                            {step.customer_rating.comment && <span className="ml-1 text-[var(--foreground)]">「{step.customer_rating.comment}」</span>}
+                          </p>
+                        )}
                         {!isCommerceCancelled && !isStepClosed(step.status) && step.status !== "阻塞" && (
                           <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                             {confirmingStepId === step.id ? (
@@ -1357,6 +1373,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <button onClick={() => setSidebarTab("docs")} className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors", sidebarTab === "docs" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}><Paperclip className="mr-1 inline size-3" />文档</button>
           </div>
 
+          {/* 客户站来的单：看客户传的付款水单、管理员确认收款（2026-10-20） */}
+          {!isClient && sidebarTab === "finances" && order.source_order_no && (
+            <OrderPaymentCard orderId={order.id} isAdmin={user?.role === "admin"} awaitingConfirmation={!!order.awaiting_confirmation} onPreview={setPreviewUrl} />
+          )}
           {!isClient && sidebarTab === "finances" && (() => {
               const toTHB = (amount: number, cur?: string) => cur === "CNY" ? amount * (exchangeRate || 1) : amount;
               // 收入只把核对过「已到账」的算进收入，待核对单列；支出照旧（2026-10-15）
@@ -1546,6 +1566,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 const clientDocs = documents;
                 return (
               <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+                {!isClient && order.source_order_no && (
+                  <div className="mb-3 border-b border-[var(--border)] pb-2 text-xs text-[var(--muted-foreground)]">
+                    <p className="font-medium text-[var(--foreground)]">客户能看到的固定资料</p>
+                    {(order.customer_kit || []).length === 0 ? <p className="mt-0.5">这套流程还没配说明书、资料收集表{user?.role === "admin" ? "（在「流程设置」里配）" : ""}</p> : (
+                      <ul className="mt-1 flex flex-col gap-0.5">
+                        {(order.customer_kit || []).map(f => <li key={f.id}>{f.kind}：<a href={fileUrl(f.file_url)} target="_blank" rel="noreferrer" className="text-[var(--primary)] hover:underline">{f.name}</a></li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 <h4 className="mb-3 text-[0.65rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)] border-b border-[var(--border)] pb-2">往来资料</h4>
                 {clientDocs.length === 0 ? <p className="py-2 text-center text-xs text-[var(--muted-foreground)]">暂无</p> : (
                   <ul className="flex flex-col gap-2">
@@ -1560,13 +1590,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                           )
                         )}</p>
                           <span className={cn("text-xs", doc.status === "已审核" ? "text-[var(--success)]" : doc.status === "已退回" ? "text-[var(--destructive)]" : "text-[var(--warning)]")}>{doc.status}</span>
-                          {doc.uploaded_by?.startsWith("客户站：") && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">来自客户站</span>}</div>
+                          {doc.uploaded_by?.startsWith("客户站：") && <span className="ml-1.5 text-xs text-[var(--muted-foreground)]">来自客户站</span>}
+                          {doc.category === "合同" && <span className="ml-1.5 rounded bg-[var(--muted)] px-1 text-xs text-[var(--foreground)]">合同</span>}</div>
                         {!isClient && (
                           // 操作按钮单独一行：这一栏很窄，和名称挤一行会把名称压成一列字（2026-10-03 加「退回」后）
                           <div className="flex w-full flex-wrap items-center justify-end gap-1 pl-5">
                           {doc.status !== "已审核" && <button onClick={() => handleReviewDocument(doc.id, false)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--success)] hover:bg-[var(--muted)]">审核通过</button>}
                           {doc.direction !== "us_to_client" && doc.status !== "已退回" && <button onClick={() => handleReturnDocument(doc)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--destructive)] hover:bg-[var(--muted)]">退回</button>}
                           {!(doc.publication_verified === 1 && doc.direction === "us_to_client" && doc.status === "已审核") && <button onClick={() => handleReviewDocument(doc.id, true)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--primary)] hover:bg-[var(--muted)]">核对后对客公开</button>}
+                          {!doc.uploaded_by?.startsWith("客户站：") && <button onClick={() => handleDocCategory(doc.id, doc.category === "合同" ? "" : "合同")} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]">{doc.category === "合同" ? "改回普通文件" : "标成合同"}</button>}
                           {!doc.live_submission && <button onClick={() => setDeleteDocTarget(doc.id)} className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors" title="删除文档"><Trash2 className="size-3" /></button>}
                           </div>
                         )}
@@ -1582,8 +1614,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     {uploadingDoc ? "上传中..." : "选择文件"}
                     <input type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; setUploadingDoc(true); setDocFileName(file.name); try { const form = new FormData(); form.append("file", file); const res = await fetchWithAuth("/api/upload", { method: "POST", body: form }); if (!res.ok) throw new Error(""); const data = await res.json(); setDocFileUrl(data.url); } catch (err) { console.error("文档上传失败:", err); setDocErrorMsg("文件上传失败"); setDocFileName(""); } finally { setUploadingDoc(false); } }} disabled={uploadingDoc} />
                   </label>
-                  <button onClick={async () => { if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; } setDocErrorMsg(""); try { await uploadDocument(id, { name: newDocName, uploaded_by: "Bam", direction: "client_to_us", file_url: docFileUrl }); setNewDocName(""); setDocFileUrl(""); setDocFileName(""); reload(); } catch (err) { console.error("添加文档失败:", err); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">添加</button>
+                  <button onClick={async () => { if (!newDocName.trim()) { setDocErrorMsg("请填写文档名"); return; } setDocErrorMsg(""); try { await uploadDocument(id, { name: newDocName, uploaded_by: "Bam", direction: "client_to_us", file_url: docFileUrl, category: newDocIsContract ? "合同" : "" }); setNewDocName(""); setDocFileUrl(""); setDocFileName(""); setNewDocIsContract(false); reload(); } catch (err) { console.error("添加文档失败:", err); } }} className="shrink-0 rounded-md bg-[var(--primary)] px-2 py-1 text-xs text-[var(--primary-foreground)] hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_20%)]">添加</button>
                 </div>
+                <label className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]"><input type="checkbox" checked={newDocIsContract} onChange={(e) => setNewDocIsContract(e.target.checked)} />这是合同（对客公开后放在客户订单的「合同」一栏）</label>
                 {docFileName && <p className="text-xs text-[var(--muted-foreground)]">已选择: {docFileName}</p>}
                 </div>
                 )}

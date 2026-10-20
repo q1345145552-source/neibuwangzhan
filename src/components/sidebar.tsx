@@ -97,6 +97,8 @@ const businessLines = [
 const customerNav = [
   { name: "客户管理", href: "/customers", icon: Building2 },
   { name: "问题跟踪", href: "/problems", icon: AlertCircle },
+  // 客户在业务系统给每一步打的分、送特产（2026-10-20）
+  { name: "客户评价", href: "/customer-ratings", icon: Star },
 ];
 
 

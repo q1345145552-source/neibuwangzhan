@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import type { CatalogEntry } from "@/lib/workflow-catalog";
 import { publicNameToSubmit } from "@/lib/workflow-public-name";
+import { WorkflowKitFiles } from "@/components/workflow-kit-files";
 
 const chip = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 const input = "w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:border-[var(--ring)] disabled:opacity-60";
@@ -322,6 +323,7 @@ export default function WorkflowsPage() {
                   </div>
                 </div>
               )}
+              {templateId && !current.structureLocked && <WorkflowKitFiles templateId={templateId} />}
               {templateId && versionList.length > 0 && (
                 <div className="border-t border-[var(--border)] px-5 py-4">
                   <h3 className="mb-2 text-xs font-medium text-[var(--foreground)]">版本历史</h3>

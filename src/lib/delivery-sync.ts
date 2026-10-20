@@ -29,7 +29,7 @@ export function queueDocumentRequest(db: Database.Database, internalOrderId: str
   return db.prepare("SELECT * FROM sync_document_requests WHERE id = ?").get(id);
 }
 
-type DocumentRow = { id: number; name: string; status: string; direction: string; publication_verified: number; file_url: string };
+type DocumentRow = { id: number; name: string; status: string; direction: string; publication_verified: number; file_url: string; category?: string | null };
 type CertificateRow = { id: number; certificate_number: string; product_name: string; issue_date: string; expiry_date: string; status: string; file_url: string };
 
 export function isPublishedDocument(doc: Pick<DocumentRow, "status" | "direction" | "publication_verified"> | undefined): boolean {
@@ -50,8 +50,9 @@ function queueDelivery(db: Database.Database, internalOrderId: string, deliveryI
 export function syncDocumentDelivery(db: Database.Database, internalOrderId: string, before: DocumentRow | undefined, after: DocumentRow | undefined): boolean {
   const was = isPublishedDocument(before), now = isPublishedDocument(after);
   const id = (after ?? before)?.id;
-  if (!id || was === now && !(now && before && after && (before.name !== after.name || before.file_url !== after.file_url))) return false;
-  if (now && after) return queueDelivery(db, internalOrderId, `doc-${id}`, { action: "upsert", kind: "document", name: after.name, meta: {}, has_file: !!after.file_url });
+  if (!id || was === now && !(now && before && after && (before.name !== after.name || before.file_url !== after.file_url || (before.category || "") !== (after.category || "")))) return false;
+  // 分类（2026-10-20）：合同放在客户订单的「合同」一栏，其余是交付文件
+  if (now && after) return queueDelivery(db, internalOrderId, `doc-${id}`, { action: "upsert", kind: "document", name: after.name, meta: after.category ? { category: after.category } : {}, has_file: !!after.file_url });
   return queueDelivery(db, internalOrderId, `doc-${id}`, { action: "withdraw" });
 }
 

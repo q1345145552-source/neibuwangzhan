@@ -28,6 +28,8 @@ export interface Order {
   client_billing?: string | null;
   /** 客户网站来的单还没点「确认订单」（2026-10-19）；详情另带确认记录和同一笔订单拆出几张 */
   awaiting_confirmation?: boolean;
+  /** 流程设置里给这套流程配的说明书、资料收集表（客户能看到，2026-10-20） */
+  customer_kit?: { id: number; kind: string; name: string; file_url: string }[];
   confirmation?: { source_order_no: string; confirmed_by: string; confirmed_at: string } | null;
   confirm_group_size?: number;
 }
@@ -53,6 +55,8 @@ export interface OrderStep {
   expected_days?: number | null;
   /** 客户在业务系统看到的子标题和说明（2026-10-20）；没有统一文案或流程设置里另填了客户名字的是 null */
   customer_copy?: { title: string; description: string } | null;
+  /** 客户给这一步打的分（2026-10-20） */
+  customer_rating?: { stars: number; comment: string; rated_at: string } | null;
 }
 
 export interface BusinessType {
@@ -325,6 +329,8 @@ export interface Document {
   file_url?: string;
   uploaded_by: string;
   created_at: string;
+  /** 给客户的文件分类（2026-10-20）：「合同」或空 */
+  category?: string;
 }
 
 export interface Finance {
@@ -469,6 +475,37 @@ export async function confirmOrder(id: string) {
   return data as { source_order_no: string; order_ids: string[] };
 }
 
+// 确认收款（2026-10-20 老板 1A）：客户站账单 + 客户传的付款水单；只有管理员能确认
+export type OrderPayment = {
+  available: boolean;
+  reason?: string;
+  can_confirm?: boolean;
+  source_order_no?: string;
+  order_status?: string;
+  invoice?: { invoice_no: string; amount: number; currency: string; status: string; discount: number; discount_type: string; deposit: number; paid_at: string | null } | null;
+  receipts?: { id: string; name: string; submitted_at: string; ext: string }[];
+};
+
+export async function fetchOrderPayment(id: string): Promise<OrderPayment> {
+  const res = await fetch(`/api/orders/${id}/payment`, { headers: authHeaders(), cache: "no-store" });
+  const data = await res.json().catch(() => null) as OrderPayment | null;
+  if (!data) throw new Error("取客户的账单失败");
+  return data;
+}
+
+export async function confirmOrderPayment(id: string): Promise<OrderPayment & { already?: boolean }> {
+  const res = await fetch(`/api/orders/${id}/payment/confirm`, { method: "POST", headers: authHeaders() });
+  const data = await res.json().catch(() => null) as (OrderPayment & { already?: boolean; error?: string }) | null;
+  if (!res.ok) throw new Error(data?.error || "确认收款失败");
+  return data as OrderPayment & { already?: boolean };
+}
+
+/** 客户传的水单：浏览器直接打开，链接上带登录凭证（跟 fileUrl 一样） */
+export function orderReceiptUrl(orderId: string, receiptId: string): string {
+  const token = typeof window === "undefined" ? null : getStoredAuthToken();
+  return `/api/orders/${encodeURIComponent(orderId)}/payment/receipts/${encodeURIComponent(receiptId)}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+}
+
 export async function deleteOrder(id: string) {
   const res = await fetch(`/api/orders/${id}`, {
     method: "DELETE",
@@ -527,7 +564,7 @@ export async function fetchDocuments(orderId: string) {
   return res.json() as Promise<Document[]>;
 }
 
-export async function uploadDocument(orderId: string, data: { name: string; file_type?: string; uploaded_by?: string; direction?: string; file_url?: string }) {
+export async function uploadDocument(orderId: string, data: { name: string; file_type?: string; uploaded_by?: string; direction?: string; file_url?: string; category?: string }) {
   const res = await fetch(`/api/orders/${orderId}/documents`, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

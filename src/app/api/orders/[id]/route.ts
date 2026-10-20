@@ -13,6 +13,7 @@ import { approvePending } from "@/lib/cancel-sync";
 import { isClientOrderVisible } from "@/lib/client-scope";
 import { AWAITING_CONFIRMATION_ERROR, confirmationOf, isAwaitingConfirmation } from "@/lib/order-confirm";
 import { resolveStepCopies } from "@/lib/step-public-copy";
+import { kitForOrder } from "@/lib/order-kit";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
 const UNCLASSIFIED_SUB = "storefront-unclassified";
@@ -58,9 +59,14 @@ export async function GET(
   const confirmGroupSize = source ? (db.prepare("SELECT COUNT(DISTINCT internal_order_id) AS n FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> ''").get(source.source_order_no) as { n: number }).n : 0;
   // 每一步客户看到的子标题和说明（2026-10-20）：订单详情里显示在步骤名下面，跟客户站看到的是同一份
   const copies = resolveStepCopies(order as Record<string, unknown>, steps as { step_name: string; public_name?: string | null }[]);
-  const stepsWithCopy = (steps as Record<string, unknown>[]).map((step, i) => ({ ...step, customer_copy: copies[i] }));
+  // 客户给这一步打的分（2026-10-20）：显示在步骤下面
+  const ratings = new Map((db.prepare("SELECT step_order, stars, comment, rated_at FROM step_ratings WHERE internal_order_id = ?").all(id) as
+    { step_order: number; stars: number; comment: string; rated_at: string }[]).map(r => [r.step_order, { stars: r.stars, comment: r.comment, rated_at: r.rated_at }]));
+  const stepsWithCopy = (steps as Record<string, unknown>[]).map((step, i) => ({ ...step, customer_copy: copies[i], customer_rating: ratings.get(Number(step.step_order)) ?? null }));
   return NextResponse.json({ ...order as object, steps: stepsWithCopy, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling,
-    awaiting_confirmation: awaitingConfirmation, confirmation: confirmationOf(db, id), confirm_group_size: confirmGroupSize });
+    awaiting_confirmation: awaitingConfirmation, confirmation: confirmationOf(db, id), confirm_group_size: confirmGroupSize,
+    // 流程设置里给这套流程配的说明书、资料收集表（客户在业务系统能看到，2026-10-20）
+    customer_kit: kitForOrder(db, id).map(({ id: fileId, kind, name, file_url }) => ({ id: fileId, kind, name, file_url })) });
 }
 
 // PATCH /api/orders/:id

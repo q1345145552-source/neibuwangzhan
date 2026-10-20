@@ -513,6 +513,7 @@ export default function RewardsPage() {
                   if (r.status === "已撤销") badges.push("已撤销");
                   if (r.rule_key === "peer_vote") badges.push("互评");
                   if (r.rule_key === "client_feedback") badges.push("客户反馈");
+                  if (r.rule_key === "client_step_rating") badges.push("客户每步评价");
                   if (r.is_appealed === 1 && r.appeal_status === "申诉中") badges.push("申诉中");
                   if (r.appeal_status === "已驳回") badges.push("申诉已驳回");
                   if (r.status === "已撤销" && r.undone_by) badges.push(`${r.undone_by} 于 ${(r.undone_at || '').slice(0, 16)} 撤销`);
@@ -568,6 +569,7 @@ export default function RewardsPage() {
                 if (r.status === "已撤销") badges.push("已撤销");
                 if (r.rule_key === "peer_vote") badges.push("互评");
                 if (r.rule_key === "client_feedback") badges.push("客户反馈");
+                  if (r.rule_key === "client_step_rating") badges.push("客户每步评价");
                 if (r.is_appealed === 1 && r.appeal_status === "申诉中") badges.push("申诉中");
                 if (r.appeal_status === "已驳回") badges.push("申诉已驳回");
                 return (
