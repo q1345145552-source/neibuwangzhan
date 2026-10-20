@@ -257,6 +257,12 @@ try {
     assert.equal((await call(giftsRoute.POST as never, emp, 'POST', '/api/customer-ratings/gifts', {}, { source_order_no: mall.order_no })).status, 200);
     assert.equal((await call(giftsRoute.POST as never, emp, 'POST', '/api/customer-ratings/gifts', {}, { source_order_no: mall.order_no })).status, 409);
     assert.equal((idb.prepare('SELECT sent_by FROM rating_gifts WHERE source_order_no=?').get(mall.order_no) as { sent_by: string }).sent_by, emp.name);
+    // 奖惩页「刷新积分」重算本月自动积分：客户评价的积分重算不出来，不能被删掉
+    const pointsRoute = await import('../src/app/api/internal/points/route');
+    const before = [pointsOf(emp.name), pointsOf(admin.name)];
+    const month = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 7);
+    assert.equal((await call(pointsRoute.GET as never, admin, 'GET', `/api/internal/points?month=${month}&refresh=1`, {})).status, 200);
+    assert.deepEqual([pointsOf(emp.name), pointsOf(admin.name)], before);
   });
   await test('gift: rating every finished step and then skipping the one left still counts — both sides agree', async () => {
     const o = await placeOrder('PLA-004', 'p-mall', '企业店入驻', 500);

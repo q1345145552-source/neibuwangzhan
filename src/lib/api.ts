@@ -500,10 +500,11 @@ export async function confirmOrderPayment(id: string): Promise<OrderPayment & { 
   return data as OrderPayment & { already?: boolean };
 }
 
-/** 客户传的水单：浏览器直接打开，链接上带登录凭证（跟 fileUrl 一样） */
-export function orderReceiptUrl(orderId: string, receiptId: string): string {
-  const token = typeof window === "undefined" ? null : getStoredAuthToken();
-  return `/api/orders/${encodeURIComponent(orderId)}/payment/receipts/${encodeURIComponent(receiptId)}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+/** 客户传的水单：带登录凭证取回来（凭证在请求头里，不放进网址），返回文件内容 */
+export async function fetchOrderReceipt(orderId: string, receiptId: string): Promise<Blob> {
+  const res = await fetchWithAuth(`/api/orders/${encodeURIComponent(orderId)}/payment/receipts/${encodeURIComponent(receiptId)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("取水单失败");
+  return res.blob();
 }
 
 export async function deleteOrder(id: string) {

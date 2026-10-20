@@ -2,10 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, FileText, Loader2, Wallet } from "lucide-react";
-import { confirmOrderPayment, fetchOrderPayment, orderReceiptUrl, type OrderPayment } from "@/lib/api";
+import { confirmOrderPayment, fetchOrderPayment, fetchOrderReceipt, type OrderPayment } from "@/lib/api";
 import { cn, toThaiTime } from "@/lib/utils";
 
 const IMAGE = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+
+/** 水单小图：带登录凭证取回来再显示（凭证不放进网址） */
+function ReceiptThumb({ orderId, receiptId, name, onPreview }: { orderId: string; receiptId: string; name: string; onPreview: (url: string) => void }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let url: string | null = null, alive = true;
+    fetchOrderReceipt(orderId, receiptId).then(b => { if (!alive) return; url = URL.createObjectURL(b); setSrc(url); }).catch(() => {});
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [orderId, receiptId]);
+  if (!src) return <div className="h-20 w-28 rounded border border-[var(--border)] bg-[var(--muted)]" />;
+  // eslint-disable-next-line @next/next/no-img-element -- 业务系统的水单现取现看，不走图片优化
+  return <img src={src} alt={name} className="h-20 w-28 cursor-pointer rounded border border-[var(--border)] object-cover hover:opacity-80" onClick={() => onPreview(src)} />;
+}
 
 /**
  * 客户站账单和收款（2026-10-20 老板 1A）：看客户传的付款水单，管理员点「确认收款」，业务系统变「已付款」并通知客户。
@@ -83,16 +96,21 @@ export function OrderPaymentCard({ orderId, isAdmin, awaitingConfirmation, onPre
             {receipts.length === 0 ? <p className="text-xs text-[var(--muted-foreground)]">客户还没传</p> : (
               <ul className="flex flex-wrap gap-2">
                 {receipts.map((r) => {
-                  const url = orderReceiptUrl(orderId, r.id);
+                  // PDF 之类：先开一个空窗口（不会被拦），取回来再显示
+                  const openFile = () => {
+                    const win = window.open("", "_blank");
+                    fetchOrderReceipt(orderId, r.id)
+                      .then(b => { const url = URL.createObjectURL(b); if (win) win.location.href = url; else window.location.href = url; })
+                      .catch(() => { win?.close(); setMessage({ ok: false, text: "取水单失败，请稍后再试" }); });
+                  };
                   return (
                     <li key={r.id} className="w-28">
                       {IMAGE.has(r.ext) ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- 业务系统的水单现取现看，不走图片优化
-                        <img src={url} alt={r.name} className="h-20 w-28 cursor-pointer rounded border border-[var(--border)] object-cover hover:opacity-80" onClick={() => onPreview(url)} />
+                        <ReceiptThumb orderId={orderId} receiptId={r.id} name={r.name} onPreview={onPreview} />
                       ) : (
-                        <a href={url} target="_blank" rel="noreferrer" className="flex h-20 w-28 flex-col items-center justify-center gap-1 rounded border border-[var(--border)] text-xs hover:bg-[var(--muted)]">
+                        <button type="button" onClick={openFile} className="flex h-20 w-28 flex-col items-center justify-center gap-1 rounded border border-[var(--border)] text-xs hover:bg-[var(--muted)]">
                           <FileText className="size-5 text-[var(--muted-foreground)]" />打开
-                        </a>
+                        </button>
                       )}
                       <p className="mt-0.5 truncate text-[0.65rem] text-[var(--muted-foreground)]" title={r.name}>{toThaiTime(r.submitted_at)}</p>
                     </li>

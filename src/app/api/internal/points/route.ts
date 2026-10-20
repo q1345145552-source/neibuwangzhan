@@ -253,7 +253,8 @@ function computeAutoPoints(db: any, month: string) {
   // 按曼谷日历换算出的 UTC 区间，用于和 created_at（UTC）比较
   const { from: utcFrom, to: utcTo } = bangkokMonthBounds(+y, +m);
 
-  db.prepare("DELETE FROM points_records WHERE is_manual = 0 AND rule_key != '' AND is_appealed = 0 AND created_at >= ? AND created_at <= ?").run(utcFrom, utcTo);
+  // 客户每步评价的积分（2026-10-20）是客户打分时记的，这里重算不出来，不能删
+  db.prepare("DELETE FROM points_records WHERE is_manual = 0 AND rule_key != '' AND rule_key != 'client_step_rating' AND is_appealed = 0 AND created_at >= ? AND created_at <= ?").run(utcFrom, utcTo);
 
   const employees = db.prepare("SELECT name FROM employees WHERE role = 'employee'").all() as { name: string }[];
   const startDate = new Date(ym, mm, 1);

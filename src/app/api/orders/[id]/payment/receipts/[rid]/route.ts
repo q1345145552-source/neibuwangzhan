@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken, isStaff } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { CustomerPaymentError, fetchCustomerReceipt, paymentSourceOf } from "@/lib/customer-payment";
 
 // GET /api/orders/:id/payment/receipts/:rid — 打开客户传的付款水单（从业务系统取，内部不留存）。
-// 浏览器直接打开（<img>/新窗口）带不了 Authorization，所以跟 /api/files 一样也认 ?token=
+// 只认请求头里的登录凭证：页面用带凭证的请求取回来再显示，不把凭证放进网址（会进访问日志、浏览器历史）
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string; rid: string }> }) {
-  const header = req.headers.get("Authorization");
-  const token = (header?.startsWith("Bearer ") ? header.slice(7) : null) || req.nextUrl.searchParams.get("token");
-  const auth = token ? await verifyToken(token) : null;
+  const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可查看" }, { status: 403 });
   const { id, rid } = await params;

@@ -14,10 +14,11 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可查看" }, { status: 403 });
   const db = getDb();
-  const all = db.prepare(`SELECT id, source_order_no, internal_order_id, step_order, step_name, public_name, assignee, stars, comment, points, customer_name, rated_at
-    FROM step_ratings ORDER BY rated_at DESC, received_at DESC LIMIT 2000`).all() as Row[];
-  const mine = (r: Row) => r.assignee.split("、").map(n => n.trim()).includes(auth.name || "");
-  const rows = auth.role === "admin" ? all : all.filter(mine);
+  // 员工只看评到自己的：在库里先筛再取最近的，不能先取全公司最近 2000 条再筛（别人评价多了自己的就被挤掉）
+  const isAdmin = auth.role === "admin";
+  const rows = db.prepare(`SELECT id, source_order_no, internal_order_id, step_order, step_name, public_name, assignee, stars, comment, points, customer_name, rated_at
+    FROM step_ratings ${isAdmin ? "" : "WHERE instr('、' || assignee || '、', '、' || ? || '、') > 0"} ORDER BY rated_at DESC, received_at DESC LIMIT 2000`)
+    .all(...(isAdmin ? [] : [auth.name || "\u0000"])) as Row[];
   // 按人汇总：几次评价、平均几星、积分合计（一步几个人的，每人都算一次）
   const byPerson = new Map<string, { person: string; count: number; stars: number; points: number; low: number }>();
   for (const r of rows) {
@@ -29,5 +30,5 @@ export async function GET(req: NextRequest) {
     }
   }
   const summary = [...byPerson.values()].map(p => ({ ...p, avg: Math.round(p.stars / p.count * 10) / 10 })).sort((a, b) => b.count - a.count);
-  return NextResponse.json({ ratings: rows.slice(0, 500), summary, is_admin: auth.role === "admin" });
+  return NextResponse.json({ ratings: rows.slice(0, 500), summary, is_admin: isAdmin });
 }
