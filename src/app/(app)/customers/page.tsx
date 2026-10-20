@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -149,6 +149,9 @@ function AddCustomerForm({
 export default function CustomersPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const withdrawalParam = searchParams.get("withdrawal");
+  const withdrawalsPanelParam = searchParams.get("withdrawals");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -164,10 +167,13 @@ export default function CustomersPage() {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawMsg, setWithdrawMsg] = useState("");
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [withdrawalsLoading, setWithdrawalsLoading] = useState(true);
+  const [withdrawalsError, setWithdrawalsError] = useState("");
+  const [withdrawalJumpError, setWithdrawalJumpError] = useState("");
+  const [highlightWithdrawalId, setHighlightWithdrawalId] = useState<number | null>(null);
+  const jumpedWithdrawal = useRef<string | null>(null);
+  const withdrawalRequest = useRef(0);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
-  useEffect(() => {
-    if (user?.role === "admin" && new URLSearchParams(window.location.search).get("withdrawals") === "1") setShowReviewPanel(true);
-  }, [user?.role]);
   const [dashboard, setDashboard] = useState<{potential:number;following:number;cooperated:number;dormant:number;new_this_month:number;alerts:any[];dormant_with_deals:number;dormant_no_deals:number} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [reassignTarget, setReassignTarget] = useState("");
@@ -175,6 +181,51 @@ export default function CustomersPage() {
   const [importingCsv, setImportingCsv] = useState(false);
   const [importResult, setImportResult] = useState<{imported:number;errors:string[]} | null>(null);
   const [employees, setEmployees] = useState<{name:string}[]>([]);
+
+  useEffect(() => {
+    jumpedWithdrawal.current = null;
+    setHighlightWithdrawalId(null); setWithdrawalJumpError("");
+    if (!user) return;
+    if (user.role !== "admin") {
+      if (withdrawalParam !== null) setWithdrawalJumpError("仅管理员可查看提现审核记录。");
+      return;
+    }
+    if (withdrawalsPanelParam === "1" || withdrawalParam !== null) setShowReviewPanel(true);
+    if (withdrawalParam !== null) {
+      setShowWithdraw(false); setShowAddForm(false); setShowVatImport(false); setImportResult(null);
+    }
+  }, [withdrawalsPanelParam, withdrawalParam, user?.role]);
+
+  useEffect(() => {
+    if (withdrawalParam === null || jumpedWithdrawal.current === withdrawalParam || !user || user.role !== "admin") return;
+    const id = Number(withdrawalParam);
+    if (!/^\d+$/.test(withdrawalParam) || !Number.isSafeInteger(id) || id <= 0) {
+      setWithdrawalJumpError("提现编号无效。"); return;
+    }
+    if (withdrawalsLoading || !showReviewPanel) return;
+    if (withdrawalsError) { setWithdrawalJumpError(withdrawalsError); return; }
+    if (!withdrawals.some(record => record.id === id)) { setWithdrawalJumpError("提现记录不存在或你无权查看。"); return; }
+    jumpedWithdrawal.current = withdrawalParam;
+    setWithdrawalJumpError(""); setHighlightWithdrawalId(id);
+  }, [withdrawalParam, user, withdrawalsLoading, withdrawalsError, showReviewPanel, withdrawals]);
+
+  useEffect(() => {
+    if (highlightWithdrawalId === null) return;
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const target = [...document.querySelectorAll<HTMLElement>(`[data-withdrawal-id="${highlightWithdrawalId}"]`)]
+        .find(element => element.getClientRects().length > 0);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        clearTimer = setTimeout(() => setHighlightWithdrawalId(null), 3000);
+      } else if (performance.now() < deadline) frame = requestAnimationFrame(locate);
+      else { setHighlightWithdrawalId(null); setWithdrawalJumpError("暂时无法定位该提现记录，请刷新后重试。"); }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [highlightWithdrawalId]);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -280,12 +331,17 @@ export default function CustomersPage() {
 
   const loadWithdrawals = async () => {
     if (user?.role !== "admin") return;
+    const run = ++withdrawalRequest.current;
+    setWithdrawalsLoading(true); setWithdrawalsError("");
     try {
       const res = await fetchWithAuth("/api/customers?action=withdrawals");
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const data = await res.json();
-      setWithdrawals(Array.isArray(data) ? data : []);
-    } catch {}
+      if (!Array.isArray(data)) throw new Error("提现记录加载失败，请刷新后重试。");
+      if (run === withdrawalRequest.current) setWithdrawals(data);
+    } catch (error) {
+      if (run === withdrawalRequest.current) { setWithdrawals([]); setWithdrawalsError(error instanceof Error ? error.message : "提现记录加载失败，请刷新后重试。"); }
+    } finally { if (run === withdrawalRequest.current) setWithdrawalsLoading(false); }
   };
 
   const handleReview = async (withdrawal_id: number, approve: boolean) => {
@@ -377,6 +433,7 @@ export default function CustomersPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {withdrawalJumpError && <p role="alert" className="break-words text-sm text-red-600">{withdrawalJumpError}</p>}
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -603,18 +660,19 @@ export default function CustomersPage() {
 
       {/* Admin Review Panel */}
       {showReviewPanel && user?.role === "admin" && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+        <div role="region" aria-label="提现审核" className="min-w-0 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 md:max-w-none">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium">提现审核</h3>
-            <button onClick={() => setShowReviewPanel(false)}><X className="size-4 text-[var(--muted-foreground)]" /></button>
+            <button aria-label="关闭提现审核" onClick={() => setShowReviewPanel(false)}><X className="size-4 text-[var(--muted-foreground)]" /></button>
           </div>
-          {withdrawals.length === 0 ? (
+          {withdrawalsError && <p role="alert" className="mb-2 break-words text-sm text-red-600">{withdrawalsError}</p>}
+          {withdrawalsLoading ? <p className="text-sm text-[var(--muted-foreground)]">提现记录加载中…</p> : withdrawals.length === 0 ? (
             <p className="text-sm text-[var(--muted-foreground)]">暂无提现申请</p>
           ) : (
             <div className="space-y-2">
               {withdrawals.map((w: any) => (
-                <div key={w.id} className="flex items-center justify-between border-b border-[var(--border)] pb-2 last:border-b-0 last:pb-0">
-                  <div>
+                <div key={w.id} data-withdrawal-id={w.id} className={cn("flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-2 last:border-b-0 last:pb-0", w.id === highlightWithdrawalId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
+                  <div className="min-w-0 break-words">
                     <span className="text-sm font-medium">{w.employee_name}</span>
                     <span className="ml-2 text-sm font-mono text-[var(--success)]">-{w.amount}</span>
                     <span className={w.status === "待审核" ? "ml-2 text-xs text-amber-500" : w.status === "已通过" ? "ml-2 text-xs text-green-600" : "ml-2 text-xs text-[var(--destructive)]"}>{w.status}</span>

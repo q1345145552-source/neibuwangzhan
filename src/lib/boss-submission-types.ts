@@ -13,7 +13,7 @@ export type BossSubmissionCategory = keyof typeof BOSS_SUBMISSION_TYPES;
 export function bossSubmissionHref(category: BossSubmissionCategory, id: string | number): string {
   const links = { leave: `/internal/leave?leave=${encodeURIComponent(id)}`, attendance: `/internal?attendance_request=${encodeURIComponent(id)}#attendance-requests`, notice: `/notice-rules?implementation=${encodeURIComponent(id)}`,
     report: `/work-reports?report=${encodeURIComponent(id)}`, meeting: `/meetings?reflection=${encodeURIComponent(id)}`, todo: `/todos?todo=${encodeURIComponent(id)}`,
-    problem: `/problems/${encodeURIComponent(id)}`, withdrawal: "/customers?withdrawals=1" };
+    problem: `/problems/${encodeURIComponent(id)}`, withdrawal: `/customers?withdrawals=1&withdrawal=${encodeURIComponent(id)}` };
   return links[category];
 }
 
