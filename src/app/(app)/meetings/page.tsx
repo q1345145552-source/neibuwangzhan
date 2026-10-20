@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { reflectionSubmissionRevision } from "@/lib/boss-submission-types";
 import { apiCall } from "@/lib/api-call";
@@ -157,6 +158,15 @@ function MeetingSummaryBoard({ meetings }: { meetings: Meeting[] }) {
 export default function MeetingsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const reflectionParam = useSearchParams().get("reflection");
+  const [reflectionTarget, setReflectionTarget] = useState<{ id: number; meeting_id: number } | null>(null);
+  const [jumpError, setJumpError] = useState("");
+  const [meetingsError, setMeetingsError] = useState("");
+  const openedReflection = useRef<number | null>(null);
+  const locatedReflection = useRef<number | null>(null);
+  const detailScrollRef = useRef<HTMLDivElement>(null);
+  const reflectionRequest = useRef(0);
+  const [highlightReflectionId, setHighlightReflectionId] = useState<number | null>(null);
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -182,6 +192,8 @@ export default function MeetingsPage() {
   const [detailMeeting, setDetailMeeting] = useState<Meeting | null>(null);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [refLoading, setRefLoading] = useState(false);
+  const [refError, setRefError] = useState("");
+  const [loadedReflectionMeetingId, setLoadedReflectionMeetingId] = useState<number | null>(null);
   const [storyGenerating, setStoryGenerating] = useState(false);
   const [storyError, setStoryError] = useState("");
   const [participantsOpen, setParticipantsOpen] = useState(false);
@@ -208,10 +220,11 @@ export default function MeetingsPage() {
 
   const load = () => {
     setLoading(true);
+    setMeetingsError("");
     fetchWithAuth("/api/meetings", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : []))
+      .then((r) => { if (!r.ok) throw new Error("会议列表加载失败，请刷新后重试。"); return r.json(); })
       .then((d) => setMeetings(Array.isArray(d) ? d : []))
-      .catch(() => setMeetings([]))
+      .catch((error) => { setMeetings([]); setMeetingsError(error.message || "会议列表加载失败，请刷新后重试。"); })
       .finally(() => setLoading(false));
   };
 
@@ -276,25 +289,99 @@ export default function MeetingsPage() {
 
   // ── 会议详情 + 心得 ──
   const loadReflections = (meetingId: number) => {
+    const run = ++reflectionRequest.current;
     setRefLoading(true);
+    setRefError("");
     fetchWithAuth(`/api/meetings/${meetingId}/reflections`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : []))
+      .then((r) => { if (!r.ok) throw new Error(r.status === 403 ? "无权查看这场会议的心得。" : "心得加载失败，请关闭详情后重试。"); return r.json(); })
       .then((d) => {
+        if (run !== reflectionRequest.current) return;
+        if (!Array.isArray(d)) throw new Error("心得加载失败，请关闭详情后重试。");
         const rows: Reflection[] = Array.isArray(d) ? d : [];
         setReflections(rows);
+        setLoadedReflectionMeetingId(meetingId);
         if (isAdmin) void fetchWithAuth("/api/boss-supervision/pending/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: "meeting", items: rows.filter(row => row.status === "已提交").map(row => ({ id: row.id, revision: reflectionSubmissionRevision(row) })) }) }).catch(() => {});
       })
-      .catch(() => setReflections([]))
-      .finally(() => setRefLoading(false));
+      .catch((error) => { if (run === reflectionRequest.current) { setReflections([]); setRefError(error.message || "心得加载失败，请关闭详情后重试。"); } })
+      .finally(() => { if (run === reflectionRequest.current) setRefLoading(false); });
   };
 
   const openMeeting = (m: Meeting) => {
     setDetailMeeting(m);
+    setJumpError("");
+    setHighlightReflectionId(null);
+    setLoadedReflectionMeetingId(null);
     setParticipantsOpen(false);
     setStoryError("");
     setReflections([]);
     loadReflections(m.id);
   };
+
+  const closeMeeting = () => {
+    reflectionRequest.current++;
+    setDetailMeeting(null);
+    setHighlightReflectionId(null);
+  };
+
+  useEffect(() => {
+    let active = true;
+    openedReflection.current = null; locatedReflection.current = null;
+    setReflectionTarget(null); setJumpError(""); setHighlightReflectionId(null);
+    if (reflectionParam === null) return;
+    closeMeeting(); setRfOpen(false); setFormOpen(false); setLightbox(null);
+    if (!user) return;
+    if (user.role !== "admin" && user.role !== "employee") { setJumpError("无权查看会议心得。"); return; }
+    const id = Number(reflectionParam);
+    if (!/^\d+$/.test(reflectionParam) || !Number.isSafeInteger(id) || id <= 0) {
+      setJumpError("心得编号无效。"); return;
+    }
+    fetchWithAuth(`/api/meetings/reflections/${id}`, { cache: "no-store" })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "心得加载失败，请刷新后重试。");
+        if (data.id !== id || !Number.isSafeInteger(data.meeting_id) || data.meeting_id <= 0) throw new Error("心得加载失败，请刷新后重试。");
+        if (active) setReflectionTarget(data);
+      })
+      .catch(error => { if (active) setJumpError(error.message || "心得加载失败，请刷新后重试。"); });
+    return () => { active = false; };
+  }, [reflectionParam, user?.id, user?.name, user?.role]);
+
+  useEffect(() => {
+    if (!reflectionTarget || openedReflection.current === reflectionTarget.id || loading) return;
+    if (meetingsError) { setJumpError(meetingsError); return; }
+    const meeting = meetings.find(row => row.id === reflectionTarget.meeting_id);
+    if (!meeting) { setJumpError("心得所属会议不存在或你无权查看。"); return; }
+    openedReflection.current = reflectionTarget.id;
+    openMeeting(meeting);
+  }, [reflectionTarget, loading, meetingsError, meetings]);
+
+  useEffect(() => {
+    if (!reflectionTarget || locatedReflection.current === reflectionTarget.id || detailMeeting?.id !== reflectionTarget.meeting_id || refLoading || refError || loadedReflectionMeetingId !== reflectionTarget.meeting_id) return;
+    if (!reflections.some(row => row.id === reflectionTarget.id && row.meeting_id === reflectionTarget.meeting_id)) {
+      setJumpError("心得不存在或你无权查看。"); return;
+    }
+    locatedReflection.current = reflectionTarget.id;
+    setHighlightReflectionId(reflectionTarget.id);
+  }, [reflectionTarget, detailMeeting, refLoading, refError, loadedReflectionMeetingId, reflections]);
+
+  useEffect(() => {
+    if (highlightReflectionId === null) return;
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const container = detailScrollRef.current;
+      const target = container?.querySelector<HTMLElement>(`[data-meeting-reflection-id="${highlightReflectionId}"]`);
+      if (container && target && target.getClientRects().length > 0) {
+        const offset = target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        container.scrollTo({ top: Math.max(0, container.scrollTop + offset - Math.max(12, (container.clientHeight - target.offsetHeight) / 2)), behavior: "smooth" });
+        clearTimer = setTimeout(() => setHighlightReflectionId(null), 3000);
+      } else if (performance.now() < deadline) frame = requestAnimationFrame(locate);
+      else { setHighlightReflectionId(null); setJumpError("暂时无法定位该心得，请关闭详情后重试。"); }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [highlightReflectionId]);
 
   const openAddParticipants = async () => {
     setParticipantsOpen(true);
@@ -429,6 +516,8 @@ export default function MeetingsPage() {
         )}
       </div>
 
+      {jumpError && !detailMeeting && <p role="alert" className="break-words text-sm text-red-600">{jumpError}</p>}
+
       <div role="group" aria-label="会议视图切换" className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant={view === "list" ? "default" : "ghost"} aria-pressed={view === "list"} onClick={() => setView("list")}>会议列表</Button>
         <Button size="sm" variant={view === "summary" ? "default" : "ghost"} aria-pressed={view === "summary"} onClick={() => setView("summary")}>总结看板</Button>
@@ -498,15 +587,17 @@ export default function MeetingsPage() {
 
       {/* 会议详情弹窗（含心得） */}
       {detailMeeting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailMeeting(null)}>
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeMeeting}>
+          <div ref={detailScrollRef} role="dialog" aria-modal="true" aria-labelledby="meeting-detail-title" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-base font-semibold text-[var(--foreground)]">{detailMeeting.title}</h3>
+                <h3 id="meeting-detail-title" className="text-base font-semibold text-[var(--foreground)]">{detailMeeting.title}</h3>
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">{dateTimeLabel(detailMeeting)}</p>
               </div>
-              <button onClick={() => setDetailMeeting(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              <button onClick={closeMeeting} aria-label="关闭会议详情" className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
+
+            {(jumpError || refError) && <p role="alert" className="mt-3 break-words text-sm text-red-600">{jumpError || refError}</p>}
 
             {detailMeeting.agenda && <p className="mt-3 whitespace-pre-wrap break-words rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3 text-sm">{detailMeeting.agenda}</p>}
 
@@ -552,7 +643,8 @@ export default function MeetingsPage() {
                   <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
                 ) : (
                   <div className="mt-2 flex flex-col gap-2">
-                    {parseList(detailMeeting.participants).map((p) => {
+                    {/* 旧心得作者不在当前参会人名单时，仅补出本次定位的作者；管理员原接口已允许查看该心得。 */}
+                    {[...new Set([...parseList(detailMeeting.participants), ...reflections.filter(row => row.id === reflectionTarget?.id).map(row => row.employee_name)])].map((p) => {
                       const mine = reflections.filter((r) => r.employee_name === p);
                       return (
                         <div key={p} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
@@ -565,7 +657,7 @@ export default function MeetingsPage() {
                             )}
                           </div>
                           {mine.map((r) => (
-                            <div key={r.id} className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-2.5">
+                            <div key={r.id} data-meeting-reflection-id={r.id} className={cn("mt-2 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-2.5", r.id === highlightReflectionId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
                                 {statusBadge(r.status)}
@@ -603,7 +695,7 @@ export default function MeetingsPage() {
                 ) : (
                   <div className="mt-2 flex flex-col gap-2">
                     {reflections.map((r) => (
-                      <div key={r.id} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                      <div key={r.id} data-meeting-reflection-id={r.id} className={cn("min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3", r.id === highlightReflectionId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
                           {statusBadge(r.status)}
