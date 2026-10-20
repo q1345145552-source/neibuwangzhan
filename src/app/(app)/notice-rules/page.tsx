@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { toThaiTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,11 @@ interface Employee { id: number; name: string }
 
 export default function NoticeRulesPage() {
   const { user, token } = useAuth();
+  const implementationParam = useSearchParams().get("implementation");
+  const [reviewTarget, setReviewTarget] = useState<{ id: number; notice_id: number } | null>(null);
+  const [jumpError, setJumpError] = useState("");
+  const [listError, setListError] = useState("");
+  const openedImplementation = useRef<number | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,12 +49,45 @@ export default function NoticeRulesPage() {
   useEffect(() => {
     if (!token || user?.role === "client") return;
     let active = true;
+    setLoading(true); setListError("");
     Promise.all([request("/api/notice-rules"), isAdmin ? request("/api/notice-rules/recipients") : Promise.resolve([])])
       .then(([rows, people]) => { if (active) { setNotices(rows); setEmployees(people); } })
-      .catch(e => { if (active) setError(e.message); })
+      .catch(e => { if (active) { setError(e.message); setListError(e.message); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token, user?.role, isAdmin, request]);
+
+  useEffect(() => {
+    let active = true;
+    openedImplementation.current = null;
+    setReviewTarget(null); setJumpError("");
+    if (implementationParam === null) return;
+    setReviewNoticeId(null);
+    if (!token || !user) return;
+    if (!isAdmin) { setJumpError("仅管理员可查看验收清单。"); return; }
+    const id = Number(implementationParam);
+    if (!/^\d+$/.test(implementationParam) || !Number.isSafeInteger(id) || id <= 0) {
+      setJumpError("落实记录编号无效。"); return;
+    }
+    request(`/api/notice-rules/implementations/${id}`)
+      .then((record: { id: number; notice_id: number }) => {
+        if (!active) return;
+        if (record.id !== id || !Number.isSafeInteger(record.notice_id) || record.notice_id <= 0) throw new Error("落实记录加载失败，请刷新后重试。");
+        setReviewTarget(record);
+      })
+      .catch(e => { if (active) setJumpError(e.message || "落实记录加载失败，请刷新后重试。"); });
+    return () => { active = false; };
+  }, [implementationParam, token, user, isAdmin, request]);
+
+  useEffect(() => {
+    if (!reviewTarget || openedImplementation.current === reviewTarget.id || loading) return;
+    if (listError) { setJumpError("通知列表加载失败，请刷新后重试。"); return; }
+    if (!notices.some(notice => notice.id === reviewTarget.notice_id)) {
+      setJumpError("落实记录所属通知不存在或你无权查看。"); return;
+    }
+    openedImplementation.current = reviewTarget.id;
+    setReviewNoticeId(reviewTarget.notice_id);
+  }, [reviewTarget, loading, listError, notices]);
 
   // 从独立打印页返回时刷新本人的打印时间，不清除尚未提交的照片/说明。
   useEffect(() => {
@@ -84,6 +123,7 @@ export default function NoticeRulesPage() {
       {isAdmin && <Button onClick={() => { setOpen(!open); setError(""); }}>{open ? "收起发布表单" : "发布通知/规则"}</Button>}
     </div>
     {error && <p role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-600">{error}</p>}
+    {jumpError && <p role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-600">{jumpError}</p>}
     {success && <p role="status" className="rounded-lg bg-green-500/10 p-3 text-sm text-green-600">{success}</p>}
     {isAdmin && open && <form onSubmit={publish} className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 sm:p-6">
       <label className="block space-y-2"><span>标题</span><input required value={title} onChange={e => setTitle(e.target.value)} className={inputClass} /></label>
@@ -109,7 +149,7 @@ export default function NoticeRulesPage() {
         <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{notice.body}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[var(--muted-foreground)]"><span>{toThaiTime(notice.published_at)}</span><span>发布人：{notice.publisher_name}</span><span>发给 {notice.recipient_count} 人</span><span>已落实 {notice.implemented_count} 人</span></div>
         {isAdmin && <Button type="button" className="min-h-11" aria-expanded={reviewNoticeId === notice.id} onClick={() => setReviewNoticeId(current => current === notice.id ? null : notice.id)}>{reviewNoticeId === notice.id ? "收起员工清单" : "查看员工落实"}</Button>}
-        {isAdmin && reviewNoticeId === notice.id && <NoticeRuleReview noticeId={notice.id} token={token} onReviewed={load} />}
+        {isAdmin && reviewNoticeId === notice.id && <NoticeRuleReview key={notice.id} noticeId={notice.id} token={token} onReviewed={load} targetImplementationId={reviewTarget?.notice_id === notice.id ? reviewTarget.id : null} />}
         {user?.role === "employee" && notice.implementation && <NoticeRuleImplementation key={`${notice.id}:${notice.implementation.submitted_at}:${notice.implementation.review_status}`} noticeId={notice.id} record={notice.implementation} token={token} onSaved={load} />}
       </article>)}
     </div>}
