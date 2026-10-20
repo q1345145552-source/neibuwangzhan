@@ -79,7 +79,8 @@ export function queueProgressEventsForOrder(orderId: string, db: Database.Databa
     for (const no of new Set(rows.map(r => r.source_order_no))) {
       if (db.prepare("SELECT 1 FROM step_ratings WHERE source_order_no = ? LIMIT 1").get(no)) {
         const name = (db.prepare("SELECT customer_name FROM orders WHERE id = ?").get(orderId) as { customer_name?: string } | undefined)?.customer_name || "";
-        try { checkRatingGift(db, no, name); }
+        // 单独一层（保存点）：补查出错就连登记一起撤回，下次保存再补查，不会登记了却没提醒
+        try { db.transaction(() => checkRatingGift(db, no, name))(); }
         catch (error) { console.error("[sync] 评完送特产补查失败（不影响保存）:", no, error); }
       }
     }
