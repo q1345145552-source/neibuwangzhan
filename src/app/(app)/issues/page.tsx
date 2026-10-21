@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { TaskMessageButton } from "@/components/task-message-button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
@@ -514,26 +515,29 @@ export default function IssuesPage() {
                       </button>):<span className="text-[var(--muted-foreground)]/30">—</span>;})()}
                   </td>
                   <td className="py-2.5 px-4">
-                    <button onClick={() => openIssueDetail(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情">
-                      <ExternalLink className="size-3.5" />
-                    </button>
-                    {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
-                      <Button size="sm" variant="outline" className="h-6 text-xs mr-1" onClick={() => handleStartIssue(t)}>
-                        <Play className="size-3 mr-1" />开始处理
-                      </Button>
-                    )}
-                    {t.status!=="已解决" ? (
-                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}>
-                        <CheckCircle2 className="size-3 mr-1" />解决
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleWithdrawIssue(t)}>
-                        <AlertTriangle className="size-3 mr-1" />撤回
-                      </Button>
-                    )}
-                    <button onClick={()=>handleDeleteIssue(t.id)} className="ml-1.5 text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="删除工单">
-                      <Trash2 className="size-3.5" />
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <TaskMessageButton type="issue" id={t.id} ownerNames={(t.assignee || "").split(",")} />
+                      <button onClick={() => openIssueDetail(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情">
+                        <ExternalLink className="size-3.5" />
+                      </button>
+                      {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
+                        <Button size="sm" variant="outline" className="h-6 text-xs mr-1" onClick={() => handleStartIssue(t)}>
+                          <Play className="size-3 mr-1" />开始处理
+                        </Button>
+                      )}
+                      {t.status!=="已解决" ? (
+                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleResolveIssue(t)}>
+                          <CheckCircle2 className="size-3 mr-1" />解决
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={()=>handleWithdrawIssue(t)}>
+                          <AlertTriangle className="size-3 mr-1" />撤回
+                        </Button>
+                      )}
+                      <button onClick={()=>handleDeleteIssue(t.id)} className="ml-1.5 text-[var(--muted-foreground)] hover:text-red-500 p-0.5" title="删除工单">
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}</tbody>
@@ -560,6 +564,7 @@ export default function IssuesPage() {
                     <div className="flex items-start justify-between gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">提交时间</span><span className="min-w-0 break-words text-right text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <TaskMessageButton type="issue" id={t.id} ownerNames={(t.assignee || "").split(",")} />
                     <button onClick={() => openIssueDetail(t)} className="mr-1 text-[var(--muted-foreground)] hover:text-[var(--primary)] p-0.5" title="查看详情"><ExternalLink className="size-3.5" /></button>
                     {t.status === "待处理" && (user?.role === "admin" || (t.assignee || "").split(",").map(s => s.trim()).includes(user?.name || "")) && (
                       <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleStartIssue(t)}><Play className="size-3 mr-1" />开始处理</Button>
