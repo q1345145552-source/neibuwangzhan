@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { BOSS_SUBMISSION_TYPES, bossSubmissionHref, reportSubmissionRevision, reflectionSubmissionRevision, type BossSubmissionCategory } from "./boss-submission-types";
+import { BOSS_SUBMISSION_TYPES, BOSS_PENDING_TYPES, bossPendingHref, reportSubmissionRevision, reflectionSubmissionRevision, type BossSubmissionCategory, type BossPendingCategory } from "./boss-submission-types";
 
 export function ensureBossSubmissionSchema(db: Database.Database) {
   db.exec(`CREATE TABLE IF NOT EXISTS boss_submission_state (
@@ -36,8 +36,8 @@ export function acknowledgeBossSubmission(db: Database.Database, category: "repo
 }
 
 export interface BossPendingItem {
-  id: string; category: BossSubmissionCategory; category_label: string; source_id: number;
-  employee_id: number; employee_name: string; summary: string; submitted_at: string; href: string;
+  id: string; category: BossPendingCategory; category_label: string; source_id: number;
+  employee_id: number | null; employee_name: string; summary: string; submitted_at: string; href: string;
 }
 type Candidate = { id: number; employee_name: string; submitted_at: string; summary: string };
 const utc = (raw: string) => {
@@ -49,11 +49,11 @@ const utc = (raw: string) => {
 export function bossPendingSubmissions(db: Database.Database) {
   const people = new Map((db.prepare("SELECT MIN(id) id,name FROM employees WHERE role='employee' GROUP BY name").all() as { id: number; name: string }[]).map(e => [e.name, e.id]));
   const items: BossPendingItem[] = [];
-  function add(category: BossSubmissionCategory, rows: Candidate[]) {
+  function add(category: Exclude<BossPendingCategory, "issue">, rows: Candidate[]) {
     for (const row of rows) {
       const employeeId = people.get(row.employee_name); if (!employeeId) continue;
-      items.push({ id: `${category}:${row.id}`, category, category_label: BOSS_SUBMISSION_TYPES[category].label, source_id: row.id,
-        employee_id: employeeId, employee_name: row.employee_name, summary: row.summary.slice(0, 600), submitted_at: utc(row.submitted_at), href: bossSubmissionHref(category, row.id) });
+      items.push({ id: `${category}:${row.id}`, category, category_label: BOSS_PENDING_TYPES[category].label, source_id: row.id,
+        employee_id: employeeId, employee_name: row.employee_name, summary: row.summary.slice(0, 600), submitted_at: utc(row.submitted_at), href: bossPendingHref(category, row.id) });
     }
   }
   add("leave", db.prepare("SELECT id,employee_name,created_at submitted_at,leave_type||' '||start_date||' '||start_time||' 至 '||end_date||' '||end_time summary FROM leave_requests WHERE status='待审批'").all() as Candidate[]);
@@ -76,8 +76,16 @@ export function bossPendingSubmissions(db: Database.Database) {
   add("problem", db.prepare(`SELECT p.id,p.assignee employee_name,COALESCE(NULLIF(s.submitted_at,''),p.updated_at) submitted_at,
     p.problem_number||' '||p.company_name||'：'||p.resolve_note summary FROM problems p
     LEFT JOIN boss_submission_state s ON s.category='problem' AND s.source_id=p.id WHERE p.status='老板验收'`).all() as Candidate[]);
-  add("withdrawal", db.prepare("SELECT id,employee_name,created_at submitted_at,'申请提现 '||amount||' 积分' summary FROM point_withdrawals WHERE status='待审核'").all() as Candidate[]);
+  // 工单允许老板、多人或未分配负责人；直接按工单取一条，不通过员工匹配过滤或拆分。
+  const issues = db.prepare("SELECT id,ticket_number,description,assignee,created_at FROM issue_tickets WHERE status IN ('待处理','处理中')").all() as {
+    id: number; ticket_number: string; description: string; assignee: string | null; created_at: string;
+  }[];
+  for (const issue of issues) {
+    items.push({ id: `issue:${issue.id}`, category: "issue", category_label: BOSS_PENDING_TYPES.issue.label, source_id: issue.id,
+      employee_id: null, employee_name: issue.assignee?.trim() || "未分配", summary: `${issue.ticket_number || `#${issue.id}`}：${issue.description}`.slice(0, 600),
+      submitted_at: utc(issue.created_at), href: bossPendingHref("issue", issue.id) });
+  }
   items.sort((a, b) => b.submitted_at.localeCompare(a.submitted_at) || a.id.localeCompare(b.id));
-  const counts = Object.fromEntries(Object.keys(BOSS_SUBMISSION_TYPES).map(key => [key, items.filter(item => item.category === key).length]));
+  const counts = Object.fromEntries(Object.keys(BOSS_PENDING_TYPES).map(key => [key, items.filter(item => item.category === key).length]));
   return { generated_at: new Date().toISOString(), total: items.length, counts, items };
 }

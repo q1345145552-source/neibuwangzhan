@@ -9,7 +9,7 @@ global.fetch = async () => { throw Error('NETWORK_DISABLED'); };
 const db = require('../src/lib/db.ts').getDb();
 require('../src/lib/deepseek.ts').analyzeWorkReport = async () => ({ label: '测试', comment: '', risk: false, riskDesc: '' });
 const { signToken } = require('../src/lib/auth.ts'), { NextRequest } = require('next/server');
-const { reportSubmissionRevision, reflectionSubmissionRevision, BOSS_SUBMISSION_TYPES } = require('../src/lib/boss-submission-types.ts');
+const { reportSubmissionRevision, reflectionSubmissionRevision, BOSS_SUBMISSION_TYPES, BOSS_PENDING_TYPES } = require('../src/lib/boss-submission-types.ts');
 const { ensureBossSubmissionSchema } = require('../src/lib/boss-submissions.ts');
 const load = name => require('../src/app/api/' + name + '/route.ts');
 const routes = { pending: load('boss-supervision/pending'), seen: load('boss-supervision/pending/seen'), leave: load('leave'), attendance: load('attendance/request'),
@@ -45,7 +45,8 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
   const unfinishedTodoId = Number(db.prepare('INSERT INTO todos(content,assignee,created_by) VALUES (?,?,?)').run('保持未完成的普通待办', employee, employee).lastInsertRowid);
   const problemId = Number(db.prepare("INSERT INTO problems(problem_number,company_name,assignee,status) VALUES ('PROB-TEST','测试公司',?,'跟进中')").run(employee).lastInsertRowid);
   db.prepare("INSERT INTO points_records(employee_name,points,reason,rule_key) VALUES (?,100,'测试积分','customer_claim')").run(employee);
-  const ids = { notice: noticeRecord, todo: todoId, problem: problemId };
+  const issueId = Number(db.prepare("INSERT INTO issue_tickets(ticket_number,description,assignee,status) VALUES ('TK-TEST','测试工单',?,'待处理')").run(employee).lastInsertRowid);
+  const ids = { notice: noticeRecord, todo: todoId, problem: problemId, issue: issueId };
   await check('All eight real employee submission routes create one notification per active admin', async () => {
     let r = await call('leave', 'POST', 'employee', { leave_type: '事假', start_date: current, end_date: current, reason: '测试申请' }); assert.equal(r.status, 201); ids.leave = r.body.id;
     r = await call('attendance', 'POST', 'employee', { date: current, time: '09:00', reason: '测试补签' }); assert.equal(r.status, 201); ids.attendance = r.body.id;
@@ -65,10 +66,11 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
   await check('Pending response includes all eight categories, employee/summary/time/href and newest-first sorting', async () => {
     const r = await call('pending', 'GET', 'admin'); assert.equal(r.status, 200); assert.equal(r.response.headers.get('cache-control'), 'private, no-store');
     assert.equal(r.body.total, 9);
-    for (const category of Object.keys(BOSS_SUBMISSION_TYPES)) assert(r.body.items.some(i => i.category === category && i.source_id === (category === 'todo' ? unfinishedTodoId : ids[category])), category);
+    for (const category of Object.keys(BOSS_PENDING_TYPES)) assert(r.body.items.some(i => i.category === category && i.source_id === (category === 'todo' ? unfinishedTodoId : ids[category])), category);
+    assert(!r.body.items.some(i => i.category === 'withdrawal'), 'Withdrawal remains a notification, not a board category');
     assert(!r.body.items.some(i => i.category === 'todo' && i.source_id === todoId), 'Completed todo excluded even before boss confirmation');
     assert.equal(r.body.items.find(i => i.category === 'todo').category_label, '未完成待办');
-    for (const item of r.body.items) { assert.equal(item.employee_name, employee); assert.equal(item.employee_id, users.employee.id); assert(item.summary && item.category_label && item.href.startsWith('/') && !isNaN(Date.parse(item.submitted_at))); }
+    for (const item of r.body.items) { assert.equal(item.employee_name, employee); assert.equal(item.employee_id, item.category === 'issue' ? null : users.employee.id); assert(item.summary && item.category_label && item.href.startsWith('/') && !isNaN(Date.parse(item.submitted_at))); }
     assert.deepEqual(r.body.items.map(i => i.submitted_at), r.body.items.map(i => i.submitted_at).sort().reverse());
     assert.equal(messages().length, 16, 'Reading pending does not send reminders');
   });

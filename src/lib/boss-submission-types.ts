@@ -17,6 +17,23 @@ export function bossSubmissionHref(category: BossSubmissionCategory, id: string 
   return links[category];
 }
 
+// 看板分类独立于提交通知：提现通知继续保留，工单只进入看板。
+export const BOSS_PENDING_TYPES = {
+  leave: BOSS_SUBMISSION_TYPES.leave,
+  attendance: BOSS_SUBMISSION_TYPES.attendance,
+  notice: BOSS_SUBMISSION_TYPES.notice,
+  report: BOSS_SUBMISSION_TYPES.report,
+  meeting: BOSS_SUBMISSION_TYPES.meeting,
+  todo: BOSS_SUBMISSION_TYPES.todo,
+  problem: BOSS_SUBMISSION_TYPES.problem,
+  issue: { label: "工单" },
+} as const;
+export type BossPendingCategory = keyof typeof BOSS_PENDING_TYPES;
+
+export function bossPendingHref(category: BossPendingCategory, id: string | number): string {
+  return category === "issue" ? `/issues?open=${encodeURIComponent(id)}` : bossSubmissionHref(category, id);
+}
+
 // 不使用 AI/老板点评/翻译更新时间作版本：只有员工本次提交的正文才参与已阅匹配。
 export function reportSubmissionRevision(row: { submitted_at?: string; created_at?: string }): string {
   return row.submitted_at || row.created_at || "";

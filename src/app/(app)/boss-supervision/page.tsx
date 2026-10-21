@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useBossPending } from "@/lib/use-boss-pending";
-import { BOSS_SUBMISSION_TYPES, type BossSubmissionCategory } from "@/lib/boss-submission-types";
+import { BOSS_PENDING_TYPES, type BossPendingCategory } from "@/lib/boss-submission-types";
 import { toThaiTime } from "@/lib/utils";
 
 export default function BossSupervisionPage() {
@@ -31,9 +31,9 @@ export default function BossSupervisionPage() {
       </section>
       {data.total === 0 && <p role="status" className="text-sm text-[var(--muted-foreground)]">暂无待处理事项。</p>}
       <div className="grid min-w-0 grid-cols-1 items-start gap-3 lg:grid-cols-2">
-        {(Object.keys(BOSS_SUBMISSION_TYPES) as BossSubmissionCategory[]).map(category => {
+        {(Object.keys(BOSS_PENDING_TYPES) as BossPendingCategory[]).map(category => {
           const items = data.items.filter(item => item.category === category);
-          const label = BOSS_SUBMISSION_TYPES[category].label;
+          const label = BOSS_PENDING_TYPES[category].label;
           return <details key={category} className="group min-w-0 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
             <summary className="flex min-h-14 cursor-pointer list-none flex-wrap items-center gap-2 p-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
               <span className="min-w-0 flex-1">{label}</span>
@@ -45,7 +45,7 @@ export default function BossSupervisionPage() {
                 <a href={item.href} target="_blank" rel="noopener noreferrer" aria-label={`${item.employee_name}的${label}，新标签页打开`} className="block min-w-0 space-y-2 rounded-lg border border-[var(--border)] p-3 transition-colors hover:border-blue-500 focus-visible:outline-2 focus-visible:outline-blue-500">
                   <div className="flex flex-wrap items-center justify-between gap-2"><span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{item.employee_name}</span><span className="inline-flex shrink-0 items-center gap-1 text-xs text-blue-600">去处理<ExternalLink aria-hidden="true" className="size-3.5" /></span></div>
                   <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">{item.summary}</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">{category === "todo" ? "创建时间" : "提交时间"}：<time dateTime={item.submitted_at}>{toThaiTime(item.submitted_at)}</time></p>
+                  <p className="text-xs text-[var(--muted-foreground)]">{category === "todo" || category === "issue" ? "创建时间" : "提交时间"}：<time dateTime={item.submitted_at}>{toThaiTime(item.submitted_at)}</time></p>
                 </a>
               </li>)}
             </ul> : <p className="border-t border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">暂无{label}待处理事项。</p>}

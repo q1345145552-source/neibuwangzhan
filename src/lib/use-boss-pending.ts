@@ -3,12 +3,12 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { useAuth } from "@/components/auth-provider";
 import type { BossPendingItem } from "./boss-submissions";
-import type { BossSubmissionCategory } from "./boss-submission-types";
+import type { BossPendingCategory } from "./boss-submission-types";
 
 interface PendingData {
   generated_at: string;
   total: number;
-  counts: Record<BossSubmissionCategory, number>;
+  counts: Record<BossPendingCategory, number>;
   items: BossPendingItem[];
 }
 interface Snapshot { data: PendingData | null; loading: boolean; error: string }
