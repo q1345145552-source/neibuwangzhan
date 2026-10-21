@@ -28,7 +28,7 @@ function createReportHarness(){
  const helper=load('src/lib/chat-report-card.ts');
  const forbidden=()=>{throw Error('No review, AI, notification or sync allowed');};
  const deps={'next/server':{NextResponse:{json:(body,init)=>Response.json(body,init)}},'@/lib/auth':{verifyAuth:async()=>actor,isStaff:auth=>['admin','employee'].includes(auth.role)},
-  '@/lib/db':{getDb:()=>db,logOperation:forbidden},'@/lib/req':{readJson:req=>req.json()},'@/lib/chat-report-card':helper,
+  '@/lib/db':{getDb:()=>db,logOperation:forbidden},'@/lib/req':{readJson:req=>req.json()},'@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card':helper,
   '@/lib/chat-leave-card':load('src/lib/chat-leave-card.ts'),'@/lib/chat-attendance-card':load('src/lib/chat-attendance-card.ts'),'@/lib/chat-notice-card':load('src/lib/chat-notice-card.ts'),
   '@/lib/boss-submissions':{publishBossSubmission:forbidden,acknowledgeBossSubmission:forbidden},'@/lib/boss-submission-types':load('src/lib/boss-submission-types.ts'),
   '@/lib/work-report-sync':{completeWorkReportTodos:forbidden,pendingWorkReportDates:()=>[]},'@/lib/deepseek':{analyzeWorkReport:forbidden},'@/lib/work-report-items':load('src/lib/work-report-items.ts'),
@@ -63,7 +63,7 @@ async function run(){
  for(const route of ['direct','group'])assert.equal((await h.call(route,'POST',{...(route==='direct'?{other:'员工甲'}:{group_id:20}),card_type:'report',card_id:'1505'})).status,201);
  console.log('PASS canonical report snapshots in both real POST handlers, active/member/owner guards, original eleven card types, archived employee history visible to admin without expanding ordinary board; no review/return/viewed/notification writes');
  const page=fs.readFileSync(path.join(root,'src/app/(app)/messages/page.tsx'),'utf8'),exports={};vm.runInNewContext(ts.transpileModule(page.slice(page.indexOf('// ── 分享卡片'),page.indexOf('// ── AI 总结'))+'\nObject.assign(exports,{CARD_META,SHARE_CATEGORIES,parseCard,quotePreview});',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports});
- assert.equal(exports.SHARE_CATEGORIES.length,12);const m={order_id:'report:1502',content:JSON.stringify({title:'员工甲 2024-02-10 日报 #1502',subtitle:'已提交'})};assert.equal(exports.parseCard(m).kind,'report');assert.equal(exports.quotePreview(m),'[日报] 员工甲 2024-02-10 日报 #1502');assert.equal(exports.CARD_META.report.href('1502'),'/work-reports?report=1502');
- console.log('PASS twelve categories, report parser/quote and exact URL. No database imported or opened.');
+ assert.equal(exports.SHARE_CATEGORIES.length,13);const m={order_id:'report:1502',content:JSON.stringify({title:'员工甲 2024-02-10 日报 #1502',subtitle:'已提交'})};assert.equal(exports.parseCard(m).kind,'report');assert.equal(exports.quotePreview(m),'[日报] 员工甲 2024-02-10 日报 #1502');assert.equal(exports.CARD_META.report.href('1502'),'/work-reports?report=1502');
+ console.log('PASS thirteen categories, report parser/quote and exact URL. No database imported or opened.');
 }
 module.exports={createReportHarness};if(require.main===module)run().catch(error=>{console.error(error);process.exitCode=1;});

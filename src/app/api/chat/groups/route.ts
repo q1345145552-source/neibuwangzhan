@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     else if (g.last_order_id?.startsWith("attendance:")) preview = "[补签]";
     else if (g.last_order_id?.startsWith("notice:")) preview = "[通知落实]";
     else if (g.last_order_id?.startsWith("report:")) preview = "[日报]";
+    else if (g.last_order_id?.startsWith("meeting:")) preview = "[会议心得]";
     else if (g.last_order_id) preview = "[订单]";
     else if (g.last_content) preview = g.last_content.slice(0, 50);
     return {

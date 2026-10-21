@@ -80,7 +80,7 @@ function createHarness() {
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin', 'employee'].includes(auth.role) },
     '@/lib/db': { getDb: () => db }, '@/lib/req': { readJson: req => req.json() }, '@/lib/chat-leave-card': helper,
-    '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
+    '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'), '@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
   const routes = Object.fromEntries(Object.entries({ candidates: 'chat/share-items', direct: 'chat', group: 'chat/group-messages', groups: 'chat/groups', detail: 'leave/[id]' })
     .map(([key, file]) => [key, load(`src/app/api/${file}/route.ts`, deps)]));
   return { leaves, messages, writes, reads, previews, helper, db, routes,
@@ -143,13 +143,13 @@ async function run() {
   vm.runInNewContext(ts.transpileModule(segment + '\nObject.assign(exports,{CARD_META,SHARE_CATEGORIES,parseCard,quotePreview,mapShareItem});', {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText, { exports });
-  assert.equal(exports.SHARE_CATEGORIES.length, 12);
+  assert.equal(exports.SHARE_CATEGORIES.length, 13);
   const msg = { order_id: 'leave:1001', content: JSON.stringify({ title: '员工甲的请假申请 #1001', subtitle: '日期与状态' }) };
   assert.equal(exports.parseCard(msg).kind, 'leave'); assert.equal(exports.CARD_META.leave.href('1001'), '/internal/leave?leave=1001');
   assert.equal(exports.quotePreview(msg), '[请假] 员工甲的请假申请 #1001');
   assert.equal(exports.parseCard({ order_id: 'OLD-ORDER', content: '旧客户' }).kind, 'order');
   for (const kind of ['order', 'todo', 'project', 'customer', 'vat', 'wht', 'problem', 'issue']) assert.equal(exports.parseCard({ order_id: kind + ':1', content: '{}' }).kind, kind);
-  console.log('PASS twelve frontend categories, card parser, quote preview and exact leave URL; old eight and legacy cards compatible. Mock-only verification; no database loaded.');
+  console.log('PASS thirteen frontend categories, card parser, quote preview and exact leave URL; old eight and legacy cards compatible. Mock-only verification; no database loaded.');
 }
 module.exports = { createHarness };
 if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });

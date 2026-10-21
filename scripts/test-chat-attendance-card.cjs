@@ -44,7 +44,7 @@ function createAttendanceHarness() {
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin', 'employee'].includes(auth.role) },
     '@/lib/db': { getDb: () => db }, '@/lib/req': { readJson: req => req.json() },
-    '@/lib/chat-attendance-card': helper, '@/lib/chat-leave-card': load('src/lib/chat-leave-card.ts'), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
+    '@/lib/chat-attendance-card': helper, '@/lib/chat-leave-card': load('src/lib/chat-leave-card.ts'), '@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
   const routes = Object.fromEntries(Object.entries({ candidates: 'chat/share-items', direct: 'chat', group: 'chat/group-messages', groups: 'chat/groups', detail: 'attendance/request/[id]' })
     .map(([key, file]) => [key, load(`src/app/api/${file}/route.ts`, deps)]));
   return { ...base, requests, helper, routes, db,
@@ -105,11 +105,11 @@ async function run() {
   const segment = page.slice(page.indexOf('// ── 分享卡片'), page.indexOf('// ── AI 总结'));
   const exports = {};
   vm.runInNewContext(ts.transpileModule(segment + '\nObject.assign(exports,{CARD_META,SHARE_CATEGORIES,parseCard,quotePreview});', { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, { exports });
-  assert.equal(exports.SHARE_CATEGORIES.length, 12);
+  assert.equal(exports.SHARE_CATEGORIES.length, 13);
   const msg = { order_id: 'attendance:1101', content: JSON.stringify({ title: '员工甲的补签申请 #1101', subtitle: '2024-06-16 09:15 · 待审批' }) };
   assert.equal(exports.parseCard(msg).kind, 'attendance'); assert.equal(exports.quotePreview(msg), '[补签] 员工甲的补签申请 #1101');
   assert.equal(exports.CARD_META.attendance.href('1101'), '/internal?attendance_request=1101#attendance-requests');
-  console.log('PASS twelve frontend categories, parser, quote preview and exact request URL. No database imported or opened.');
+  console.log('PASS thirteen frontend categories, parser, quote preview and exact request URL. No database imported or opened.');
 }
 module.exports = { createAttendanceHarness };
 if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });

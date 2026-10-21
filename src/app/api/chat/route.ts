@@ -6,6 +6,7 @@ import { resolveLeaveCard } from "@/lib/chat-leave-card";
 import { resolveAttendanceCard } from "@/lib/chat-attendance-card";
 import { resolveNoticeCard } from "@/lib/chat-notice-card";
 import { resolveReportCard } from "@/lib/chat-report-card";
+import { resolveMeetingCard } from "@/lib/chat-meeting-card";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -36,6 +37,7 @@ const CARD_LABELS: Record<string, string> = {
   attendance: "[补签]",
   notice: "[通知落实]",
   report: "[日报]",
+  meeting: "[会议心得]",
 };
 
 // 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
@@ -148,6 +150,7 @@ export async function POST(req: NextRequest) {
   if (cardType) {
     if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
     const card = cardType === "leave" ? resolveLeaveCard(db, auth, cardId)
+      : cardType === "meeting" ? resolveMeetingCard(db, auth, cardId)
       : cardType === "report" ? resolveReportCard(db, auth, cardId)
       : cardType === "notice" ? resolveNoticeCard(db, auth, cardId)
       : cardType === "attendance" ? resolveAttendanceCard(db, auth, cardId) : resolveCard(db, cardType, cardId);

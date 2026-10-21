@@ -70,7 +70,7 @@ function createNoticeHarness() {
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin','employee'].includes(auth.role) },
     '@/lib/db': { getDb: () => db }, '@/lib/req': { readJson: req => req.json() },
-    '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': helper, '@/lib/chat-leave-card': load('src/lib/chat-leave-card.ts'), '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'),
+    '@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': helper, '@/lib/chat-leave-card': load('src/lib/chat-leave-card.ts'), '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'),
     '@/lib/notice-rule-review': review, '@/lib/submission-todos': { assignNoticeTodo() { throw Error('No assignment allowed'); }, syncNoticeTodo() { throw Error('No business changes allowed'); } } };
   const routes = Object.fromEntries(Object.entries({ candidates:'chat/share-items',direct:'chat',group:'chat/group-messages',groups:'chat/groups',
     lookup:'notice-rules/implementations/[recordId]',list:'notice-rules',reviews:'notice-rules/[id]/implementations',review:'notice-rules/[id]/implementations/[recordId]/review' })
@@ -124,9 +124,9 @@ async function run() {
   console.log('PASS real direct/group POST, canonical minimal server snapshot, forged content rejected, original ten cards preserved, both previews, admin lookup/review and same-name owner isolation; no notice/print/submission writes');
   const page=fs.readFileSync(path.join(root,'src/app/(app)/messages/page.tsx'),'utf8');const exports={};
   vm.runInNewContext(ts.transpileModule(page.slice(page.indexOf('// ── 分享卡片'),page.indexOf('// ── AI 总结'))+'\nObject.assign(exports,{CARD_META,SHARE_CATEGORIES,parseCard,quotePreview});',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports});
-  assert.equal(exports.SHARE_CATEGORIES.length,12);const m={order_id:'notice:101',content:JSON.stringify({title:'模拟通知乙 · 员工甲 #101',subtitle:'已通过'})};
+  assert.equal(exports.SHARE_CATEGORIES.length,13);const m={order_id:'notice:101',content:JSON.stringify({title:'模拟通知乙 · 员工甲 #101',subtitle:'已通过'})};
   assert.equal(exports.parseCard(m).kind,'notice');assert.equal(exports.quotePreview(m),'[通知落实] 模拟通知乙 · 员工甲 #101');assert.equal(exports.CARD_META.notice.href('101'),'/notice-rules?implementation=101');
-  console.log('PASS twelve frontend categories, parser, quote preview and personal-record URL. No database imported or opened.');
+  console.log('PASS thirteen frontend categories, parser, quote preview and personal-record URL. No database imported or opened.');
 }
 module.exports={createNoticeHarness};
 if(require.main===module)run().catch(error=>{console.error(error);process.exitCode=1;});
