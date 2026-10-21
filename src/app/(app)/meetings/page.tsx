@@ -8,6 +8,7 @@ import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { TaskMessageButton } from "@/components/task-message-button";
 import { Plus, X, CalendarClock, Trash2 } from "lucide-react";
 import { parseMeetingTopics } from "@/lib/meeting-topics";
 
@@ -671,9 +672,10 @@ export default function MeetingsPage() {
                                   ))}
                                 </div>
                               )}
-                              {r.status === "已提交" && (
-                                <div className="mt-1.5"><Button size="sm" variant="destructive" onClick={() => rejectRf(r)}>退回</Button></div>
-                              )}
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                <TaskMessageButton type="meeting" id={r.id} ownerNames={[r.employee_name]} />
+                                {r.status === "已提交" && <Button size="sm" variant="destructive" onClick={() => rejectRf(r)}>退回</Button>}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -709,7 +711,8 @@ export default function MeetingsPage() {
                             ))}
                           </div>
                         )}
-                        <div className="mt-2 flex items-center gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <TaskMessageButton type="meeting" id={r.id} ownerNames={[r.employee_name]} />
                           {r.status === "退回" && <Button size="sm" onClick={() => openRfEdit(r)}>修改重交</Button>}
                           <Button size="sm" variant="ghost" onClick={() => deleteRf(r)} className="gap-1 text-[var(--muted-foreground)]"><Trash2 className="size-3.5" />删除</Button>
                         </div>

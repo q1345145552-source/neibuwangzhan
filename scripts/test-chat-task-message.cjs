@@ -143,7 +143,7 @@ async function run() {
   const otherConversation = h.messages.find(m => m.conversation_id !== conv); assert.equal((await h.call('direct', 'GET', null, '?other=员工甲&focus_id=' + otherConversation.id)).status, 404);
   assert.equal((await h.call('direct', 'GET', null, '?other=员工甲&focus_id=NaN')).status, 400);
   assert(h.immediates > 0); assert(h.writes.every(sql => /^(INSERT INTO (messages|conversations)|UPDATE (messages|conversations))/.test(sql)));
-  console.log('PASS original text/image/voice/reply direct channel; >500 history opens the sent card in correct conversation; foreign focus rejected; writes confined to existing chat tables; no schema/business/notification writes or database driver');
+  console.log('PASS original text/image/reply and generic file-address compatibility (not a voice feature test); >500 history opens the sent card in correct conversation; foreign focus rejected; writes confined to existing chat tables; no schema/business/notification writes or database driver');
 }
 module.exports = { createTaskHarness };
 if (require.main === module) run().catch(e => { console.error(e); process.exitCode = 1; });
