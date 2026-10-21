@@ -5,7 +5,7 @@
 // - 还没挂载时，暂存目标，等消息页挂载后取走并打开。
 
 export type ChatOpenTarget =
-  | { kind: "direct"; name: string }
+  | { kind: "direct"; name: string; messageId?: number }
   | { kind: "group"; id: number; name: string };
 
 let pendingTarget: ChatOpenTarget | null = null;

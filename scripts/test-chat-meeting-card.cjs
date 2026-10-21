@@ -29,7 +29,7 @@ function createMeetingHarness(){
   };
  }};
  const helper=load('src/lib/chat-meeting-card.ts',{'./meeting-todos':mt});
- const deps={'next/server':{NextResponse:{json:(body,init)=>Response.json(body,init)}},'@/lib/auth':{verifyAuth:async()=>actor,isStaff:a=>['admin','employee'].includes(a.role)},'@/lib/db':{getDb:()=>db,logOperation:forbidden},'@/lib/req':{readJson:req=>req.json()},
+ const deps={'next/server':{NextResponse:{json:(body,init)=>Response.json(body,init)}},'@/lib/auth':{verifyAuth:async()=>actor,isStaff:a=>['admin','employee'].includes(a.role)},'@/lib/db':{getDb:()=>db,logOperation:forbidden},'@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/req':{readJson:req=>req.json()},
   '@/lib/chat-meeting-card':helper,'@/lib/chat-report-card':load('src/lib/chat-report-card.ts'),'@/lib/chat-notice-card':load('src/lib/chat-notice-card.ts'),'@/lib/chat-attendance-card':load('src/lib/chat-attendance-card.ts'),'@/lib/chat-leave-card':load('src/lib/chat-leave-card.ts'),
   '@/lib/meeting-todos':mt,'@/lib/boss-submissions':{publishBossSubmission:forbidden},'@/lib/meeting-sync':{syncMeetingReminders(){blockedSyncCalls++;}},'@/lib/meeting-topics':load('src/lib/meeting-topics.ts')};
  const routes=Object.fromEntries(Object.entries({candidates:'chat/share-items',direct:'chat',group:'chat/group-messages',groups:'chat/groups',lookup:'meetings/reflections/[id]',list:'meetings',reflections:'meetings/[id]/reflections'}).map(([k,f])=>[k,load(`src/app/api/${f}/route.ts`,deps)]));

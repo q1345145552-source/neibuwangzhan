@@ -7,6 +7,7 @@ import { ChevronDown, ExternalLink } from "lucide-react";
 import { useBossPending } from "@/lib/use-boss-pending";
 import { BOSS_PENDING_TYPES, type BossPendingCategory } from "@/lib/boss-submission-types";
 import { toThaiTime } from "@/lib/utils";
+import { TaskMessageButton } from "@/components/task-message-button";
 
 export default function BossSupervisionPage() {
   const { user } = useAuth();
@@ -41,12 +42,13 @@ export default function BossSupervisionPage() {
               <ChevronDown aria-hidden="true" className="size-4 shrink-0 transition-transform group-open:rotate-180" />
             </summary>
             {items.length ? <ul className="space-y-2 border-t border-[var(--border)] p-3">
-              {items.map(item => <li key={item.id}>
-                <a href={item.href} target="_blank" rel="noopener noreferrer" aria-label={`${item.employee_name}的${label}，新标签页打开`} className="block min-w-0 space-y-2 rounded-lg border border-[var(--border)] p-3 transition-colors hover:border-blue-500 focus-visible:outline-2 focus-visible:outline-blue-500">
+              {items.map(item => <li key={item.id} className="min-w-0 rounded-lg border border-[var(--border)]">
+                <a href={item.href} target="_blank" rel="noopener noreferrer" aria-label={`${item.employee_name}的${label}，新标签页打开`} className="block min-w-0 space-y-2 rounded-lg p-3 transition-colors hover:bg-blue-500/5 focus-visible:outline-2 focus-visible:outline-blue-500">
                   <div className="flex flex-wrap items-center justify-between gap-2"><span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{item.employee_name}</span><span className="inline-flex shrink-0 items-center gap-1 text-xs text-blue-600">去处理<ExternalLink aria-hidden="true" className="size-3.5" /></span></div>
                   <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">{item.summary}</p>
                   <p className="text-xs text-[var(--muted-foreground)]">{category === "todo" || category === "issue" ? "创建时间" : "提交时间"}：<time dateTime={item.submitted_at}>{toThaiTime(item.submitted_at)}</time></p>
                 </a>
+                <div className="flex justify-end px-3 pb-3"><TaskMessageButton type={category} id={item.source_id} ownerNames={category === "issue" ? item.employee_name.split(",") : [item.employee_name]} ownerId={item.employee_id} /></div>
               </li>)}
             </ul> : <p className="border-t border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">暂无{label}待处理事项。</p>}
           </details>;

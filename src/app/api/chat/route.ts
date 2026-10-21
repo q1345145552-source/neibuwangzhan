@@ -8,19 +8,9 @@ import { resolveNoticeCard } from "@/lib/chat-notice-card";
 import { resolveReportCard } from "@/lib/chat-report-card";
 import { resolveMeetingCard } from "@/lib/chat-meeting-card";
 
-type Db = ReturnType<typeof getDb>;
+import { getOrCreateConversation, insertDirectMessage } from "@/lib/chat-direct-message";
 
-// 会话双方按字典序规范化（user_a < user_b），配合 conversations 表的 UNIQUE(user_a, user_b)
-// 保证同一对员工只存在一条会话记录。返回该会话 id（不存在则创建）。
-function getOrCreateConversation(db: Db, me: string, other: string): number {
-  const a = me < other ? me : other;
-  const b = me < other ? other : me;
-  const existing = db.prepare("SELECT id FROM conversations WHERE user_a = ? AND user_b = ?").get(a, b) as
-    { id: number } | undefined;
-  if (existing) return existing.id;
-  const r = db.prepare("INSERT INTO conversations (user_a, user_b) VALUES (?, ?)").run(a, b);
-  return Number(r.lastInsertRowid);
-}
+type Db = ReturnType<typeof getDb>;
 
 function findActiveStaff(db: Db, name: string): boolean {
   const row = db.prepare(
@@ -96,9 +86,14 @@ export async function GET(req: NextRequest) {
 
   const conversationId = getOrCreateConversation(db, auth.name, other);
 
-  const messages = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 500"
-  ).all(conversationId, after);
+  // 任务发送后定位刚发的卡片：只读本人会话内的目标及此前500条，普通拉取规则不变。
+  const focus = Number(searchParams.get("focus_id"));
+  if (searchParams.has("focus_id") && (!Number.isSafeInteger(focus) || focus <= 0)) return NextResponse.json({ error: "消息编号无效" }, { status: 400 });
+  const columns = "id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at";
+  if (focus && !db.prepare("SELECT id FROM messages WHERE id=? AND conversation_id=?").get(focus, conversationId)) return NextResponse.json({ error: "消息不在当前会话中" }, { status: 404 });
+  const messages = focus
+    ? db.prepare(`SELECT ${columns} FROM messages WHERE conversation_id = ? AND id <= ? ORDER BY id DESC LIMIT 500`).all(conversationId, focus).reverse()
+    : db.prepare(`SELECT ${columns} FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 500`).all(conversationId, after);
 
   // 打开会话即视为已读：把对方发给我的未读消息标记为已读
   db.prepare(
@@ -166,21 +161,10 @@ export async function POST(req: NextRequest) {
     finalContent = order.customer_name;
   }
 
-  const conversationId = getOrCreateConversation(db, auth.name, other);
-  const now = new Date().toISOString().replace("T", " ").split(".")[0];
-  const r = db.prepare(
-    "INSERT INTO messages (conversation_id, sender, receiver, content, image_url, order_id, is_read, reply_to, reply_preview, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)"
-  ).run(conversationId, auth.name, other, finalContent, imageUrl, finalOrderId, replyTo, replyPreview, now);
-
-  // 更新会话最后一条消息（后续会话列表排序/预览用）
-  const preview = cardLabel || (orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50));
-  db.prepare(
-    "UPDATE conversations SET last_message_at = ?, last_message_preview = ? WHERE id = ?"
-  ).run(now, preview, conversationId);
-
-  const message = db.prepare(
-    "SELECT id, conversation_id, group_id, sender, receiver, content, image_url, order_id, is_read, read_at, recalled, reply_to, reply_preview, created_at FROM messages WHERE id = ?"
-  ).get(Number(r.lastInsertRowid));
+  const message = insertDirectMessage(db, {
+    sender: auth.name, receiver: other, content: finalContent, imageUrl, orderId: finalOrderId, replyTo, replyPreview,
+    preview: cardLabel || (orderId ? "[订单]" : imageUrl ? "[图片]" : finalContent.slice(0, 50)),
+  });
 
   return NextResponse.json({ message }, { status: 201 });
 }

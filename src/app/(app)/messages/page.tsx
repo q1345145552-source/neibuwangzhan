@@ -119,7 +119,7 @@ interface CardInfo {
 // 卡片类型 → 展示标签 + 点击跳转的目标详情页
 const CARD_META: Record<CardKind, { label: string; href: (id: string) => string }> = {
   order:    { label: "订单", href: (id) => `/orders/${id}` },
-  todo:     { label: "待办", href: () => "/todos" },
+  todo:     { label: "待办", href: (id) => `/todos?todo=${encodeURIComponent(id)}` },
   project:  { label: "项目", href: (id) => `/projects/${id}` },
   customer: { label: "客户", href: (id) => `/customers/${id}` },
   vat:      { label: "VAT申报", href: (id) => `/vat/${id}` },
@@ -604,6 +604,7 @@ export default function MessagesPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const cursorRef = useRef(0);
+  const openGeneration = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -878,7 +879,8 @@ export default function MessagesPage() {
   }, []);
 
   // 打开一对一会话
-  const openDirect = useCallback((name: string) => {
+  const openDirect = useCallback((name: string, messageId?: number) => {
+    const generation = ++openGeneration.current;
     setSelected({ kind: "direct", name });
     setConversationId(null);
     setMessages([]);
@@ -886,9 +888,10 @@ export default function MessagesPage() {
     setError(null);
     setReplyTo(null);
     cursorRef.current = 0;
-    fetchWithAuth(`/api/chat?other=${encodeURIComponent(name)}`, { cache: "no-store" })
+    fetchWithAuth(`/api/chat?other=${encodeURIComponent(name)}${messageId ? `&focus_id=${messageId}` : ""}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
+        if (generation !== openGeneration.current) return;
         if (d && typeof d.conversationId === "number") setConversationId(d.conversationId);
         if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
         if (d && Array.isArray(d.readMessageIds)) applyReadIds(d.readMessageIds);
@@ -899,6 +902,7 @@ export default function MessagesPage() {
 
   // 打开群会话
   const openGroup = useCallback((id: number, name: string) => {
+    const generation = ++openGeneration.current;
     setSelected({ kind: "group", id, name });
     setMessages([]);
     setInput("");
@@ -908,6 +912,7 @@ export default function MessagesPage() {
     fetchWithAuth(`/api/chat/group-messages?group_id=${id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
+        if (generation !== openGeneration.current) return;
         if (d && Array.isArray(d.messages)) mergeIncoming(d.messages);
         if (d && Array.isArray(d.recalledIds)) applyRecalledIds(d.recalledIds);
         if (d && typeof d.group?.member_count === "number") setGroupMemberCount(d.group.member_count);
@@ -927,7 +932,7 @@ export default function MessagesPage() {
   // （已经在消息页时靠订阅直接切换；从别的页面跳过来时靠挂载时取走暂存目标）
   useEffect(() => {
     const apply = (t: ChatOpenTarget) => {
-      if (t.kind === "direct") openDirect(t.name);
+      if (t.kind === "direct") openDirect(t.name, t.messageId);
       else if (t.kind === "group") openGroup(t.id, t.name);
     };
     const pending = takePendingChatTarget();

@@ -69,7 +69,7 @@ function createNoticeHarness() {
   const review = load('src/lib/notice-rule-review.ts', { 'node:crypto': require('node:crypto') });
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin','employee'].includes(auth.role) },
-    '@/lib/db': { getDb: () => db }, '@/lib/req': { readJson: req => req.json() },
+    '@/lib/db': { getDb: () => db }, '@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/req': { readJson: req => req.json() },
     '@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': helper, '@/lib/chat-leave-card': load('src/lib/chat-leave-card.ts'), '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'),
     '@/lib/notice-rule-review': review, '@/lib/submission-todos': { assignNoticeTodo() { throw Error('No assignment allowed'); }, syncNoticeTodo() { throw Error('No business changes allowed'); } } };
   const routes = Object.fromEntries(Object.entries({ candidates:'chat/share-items',direct:'chat',group:'chat/group-messages',groups:'chat/groups',
