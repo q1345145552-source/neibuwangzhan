@@ -243,6 +243,13 @@ return NextResponse.json({ error: "未知操作" }, { status: 400 });
 }
 
 // ── 自动积分引擎 ──
+// 「刷新积分」只删下面这几种：都是这里能按考勤、步骤、工单、达人评估重新算出来的。
+// 别的（评价链接、客户每步评价、客户认领 / 跟进 / 成交、互评点赞、积分提现扣分……）是当时实时记的，
+// 这里算不回来，原来一刷新就整月删掉（提现扣分删了等于积分又回来了）——2026-10-22 老板选 A：只改这里，不动数据。
+// 以后加新的自动规则，要同时加进这张表（addPoints 的规则名限定在这里，漏加会编译不过）。
+const AUTO_RULES = ["late", "absent", "leave", "full_attendance", "consec_week", "consec_month", "recovery", "step_overdue", "step_early", "issue_overdue", "issue_resolved", "influencer_a_grade"] as const;
+type AutoRule = typeof AUTO_RULES[number];
+
 function computeAutoPoints(db: any, month: string) {
   const [y, m] = month.split("-");
   const monthStart = `${month}-01`;
@@ -253,8 +260,7 @@ function computeAutoPoints(db: any, month: string) {
   // 按曼谷日历换算出的 UTC 区间，用于和 created_at（UTC）比较
   const { from: utcFrom, to: utcTo } = bangkokMonthBounds(+y, +m);
 
-  // 客户每步评价的积分（2026-10-20）是客户打分时记的，这里重算不出来，不能删
-  db.prepare("DELETE FROM points_records WHERE is_manual = 0 AND rule_key != '' AND rule_key != 'client_step_rating' AND is_appealed = 0 AND created_at >= ? AND created_at <= ?").run(utcFrom, utcTo);
+  db.prepare(`DELETE FROM points_records WHERE is_manual = 0 AND rule_key IN (${AUTO_RULES.map(() => "?").join(",")}) AND is_appealed = 0 AND created_at >= ? AND created_at <= ?`).run(...AUTO_RULES, utcFrom, utcTo);
 
   const employees = db.prepare("SELECT name FROM employees WHERE role = 'employee'").all() as { name: string }[];
   const startDate = new Date(ym, mm, 1);
@@ -275,7 +281,7 @@ function computeAutoPoints(db: any, month: string) {
   const insertAuto = db.prepare(
     "INSERT INTO points_records (employee_name, points, reason, rule_key, status, created_at) VALUES (?, ?, ?, ?, '有效', ?)"
   );
-  const addPoints = (name: string, pts: number, reason: string, rule: string) =>
+  const addPoints = (name: string, pts: number, reason: string, rule: AutoRule) =>
     insertAuto.run(name, pts, reason, rule, stampUtc);
 
   for (const emp of employees) {
