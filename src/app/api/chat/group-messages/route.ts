@@ -5,6 +5,7 @@ import { readJson } from "@/lib/req";
 import { resolveLeaveCard } from "@/lib/chat-leave-card";
 import { resolveAttendanceCard } from "@/lib/chat-attendance-card";
 import { resolveNoticeCard } from "@/lib/chat-notice-card";
+import { resolveReportCard } from "@/lib/chat-report-card";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -160,6 +161,7 @@ export async function POST(req: NextRequest) {
   if (cardType) {
     if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
     const card = cardType === "leave" ? resolveLeaveCard(db, auth, cardId)
+      : cardType === "report" ? resolveReportCard(db, auth, cardId)
       : cardType === "notice" ? resolveNoticeCard(db, auth, cardId)
       : cardType === "attendance" ? resolveAttendanceCard(db, auth, cardId) : resolveCard(db, cardType, cardId);
     if (!card) return NextResponse.json({ error: "分享的条目不存在" }, { status: 404 });

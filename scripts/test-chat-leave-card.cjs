@@ -80,7 +80,7 @@ function createHarness() {
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin', 'employee'].includes(auth.role) },
     '@/lib/db': { getDb: () => db }, '@/lib/req': { readJson: req => req.json() }, '@/lib/chat-leave-card': helper,
-    '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
+    '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
   const routes = Object.fromEntries(Object.entries({ candidates: 'chat/share-items', direct: 'chat', group: 'chat/group-messages', groups: 'chat/groups', detail: 'leave/[id]' })
     .map(([key, file]) => [key, load(`src/app/api/${file}/route.ts`, deps)]));
   return { leaves, messages, writes, reads, previews, helper, db, routes,
@@ -108,7 +108,7 @@ async function run() {
   for (const id of [1001, 1002, 1003]) assert.equal((await h.call('detail', 'GET', null, id)).body.id, id);
   assert.equal((await h.call('detail', 'GET', null, 1004)).status, 404);
   for (const id of ['0', '-1', '1e3', '01', 'NaN', '9007199254740992']) assert.equal((await h.call('detail', 'GET', null, id)).status, 400);
-  assert.equal((await h.call('candidates', 'GET', null, null, '?type=report')).status, 400);
+  assert.equal((await h.call('candidates', 'GET', null, null, '?type=unknown')).status, 400);
   assert.equal(h.writes.length, 0);
   console.log('PASS candidate and detail role/ownership checks; three historical states; forged employee filter ignored; minimal card payload, private no-store, invalid IDs; reads do not write');
   for (const route of ['direct', 'group']) {
@@ -143,13 +143,13 @@ async function run() {
   vm.runInNewContext(ts.transpileModule(segment + '\nObject.assign(exports,{CARD_META,SHARE_CATEGORIES,parseCard,quotePreview,mapShareItem});', {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText, { exports });
-  assert.equal(exports.SHARE_CATEGORIES.length, 11);
+  assert.equal(exports.SHARE_CATEGORIES.length, 12);
   const msg = { order_id: 'leave:1001', content: JSON.stringify({ title: '员工甲的请假申请 #1001', subtitle: '日期与状态' }) };
   assert.equal(exports.parseCard(msg).kind, 'leave'); assert.equal(exports.CARD_META.leave.href('1001'), '/internal/leave?leave=1001');
   assert.equal(exports.quotePreview(msg), '[请假] 员工甲的请假申请 #1001');
   assert.equal(exports.parseCard({ order_id: 'OLD-ORDER', content: '旧客户' }).kind, 'order');
   for (const kind of ['order', 'todo', 'project', 'customer', 'vat', 'wht', 'problem', 'issue']) assert.equal(exports.parseCard({ order_id: kind + ':1', content: '{}' }).kind, kind);
-  console.log('PASS eleven frontend categories, card parser, quote preview and exact leave URL; old eight and legacy cards compatible. Mock-only verification; no database loaded.');
+  console.log('PASS twelve frontend categories, card parser, quote preview and exact leave URL; old eight and legacy cards compatible. Mock-only verification; no database loaded.');
 }
 module.exports = { createHarness };
 if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
