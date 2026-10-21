@@ -6,6 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { TaskMessageButton } from "@/components/task-message-button";
 import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, ImagePlus, Image, History, Pencil, Trash2, Bell, AlertCircle, RotateCcw } from "lucide-react";
 
 interface Todo {
@@ -74,6 +75,7 @@ export default function TodosPage() {
   const autoJumpedTodo = useRef<string | null>(null);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [employees, setEmployees] = useState<{ id: number; name: string; role?: string }[]>([]);
+  const [employeesLoaded, setEmployeesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [jumpError, setJumpError] = useState("");
@@ -182,7 +184,8 @@ export default function TodosPage() {
   // 管理员新建时从员工档案下拉选负责人
   useEffect(() => {
     if (!isAdmin) return;
-    fetchWithAuth("/api/employees").then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : [])).catch(() => {});
+    fetchWithAuth("/api/employees").then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : [])).catch(() => {})
+      .finally(() => setEmployeesLoaded(true));
   }, [isAdmin]);
 
   const unfinished = todos.filter((t) => t.status !== "已完成");
@@ -229,7 +232,8 @@ export default function TodosPage() {
 
   // 只定位当前屏幕实际渲染的表格行/卡片；找到目标后才开始计算高亮时间。
   useEffect(() => {
-    if (highlightTodoId == null) return;
+    // 员工名单会增加上方的员工卡片；等布局所需数据齐备再定位，避免已完成列表被往下推。
+    if (highlightTodoId == null || (isAdmin && !employeesLoaded)) return;
     let frame: number;
     let clearTimer: ReturnType<typeof setTimeout> | undefined;
     const deadline = performance.now() + 5000;
@@ -248,7 +252,7 @@ export default function TodosPage() {
     };
     frame = requestAnimationFrame(locate);
     return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
-  }, [highlightTodoId]);
+  }, [highlightTodoId, isAdmin, employeesLoaded]);
 
   // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
   const completedFiltered = useMemo(() => {
@@ -679,7 +683,8 @@ export default function TodosPage() {
               </td>
               <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.created_at) || "—"}</td>
               <td className="py-3 px-4">
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <TaskMessageButton type="todo" id={t.id} ownerNames={[t.assignee || ""]} />
                   <Button size="sm" variant="outline" onClick={() => openEdit(t)} className="gap-1">
                     <Pencil className="size-3.5" />编辑
                   </Button>
@@ -736,6 +741,7 @@ export default function TodosPage() {
               <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">创建时间</span><span className="text-xs">{toThaiTime(t.created_at) || "—"}</span></div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
+              <TaskMessageButton type="todo" id={t.id} ownerNames={[t.assignee || ""]} />
               <Button size="sm" variant="outline" onClick={() => openEdit(t)} className="gap-1"><Pencil className="size-3.5" />编辑</Button>
               {t.latest_follow_content && (
                 <Button size="sm" variant="ghost" onClick={() => openFollowHistory(t)} className="gap-1 text-[var(--muted-foreground)]"><History className="size-3.5" />历史</Button>
@@ -1140,9 +1146,12 @@ export default function TodosPage() {
                       <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
                       <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.completed_at) || "—"}</td>
                       <td className="py-3 px-4">
-                        <Button size="sm" variant="outline" onClick={() => handleRestore(t)} className="gap-1">
-                          <RotateCcw className="size-3.5" />恢复
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <TaskMessageButton type="todo" id={t.id} ownerNames={[t.assignee || ""]} />
+                          <Button size="sm" variant="outline" onClick={() => handleRestore(t)} className="gap-1">
+                            <RotateCcw className="size-3.5" />恢复
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1157,7 +1166,8 @@ export default function TodosPage() {
                       <span className="text-xs text-[var(--muted-foreground)] shrink-0">{t.assignee || "—"}</span>
                     </div>
                     <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(t.completed_at) || "—"}</div>
-                    <div className="mt-3 flex justify-end">
+                    <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                      <TaskMessageButton type="todo" id={t.id} ownerNames={[t.assignee || ""]} />
                       <Button size="sm" variant="outline" onClick={() => handleRestore(t)} className="gap-1">
                         <RotateCcw className="size-3.5" />恢复
                       </Button>

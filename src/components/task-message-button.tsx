@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
 import { fetchWithAuth } from "@/lib/api";
@@ -13,6 +13,7 @@ export function TaskMessageButton({ type, id, ownerNames, ownerId }: {
 }) {
   const { user } = useAuth();
   const router = useRouter();
+  const dialogTitleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
   const action = useRef<string | null>(null);
@@ -66,9 +67,9 @@ export function TaskMessageButton({ type, id, ownerNames, ownerId }: {
       if (action.current) setOpen(true);
       else void send(true);
     }}>消息</button>
-    <dialog ref={dialog} onCancel={() => setOpen(false)} onClose={() => setOpen(false)} aria-labelledby={`task-message-${type}-${id}`} className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-[var(--foreground)] shadow-xl backdrop:bg-black/50" onClick={event => event.stopPropagation()}>
+    <dialog ref={dialog} onCancel={() => setOpen(false)} onClose={() => setOpen(false)} aria-labelledby={dialogTitleId} className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-[var(--foreground)] shadow-xl backdrop:bg-black/50" onClick={event => event.stopPropagation()}>
       <div className="flex items-center justify-between gap-3">
-        <h2 id={`task-message-${type}-${id}`} className="font-semibold">任务消息</h2>
+        <h2 id={dialogTitleId} className="font-semibold">任务消息</h2>
         <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setOpen(false)}>关闭</button>
       </div>
       {busy && <p role="status" className="mt-3 text-sm">正在发送，请稍候…</p>}
