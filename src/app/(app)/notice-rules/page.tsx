@@ -20,6 +20,7 @@ export default function NoticeRulesPage() {
   const { user, token } = useAuth();
   const implementationParam = useSearchParams().get("implementation");
   const [reviewTarget, setReviewTarget] = useState<{ id: number; notice_id: number } | null>(null);
+  const [ownHighlightId, setOwnHighlightId] = useState<number | null>(null);
   const [jumpError, setJumpError] = useState("");
   const [listError, setListError] = useState("");
   const openedImplementation = useRef<number | null>(null);
@@ -60,11 +61,11 @@ export default function NoticeRulesPage() {
   useEffect(() => {
     let active = true;
     openedImplementation.current = null;
-    setReviewTarget(null); setJumpError("");
+    setReviewTarget(null); setOwnHighlightId(null); setJumpError("");
     if (implementationParam === null) return;
     setReviewNoticeId(null);
     if (!token || !user) return;
-    if (!isAdmin) { setJumpError("仅管理员可查看验收清单。"); return; }
+    if (user.role !== "admin" && user.role !== "employee") { setJumpError("无权查看落实记录。"); return; }
     const id = Number(implementationParam);
     if (!/^\d+$/.test(implementationParam) || !Number.isSafeInteger(id) || id <= 0) {
       setJumpError("落实记录编号无效。"); return;
@@ -82,12 +83,34 @@ export default function NoticeRulesPage() {
   useEffect(() => {
     if (!reviewTarget || openedImplementation.current === reviewTarget.id || loading) return;
     if (listError) { setJumpError("通知列表加载失败，请刷新后重试。"); return; }
-    if (!notices.some(notice => notice.id === reviewTarget.notice_id)) {
+    const targetNotice = notices.find(notice => notice.id === reviewTarget.notice_id);
+    if (!targetNotice) {
       setJumpError("落实记录所属通知不存在或你无权查看。"); return;
     }
+    if (!isAdmin && targetNotice.implementation?.id !== reviewTarget.id) {
+      setJumpError("落实记录不存在或你无权查看。"); return;
+    }
     openedImplementation.current = reviewTarget.id;
-    setReviewNoticeId(reviewTarget.notice_id);
-  }, [reviewTarget, loading, listError, notices]);
+    if (isAdmin) setReviewNoticeId(reviewTarget.notice_id);
+    else setOwnHighlightId(reviewTarget.id);
+  }, [reviewTarget, loading, listError, notices, isAdmin]);
+
+  useEffect(() => {
+    if (ownHighlightId === null) return;
+    let frame: number;
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = performance.now() + 5000;
+    const locate = () => {
+      const target = document.querySelector<HTMLElement>(`[data-notice-implementation-id="${ownHighlightId}"]`);
+      if (target?.getClientRects().length) {
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        clearTimer = setTimeout(() => setOwnHighlightId(null), 3000);
+      } else if (performance.now() < deadline) frame = requestAnimationFrame(locate);
+      else { setOwnHighlightId(null); setJumpError("暂时无法定位该落实记录，请刷新后重试。"); }
+    };
+    frame = requestAnimationFrame(locate);
+    return () => { cancelAnimationFrame(frame); clearTimeout(clearTimer); };
+  }, [ownHighlightId]);
 
   // 从独立打印页返回时刷新本人的打印时间，不清除尚未提交的照片/说明。
   useEffect(() => {
@@ -150,7 +173,7 @@ export default function NoticeRulesPage() {
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[var(--muted-foreground)]"><span>{toThaiTime(notice.published_at)}</span><span>发布人：{notice.publisher_name}</span><span>发给 {notice.recipient_count} 人</span><span>已落实 {notice.implemented_count} 人</span></div>
         {isAdmin && <Button type="button" className="min-h-11" aria-expanded={reviewNoticeId === notice.id} onClick={() => setReviewNoticeId(current => current === notice.id ? null : notice.id)}>{reviewNoticeId === notice.id ? "收起员工清单" : "查看员工落实"}</Button>}
         {isAdmin && reviewNoticeId === notice.id && <NoticeRuleReview key={notice.id} noticeId={notice.id} token={token} onReviewed={load} targetImplementationId={reviewTarget?.notice_id === notice.id ? reviewTarget.id : null} />}
-        {user?.role === "employee" && notice.implementation && <NoticeRuleImplementation key={`${notice.id}:${notice.implementation.submitted_at}:${notice.implementation.review_status}`} noticeId={notice.id} record={notice.implementation} token={token} onSaved={load} />}
+        {user?.role === "employee" && notice.implementation && <NoticeRuleImplementation key={`${notice.id}:${notice.implementation.submitted_at}:${notice.implementation.review_status}`} noticeId={notice.id} record={notice.implementation} token={token} onSaved={load} readOnly={implementationParam !== null} highlighted={ownHighlightId === notice.implementation.id} />}
       </article>)}
     </div>}
   </div>;

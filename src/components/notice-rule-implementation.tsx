@@ -2,15 +2,16 @@
 
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { fileUrl, toThaiTime } from "@/lib/utils";
+import { cn, fileUrl, toThaiTime } from "@/lib/utils";
 
 export interface NoticeImplementation {
+  id: number;
   printed: number; printed_at: string | null; photos: string; statement: string;
   submitted_at: string | null; review_status: string; boss_comment: string; reviewed_at: string | null;
 }
-interface Props { noticeId: number; record: NoticeImplementation; token: string | null; onSaved: () => Promise<void> }
+interface Props { noticeId: number; record: NoticeImplementation; token: string | null; onSaved: () => Promise<void>; readOnly?: boolean; highlighted?: boolean }
 
-export function NoticeRuleImplementation({ noticeId, record, token, onSaved }: Props) {
+export function NoticeRuleImplementation({ noticeId, record, token, onSaved, readOnly = false, highlighted = false }: Props) {
   const [photo, setPhoto] = useState<string>(() => { try { return JSON.parse(record.photos)[0] || ""; } catch { return ""; } });
   const [statement, setStatement] = useState(record.statement);
   const [uploading, setUploading] = useState(false);
@@ -50,16 +51,16 @@ export function NoticeRuleImplementation({ noticeId, record, token, onSaved }: P
     } catch (e) { setError(e instanceof Error ? e.message : "提交失败"); }
     finally { setSaving(false); }
   }
-  return <section className="space-y-3 border-t border-[var(--border)] pt-4" aria-label="我的落实记录">
+  return <section id={`notice-own-implementation-${record.id}`} data-notice-implementation-id={record.id} className={cn("space-y-3 border-t border-[var(--border)] pt-4", highlighted && "rounded-lg bg-amber-100 p-3 ring-2 ring-amber-400 dark:bg-amber-900/30")} aria-label="我的落实记录">
     <div className="flex flex-wrap items-center gap-3">
-      <Button type="button" onClick={printNotice} className="min-h-11">打印</Button>
-      <span className="text-sm text-[var(--muted-foreground)]">{record.printed ? `已打印 · ${toThaiTime(record.printed_at || "")}` : "第一步：打印通知/规则"}</span>
+      {!readOnly && <Button type="button" onClick={printNotice} className="min-h-11">打印</Button>}
+      <span className="text-sm text-[var(--muted-foreground)]">{record.printed ? `已打印 · ${toThaiTime(record.printed_at || "")}` : readOnly ? "未打印" : "第一步：打印通知/规则"}</span>
     </div>
-    {submitted ? <p role="status" className="text-sm text-green-600">{record.review_status === "通过" ? "已通过" : "已提交、等老板验收"}</p> : record.review_status === "打回" ? <p role="status" className="text-sm text-red-600">已打回，请修改照片和说明后重新提交。</p> : <p className="text-sm text-[var(--muted-foreground)]">第二步：上传打印纸的照片，并填写一句话说明（均必填）。</p>}
+    {submitted ? <p role="status" className="text-sm text-green-600">{record.review_status === "通过" ? "已通过" : "已提交、等老板验收"}</p> : record.review_status === "打回" ? <p role="status" className="text-sm text-red-600">{readOnly ? "已打回" : "已打回，请修改照片和说明后重新提交。"}</p> : <p className="text-sm text-[var(--muted-foreground)]">{readOnly ? "还没处理" : "第二步：上传打印纸的照片，并填写一句话说明（均必填）。"}</p>}
     {(record.boss_comment || record.review_status === "打回") && <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{record.review_status === "打回" ? "打回原因" : "老板评论"}：{record.boss_comment || "未填写打回原因"}</p>}
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     {photo && <a href={fileUrl(photo)} target="_blank" rel="noreferrer" className="block w-fit max-w-full"><img src={fileUrl(photo)} alt="打印纸照片" className="max-h-48 max-w-full rounded-lg border border-[var(--border)] object-contain" /></a>}
-    {submitted ? <p className="whitespace-pre-wrap break-words text-sm">{record.statement}</p> : <form onSubmit={submit} className="space-y-3">
+    {submitted || readOnly ? <p className="whitespace-pre-wrap break-words text-sm">{record.statement || "尚未提交落实说明。"}</p> : <form onSubmit={submit} className="space-y-3">
       <label className="block space-y-2 text-sm"><span>{uploading ? "照片上传中…" : photo ? "照片已上传，可重新选择" : "上传照片（必填，最大 10MB）"}</span>
         <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading || saving} onChange={e => { void upload(e.target.files?.[0]); e.target.value = ""; }} className="block min-h-11 w-full min-w-0 max-w-full rounded-lg border border-[var(--border)] p-2 text-sm file:mr-2 file:rounded file:border-0 file:px-2 file:py-1" />
       </label>
