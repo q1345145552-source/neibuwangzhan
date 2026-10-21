@@ -7,6 +7,7 @@ import { resolveAttendanceCard } from "@/lib/chat-attendance-card";
 import { resolveNoticeCard } from "@/lib/chat-notice-card";
 import { resolveReportCard } from "@/lib/chat-report-card";
 import { resolveMeetingCard } from "@/lib/chat-meeting-card";
+import { resolveTodoCard, resolveIssueCard } from "@/lib/chat-todo-issue-card";
 
 import { getOrCreateConversation, insertDirectMessage } from "@/lib/chat-direct-message";
 
@@ -38,10 +39,6 @@ function resolveCard(db: Db, type: string, id: string): { title: string; subtitl
   }
   const n = Number(id);
   if (!Number.isInteger(n) || n <= 0) return null;
-  if (type === "todo") {
-    const r = db.prepare("SELECT content FROM todos WHERE id = ?").get(n) as { content: string } | undefined;
-    return r ? { title: r.content, subtitle: "" } : null;
-  }
   if (type === "project") {
     const r = db.prepare("SELECT name, current_phase FROM projects WHERE id = ?").get(n) as { name: string; current_phase: string } | undefined;
     return r ? { title: r.name, subtitle: r.current_phase ? `当前阶段：${r.current_phase}` : "" } : null;
@@ -61,10 +58,6 @@ function resolveCard(db: Db, type: string, id: string): { title: string; subtitl
   if (type === "problem") {
     const r = db.prepare("SELECT problem_number, company_name FROM problems WHERE id = ?").get(n) as { problem_number: string; company_name: string } | undefined;
     return r ? { title: r.problem_number, subtitle: r.company_name || "" } : null;
-  }
-  if (type === "issue") {
-    const r = db.prepare("SELECT ticket_number, description, description_zh FROM issue_tickets WHERE id = ?").get(n) as { ticket_number: string; description: string; description_zh: string } | undefined;
-    return r ? { title: r.ticket_number || `#${n}`, subtitle: r.description_zh || r.description || "" } : null;
   }
   return null;
 }
@@ -145,11 +138,13 @@ export async function POST(req: NextRequest) {
   if (cardType) {
     if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
     const card = cardType === "leave" ? resolveLeaveCard(db, auth, cardId)
+      : cardType === "todo" ? resolveTodoCard(db, auth, cardId)
+      : cardType === "issue" ? resolveIssueCard(db, auth, cardId)
       : cardType === "meeting" ? resolveMeetingCard(db, auth, cardId)
       : cardType === "report" ? resolveReportCard(db, auth, cardId)
       : cardType === "notice" ? resolveNoticeCard(db, auth, cardId)
       : cardType === "attendance" ? resolveAttendanceCard(db, auth, cardId) : resolveCard(db, cardType, cardId);
-    if (!card) return NextResponse.json({ error: "分享的条目不存在" }, { status: 404 });
+    if (!card) return NextResponse.json({ error: cardType === "todo" || cardType === "issue" ? "分享条目不存在或无权分享" : "分享的条目不存在" }, { status: 404 });
     finalOrderId = `${cardType}:${cardId}`;
     finalContent = JSON.stringify(card);
     cardLabel = CARD_LABELS[cardType] || "[卡片]";

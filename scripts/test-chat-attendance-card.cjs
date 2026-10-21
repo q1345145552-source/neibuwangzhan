@@ -43,7 +43,7 @@ function createAttendanceHarness() {
   const helper = load('src/lib/chat-attendance-card.ts');
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin', 'employee'].includes(auth.role) },
-    '@/lib/db': { getDb: () => db }, '@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/req': { readJson: req => req.json() },
+    '@/lib/db': { getDb: () => db }, '@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/chat-todo-issue-card': load('src/lib/chat-todo-issue-card.ts'), '@/lib/req': { readJson: req => req.json() },
     '@/lib/chat-attendance-card': helper, '@/lib/chat-leave-card': load('src/lib/chat-leave-card.ts'), '@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
   const routes = Object.fromEntries(Object.entries({ candidates: 'chat/share-items', direct: 'chat', group: 'chat/group-messages', groups: 'chat/groups', detail: 'attendance/request/[id]' })
     .map(([key, file]) => [key, load(`src/app/api/${file}/route.ts`, deps)]));

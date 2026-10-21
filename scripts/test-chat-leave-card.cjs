@@ -43,7 +43,7 @@ function createHarness() {
       if (sql.includes('FROM messages WHERE id')) return messages.find(m => m.id === args[0]);
       if (/FROM (orders|todos|projects|customers|vat_records|wht_records|problems|issue_tickets)/.test(sql)) return {
         customer_name: '旧订单客户', content: '旧待办', name: '旧项目', current_phase: '执行', company_name: '旧公司',
-        year_month: '2026-10', problem_number: 'P-1', ticket_number: 'TK-1', description: '旧工单', description_zh: '',
+        assignee: '员工甲', created_by: '老板', year_month: '2026-10', problem_number: 'P-1', ticket_number: 'TK-1', description: '旧工单', description_zh: '',
       };
       throw Error('Unexpected get: ' + sql);
     },
@@ -79,7 +79,7 @@ function createHarness() {
   const helper = load('src/lib/chat-leave-card.ts');
   const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: auth => ['admin', 'employee'].includes(auth.role) },
-    '@/lib/db': { getDb: () => db }, '@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/req': { readJson: req => req.json() }, '@/lib/chat-leave-card': helper,
+    '@/lib/db': { getDb: () => db }, '@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/chat-todo-issue-card': load('src/lib/chat-todo-issue-card.ts'), '@/lib/req': { readJson: req => req.json() }, '@/lib/chat-leave-card': helper,
     '@/lib/chat-attendance-card': load('src/lib/chat-attendance-card.ts'), '@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card': load('src/lib/chat-report-card.ts'), '@/lib/chat-notice-card': load('src/lib/chat-notice-card.ts') };
   const routes = Object.fromEntries(Object.entries({ candidates: 'chat/share-items', direct: 'chat', group: 'chat/group-messages', groups: 'chat/groups', detail: 'leave/[id]' })
     .map(([key, file]) => [key, load(`src/app/api/${file}/route.ts`, deps)]));

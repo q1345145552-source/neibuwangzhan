@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { canReadIssue } from "@/lib/chat-todo-issue-card";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -14,18 +15,15 @@ export async function GET(req: NextRequest) {
   const created_by = searchParams.get("created_by");
   let sql = "SELECT * FROM issue_tickets WHERE 1=1";
   const params: any[] = [];
-  // 员工只能看自己的工单（指派给自己的、或自己创建的），管理员看全部
-  // assignee 现在支持多选，以逗号分隔存储，用包含匹配判断是否被指派
-  if (auth.role !== "admin") {
-    sql += " AND (',' || assignee || ',' LIKE ? OR created_by = ?)";
-    params.push("%," + auth.name + ",%", auth.name);
-  } else {
+  // 老板原筛选保留；员工名单逐人精确比较，与手动分享的权限一致。
+  if (auth.role === "admin") {
     if (status) { sql += " AND status = ?"; params.push(status); }
     if (assignee) { sql += " AND assignee = ?"; params.push(assignee); }
     if (created_by) { sql += " AND created_by = ?"; params.push(created_by); }
   }
   sql += " ORDER BY created_at DESC";
-  return NextResponse.json(db.prepare(sql).all(...params));
+  const rows = db.prepare(sql).all(...params) as { assignee: string | null; created_by: string | null }[];
+  return NextResponse.json(auth.role === "admin" ? rows : rows.filter(row => canReadIssue(auth, row)));
 }
 
 export async function POST(req: NextRequest) {

@@ -85,7 +85,7 @@ function createTaskHarness() {
   const helpers = Object.fromEntries(['leave', 'attendance', 'notice', 'report', 'meeting'].map(type => [`./chat-${type}-card`, load(`src/lib/chat-${type}-card.ts`, type === 'meeting' ? { './meeting-todos': load('src/lib/meeting-todos.ts', { './boss-submissions': {} }) } : {})]));
   const types = load('src/lib/chat-task-message-types.ts');
   const service = load('src/lib/chat-task-message.ts', { ...helpers, './chat-direct-message': direct, './chat-task-message-types': types });
-  const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } }, '@/lib/auth': { verifyAuth: async () => actor, isStaff: a => ['admin', 'employee'].includes(a.role) }, '@/lib/db': { getDb: () => db }, '@/lib/req': { readJson: req => req.json() }, '@/lib/chat-task-message': service, '@/lib/chat-direct-message': direct,
+  const deps = { 'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } }, '@/lib/auth': { verifyAuth: async () => actor, isStaff: a => ['admin', 'employee'].includes(a.role) }, '@/lib/db': { getDb: () => db }, '@/lib/chat-todo-issue-card': load('src/lib/chat-todo-issue-card.ts'), '@/lib/req': { readJson: req => req.json() }, '@/lib/chat-task-message': service, '@/lib/chat-direct-message': direct,
     ...Object.fromEntries(Object.entries(helpers).map(([key, val]) => ['@/lib/' + key.slice(2), val])) };
   const routes = { task: load('src/app/api/chat/task-message/route.ts', deps), direct: load('src/app/api/chat/route.ts', deps) };
   return { people, rows, messages, conversations, failures, queries, writes, service, db, get immediates() { return immediates; }, setActor(value) { actor = value; },

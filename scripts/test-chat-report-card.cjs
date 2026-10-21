@@ -28,7 +28,7 @@ function createReportHarness(){
  const helper=load('src/lib/chat-report-card.ts');
  const forbidden=()=>{throw Error('No review, AI, notification or sync allowed');};
  const deps={'next/server':{NextResponse:{json:(body,init)=>Response.json(body,init)}},'@/lib/auth':{verifyAuth:async()=>actor,isStaff:auth=>['admin','employee'].includes(auth.role)},
-  '@/lib/db':{getDb:()=>db,logOperation:forbidden},'@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/req':{readJson:req=>req.json()},'@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card':helper,
+  '@/lib/db':{getDb:()=>db,logOperation:forbidden},'@/lib/chat-direct-message': load('src/lib/chat-direct-message.ts'), '@/lib/chat-todo-issue-card': load('src/lib/chat-todo-issue-card.ts'), '@/lib/req':{readJson:req=>req.json()},'@/lib/chat-meeting-card':load('src/lib/chat-meeting-card.ts',{'./meeting-todos':load('src/lib/meeting-todos.ts',{'./boss-submissions':{}})}), '@/lib/chat-report-card':helper,
   '@/lib/chat-leave-card':load('src/lib/chat-leave-card.ts'),'@/lib/chat-attendance-card':load('src/lib/chat-attendance-card.ts'),'@/lib/chat-notice-card':load('src/lib/chat-notice-card.ts'),
   '@/lib/boss-submissions':{publishBossSubmission:forbidden,acknowledgeBossSubmission:forbidden},'@/lib/boss-submission-types':load('src/lib/boss-submission-types.ts'),
   '@/lib/work-report-sync':{completeWorkReportTodos:forbidden,pendingWorkReportDates:()=>[]},'@/lib/deepseek':{analyzeWorkReport:forbidden},'@/lib/work-report-items':load('src/lib/work-report-items.ts'),
