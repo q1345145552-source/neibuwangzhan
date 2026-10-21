@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { LeaveDashboardTab } from "./dashboard-tab";
 import { LeaveAnalysisTab } from "./analysis-tab";
 import { LeaveSubmitTab } from "./submit-tab";
+import { LeaveRequestView } from "./request-view";
 
 type LeaveTab = "dashboard" | "analysis" | "submit";
 
@@ -24,6 +25,12 @@ export default function LeavePage() {
     { key: "analysis", label: "AI分析" },
     { key: "submit", label: "提交请假" },
   ];
+
+  if (leaveIdParam !== null && !user) return <p role="status">检查登录状态…</p>;
+  if (leaveIdParam !== null && user && user.role !== "admin") {
+    if (user.role !== "employee") return <p role="alert">无权查看请假申请。</p>;
+    return <div className="min-w-0 space-y-5"><h1 className="text-2xl font-semibold">请假</h1><LeaveRequestView targetLeaveId={leaveIdParam} /></div>;
+  }
 
   return (
     <div className="flex flex-col gap-6">

@@ -106,8 +106,8 @@ function within2Min(createdAt: string): boolean {
   return !isNaN(t) && Date.now() - t < 2 * 60 * 1000;
 }
 
-// ── 分享卡片（订单/待办/项目/客户/VAT/预扣税/问题）──
-type CardKind = "order" | "todo" | "project" | "customer" | "vat" | "wht" | "problem" | "issue";
+// ── 分享卡片 ──
+type CardKind = "order" | "todo" | "project" | "customer" | "vat" | "wht" | "problem" | "issue" | "leave";
 
 interface CardInfo {
   kind: CardKind;
@@ -126,6 +126,7 @@ const CARD_META: Record<CardKind, { label: string; href: (id: string) => string 
   wht:      { label: "预扣税", href: (id) => `/wht/${id}` },
   problem:  { label: "问题", href: (id) => `/problems/${id}` },
   issue:    { label: "工单", href: (id) => `/issues?open=${id}` },
+  leave:    { label: "请假", href: (id) => `/internal/leave?leave=${encodeURIComponent(id)}` },
 };
 
 // 解析消息里的分享卡片：新格式 order_id = "类型:id"、content = JSON{title,subtitle}；
@@ -168,6 +169,7 @@ const SHARE_CATEGORIES: { key: CardKind; label: string }[] = [
   { key: "wht", label: "预扣税申报" },
   { key: "problem", label: "问题跟踪" },
   { key: "issue", label: "工单" },
+  { key: "leave", label: "请假" },
 ];
 
 // 各分类接口返回的条目 → 统一的 { id, title, subtitle, raw }
@@ -181,6 +183,7 @@ function mapShareItem(cat: string, x: any): { id: string; title: string; subtitl
   else if (cat === "wht") base = { id: String(x.id), title: x.company_name || "", subtitle: x.year_month ? `申报月份：${x.year_month}` : "" };
   else if (cat === "problem") base = { id: String(x.id), title: x.problem_number || "", subtitle: x.company_name || "" };
   else if (cat === "issue") base = { id: String(x.id), title: x.ticket_number || `#${x.id}`, subtitle: x.description_zh || x.description || "" };
+  else if (cat === "leave") base = { id: String(x.id), title: x.title || "", subtitle: x.subtitle || "" };
   else base = { id: "", title: "", subtitle: "" };
   return { ...base, raw: x };
 }
@@ -205,6 +208,7 @@ function shareFilterOptions(cat: CardKind, businessTypes: { id: number; name: st
   if (cat === "vat" || cat === "wht") return last12Months().map((m) => ({ value: m, label: m }));
   if (cat === "problem") return ["待处理", "跟进中", "已解决", "老板验收", "搁置"].map((s) => ({ value: s, label: s }));
   if (cat === "issue") return ["待处理", "处理中", "已解决"].map((s) => ({ value: s, label: s }));
+  if (cat === "leave") return ["待审批", "已通过", "已驳回"].map((s) => ({ value: s, label: s }));
   return [];
 }
 
@@ -223,6 +227,7 @@ function shareItemFilterValue(cat: CardKind, x: any): string {
   if (cat === "vat" || cat === "wht") return x.year_month || "";
   if (cat === "problem") return x.status || "";
   if (cat === "issue") return x.status || "";
+  if (cat === "leave") return x.status || "";
   return "";
 }
 
@@ -1266,6 +1271,7 @@ export default function MessagesPage() {
       order: "/api/orders", todo: "/api/todos", project: "/api/projects", customer: "/api/customers",
       vat: "/api/vat/records?limit=100", wht: "/api/wht/records?pageSize=100", problem: "/api/problems",
       issue: "/api/issues",
+      leave: "/api/chat/share-items?type=leave",
     };
     fetchWithAuth(urlMap[cat], { cache: "no-store" })
       .then(async (r) => {
@@ -2603,9 +2609,9 @@ export default function MessagesPage() {
                               <span className={cn("inline-flex items-center gap-1 text-[0.65rem]", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>
                                 <FileText className="size-3.5" /> {CARD_META[card.kind].label}
                               </span>
-                              <span className="mt-1 block truncate text-sm font-medium">{card.title}</span>
+                              <span className={cn("mt-1 block text-sm font-medium", card.kind === "leave" ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{card.title}</span>
                               {card.subtitle && (
-                                <span className={cn("mt-0.5 block truncate text-xs", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>{card.subtitle}</span>
+                                <span className={cn("mt-0.5 block text-xs", card.kind === "leave" ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>{card.subtitle}</span>
                               )}
                             </button>
                           ) : (
@@ -3032,8 +3038,8 @@ export default function MessagesPage() {
                         className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]"
                       >
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium text-[var(--foreground)]">{item.title}</span>
-                          {item.subtitle && <span className="block truncate text-xs text-[var(--muted-foreground)]">{item.subtitle}</span>}
+                          <span className={cn("block text-sm font-medium text-[var(--foreground)]", shareCategory === "leave" ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{item.title}</span>
+                          {item.subtitle && <span className={cn("block text-xs text-[var(--muted-foreground)]", shareCategory === "leave" ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{item.subtitle}</span>}
                         </span>
                         <span className="ml-3 shrink-0 text-xs font-medium text-[var(--primary)]">发送</span>
                       </button>
@@ -3333,8 +3339,8 @@ export default function MessagesPage() {
                                   className="block max-w-[240px] rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
                                 >
                                   <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]"><FileText className="size-3.5" /> {CARD_META[card.kind].label}</span>
-                                  <span className="mt-1 block truncate text-sm font-medium text-[var(--foreground)]">{card.title}</span>
-                                  {card.subtitle && <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">{card.subtitle}</span>}
+                                  <span className={cn("mt-1 block text-sm font-medium text-[var(--foreground)]", card.kind === "leave" ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{card.title}</span>
+                                  {card.subtitle && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", card.kind === "leave" ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{card.subtitle}</span>}
                                 </button>
                               ) : (
                                 <div className={cn(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { resolveLeaveCard } from "@/lib/chat-leave-card";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
   let finalOrderId = "";
   if (cardType) {
     if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
-    const card = resolveCard(db, cardType, cardId);
+    const card = cardType === "leave" ? resolveLeaveCard(db, auth, cardId) : resolveCard(db, cardType, cardId);
     if (!card) return NextResponse.json({ error: "分享的条目不存在" }, { status: 404 });
     finalOrderId = `${cardType}:${cardId}`;
     finalContent = JSON.stringify(card);
