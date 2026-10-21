@@ -11,6 +11,7 @@ import { cn, fileUrl, toThaiDate, toThaiTime } from "@/lib/utils";
 import { toThaiTimeOnly as toBangkokTime, bangkokMonthKey, bangkokDateStr, bangkokLastDayOfMonth, bangkokDayOfWeek } from "@/lib/time";
 
 import { StepTimerStatic } from "@/components/step-timer";
+import { AttendanceRequestView } from "./attendance-request-view";
 import { AlertTriangle, CheckCircle2, Clock, Plus, Users, Calendar, TrendingUp, Download, LogIn, LogOut, History, Timer, AlertCircle, Camera, X, ChevronLeft, ChevronRight, Eye, ExternalLink, Loader2, Wallet } from "lucide-react";
 
 interface Workload {
@@ -37,6 +38,19 @@ interface MonthlySummary {
 
 
 export default function InternalPage() {
+  const { user } = useAuth();
+  const requestId = useSearchParams().get("attendance_request");
+  if (requestId !== null) {
+    if (!user) return <p role="status">检查登录状态…</p>;
+    if (user.role !== "admin") {
+      if (user.role !== "employee") return <p role="alert">无权查看补签申请。</p>;
+      return <div className="min-w-0 space-y-5"><h1 className="text-2xl font-semibold">补签申请</h1><AttendanceRequestView targetRequestId={requestId} /></div>;
+    }
+  }
+  return <InternalPageContent />;
+}
+
+function InternalPageContent() {
   const { user } = useAuth();
   const attendanceRequestParam = useSearchParams().get("attendance_request");
   const [attendanceRequestsLoading, setAttendanceRequestsLoading] = useState(true);

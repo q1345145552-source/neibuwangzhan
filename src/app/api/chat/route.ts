@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { resolveLeaveCard } from "@/lib/chat-leave-card";
+import { resolveAttendanceCard } from "@/lib/chat-attendance-card";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -30,6 +31,7 @@ const CARD_LABELS: Record<string, string> = {
   order: "[订单]", todo: "[待办]", project: "[项目]", customer: "[客户]",
   vat: "[VAT申报]", wht: "[预扣税]", problem: "[问题]", issue: "[工单]",
   leave: "[请假]",
+  attendance: "[补签]",
 };
 
 // 按分类校验分享的条目存在，并返回卡片要展示的标题/副标题
@@ -141,7 +143,8 @@ export async function POST(req: NextRequest) {
   let cardLabel = "";
   if (cardType) {
     if (!cardId) return NextResponse.json({ error: "缺少分享条目" }, { status: 400 });
-    const card = cardType === "leave" ? resolveLeaveCard(db, auth, cardId) : resolveCard(db, cardType, cardId);
+    const card = cardType === "leave" ? resolveLeaveCard(db, auth, cardId)
+      : cardType === "attendance" ? resolveAttendanceCard(db, auth, cardId) : resolveCard(db, cardType, cardId);
     if (!card) return NextResponse.json({ error: "分享的条目不存在" }, { status: 404 });
     finalOrderId = `${cardType}:${cardId}`;
     finalContent = JSON.stringify(card);
