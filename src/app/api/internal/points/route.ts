@@ -243,7 +243,7 @@ return NextResponse.json({ error: "未知操作" }, { status: 400 });
 }
 
 // ── 自动积分引擎 ──
-// 「刷新积分」只删下面这几种：都是这里能按考勤、步骤、工单、达人评估重新算出来的。
+// 「刷新积分」只删下面这几种（再按月份、机构开关筛一遍，见 computeAutoPoints）：都是这里能按考勤、步骤、工单、达人评估重新算出来的。
 // 别的（评价链接、客户每步评价、客户认领 / 跟进 / 成交、互评点赞、积分提现扣分……）是当时实时记的，
 // 这里算不回来，原来一刷新就整月删掉（提现扣分删了等于积分又回来了）——2026-10-22 老板选 A：只改这里，不动数据。
 // 以后加新的自动规则，要同时加进这张表（addPoints 的规则名限定在这里，漏加会编译不过）。
@@ -260,7 +260,13 @@ function computeAutoPoints(db: any, month: string) {
   // 按曼谷日历换算出的 UTC 区间，用于和 created_at（UTC）比较
   const { from: utcFrom, to: utcTo } = bangkokMonthBounds(+y, +m);
 
-  db.prepare(`DELETE FROM points_records WHERE is_manual = 0 AND rule_key IN (${AUTO_RULES.map(() => "?").join(",")}) AND is_appealed = 0 AND created_at >= ? AND created_at <= ?`).run(...AUTO_RULES, utcFrom, utcTo);
+  // 这次真能重算的才删：
+  // - 步骤逾期按「现在」还逾期的步骤算，没有月份范围，只能算当月；刷新以前的月份时不动那个月原来的记录
+  // - 机构业务关着时不算 A 级达人评估，原来记的也不动
+  const isCurrentMonth = month === bangkokMonthKey();
+  const agencyOn = isAgencyEnabled();
+  const rebuild = AUTO_RULES.filter(r => (r !== "step_overdue" || isCurrentMonth) && (r !== "influencer_a_grade" || agencyOn));
+  db.prepare(`DELETE FROM points_records WHERE is_manual = 0 AND rule_key IN (${rebuild.map(() => "?").join(",")}) AND is_appealed = 0 AND created_at >= ? AND created_at <= ?`).run(...rebuild, utcFrom, utcTo);
 
   const employees = db.prepare("SELECT name FROM employees WHERE role = 'employee'").all() as { name: string }[];
   const startDate = new Date(ym, mm, 1);
@@ -277,7 +283,7 @@ function computeAutoPoints(db: any, month: string) {
   const now = bangkokToday();
   // 重算历史月份时，记录的 created_at 必须落在被重算的那个月里，
   // 否则（用默认的 datetime('now')）历史月份永远算不回来，还会污染当月排行
-  const stampUtc = month === bangkokMonthKey() ? utcNowStr() : utcTo;
+  const stampUtc = isCurrentMonth ? utcNowStr() : utcTo;
   const insertAuto = db.prepare(
     "INSERT INTO points_records (employee_name, points, reason, rule_key, status, created_at) VALUES (?, ?, ?, ?, '有效', ?)"
   );
@@ -365,8 +371,10 @@ function computeAutoPoints(db: any, month: string) {
     }
 
     // 步骤逾期/提前
-    const od = (db.prepare(`SELECT COUNT(*) as c FROM order_steps WHERE assignee = ? AND deadline != '' AND deadline < ? AND status NOT IN ('已完成','已停止','已跳过')`).get(en, now) as { c: number }).c;
-    if (od > 0) addPoints(en, od * -5, `订单步骤逾期${od}个，扣${od * 5}分`, "step_overdue");
+    if (isCurrentMonth) {
+      const od = (db.prepare(`SELECT COUNT(*) as c FROM order_steps WHERE assignee = ? AND deadline != '' AND deadline < ? AND status NOT IN ('已完成','已停止','已跳过')`).get(en, now) as { c: number }).c;
+      if (od > 0) addPoints(en, od * -5, `订单步骤逾期${od}个，扣${od * 5}分`, "step_overdue");
+    }
     const es = (db.prepare(`SELECT COUNT(*) as c FROM order_steps WHERE assignee = ? AND completed_at >= ? AND completed_at <= ? AND status = '已完成' AND deadline != '' AND completed_at < deadline`).get(en, utcFrom, utcTo) as { c: number }).c;
     if (es > 0) addPoints(en, es * 2, `提前完成步骤${es}个，加${es * 2}分`, "step_early");
 
@@ -387,7 +395,7 @@ function computeAutoPoints(db: any, month: string) {
     // A级评估（机构业务关闭时跳过）
     // LIKE 'A%' 而不是 = 'A'：直播占比≥50% 的 A 级会被打成 'A+'，
     // 用等号会把最好的那批全漏掉（改之前这条规则从来没发过分）
-    if (isAgencyEnabled()) {
+    if (agencyOn) {
       const ag = (db.prepare(
         "SELECT COUNT(*) as c FROM influencer_evaluations WHERE evaluated_by = ? AND final_rating LIKE 'A%' AND created_at >= ? AND created_at <= ?"
       ).get(en, utcFrom, utcTo) as { c: number }).c;

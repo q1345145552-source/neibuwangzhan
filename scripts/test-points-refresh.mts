@@ -12,7 +12,7 @@ import { NextRequest } from 'next/server';
 
 const dir = fs.mkdtempSync('/tmp/xt-points-refresh-');
 Object.assign(process.env, { NODE_ENV: 'test', DB_PATH: path.join(dir, 'internal.db'), JWT_SECRET: 'points-refresh-regression-jwt' });
-const [pointsRoute, { getDb }, { signToken }, { bangkokMonthKey, utcNowStr }] = await Promise.all([
+const [pointsRoute, { getDb, setSystemSetting }, { signToken }, { bangkokMonthKey, bangkokMonthBounds, utcNowStr }] = await Promise.all([
   import('../src/app/api/internal/points/route'), import('../src/lib/db'), import('../src/lib/auth'), import('../src/lib/time'),
 ]);
 process.chdir(dir);
@@ -62,6 +62,25 @@ await test('refresh still replaces the rebuildable rules and does not duplicate 
   assert.equal((db.prepare("SELECT COUNT(*) c FROM points_records WHERE employee_name=? AND rule_key='late'").get(emp.name) as { c: number }).c, 0, 'stale late record is recomputed away');
   const absent = db.prepare("SELECT COUNT(*) c FROM points_records WHERE employee_name=? AND rule_key='absent'").get(emp.name) as { c: number };
   assert.equal(absent.c, 1, 'absent is recomputed once per refresh, not stacked');
+});
+
+await test('agency switched off: refresh keeps the earlier A-grade evaluation points instead of deleting them', async () => {
+  setSystemSetting('agency_enabled', '0');
+  insert.run(emp.name, 5, '合成：A级达人评估', 'influencer_a_grade', 0, now);
+  await refresh(month);
+  assert.equal((db.prepare("SELECT COUNT(*) c FROM points_records WHERE employee_name=? AND rule_key='influencer_a_grade'").get(emp.name) as { c: number }).c, 1);
+});
+
+await test('refreshing an earlier month keeps that month\'s step-overdue record (it can only be computed from today\'s steps)', async () => {
+  const [y, m] = month.split('-').map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  const [py, pm] = prev.split('-').map(Number);
+  const inPrev = bangkokMonthBounds(py, pm).from.replace(/ 00:00:00$/, ' 12:00:00');
+  insert.run(emp.name, -99, '合成：上月步骤逾期', 'step_overdue', 0, inPrev);
+  insert.run(emp.name, -6, '合成：上月旧迟到', 'late', 0, inPrev);
+  await refresh(prev);
+  const rows = db.prepare("SELECT rule_key, points FROM points_records WHERE employee_name=? AND created_at >= ? AND created_at <= ? AND rule_key IN ('step_overdue','late')").all(emp.name, bangkokMonthBounds(py, pm).from, bangkokMonthBounds(py, pm).to) as { rule_key: string; points: number }[];
+  assert.deepEqual(rows, [{ rule_key: 'step_overdue', points: -99 }], 'step_overdue kept, stale late of that month still recomputed away');
 });
 
 for (const result of results) console.log(JSON.stringify(result));
