@@ -2987,6 +2987,8 @@ function initTables(database: Database.Database) {
         next_attempt_at TEXT,
         last_error TEXT
       );
+      CREATE INDEX IF NOT EXISTS idx_sync_progress_outbox_inbox_id ON sync_progress_outbox(inbox_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_progress_outbox_status ON sync_progress_outbox(status);
     `);
     const columns = new Set((database.prepare('PRAGMA table_info(sync_progress_outbox)').all() as {name:string}[]).map(c => c.name));
     if (!columns.has('attempts')) database.exec('ALTER TABLE sync_progress_outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');

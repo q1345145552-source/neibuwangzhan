@@ -126,6 +126,8 @@ export function initializeSyncSchema(database: Database.Database): void {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         sent_at TEXT
       );
+      CREATE INDEX IF NOT EXISTS idx_sync_document_outbox_submission_id ON sync_document_outbox(submission_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_document_outbox_status ON sync_document_outbox(status);
     `);
     const orderColumns = new Set((database.prepare('PRAGMA table_info(orders)').all() as {name:string}[]).map(c => c.name));
     if(!orderColumns.has('source_system')) database.exec("ALTER TABLE orders ADD COLUMN source_system TEXT NOT NULL DEFAULT ''");
