@@ -84,14 +84,24 @@ export function defaultServiceTitle(order: Pick<PushableOrder, "business_type_id
   return { serviceName: order.business_type_name, subCategory: sub, title: sub ? `${order.business_type_name} · ${sub}` : order.business_type_name };
 }
 
-type OfflineOrderResult = { order_id: string; order_no: string; customer_id: string; payload: unknown };
+type PreparedOrder = { order_no: string; payload: unknown };
+
+// 同一张单同时只让一个人推（两个管理员同时点、或者连点两下）；内部网站只有一个服务进程，记在内存里就够。
+// 推一次最多十几秒（业务系统超时 15 秒），超过 2 分钟还占着就当是上次卡住了，放行。
+const LOCK_MS = 2 * 60_000;
+function pushLocks(): Map<string, number> {
+  const g = globalThis as typeof globalThis & { __xtStorefrontPushLocks?: Map<string, number> };
+  return g.__xtStorefrontPushLocks ??= new Map();
+}
 
 /**
- * 推单：先在业务系统建好订单（同一张内部单重推只会拿回同一张），再在本地一个事务里改编号、记成同步单、记确认、排进度回传。
- * 本地这一步失败就请业务系统撤回刚建的单；撤不回（客户已经动过）就照实说，等管理员再点一次推送（会接着用那张单）。
+ * 推单，三步：
+ * 1. 业务系统先占一个单号、给一份快照（客户还看不到；同一张内部单再推还是这个号，按这次填的金额/服务名/客户重算）；
+ * 2. 内部一个事务里改编号、记成同步单、记确认、排进度回传——这一步失败什么都没变，业务系统那边只是空占着号，客户看不到，可以再推；
+ * 3. 通知业务系统正式建单。没通知到也不要紧：第 2 步排进去的进度回传（自带重试）到了业务系统会自动补建。
  */
 export async function pushOrderToStorefront(db: Database.Database, orderId: string, input: { customer_id?: unknown; amount?: unknown; title?: unknown }, actor: string):
-  Promise<{ id: string; source_order_no: string; link: string | null; renumbered: Record<string, number> }> {
+  Promise<{ id: string; source_order_no: string; link: string | null; pending: boolean; renumbered: Record<string, number> }> {
   const { order, reason } = pushBlocker(db, orderId);
   if (reason || !order) throw new StorefrontPushError(reason || "订单不存在", order ? 409 : 404);
   const customerId = String(input.customer_id ?? "").trim();
@@ -104,44 +114,56 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
   const inUpload = uploadNamesContaining(orderId);
   if (inUpload) throw new StorefrontPushError("这张单有文件名里带着单号，推了会找不到文件，请联系管理员", 409);
 
-  // 连不上或没回话时业务系统可能已经建好了：同一张内部单再推只会拿回同一张，所以让员工放心再点
-  const created = await (async () => json<OfflineOrderResult>(await call("/api/sync/offline-orders", { method: "POST", body: JSON.stringify({
-    internal_order_id: orderId, customer_id: customerId, service_name: names.serviceName, sub_category: names.subCategory, sku_name: title, amount,
-  }) })))().catch((error: unknown) => {
-    if (error instanceof StorefrontPushError && error.status === 502) throw new StorefrontPushError("业务系统没有回话，不确定单子建好没有。请稍后再点一次「推到业务系统」（同一个客户账号），不会重复建单", 502);
-    throw error;
-  });
-
+  const locks = pushLocks();
+  const since = locks.get(orderId);
+  if (since && Date.now() - since < LOCK_MS) throw new StorefrontPushError("这张单正在推送，请稍等一会儿刷新页面看看", 409);
+  locks.set(orderId, Date.now());
   try {
-    const sourceOrderNo = created.order_no;
-    const parsed = parseSyncOrder(created.payload);
-    if (parsed.sourceOrderNo !== sourceOrderNo || !SAFE_ORDER_ID.test(sourceOrderNo)) throw new Error("业务系统回的单号对不上");
-    if (parsed.customerId !== customerId || parsed.currency !== "CNY" || parsed.lines.length !== 1 || parsed.lines[0].quantity !== 1) throw new Error("业务系统回的订单内容对不上");
-    const renumbered = db.transaction(() => {
-      const again = pushBlocker(db, orderId);
-      if (again.reason) throw new StorefrontPushError(again.reason, 409);
-      const changed = renumberOrder(db, orderId, sourceOrderNo);
-      const line = parsed.lines[0];
-      db.prepare(`INSERT INTO sync_orders(source_order_no,source_customer_id,source,currency,billing_revision,total_cents,discount_cents,net_cents,identity_json,financial_json,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(sourceOrderNo, parsed.customerId, parsed.source, parsed.currency, parsed.revision, parsed.totalCents, parsed.discountCents, parsed.netCents, parsed.identityJson, parsed.financialJson, parsed.payload);
-      db.prepare(`INSERT INTO sync_inbox(id,source_order_no,line_no,copy_no,sku_code,internal_order_id,note,payload,allocated_cents,allocated_amount,billing_revision) VALUES (?,?,?,1,?,?,?,?,?,?,?)`)
-        .run(randomUUID(), sourceOrderNo, line.line_no, line.sku_code, sourceOrderNo, `线下单推送（原内部编号 ${orderId}）`, JSON.stringify(line.raw), parsed.netCents, parsed.netCents / 100, parsed.revision);
-      db.prepare("UPDATE orders SET source_system = 'storefront', source_customer_id = ?, total_amount = ?, currency = ?, updated_at = ? WHERE id = ?")
-        .run(parsed.customerId, parsed.netCents / 100, parsed.currency, new Date().toISOString(), sourceOrderNo);
-      recordConfirmation(db, sourceOrderNo, actor);
-      queueProgressEventsForOrder(sourceOrderNo, db);
-      logOperation(actor, "推到业务系统", "order", sourceOrderNo,
-        `原内部编号 ${orderId} → 业务系统单号 ${sourceOrderNo}；客户账号 ${parsed.customerName || parsed.customerEmail || parsed.customerId}；金额 ${parsed.netCents / 100} CNY（原 ${order.total_amount} ${order.currency}）`);
-      return changed;
-    })();
-    return { id: sourceOrderNo, source_order_no: sourceOrderNo, link: customerOrderLink(sourceOrderNo), renumbered };
-  } catch (error) {
-    // 两个人同时点推送：业务系统给两边回的是同一张单，先记上的那个算数，后到的不能去撤回
-    if (db.prepare("SELECT 1 FROM sync_inbox WHERE source_order_no = ?").get(created.order_no))
-      throw new StorefrontPushError(`这张单刚刚已经推到业务系统了（单号 ${created.order_no}），请刷新页面`, 409);
-    console.error("[storefront-push] 本地记推单失败，请业务系统撤回:", error);
-    const withdrawn = await call(`/api/sync/offline-orders/${encodeURIComponent(orderId)}`, { method: "DELETE" }).then(r => r.ok).catch(() => false);
-    const why = error instanceof StorefrontPushError ? error.message : "内部记推单失败";
-    throw new StorefrontPushError(withdrawn ? `${why}，业务系统那边已撤回，这张单没推出去` : `${why}；业务系统那边已建好订单 ${created.order_no}，请再点一次「推到业务系统」接着完成`, 500);
+    const prepared = await (async () => json<PreparedOrder>(await call("/api/sync/offline-orders", { method: "POST", body: JSON.stringify({
+      internal_order_id: orderId, customer_id: customerId, service_name: names.serviceName, sub_category: names.subCategory, sku_name: title, amount,
+    }) })))().catch((error: unknown) => {
+      if (error instanceof StorefrontPushError && error.status === 502) throw new StorefrontPushError("业务系统没有回话，这张单还没推出去（客户看不到）。请稍后再点一次「推到业务系统」", 502);
+      throw error;
+    });
+
+    const sourceOrderNo = prepared.order_no;
+    let parsed: ReturnType<typeof parseSyncOrder>;
+    try { parsed = parseSyncOrder(prepared.payload); } catch { throw new StorefrontPushError("业务系统回的订单内容不对，这张单没推出去", 502); }
+    const line = parsed.lines[0];
+    if (parsed.sourceOrderNo !== sourceOrderNo || !SAFE_ORDER_ID.test(sourceOrderNo) || parsed.customerId !== customerId || parsed.currency !== "CNY"
+      || parsed.lines.length !== 1 || line.quantity !== 1 || parsed.netCents !== Math.round(amount * 100) || line.raw.sku_name !== title)
+      throw new StorefrontPushError("业务系统回的订单内容跟这次填的对不上，这张单没推出去", 502);
+
+    let renumbered: Record<string, number>;
+    try {
+      renumbered = db.transaction(() => {
+        const again = pushBlocker(db, orderId);
+        if (again.reason) throw new StorefrontPushError(again.reason, 409);
+        const changed = renumberOrder(db, orderId, sourceOrderNo);
+        db.prepare(`INSERT INTO sync_orders(source_order_no,source_customer_id,source,currency,billing_revision,total_cents,discount_cents,net_cents,identity_json,financial_json,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(sourceOrderNo, parsed.customerId, parsed.source, parsed.currency, parsed.revision, parsed.totalCents, parsed.discountCents, parsed.netCents, parsed.identityJson, parsed.financialJson, parsed.payload);
+        db.prepare(`INSERT INTO sync_inbox(id,source_order_no,line_no,copy_no,sku_code,internal_order_id,note,payload,allocated_cents,allocated_amount,billing_revision) VALUES (?,?,?,1,?,?,?,?,?,?,?)`)
+          .run(randomUUID(), sourceOrderNo, line.line_no, line.sku_code, sourceOrderNo, `线下单推送（原内部编号 ${orderId}）`, JSON.stringify(line.raw), parsed.netCents, parsed.netCents / 100, parsed.revision);
+        db.prepare("UPDATE orders SET source_system = 'storefront', source_customer_id = ?, total_amount = ?, currency = ?, updated_at = ? WHERE id = ?")
+          .run(parsed.customerId, parsed.netCents / 100, parsed.currency, new Date().toISOString(), sourceOrderNo);
+        recordConfirmation(db, sourceOrderNo, actor);
+        // 这条进度回传也是「正式建单」的保底通知：第 3 步没通知到，它到了业务系统会先把单建出来
+        queueProgressEventsForOrder(sourceOrderNo, db);
+        logOperation(actor, "推到业务系统", "order", sourceOrderNo,
+          `原内部编号 ${orderId} → 业务系统单号 ${sourceOrderNo}；客户账号 ${parsed.customerName || parsed.customerEmail || parsed.customerId}；金额 ${parsed.netCents / 100} CNY（原 ${order.total_amount} ${order.currency}）`);
+        return changed;
+      })();
+    } catch (error) {
+      if (error instanceof StorefrontPushError) throw error;
+      console.error("[storefront-push] 内部记推单失败:", error);
+      throw new StorefrontPushError("内部记推单失败，这张单没推出去（客户看不到），可以再点一次", 500);
+    }
+
+    const committed = await call("/api/sync/offline-orders/commit", { method: "POST", body: JSON.stringify({ order_no: sourceOrderNo }) })
+      .then(r => r.ok).catch(() => false);
+    if (!committed) console.error(`[storefront-push] ${sourceOrderNo} 正式建单没通知到业务系统，等进度回传补建`);
+    return { id: sourceOrderNo, source_order_no: sourceOrderNo, link: customerOrderLink(sourceOrderNo), pending: !committed, renumbered };
+  } finally {
+    locks.delete(orderId);
   }
 }

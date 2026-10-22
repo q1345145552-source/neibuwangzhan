@@ -51,7 +51,7 @@ export function StorefrontPushCard({ orderId, isAdmin, onPushed }: { orderId: st
           <h3 className="shrink-0 text-sm font-medium">业务系统</h3>
         </div>
         <p className="mb-1 break-all text-xs text-[var(--muted-foreground)]">单号：<span className="font-mono">{state.source_order_no}</span></p>
-        {state.customer && <p className="mb-2 break-all text-xs text-[var(--muted-foreground)]">客户账号：{accountLine({ name: state.customer.name, phone: "", email: state.customer.email })}</p>}
+        {state.customer && <p className="mb-2 break-all text-xs text-[var(--muted-foreground)]">客户：{state.customer.name}{state.customer.login && <>，登录账号 <span className="font-mono">{state.customer.login}</span></>}</p>}
         {link ? (
           <>
             <input readOnly value={link} onFocus={e => e.target.select()} className="mb-2 w-full rounded-md border border-[var(--border)] bg-[var(--muted)] px-2 py-1 font-mono text-xs outline-none" />
@@ -61,7 +61,7 @@ export function StorefrontPushCard({ orderId, isAdmin, onPushed }: { orderId: st
             }}>
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "已复制" : "复制客户链接"}
             </Button>
-            <p className="mt-1.5 text-[0.7rem] text-[var(--muted-foreground)]">发给客户，客户点开、登录后直接看到这张单的进度和账单</p>
+            <p className="mt-1.5 text-[0.7rem] text-[var(--muted-foreground)]">发给客户，客户点开、登录后直接看到这张单的进度和账单。客户忘了密码：在业务系统后台「客户列表」里重置。</p>
           </>
         ) : <p className="text-xs text-[var(--muted-foreground)]">没有配置业务系统地址，生成不了客户链接</p>}
       </div>
@@ -103,8 +103,9 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
   const [amount, setAmount] = useState(state.prefill.amount != null ? String(state.prefill.amount) : "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [done, setDone] = useState<{ id: string; source_order_no: string; link: string | null } | null>(null);
+  const [done, setDone] = useState<{ id: string; source_order_no: string; link: string | null; pending: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [handedOut, setHandedOut] = useState(false);
 
   useEffect(() => {
     if (mode !== "search" || account) return;
@@ -144,12 +145,17 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
     } finally { setBusy(false); }
   };
 
-  const finish = () => { if (done) onPushed(done.id); else onClose(); };
+  // 刚建的账号，初始密码只在这个弹窗里有：没复制就关，先提醒一句
+  const finish = () => {
+    if (busy) return;
+    if (createdPassword && !handedOut && !window.confirm(`客户的初始密码（${createdPassword}）还没复制，关掉以后就看不到了。\n忘了也可以在业务系统后台「客户列表」里重置密码。确定关掉？`)) return;
+    if (done) onPushed(done.id); else onClose();
+  };
   const loginName = account ? (account.phone || account.email) : "";
   const handout = done?.link ? [`订单链接：${done.link}`, createdPassword ? `登录账号：${loginName}` : "", createdPassword ? `初始密码：${createdPassword}` : ""].filter(Boolean).join("\n") : "";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={busy ? undefined : finish}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={finish}>
       <div className="mx-4 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-[var(--background)] shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <h2 className="text-sm font-medium">{done ? "已推到业务系统" : "推到业务系统"}</h2>
@@ -159,14 +165,15 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
         {done ? (
           <div className="space-y-3 p-5 text-sm">
             <p>这张单在业务系统的单号是 <span className="font-mono">{done.source_order_no}</span>，内部的编号也换成了这个号。</p>
+            {done.pending && <p className="text-xs text-[oklch(0.40_0.14_85)]">业务系统那边刚才没连上，会自动补建，一般几分钟内客户就能看到这张单。</p>}
             {handout ? (
               <>
                 <p className="text-xs text-[var(--muted-foreground)]">把下面的内容发给客户{createdPassword ? "（初始密码只在这里显示一次）" : ""}：</p>
                 <textarea readOnly value={handout} rows={handout.split("\n").length} onFocus={e => e.target.select()}
                   className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--muted)] p-3 font-mono text-xs outline-none" />
                 <Button size="sm" variant="outline" className="gap-1" onClick={async () => {
-                  if (await copyText(handout)) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
-                  else window.alert("浏览器不让自动复制，请选中上面的内容手动复制");
+                  if (await copyText(handout)) { setCopied(true); setHandedOut(true); setTimeout(() => setCopied(false), 2000); }
+                  else { setHandedOut(true); window.alert("浏览器不让自动复制，请选中上面的内容手动复制"); }
                 }}>{copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "已复制" : "复制"}</Button>
               </>
             ) : <p className="text-xs text-[var(--muted-foreground)]">没有配置业务系统地址，生成不了客户链接</p>}
@@ -231,7 +238,7 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
             <p className="text-[0.7rem] text-[var(--muted-foreground)]">推过去以后，客户在业务系统能看到这张单的进度和账单，能传付款水单；收到钱后在「客户付款」里点确认收款。这张单的编号会换成业务系统的单号。</p>
             {message && <p className="text-xs text-[var(--destructive)]">{message}</p>}
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={onClose} disabled={busy}>取消</Button>
+              <Button size="sm" variant="outline" onClick={finish} disabled={busy}>取消</Button>
               <Button size="sm" className="gap-1.5" onClick={push} disabled={busy || !account || !amountOk || !title.trim()}>
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}确认推送
               </Button>

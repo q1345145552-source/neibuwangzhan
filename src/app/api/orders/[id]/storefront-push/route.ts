@@ -17,8 +17,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const source = sourceOrderNoOf(db, id);
   if (source) {
     const row = db.prepare("SELECT payload FROM sync_orders WHERE source_order_no = ?").get(source) as { payload: string } | undefined;
-    let customer: { name: string; email: string } | null = null;
-    try { const c = JSON.parse(row?.payload || "{}").customer; if (c) customer = { name: String(c.name || ""), email: /@user\.xiangtai$/.test(String(c.email || "")) ? "" : String(c.email || "") }; } catch { /* 坏数据不显示账号 */ }
+    // 客户登录用的账号：手机号建的号邮箱是系统占位的 phone_手机号@user.xiangtai，从里面取回手机号
+    let customer: { name: string; login: string } | null = null;
+    try {
+      const c = JSON.parse(row?.payload || "{}").customer;
+      if (c) { const email = String(c.email || ""); customer = { name: String(c.name || ""), login: email.match(/^phone_(.+)@user\.xiangtai$/)?.[1] || email }; }
+    } catch { /* 坏数据不显示账号 */ }
     return NextResponse.json({ linked: true, source_order_no: source, link: customerOrderLink(source), customer });
   }
   const { order, reason } = pushBlocker(db, id);

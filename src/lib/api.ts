@@ -505,7 +505,7 @@ export async function confirmOrderPayment(id: string): Promise<OrderPayment & { 
 // 线下单推到业务系统（2026-10-22 老板选 B）
 export type StorefrontAccount = { id: string; name: string; phone: string; email: string; created_at?: string };
 export type StorefrontPushState =
-  | { linked: true; source_order_no: string; link: string | null; customer: { name: string; email: string } | null }
+  | { linked: true; source_order_no: string; link: string | null; customer: { name: string; login: string } | null }
   | { linked: false; can_push: boolean; reason: string | null; prefill: { title: string; amount: number | null }; original: { amount: number; currency: string } };
 
 async function jsonOrThrow<T>(res: Response, fallback: string): Promise<T> {
@@ -527,7 +527,7 @@ export async function createStorefrontCustomer(body: { name: string; phone: stri
   return jsonOrThrow(await fetch("/api/storefront/customers", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "建客户账号失败");
 }
 
-export async function pushOrderToStorefront(id: string, body: { customer_id: string; amount: number; title: string }): Promise<{ id: string; source_order_no: string; link: string | null }> {
+export async function pushOrderToStorefront(id: string, body: { customer_id: string; amount: number; title: string }): Promise<{ id: string; source_order_no: string; link: string | null; pending: boolean }> {
   return jsonOrThrow(await fetch(`/api/orders/${id}/storefront-push`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "推单失败");
 }
 

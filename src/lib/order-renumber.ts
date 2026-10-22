@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { uploadsDir } from "./uploads";
@@ -23,8 +24,8 @@ function tablesWithColumns(db: Database.Database): { table: string; columns: str
 /** 这一列是文字、而且含旧编号（数字列不碰，免得被 replace 变成文字） */
 const holds = (column: string) => `(typeof(${quote(column)}) = 'text' AND instr(${quote(column)}, ?) > 0)`;
 
-/** 上传的文件名、目录名里带旧编号的，改了数据库就找不到文件：这种不改 */
-export function uploadNamesContaining(oldId: string, dirs: string[] = [uploadsDir]): string | null {
+/** 上传的文件名、目录名里带旧编号的，改了数据库就找不到文件：这种不改。两个上传目录都查（数据目录写不了时上传会落到临时目录） */
+export function uploadNamesContaining(oldId: string, dirs: string[] = [uploadsDir, path.join(os.tmpdir(), "xiangtai-uploads")]): string | null {
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) continue;
     const stack = [dir];
@@ -47,11 +48,14 @@ export function renumberOrder(db: Database.Database, oldId: string, newId: strin
   if (newId.includes(oldId)) throw new Error("新编号包含旧编号，没法改");
   if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(oldId)) throw new Error(`办理单 ${oldId} 不存在`);
   if (db.prepare("SELECT 1 FROM orders WHERE id = ?").get(newId)) throw new Error(`编号 ${newId} 已经被别的办理单用了`);
-  const fkBefore = new Set((db.pragma("foreign_key_check") as unknown[]).map(r => JSON.stringify(r)));
+  // 外键只核对指向订单的那几张表（编号只出现在订单和挂在订单下的记录里），不做整库检查，免得推单时整个网站等太久
+  const tables = tablesWithColumns(db);
+  const childTables = tables.map(t => t.table).filter(t => (db.prepare(`PRAGMA foreign_key_list(${quote(t)})`).all() as { table: string }[]).some(fk => fk.table === "orders"));
+  const fkCheck = () => new Set(childTables.flatMap(t => (db.prepare(`PRAGMA foreign_key_check(${quote(t)})`).all() as unknown[]).map(r => JSON.stringify(r))));
+  const fkBefore = fkCheck();
   db.pragma("defer_foreign_keys = ON");
   // 每张表只扫一遍（员工点推送时整个网站要等它做完，库大了按列逐个扫会卡好几秒）
   const changed: Record<string, number> = {};
-  const tables = tablesWithColumns(db);
   for (const { table, columns } of tables) {
     const set = columns.map(c => `${quote(c)} = CASE WHEN ${holds(c)} THEN replace(${quote(c)}, ?, ?) ELSE ${quote(c)} END`).join(", ");
     const where = columns.map(holds).join(" OR ");
@@ -64,7 +68,7 @@ export function renumberOrder(db: Database.Database, oldId: string, newId: strin
     if (left.n) throw new Error(`换完 ${table} 还有 ${left.n} 行带旧编号`);
   }
   if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(newId)) throw new Error(`办理单 ${newId} 没换上`);
-  const fkNew = (db.pragma("foreign_key_check") as unknown[]).map(r => JSON.stringify(r)).filter(r => !fkBefore.has(r));
+  const fkNew = [...fkCheck()].filter(r => !fkBefore.has(r));
   if (fkNew.length) throw new Error(`外键检查多出 ${fkNew.length} 条问题`);
   return changed;
 }
