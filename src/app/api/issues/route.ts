@@ -4,6 +4,8 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { canReadIssue } from "@/lib/chat-todo-issue-card";
 
+const VALID_STATUS = ["待处理", "处理中", "已解决"];
+
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -33,28 +35,33 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const body = await readJson(req);
   const { ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images } = body;
-  if (!description?.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
+  if (typeof description !== "string" || !description.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
+  const status = body.status === undefined ? "待处理" : body.status;
+  if (!VALID_STATUS.includes(status)) return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
   // assignee 支持多选：数组转逗号分隔字符串，单个字符串兼容旧调用
   const assigneeList = Array.isArray(assignee)
     ? assignee.map((s: any) => String(s).trim()).filter(Boolean)
-    : (typeof assignee === "string" ? [assignee.trim()] : []);
+    : (typeof assignee === "string" ? [assignee.trim()].filter(Boolean) : []);
   const assigneeStr = assigneeList.join(",");
   if (assigneeList.length === 0) return NextResponse.json({ error: "请至少指定一个解决人" }, { status: 400 });
   const imagesJson = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
   const now = new Date().toISOString();
-  const result = db.prepare(
-    `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assigneeStr, created_by || "", imagesJson, now, now);
-  const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
-  logOperation(created_by || auth.name, "提交工单", "issue", String(result.lastInsertRowid), description);
-  // 每个被指派的员工都发一条通知
-  for (const name of assigneeList) {
-    db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
-      "工单指派", "新问题工单", description, name, String(result.lastInsertRowid), "issue"
-    );
-  }
-  return NextResponse.json(row, { status: 201 });
+  return db.transaction(() => {
+    const result = db.prepare(
+      `INSERT INTO issue_tickets (ticket_number, ref_id, ref_type, description, priority, assignee, created_by, images, created_at, updated_at, status, resolved_by, resolved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(ticket_number || "", ref_id || "", ref_type || "", description, priority || "medium", assigneeStr, created_by || "", imagesJson, now, now,
+      status, status === "已解决" ? auth.name : "", status === "已解决" ? now : null);
+    const row = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(result.lastInsertRowid);
+    logOperation(created_by || auth.name, "提交工单", "issue", String(result.lastInsertRowid), description);
+    // 沿用工单页的指派通知；通知和工单一起提交，避免只创建一半。
+    for (const name of assigneeList) {
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "工单指派", "新问题工单", description, name, String(result.lastInsertRowid), "issue"
+      );
+    }
+    return NextResponse.json(row, { status: 201 });
+  })();
 }
 
 export async function PATCH(req: NextRequest) {
@@ -67,7 +74,6 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "缺少工单ID" }, { status: 400 });
 
   // 状态白名单：表上有 CHECK 约束，非法值会直接抛异常变成 500
-  const VALID_STATUS = ["待处理", "处理中", "已解决"];
   if (status && !VALID_STATUS.includes(status)) {
     return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
   }
