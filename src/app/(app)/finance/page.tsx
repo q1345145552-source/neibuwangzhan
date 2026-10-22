@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -8,7 +8,8 @@ import { Search, TrendingUp, TrendingDown, Download, ChevronDown, X } from "luci
 import { fetchAllFinances, fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, toThaiDate, bangkokDateStr, fileUrl } from "@/lib/utils";
-import { ShopFeeEntryDialog, ShopFeeReviewDialog, ShopFeeDetails, type ShopFeeRecord } from "@/components/finance-shop-fees";
+import { ShopFeeEntryDialog, ShopFeeReviewDialog, ShopFeeDeleteDialog, ShopFeeDetails, type ShopFeeRecord } from "@/components/finance-shop-fees";
+import { canDeleteShopFee, canEditShopFee } from "@/lib/shop-fees";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
 
 const typeLabels: Record<string, string> = { income: "收入", expense: "支出", refund: "退款" };
@@ -111,6 +112,9 @@ export default function FinancePage() {
   const [shopFees, setShopFees] = useState<ShopFeeRecord[]>([]);
   const [shopEntryOpen, setShopEntryOpen] = useState(false);
   const [shopReviewTarget, setShopReviewTarget] = useState<ShopFeeRecord | null>(null);
+  const [shopEditTarget, setShopEditTarget] = useState<ShopFeeRecord | null>(null);
+  const [shopDeleteTarget, setShopDeleteTarget] = useState<ShopFeeRecord | null>(null);
+  const changedShopFees = useRef(new Set<number>());
   const canRecordShopFee = user?.role === "admin" || user?.role === "employee";
   const [showShopDetail, setShowShopDetail] = useState(false);
 
@@ -129,9 +133,19 @@ export default function FinancePage() {
   useEffect(() => {
     fetchWithAuth("/api/shop-fees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setShopFees(previous => [...new Map([...(Array.isArray(d) ? d as ShopFeeRecord[] : []), ...previous].map(fee => [fee.id, fee])).values()]))
+      .then((d) => setShopFees(previous => [...new Map([...(Array.isArray(d) ? (d as ShopFeeRecord[]).filter(fee => !changedShopFees.current.has(fee.id)) : []), ...previous].map(fee => [fee.id, fee])).values()]))
       .catch(() => { /* 保留本页刚录入或核对成功的记录。 */ });
   }, []);
+
+  const saveShopFee = (fee: ShopFeeRecord) => {
+    changedShopFees.current.add(fee.id);
+    setShopFees(previous => previous.some(row => row.id === fee.id) ? previous.map(row => row.id === fee.id ? fee : row) : [fee, ...previous]);
+    setShowShopDetail(true);
+  };
+  const removeShopFee = (id: number) => {
+    changedShopFees.current.add(id);
+    setShopFees(previous => previous.filter(row => row.id !== id));
+  };
 
   const reload = async () => {
     try {
@@ -441,12 +455,14 @@ export default function FinancePage() {
             </div>
           </div>
 
-          <ShopFeeDetails fees={shopDetails} isAdmin={isAdmin} onReview={setShopReviewTarget} />
+          <ShopFeeDetails fees={shopDetails} isAdmin={isAdmin} user={user} onReview={setShopReviewTarget} onEdit={setShopEditTarget} onDelete={setShopDeleteTarget} />
         </div>
       )}
 
-      {shopEntryOpen && canRecordShopFee && <ShopFeeEntryDialog onClose={() => setShopEntryOpen(false)} onSaved={fee => { setShopFees(previous => [fee, ...previous.filter(row => row.id !== fee.id)]); setShowShopDetail(true); }} />}
-      {shopReviewTarget && isAdmin && <ShopFeeReviewDialog key={shopReviewTarget.id} fee={shopReviewTarget} onClose={() => setShopReviewTarget(null)} onSaved={fee => setShopFees(previous => previous.map(row => row.id === fee.id ? fee : row))} />}
+      {shopEntryOpen && canRecordShopFee && <ShopFeeEntryDialog onClose={() => setShopEntryOpen(false)} onSaved={saveShopFee} />}
+      {shopEditTarget && canEditShopFee(user, shopEditTarget) && <ShopFeeEntryDialog key={shopEditTarget.id} fee={shopEditTarget} onClose={() => setShopEditTarget(null)} onSaved={saveShopFee} />}
+      {shopReviewTarget && isAdmin && <ShopFeeReviewDialog key={shopReviewTarget.id} fee={shopReviewTarget} onClose={() => setShopReviewTarget(null)} onSaved={saveShopFee} />}
+      {shopDeleteTarget && canDeleteShopFee(user, shopDeleteTarget) && <ShopFeeDeleteDialog key={shopDeleteTarget.id} fee={shopDeleteTarget} onClose={() => setShopDeleteTarget(null)} onDeleted={removeShopFee} />}
 
       {/* 业务线明细 */}
       {selectedGroup && (
