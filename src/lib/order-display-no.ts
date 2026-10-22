@@ -1,9 +1,10 @@
 import type Database from "better-sqlite3";
 
 /**
- * 订单显示编号（2026-10-22 老板：「要显示同一个号，要不然业务系统的订单我怎么去内部系统去查」）。
- * 业务系统来的单显示业务系统的单号；一张客户单拆成几张办的，按第几行商品、第几份的顺序加 -1、-2……
- * （行和份数建单后不会再变，号码稳定）。内部自己建的单照旧显示内部编号。只改显示，数据库里的编号不变。
+ * 订单显示编号（2026-10-22 老板：「要显示同一个号」「单号必须要对上」「单号不要-」）。
+ * 业务系统来的单显示业务系统的单号，一模一样、不加后缀；一张客户单拆成几张办的，几张都显示同一个号（靠业务、商品区分）。
+ * 一张对一张的单，内部编号本身就是业务系统单号（新单建单时直接用，老单上线时改，见 scripts/migrate-order-id-to-source-no.py）；
+ * 这里兜底拆单和还没改的老单。内部自己建的单照旧显示内部编号。
  */
 type Row = { source_order_no: string; internal_order_id: string };
 export type OrderNumberInfo = { source: string; display: string };
@@ -17,7 +18,7 @@ function number(rows: Row[], into: Map<string, OrderNumberInfo>) {
   }
   for (const [source, set] of bySource) {
     const ids = [...set];
-    ids.forEach((id, i) => { if (!into.has(id)) into.set(id, { source, display: ids.length > 1 ? `${source}-${i + 1}` : source }); });
+    ids.forEach((id) => { if (!into.has(id)) into.set(id, { source, display: source }); });
   }
 }
 

@@ -1,7 +1,7 @@
 /**
- * 订单显示编号（2026-10-22 老板：「要显示同一个号，要不然业务系统的订单我怎么去内部系统去查」）。
+ * 订单编号跟业务系统一致（2026-10-22 老板：「要显示同一个号」「单号必须要对上」「单号不要-」）。
  * 用真的同步入口建业务系统的单，核对内部「订单管理」列表和订单详情给员工的编号：
- * 一张客户单只建一张内部单 → 就是业务系统单号；拆成几张 → 按第几行、第几份加 -1、-2；内部自己建的单还是内部编号；
+ * 一张客户单只建一张内部单 → 内部编号本身就是业务系统单号；拆成几张 → 几张都显示业务系统单号、不加后缀；内部自己建的单还是内部编号；
  * 客户账号看到的不变。全部是临时目录里的合成库，不连外部地址。
  * Run (from this repo): node --import <tsx loader> scripts/test-order-display-no.mts
  */
@@ -53,22 +53,23 @@ await sync('ORD20261022000000000002', [{ qty: 2, amount: 200 }, { qty: 1, amount
 const own = 'ORD-internal-display-check';
 db.prepare("INSERT INTO orders(id,customer_name,business_type_id,status,description,total_amount,currency,created_at,updated_at) VALUES (?,?,1,'待处理','',0,'CNY',datetime('now'),datetime('now'))").run(own, '内部自建客户');
 
-await test('one internal order per customer order shows the business-system number as is', async () => {
+await test('a customer order that becomes one internal order: the internal order id IS the business-system number', async () => {
   const [id] = internalIds('ORD20261022000000000001');
+  assert.equal(id, 'ORD20261022000000000001');
   assert.equal((await list()).get(id), 'ORD20261022000000000001');
   assert.equal(await detail(id), 'ORD20261022000000000001');
 });
 
-await test('a customer order split into several shows -1, -2, -3 by line then copy, same in list and detail', async () => {
+await test('a customer order split into several: every part shows the same business-system number, no suffix', async () => {
   const ids = internalIds('ORD20261022000000000002');
   assert.equal(ids.length, 3);
+  assert.ok(ids.every(id => id.startsWith('ORD-')), 'split parts keep separate internal ids underneath');
   const l = await list();
-  assert.deepEqual(ids.map(id => l.get(id)), ['ORD20261022000000000002-1', 'ORD20261022000000000002-2', 'ORD20261022000000000002-3']);
-  for (const [i, id] of ids.entries()) assert.equal(await detail(id), `ORD20261022000000000002-${i + 1}`);
+  assert.deepEqual(ids.map(id => l.get(id)), Array(3).fill('ORD20261022000000000002'));
+  for (const id of ids) assert.equal(await detail(id), 'ORD20261022000000000002');
 });
 
 await test('numbers stay the same when the customer site sends a later billing revision', async () => {
-  const before = internalIds('ORD20261022000000000002');
   const res = await syncPost(new NextRequest('http://fixture.invalid/api/sync/orders', { method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer display-no-secret' },
     body: JSON.stringify({ source: 'storefront', source_order_no: 'ORD20261022000000000002', billing_revision: 2, ordered_at: '2026-10-22T00:00:00.000Z', currency: 'CNY',
@@ -76,29 +77,17 @@ await test('numbers stay the same when the customer site sends a later billing r
       lines: [{ line_no: 1, sku_code: 'COM-001', sku_name: 'Synthetic service', quantity: 2, amount: 200 }, { line_no: 2, sku_code: 'COM-001', sku_name: 'Synthetic service', quantity: 1, amount: 50 }] }) }));
   assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
   const l = await list();
-  assert.deepEqual(before.map(id => l.get(id)), ['ORD20261022000000000002-1', 'ORD20261022000000000002-2', 'ORD20261022000000000002-3']);
+  assert.deepEqual(internalIds('ORD20261022000000000002').map(id => l.get(id)), Array(3).fill('ORD20261022000000000002'));
+  assert.equal(internalIds('ORD20261022000000000001')[0], 'ORD20261022000000000001');
 });
 
 await test('daily-report order search finds orders by the business-system number and titles them with it', async () => {
-  const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000002-2')}`, { headers: { authorization: `Bearer ${token}` } }));
+  const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000002')}`, { headers: { authorization: `Bearer ${token}` } }));
   assert.equal(res.status, 200);
-  const titles = (await res.json() as { title: string }[]).map(r => r.title).sort();
-  assert.deepEqual(titles, ['订单 ORD20261022000000000002-1', '订单 ORD20261022000000000002-2', '订单 ORD20261022000000000002-3']);
-});
-
-await test('daily-report search puts the exact number first even when a customer order is split into more than 20', async () => {
-  await sync('ORD20261022000000000003', [{ qty: 25, amount: 2500 }]);
-  const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000003-1')}`, { headers: { authorization: `Bearer ${token}` } }));
   const titles = (await res.json() as { title: string }[]).map(r => r.title);
-  assert.equal(titles.length, 20);
-  assert.equal(titles[0], '订单 ORD20261022000000000003-1');
-});
-
-await test('daily-report search finds the exact number even when a customer order is split into more than 200', async () => {
-  await sync('ORD20261022000000000004', [{ qty: 250, amount: 25000 }]);
-  const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000004-1')}`, { headers: { authorization: `Bearer ${token}` } }));
-  const titles = (await res.json() as { title: string }[]).map(r => r.title);
-  assert.equal(titles[0], '订单 ORD20261022000000000004-1');
+  assert.deepEqual(titles, Array(3).fill('订单 ORD20261022000000000002'));
+  const one = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000001')}`, { headers: { authorization: `Bearer ${token}` } }));
+  assert.deepEqual((await one.json() as { title: string; id: string }[]).map(r => [r.title, r.id]), [['订单 ORD20261022000000000001', 'ORD20261022000000000001']]);
 });
 
 await test('orders created inside the internal system keep their own number', async () => {

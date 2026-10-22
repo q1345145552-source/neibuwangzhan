@@ -165,12 +165,18 @@ export async function POST(req: NextRequest) {
       .run(sourceOrderNo,customerId,order.source,order.currency,revision,order.totalCents,order.discountCents,order.netCents,order.identityJson,order.financialJson,order.payload);
     const mappedLines: string[] = [];
     let firstMappedId: string | null = null;
+    const noOrderNoteOf = (mapping: ReturnType<typeof mapSku>) => order.source === 'recurring' ? '周期账单，不建办理单'
+      : mapping.kind === 'attachment' ? '附加费行，随主服务收取，不独立办理'
+      : mapping.kind === 'reference' ? '参考资料，不建办理单' : null;
+    // 单号跟业务系统一致（2026-10-22 老板：「单号必须要对上」「单号不要-」）：这张客户单只建一张办理单时，
+    // 办理单的编号直接用业务系统单号；拆成几张的照旧内部编号，页面上几张都显示业务系统单号（见 lib/order-display-no）
+    const copiesToCreate = order.lines.reduce((n, line) => n + (noOrderNoteOf(mapSku(line.sku_code)) ? 0 : line.quantity), 0);
+    const sameAsSource = copiesToCreate === 1 && /^[A-Za-z0-9_]{1,64}$/.test(sourceOrderNo)
+      && !db.prepare('SELECT 1 FROM orders WHERE id=?').get(sourceOrderNo);
     for (let i = 0; i < order.lines.length; i++) {
       const line = order.lines[i];
       const mapping = mapSku(line.sku_code);
-      const noOrderNote = order.source === 'recurring' ? '周期账单，不建办理单'
-        : mapping.kind === 'attachment' ? '附加费行，随主服务收取，不独立办理'
-        : mapping.kind === 'reference' ? '参考资料，不建办理单' : null;
+      const noOrderNote = noOrderNoteOf(mapping);
       if (noOrderNote) {
         db.prepare(`INSERT INTO sync_inbox(id,source_order_no,line_no,copy_no,sku_code,note,payload,allocated_cents,allocated_amount,billing_revision) VALUES (?,?,?,1,?,?,?,?,?,?)`)
           .run(randomUUID(),sourceOrderNo,line.line_no,line.sku_code,noOrderNote,JSON.stringify(line.raw),allocatedLines[i],allocatedLines[i]/100,revision);
@@ -187,7 +193,7 @@ export async function POST(req: NextRequest) {
       const allocations = splitCents(allocatedLines[i],line.quantity);
       const lineIds: string[] = [];
       for (let c = 1; c <= line.quantity; c++) {
-        const id = `ORD-${randomUUID()}`;
+        const id = sameAsSource ? sourceOrderNo : `ORD-${randomUUID()}`;
         const now = new Date().toISOString();
         const description = [`客户站同步单 ${sourceOrderNo} #${line.line_no}-${c}/${line.quantity}份`, `SKU ${line.sku_code ?? '无'}`,
           `来源账号 ${customerId}`, order.customerEmail ? `邮箱 ${order.customerEmail}` : '', note ? `备注:${note}` : ''].filter(Boolean).join(' · ');
