@@ -104,9 +104,13 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
   const inUpload = uploadNamesContaining(orderId);
   if (inUpload) throw new StorefrontPushError("这张单有文件名里带着单号，推了会找不到文件，请联系管理员", 409);
 
-  const created = await json<OfflineOrderResult>(await call("/api/sync/offline-orders", { method: "POST", body: JSON.stringify({
+  // 连不上或没回话时业务系统可能已经建好了：同一张内部单再推只会拿回同一张，所以让员工放心再点
+  const created = await (async () => json<OfflineOrderResult>(await call("/api/sync/offline-orders", { method: "POST", body: JSON.stringify({
     internal_order_id: orderId, customer_id: customerId, service_name: names.serviceName, sub_category: names.subCategory, sku_name: title, amount,
-  }) }));
+  }) })))().catch((error: unknown) => {
+    if (error instanceof StorefrontPushError && error.status === 502) throw new StorefrontPushError("业务系统没有回话，不确定单子建好没有。请稍后再点一次「推到业务系统」（同一个客户账号），不会重复建单", 502);
+    throw error;
+  });
 
   try {
     const sourceOrderNo = created.order_no;

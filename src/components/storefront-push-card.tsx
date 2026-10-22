@@ -47,22 +47,20 @@ export function StorefrontPushCard({ orderId, isAdmin, onPushed }: { orderId: st
     return (
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
         <div className="mb-2 flex items-center gap-2">
-          <Globe className="size-4 text-[var(--muted-foreground)]" />
-          <h3 className="text-sm font-medium">业务系统</h3>
-          <span className="ml-auto font-mono text-xs text-[var(--muted-foreground)]">{state.source_order_no}</span>
+          <Globe className="size-4 shrink-0 text-[var(--muted-foreground)]" />
+          <h3 className="shrink-0 text-sm font-medium">业务系统</h3>
         </div>
-        {state.customer && <p className="mb-2 text-xs text-[var(--muted-foreground)]">客户账号：{accountLine({ name: state.customer.name, phone: "", email: state.customer.email })}</p>}
+        <p className="mb-1 break-all text-xs text-[var(--muted-foreground)]">单号：<span className="font-mono">{state.source_order_no}</span></p>
+        {state.customer && <p className="mb-2 break-all text-xs text-[var(--muted-foreground)]">客户账号：{accountLine({ name: state.customer.name, phone: "", email: state.customer.email })}</p>}
         {link ? (
           <>
-            <div className="flex items-center gap-2">
-              <input readOnly value={link} onFocus={e => e.target.select()} className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--muted)] px-2 py-1 font-mono text-xs outline-none" />
-              <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1 text-xs" onClick={async () => {
-                if (await copyText(link)) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
-                else window.alert("浏览器不让自动复制，请选中左边的链接手动复制");
-              }}>
-                {copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "已复制" : "复制客户链接"}
-              </Button>
-            </div>
+            <input readOnly value={link} onFocus={e => e.target.select()} className="mb-2 w-full rounded-md border border-[var(--border)] bg-[var(--muted)] px-2 py-1 font-mono text-xs outline-none" />
+            <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={async () => {
+              if (await copyText(link)) { setCopied(true); setTimeout(() => setCopied(false), 2000); }
+              else window.alert("浏览器不让自动复制，请选中上面的链接手动复制");
+            }}>
+              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "已复制" : "复制客户链接"}
+            </Button>
             <p className="mt-1.5 text-[0.7rem] text-[var(--muted-foreground)]">发给客户，客户点开、登录后直接看到这张单的进度和账单</p>
           </>
         ) : <p className="text-xs text-[var(--muted-foreground)]">没有配置业务系统地址，生成不了客户链接</p>}
@@ -74,8 +72,8 @@ export function StorefrontPushCard({ orderId, isAdmin, onPushed }: { orderId: st
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
       <div className="mb-2 flex items-center gap-2">
-        <Globe className="size-4 text-[var(--muted-foreground)]" />
-        <h3 className="text-sm font-medium">业务系统</h3>
+        <Globe className="size-4 shrink-0 text-[var(--muted-foreground)]" />
+        <h3 className="shrink-0 text-sm font-medium">业务系统</h3>
       </div>
       {state.can_push ? (
         <>
