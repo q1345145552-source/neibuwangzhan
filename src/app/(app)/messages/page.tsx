@@ -10,6 +10,7 @@ import { bangkokToday, bangkokDayRange, utcSecondBefore, utcNowStr } from "@/lib
 import { containsSensitiveWord } from "@/lib/sensitive-words";
 import { useAuth } from "@/components/auth-provider";
 import { MessageIssueDialog } from "@/components/message-issue-dialog";
+import { MessageAnnouncementDialog } from "@/components/message-announcement-dialog";
 import { subscribeOpenChat, takePendingChatTarget, type ChatOpenTarget } from "@/lib/chat-nav";
 
 interface Contact {
@@ -458,7 +459,7 @@ export default function MessagesPage() {
   const { user, setUser } = useAuth();
   const me = user?.name || "";
   const isAdmin = user?.role === "admin";
-  const canCreateIssue = isAdmin || user?.role === "employee";
+  const canConvertMessage = isAdmin || user?.role === "employee";
   const router = useRouter();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -553,6 +554,7 @@ export default function MessagesPage() {
   const [todoForm, setTodoForm] = useState({ content: "", assignee: "", priority: "普通" });
   const [todoSaving, setTodoSaving] = useState(false);
   const [issueContent, setIssueContent] = useState<string | null>(null);
+  const [announcementContent, setAnnouncementContent] = useState<string | null>(null);
   // 聊天背景设置
   const [bgOpen, setBgOpen] = useState(false);
   const [bgSaving, setBgSaving] = useState(false);
@@ -3909,7 +3911,10 @@ export default function MessagesPage() {
           ...(canRecall ? [{ label: "撤回", onClick: () => { recallMessage(m); setMenuState(null); } }] : []),
           { label: "引用回复", onClick: () => { setReplyTo({ id: m.id, sender: m.sender, preview: quotePreview(m) }); setMenuState(null); } },
           { label: "转待办", onClick: () => { openTodoModal(m.content || ""); setMenuState(null); } },
-          ...(canCreateIssue ? [{ label: "转工单", onClick: () => { setIssueContent(m.content || ""); setMenuState(null); } }] : []),
+          ...(canConvertMessage ? [
+            { label: "转工单", onClick: () => { setIssueContent(m.content || ""); setMenuState(null); } },
+            { label: "转老板通知", onClick: () => { setAnnouncementContent(m.content || ""); setMenuState(null); } },
+          ] : []),
           { label: "表情反应", onClick: () => openEmojiPicker(m.id, menuState.x, menuState.y) },
         ];
         return (
@@ -3934,7 +3939,8 @@ export default function MessagesPage() {
         );
       })()}
 
-      {issueContent !== null && canCreateIssue && <MessageIssueDialog content={issueContent} createdBy={me} onClose={() => setIssueContent(null)} />}
+      {issueContent !== null && canConvertMessage && <MessageIssueDialog content={issueContent} createdBy={me} onClose={() => setIssueContent(null)} />}
+      {announcementContent !== null && canConvertMessage && <MessageAnnouncementDialog content={announcementContent} onClose={() => setAnnouncementContent(null)} />}
 
       {/* 消息转待办弹窗 */}
       {todoModal && (
