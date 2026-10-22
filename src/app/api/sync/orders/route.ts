@@ -4,35 +4,12 @@ import { readJson } from '@/lib/req';
 import { getDb, getOrderStepsWithDocs, logOperation } from '@/lib/db';
 import { isSyncRequest, syncRateLimited, recordSyncAuthFailure } from '@/lib/sync-auth';
 import { mapSku } from '@/lib/storefront-mapping';
-import { allocateCents, moneyToCents, splitCents } from '@/lib/sync-money';
+import { allocateCents, splitCents } from '@/lib/sync-money';
 import { queueProgressEventsForOrder, requestProgressFlush } from '@/lib/progress-sync';
-import { assertSyncPayload, SyncContractError, SYNC_CONTRACT_VERSION, textField } from '@/lib/sync-contract';
+import { SyncContractError, SYNC_CONTRACT_VERSION } from '@/lib/sync-contract';
+import { parseSyncOrder as parseOrder, type SyncOrder } from '@/lib/sync-order-parse';
 import { notifyNewSyncedOrder, notifyUnclassifiedOrder } from '@/lib/order-alerts';
 
-interface SyncLine {
-  line_no: number;
-  sku_code: string | null;
-  quantity: number;
-  amount: number;
-  amountCents: number;
-  raw: Record<string, unknown>;
-}
-interface SyncOrder {
-  source: 'storefront' | 'recurring';
-  sourceOrderNo: string;
-  customerId: string;
-  customerName: string;
-  customerEmail: string;
-  currency: string;
-  revision: number;
-  totalCents: number;
-  discountCents: number;
-  netCents: number;
-  lines: SyncLine[];
-  identityJson: string;
-  financialJson: string;
-  payload: string;
-}
 interface InboxRow {
   id: string;
   line_no: number;
@@ -42,38 +19,6 @@ interface InboxRow {
 }
 interface SyncResult { line_no: number; copy: number; status: string; order_id?: string; note?: string }
 class SyncConflict extends Error {}
-
-function parseOrder(body: unknown): SyncOrder {
-  assertSyncPayload(body);
-  const sourceOrderNo = body.source_order_no as string;
-  const source = body.source as SyncOrder['source'];
-  const revision = body.billing_revision as number;
-  const customer = body.customer as Record<string, unknown>;
-  const customerId = customer.id as string;
-  const customerName = textField(customer.name, 'customer.name', 100, false);
-  const customerEmail = textField(customer.email, 'customer.email', 254, false);
-  const currency = body.currency as string;
-  const totalCents = moneyToCents(body.total_amount, 'total_amount');
-  const discountCents = moneyToCents(body.discount, 'discount');
-  const netCents = totalCents - discountCents;
-  // Deposit is payment scheduling, not an additional price discount.
-  const depositCents = body.deposit === undefined ? 0 : moneyToCents(body.deposit, 'deposit');
-  const billingStatus = textField(body.billing_status, 'billing_status', 32, false);
-  const lines: SyncLine[] = (body.lines as Record<string, unknown>[]).map(raw => ({
-    line_no: raw.line_no as number,
-    sku_code: raw.sku_code === undefined || raw.sku_code === null ? null : raw.sku_code as string,
-    quantity: raw.quantity as number,
-    amount: raw.amount as number,
-    amountCents: moneyToCents(raw.amount, 'lines.amount'),
-    raw,
-  })).sort((a,b) => a.line_no-b.line_no);
-  const identityJson = JSON.stringify({ source, currency, customerId, lines: lines.map(line => ({
-    line_no: line.line_no, sku_code: line.sku_code, quantity: line.quantity, amount_cents: line.amountCents,
-  })) });
-  const financialJson = JSON.stringify({ totalCents, discountCents, depositCents, billingStatus });
-  return { source, sourceOrderNo, customerId, customerName, customerEmail, currency, revision,
-    totalCents, discountCents, netCents, lines, identityJson, financialJson, payload: JSON.stringify(body) };
-}
 
 /** Service-to-service reception. Stable account identity + billing revision + integer-cent ledger. */
 export async function POST(req: NextRequest) {

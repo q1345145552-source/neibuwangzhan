@@ -502,6 +502,35 @@ export async function confirmOrderPayment(id: string): Promise<OrderPayment & { 
   return data as OrderPayment & { already?: boolean };
 }
 
+// 线下单推到业务系统（2026-10-22 老板选 B）
+export type StorefrontAccount = { id: string; name: string; phone: string; email: string; created_at?: string };
+export type StorefrontPushState =
+  | { linked: true; source_order_no: string; link: string | null; customer: { name: string; email: string } | null }
+  | { linked: false; can_push: boolean; reason: string | null; prefill: { title: string; amount: number | null }; original: { amount: number; currency: string } };
+
+async function jsonOrThrow<T>(res: Response, fallback: string): Promise<T> {
+  const data = await res.json().catch(() => null) as (T & { error?: string }) | null;
+  if (!res.ok || !data) throw new Error(data?.error || fallback);
+  return data;
+}
+
+export async function fetchStorefrontPush(id: string): Promise<StorefrontPushState> {
+  return jsonOrThrow(await fetch(`/api/orders/${id}/storefront-push`, { headers: authHeaders(), cache: "no-store" }), "取业务系统信息失败");
+}
+
+export async function searchStorefrontCustomers(q: string): Promise<StorefrontAccount[]> {
+  const data = await jsonOrThrow<{ customers: StorefrontAccount[] }>(await fetch(`/api/storefront/customers?q=${encodeURIComponent(q)}`, { headers: authHeaders(), cache: "no-store" }), "查客户账号失败");
+  return data.customers;
+}
+
+export async function createStorefrontCustomer(body: { name: string; phone: string; email: string; password: string }): Promise<StorefrontAccount> {
+  return jsonOrThrow(await fetch("/api/storefront/customers", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "建客户账号失败");
+}
+
+export async function pushOrderToStorefront(id: string, body: { customer_id: string; amount: number; title: string }): Promise<{ id: string; source_order_no: string; link: string | null }> {
+  return jsonOrThrow(await fetch(`/api/orders/${id}/storefront-push`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "推单失败");
+}
+
 /**
  * 打开站内文件（/api/files/...）：带登录凭证取回来再给浏览器，凭证不放进网址（2026-10-20 起新加的入口用这个）。
  * PDF、图片在新标签页打开；Word、Excel 这类浏览器打不开的直接按原名下载（不留空白标签页）。
