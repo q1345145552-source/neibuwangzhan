@@ -85,9 +85,15 @@ await test('daily-report order search finds orders by the business-system number
   const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000002')}`, { headers: { authorization: `Bearer ${token}` } }));
   assert.equal(res.status, 200);
   const titles = (await res.json() as { title: string }[]).map(r => r.title);
-  assert.deepEqual(titles, Array(3).fill('订单 ORD20261022000000000002'));
+  assert.equal(titles.length, 3);
+  assert.ok(titles.every(t => t.startsWith('订单 ORD20261022000000000002（')), 'split parts carry the business line so they can be told apart: ' + titles.join(' / '));
   const one = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000001')}`, { headers: { authorization: `Bearer ${token}` } }));
   assert.deepEqual((await one.json() as { title: string; id: string }[]).map(r => [r.title, r.id]), [['订单 ORD20261022000000000001', 'ORD20261022000000000001']]);
+});
+
+await test('spot orders (SPOT-…) keep the business-system number including its own dash', async () => {
+  await sync('SPOT-20261022-XYZ', [{ qty: 1, amount: 100 }]);
+  assert.deepEqual(internalIds('SPOT-20261022-XYZ'), ['SPOT-20261022-XYZ']);
 });
 
 await test('orders created inside the internal system keep their own number', async () => {

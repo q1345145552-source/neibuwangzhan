@@ -11,16 +11,16 @@
 换完自查：旧编号一处都不剩、外键检查不比换之前差、数据库自检 ok，才提交；任何一步不对就整个撤回。
 上传的文件名或目录里如果带旧编号（改了数据库文件就找不到了），直接停下不改。
 
-用法（必须先停掉内部网站、先备份）：
-  python3 scripts/migrate-order-id-to-source-no.py <data.db> [--uploads <uploads 目录>]          # 演练：只列出要改什么，不写入
-  python3 scripts/migrate-order-id-to-source-no.py <data.db> [--uploads <uploads 目录>] --apply  # 真改
+用法（必须先停掉内部网站、先备份；上传目录必须给，可以给几个）：
+  python3 scripts/migrate-order-id-to-source-no.py <data.db> --uploads <uploads 目录> [--uploads <另一个>]          # 演练：只列出要改什么，不写入
+  python3 scripts/migrate-order-id-to-source-no.py <data.db> --uploads <uploads 目录> [--uploads <另一个>] --apply  # 真改
 """
 import os
 import re
 import sqlite3
 import sys
 
-SAFE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+SAFE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")  # 业务系统单号原样照用（现货 SPOT-… 自带横杠）
 
 
 def stop(msg):
@@ -38,7 +38,9 @@ def main():
         stop("要给数据库文件路径")
     db_path = args[0]
     apply = "--apply" in args
-    uploads = args[args.index("--uploads") + 1] if "--uploads" in args else None
+    uploads = [args[i + 1] for i, a in enumerate(args) if a == "--uploads" and i + 1 < len(args)]
+    if not uploads:
+        stop("要用 --uploads 给上传目录（文件名里带旧编号的要先查出来）")
     if not os.path.isfile(db_path):
         stop(f"找不到数据库 {db_path}")
 
@@ -47,11 +49,15 @@ def main():
     con.execute("PRAGMA busy_timeout=5000")
 
     # 1. 要改哪几张：业务系统一张单只建了一张办理单的
-    by_source = {}
+    by_source, by_internal = {}, {}
     for source, internal in con.execute(
         "SELECT source_order_no, internal_order_id FROM sync_inbox WHERE internal_order_id IS NOT NULL AND internal_order_id <> ''"
     ):
         by_source.setdefault(source, set()).add(internal)
+        by_internal.setdefault(internal, set()).add(source)
+    shared = {i: s for i, s in by_internal.items() if len(s) > 1}
+    if shared:
+        stop("有办理单同时挂在几张客户单上，没法确定改成哪个号：" + "；".join(f"{i} ← {sorted(s)}" for i, s in list(shared.items())[:5]) + "（什么都没动）")
     mapping, notes = {}, []
     for source, ids in sorted(by_source.items()):
         if len(ids) != 1:
@@ -61,7 +67,7 @@ def main():
         if old == source:
             continue
         if not SAFE.match(source):
-            notes.append(f"{source}：单号里有特殊字符，不改")
+            notes.append(f"{source}：单号里有网址里用不了的字符，不改")
             continue
         if not con.execute("SELECT 1 FROM orders WHERE id=?", (old,)).fetchone():
             notes.append(f"{source}：办理单 {old} 已经不在了，不改")
@@ -79,10 +85,10 @@ def main():
         print(f"[改编号]   {old} → {new}")
 
     # 2. 上传的文件名 / 目录里带旧编号的，改了数据库就找不到文件：直接停下
-    if uploads:
-        if not os.path.isdir(uploads):
-            stop(f"找不到上传目录 {uploads}")
-        for root, dirs, files in os.walk(uploads):
+    for folder in uploads:
+        if not os.path.isdir(folder):
+            stop(f"找不到上传目录 {folder}")
+        for root, dirs, files in os.walk(folder):
             for name in dirs + files:
                 if any(old in name for old in mapping):
                     stop(f"上传目录里有带旧编号的文件 {os.path.join(root, name)}（什么都没动）")
@@ -91,7 +97,7 @@ def main():
         name for name, sql in con.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         if not (sql or "").upper().startswith("CREATE VIRTUAL")
     ]
-    fk_before = len(con.execute("PRAGMA foreign_key_check").fetchall())
+    fk_before = set(map(tuple, con.execute("PRAGMA foreign_key_check").fetchall()))
 
     def occurrences():
         found = []
@@ -124,9 +130,9 @@ def main():
         for old, new in mapping.items():
             if not con.execute("SELECT 1 FROM orders WHERE id=?", (new,)).fetchone():
                 raise RuntimeError(f"办理单 {new} 没换上")
-        fk_after = len(con.execute("PRAGMA foreign_key_check").fetchall())
-        if fk_after > fk_before:
-            raise RuntimeError(f"外键检查变差了（{fk_before} → {fk_after}）")
+        fk_new = set(map(tuple, con.execute("PRAGMA foreign_key_check").fetchall())) - fk_before
+        if fk_new:
+            raise RuntimeError(f"外键检查多出 {len(fk_new)} 条问题：{sorted(fk_new)[:5]}")
         ok = con.execute("PRAGMA integrity_check").fetchone()[0]
         if ok != "ok":
             raise RuntimeError(f"数据库自检不通过：{ok}")

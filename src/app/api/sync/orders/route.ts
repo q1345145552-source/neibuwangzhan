@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
     // 单号跟业务系统一致（2026-10-22 老板：「单号必须要对上」「单号不要-」）：这张客户单只建一张办理单时，
     // 办理单的编号直接用业务系统单号；拆成几张的照旧内部编号，页面上几张都显示业务系统单号（见 lib/order-display-no）
     const copiesToCreate = order.lines.reduce((n, line) => n + (noOrderNoteOf(mapSku(line.sku_code)) ? 0 : line.quantity), 0);
-    const sameAsSource = copiesToCreate === 1 && /^[A-Za-z0-9_]{1,64}$/.test(sourceOrderNo)
+    const sameAsSource = copiesToCreate === 1 && /^[A-Za-z0-9_-]{1,64}$/.test(sourceOrderNo)
       && !db.prepare('SELECT 1 FROM orders WHERE id=?').get(sourceOrderNo);
     for (let i = 0; i < order.lines.length; i++) {
       const line = order.lines[i];

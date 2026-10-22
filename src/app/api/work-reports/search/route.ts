@@ -31,11 +31,18 @@ export async function GET(req: NextRequest) {
     const numbers = orderNumberInfoFor(db, rows.map((r) => String(r.id)));
     const exact = q.toLowerCase();
     const isExact = (r: { id: unknown }) => (numbers.get(String(r.id))?.display || String(r.id)).toLowerCase() === exact;
-    const top = [...rows.filter(isExact), ...rows.filter((r) => !isExact(r))].slice(0, 20);
+    const exactRows = rows.filter(isExact);
+    const top = [...exactRows, ...rows.filter((r) => !isExact(r))].slice(0, Math.max(20, exactRows.length));
+    // 一张客户单拆成几张办的，几张单号一样：标题后面带上业务，选的时候分得清
+    const partsOf = new Map<string, number>();
+    for (const n of numbers.values()) partsOf.set(n.source, (partsOf.get(n.source) || 0) + 1);
     return NextResponse.json(top.map((r) => ({
       type: "order",
       id: String(r.id),
-      title: `订单 ${numbers.get(String(r.id))?.display || r.id}`,
+      title: (() => {
+        const n = numbers.get(String(r.id));
+        return `订单 ${n?.display || r.id}${n && (partsOf.get(n.source) || 0) > 1 ? `（${r.business_type_name || "待分类"}）` : ""}`;
+      })(),
       subtitle: r.customer_name || "",
       href: `/orders/${r.id}`,
       responsible: r.responsible_person || "",
