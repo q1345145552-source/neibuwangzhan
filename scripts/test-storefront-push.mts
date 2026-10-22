@@ -204,7 +204,7 @@ await test('internal "confirm payment" marks the bill paid and the customer site
 const sync = (method: string, url: string, body?: unknown) => realFetch(`${CLIENT}${url}`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${SECRET}` },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 两个系统各接口返回结构不同，断言里按需取字段
   body: body === undefined ? undefined : JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() as any }));
-const reserved = (internalId: string) => clientDb.prepare('SELECT order_no, order_id, payload FROM offline_order_links WHERE internal_order_id=?').get(internalId) as { order_no: string; order_id: string | null; payload: string } | undefined;
+const reserved = (internalId: string) => clientDb.prepare('SELECT order_no, order_id, payload FROM offline_order_reservations WHERE internal_order_id=? ORDER BY created_at DESC, rowid DESC').get(internalId) as { order_no: string; order_id: string | null; payload: string } | undefined;
 
 await test('if the internal side fails, the customer sees nothing (the number is only held); a retry reuses the held number', async () => {
   const orderB = await newInternalOrder(6, '', 500, 'CNY');
@@ -224,13 +224,16 @@ await test('if the internal side fails, the customer sees nothing (the number is
   assert.equal((await client('GET', '/api/orders', customerToken)).body.length, 2);
 });
 
-await test('a first try whose reply got lost, then a retry with a different amount/title: the customer gets what the retry said, internal agrees', async () => {
+await test('a first try whose reply got lost, then a retry with a different amount/title: a fresh number with what the retry said, the first number stays unused', async () => {
   const orderC = await newInternalOrder(6, '', 0, 'CNY');
   const lost = await sync('POST', '/api/sync/offline-orders', { internal_order_id: orderC, customer_id: account.id, service_name: '清关', sub_category: '', sku_name: '第一次的名字', amount: 100 });
   assert.equal(lost.status, 200, JSON.stringify(lost.body));
+  assert.equal(lost.body.held, true);
   const ok = await push(orderC, { customer_id: account.id, amount: 300, title: '第二次的名字' });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
-  assert.equal(ok.body.id, lost.body.order_no);
+  assert.notEqual(ok.body.id, lost.body.order_no, 'changed content gets its own number');
+  assert.equal((clientDb.prepare('SELECT order_id FROM offline_order_reservations WHERE order_no=?').get(lost.body.order_no) as { order_id: string | null }).order_id, null);
+  assert.equal((await client('GET', `/api/orders/by-no/${lost.body.order_no}`, customerToken)).status, 404, 'the unused number never shows up');
   assert.equal((db.prepare('SELECT total_amount FROM orders WHERE id=?').get(ok.body.id) as { total_amount: number }).total_amount, 300);
   const id = (await client('GET', `/api/orders/by-no/${ok.body.id}`, customerToken)).body.id;
   const view = await client('GET', `/api/orders/${id}`, customerToken);
@@ -248,6 +251,26 @@ await test('two admins pushing the same order at once: only one goes through', a
   assert.equal((db.prepare('SELECT total_amount FROM orders WHERE id=?').get(winner) as { total_amount: number }).total_amount, amount);
 });
 
+await test('two held numbers for one internal order (e.g. two server processes): whichever is committed is created with exactly its own content, the other can never be', async () => {
+  const x = await sync('POST', '/api/sync/offline-orders', { internal_order_id: 'ORD-RACE-1', customer_id: account.id, service_name: '清关', sku_name: '甲', amount: 100 });
+  const y = await sync('POST', '/api/sync/offline-orders', { internal_order_id: 'ORD-RACE-1', customer_id: account.id, service_name: '清关', sku_name: '乙', amount: 250 });
+  assert.notEqual(x.body.order_no, y.body.order_no);
+  const again = await sync('POST', '/api/sync/offline-orders', { internal_order_id: 'ORD-RACE-1', customer_id: account.id, service_name: '清关', sku_name: '甲', amount: 100 });
+  assert.equal(again.body.order_no, x.body.order_no, 'same content reuses its number');
+  const cx = await sync('POST', '/api/sync/offline-orders/commit', { order_no: x.body.order_no });
+  assert.equal(cx.status, 200, JSON.stringify(cx.body));
+  assert.equal((await sync('POST', '/api/sync/offline-orders/commit', { order_no: x.body.order_no })).status, 200, 'telling it twice is fine');
+  const view = await client('GET', `/api/orders/${cx.body.order_id}`, customerToken);
+  assert.equal(view.body.order.sku_name, '甲'); assert.equal(view.body.invoice.amount, 100);
+  assert.equal((await sync('POST', '/api/sync/offline-orders/commit', { order_no: y.body.order_no })).status, 409);
+  assert.equal((await sync('POST', '/api/sync/offline-orders', { internal_order_id: 'ORD-RACE-1', customer_id: account.id, service_name: '清关', sku_name: '丙', amount: 1 })).status, 409);
+});
+
+await test('a normal order\'s progress still goes through the changed progress endpoint', async () => {
+  const p = await sync('POST', '/api/sync/progress', { source_order_no: pushedA, line_no: 1, copy_no: 1, seq: 999, status: '已确认', steps: [{ step_order: 1, step_name: '办理', status: '待处理' }] });
+  assert.equal(p.status, 200, JSON.stringify(p.body));
+});
+
 await test('if the "create it now" call never arrives, the first progress update creates the order on the customer site', async () => {
   const held = await sync('POST', '/api/sync/offline-orders', { internal_order_id: 'ORD-PROGRESS-ONLY', customer_id: account.id, service_name: '清关', sub_category: '', sku_name: '只靠进度补建', amount: 80 });
   assert.equal(held.status, 200);
@@ -257,6 +280,16 @@ await test('if the "create it now" call never arrives, the first progress update
   assert.equal((await client('GET', '/api/orders', customerToken)).body.length, before + 1);
   assert.ok(reserved('ORD-PROGRESS-ONLY')!.order_id);
   assert.equal((await sync('POST', '/api/sync/offline-orders', { internal_order_id: 'ORD-PROGRESS-ONLY', customer_id: account.id, service_name: '清关', sku_name: 'x', amount: 1 })).status, 409, 'cannot be changed once real');
+});
+
+await test('an order with an uploaded file named after its number is not pushed (the file would be lost after renumbering)', async () => {
+  const orderE = await newInternalOrder(6, '', 100, 'CNY');
+  const uploads = path.join(path.dirname(process.env.DB_PATH!), 'uploads');
+  fs.mkdirSync(uploads, { recursive: true });
+  fs.writeFileSync(path.join(uploads, `${orderE}-合同.pdf`), 'x');
+  const r = await push(orderE, { customer_id: account.id, amount: 100 });
+  assert.equal(r.status, 409); assert.match(r.body.error, /文件名/);
+  assert.equal(reserved(orderE), undefined, 'refused before asking the customer site');
 });
 
 await test('cancelled, unclassified or customer-site orders cannot be pushed', async () => {

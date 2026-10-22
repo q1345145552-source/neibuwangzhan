@@ -148,7 +148,7 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
   // 刚建的账号，初始密码只在这个弹窗里有：没复制就关，先提醒一句
   const finish = () => {
     if (busy) return;
-    if (createdPassword && !handedOut && !window.confirm(`客户的初始密码（${createdPassword}）还没复制，关掉以后就看不到了。\n忘了也可以在业务系统后台「客户列表」里重置密码。确定关掉？`)) return;
+    if (createdPassword && !handedOut && !window.confirm(`客户的初始密码是 ${createdPassword}，关掉以后这里就看不到了。\n记下来、或者已经手动复制了再关；忘了也可以在业务系统后台「客户列表」里重置密码。确定关掉？`)) return;
     if (done) onPushed(done.id); else onClose();
   };
   const loginName = account ? (account.phone || account.email) : "";
@@ -173,7 +173,7 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
                   className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--muted)] p-3 font-mono text-xs outline-none" />
                 <Button size="sm" variant="outline" className="gap-1" onClick={async () => {
                   if (await copyText(handout)) { setCopied(true); setHandedOut(true); setTimeout(() => setCopied(false), 2000); }
-                  else { setHandedOut(true); window.alert("浏览器不让自动复制，请选中上面的内容手动复制"); }
+                  else window.alert("浏览器不让自动复制，请选中上面的内容手动复制");
                 }}>{copied ? <Check className="size-3" /> : <Copy className="size-3" />}{copied ? "已复制" : "复制"}</Button>
               </>
             ) : <p className="text-xs text-[var(--muted-foreground)]">没有配置业务系统地址，生成不了客户链接</p>}

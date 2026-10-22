@@ -54,7 +54,7 @@ export function renumberOrder(db: Database.Database, oldId: string, newId: strin
   const fkCheck = () => new Set(childTables.flatMap(t => (db.prepare(`PRAGMA foreign_key_check(${quote(t)})`).all() as unknown[]).map(r => JSON.stringify(r))));
   const fkBefore = fkCheck();
   db.pragma("defer_foreign_keys = ON");
-  // 每张表只扫一遍（员工点推送时整个网站要等它做完，库大了按列逐个扫会卡好几秒）
+  // 每张表一条 UPDATE、扫一遍（员工点推送时整个网站要等它做完，按列逐个扫库大了会卡好几秒）
   const changed: Record<string, number> = {};
   for (const { table, columns } of tables) {
     const set = columns.map(c => `${quote(c)} = CASE WHEN ${holds(c)} THEN replace(${quote(c)}, ?, ?) ELSE ${quote(c)} END`).join(", ");
@@ -63,10 +63,8 @@ export function renumberOrder(db: Database.Database, oldId: string, newId: strin
       .run(...columns.flatMap(() => [oldId, oldId, newId]), ...columns.map(() => oldId));
     if (result.changes) changed[table] = result.changes;
   }
-  for (const { table, columns } of tables) {
-    const left = db.prepare(`SELECT count(*) AS n FROM ${quote(table)} WHERE ${columns.map(holds).join(" OR ")}`).get(...columns.map(() => oldId)) as { n: number };
-    if (left.n) throw new Error(`换完 ${table} 还有 ${left.n} 行带旧编号`);
-  }
+  // 不再整库扫一遍找残留：含旧编号的行都在上面那条 UPDATE 里，每个文字列里的旧编号 replace 会全部换掉（新编号不含旧编号，上面已拦）
+  if (db.prepare("SELECT 1 FROM orders WHERE id = ?").get(oldId)) throw new Error(`办理单 ${oldId} 没换掉`);
   if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(newId)) throw new Error(`办理单 ${newId} 没换上`);
   const fkNew = [...fkCheck()].filter(r => !fkBefore.has(r));
   if (fkNew.length) throw new Error(`外键检查多出 ${fkNew.length} 条问题`);

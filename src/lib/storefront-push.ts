@@ -84,7 +84,7 @@ export function defaultServiceTitle(order: Pick<PushableOrder, "business_type_id
   return { serviceName: order.business_type_name, subCategory: sub, title: sub ? `${order.business_type_name} · ${sub}` : order.business_type_name };
 }
 
-type PreparedOrder = { order_no: string; payload: unknown };
+type PreparedOrder = { held?: boolean; order_no: string; payload: unknown };
 
 // 同一张单同时只让一个人推（两个管理员同时点、或者连点两下）；内部网站只有一个服务进程，记在内存里就够。
 // 推一次最多十几秒（业务系统超时 15 秒），超过 2 分钟还占着就当是上次卡住了，放行。
@@ -96,7 +96,7 @@ function pushLocks(): Map<string, number> {
 
 /**
  * 推单，三步：
- * 1. 业务系统先占一个单号、给一份快照（客户还看不到；同一张内部单再推还是这个号，按这次填的金额/服务名/客户重算）；
+ * 1. 业务系统先占一个单号、给一份快照（客户还看不到；号的内容占下不再改，同一张内部单再推内容一样还是这个号，改了内容另占新号）；
  * 2. 内部一个事务里改编号、记成同步单、记确认、排进度回传——这一步失败什么都没变，业务系统那边只是空占着号，客户看不到，可以再推；
  * 3. 通知业务系统正式建单。没通知到也不要紧：第 2 步排进去的进度回传（自带重试）到了业务系统会自动补建。
  */
@@ -126,6 +126,8 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
       throw error;
     });
 
+    // 只认「占号」的回复（客户还看不到）；别的版本的业务系统回的不往下做
+    if (prepared.held !== true) throw new StorefrontPushError("业务系统版本不对，这张单没推出去，请联系管理员", 502);
     const sourceOrderNo = prepared.order_no;
     let parsed: ReturnType<typeof parseSyncOrder>;
     try { parsed = parseSyncOrder(prepared.payload); } catch { throw new StorefrontPushError("业务系统回的订单内容不对，这张单没推出去", 502); }
@@ -139,6 +141,8 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
       renumbered = db.transaction(() => {
         const again = pushBlocker(db, orderId);
         if (again.reason) throw new StorefrontPushError(again.reason, 409);
+        // 等业务系统回话那几秒里可能有人传了文件：改编号前（事务里，别的请求插不进来）再查一遍
+        if (uploadNamesContaining(orderId)) throw new StorefrontPushError("这张单有文件名里带着单号，推了会找不到文件，请联系管理员", 409);
         const changed = renumberOrder(db, orderId, sourceOrderNo);
         db.prepare(`INSERT INTO sync_orders(source_order_no,source_customer_id,source,currency,billing_revision,total_cents,discount_cents,net_cents,identity_json,financial_json,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
           .run(sourceOrderNo, parsed.customerId, parsed.source, parsed.currency, parsed.revision, parsed.totalCents, parsed.discountCents, parsed.netCents, parsed.identityJson, parsed.financialJson, parsed.payload);
