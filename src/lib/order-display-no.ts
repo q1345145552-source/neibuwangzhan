@@ -28,6 +28,17 @@ export function orderNumberInfo(db: Database.Database): Map<string, OrderNumberI
   return out;
 }
 
+/** 只算这几张单的显示编号（同一笔客户单的兄弟单一起读，编号才对得上），搜索这种只取几十条的地方用 */
+export function orderNumberInfoFor(db: Database.Database, ids: string[]): Map<string, OrderNumberInfo> {
+  const out = new Map<string, OrderNumberInfo>();
+  if (!ids.length) return out;
+  number(db.prepare(`SELECT source_order_no, internal_order_id FROM sync_inbox
+    WHERE internal_order_id IS NOT NULL AND internal_order_id <> ''
+      AND source_order_no IN (SELECT source_order_no FROM sync_inbox WHERE internal_order_id IN (SELECT value FROM json_each(?)))
+    ORDER BY source_order_no, line_no, copy_no`).all(JSON.stringify(ids)) as Row[], out);
+  return out;
+}
+
 /** 一张单的显示编号；不是业务系统来的返回内部编号 */
 export function orderDisplayNumber(db: Database.Database, id: string): string {
   const source = db.prepare("SELECT source_order_no FROM sync_inbox WHERE internal_order_id = ? ORDER BY line_no, copy_no LIMIT 1").get(id) as { source_order_no: string } | undefined;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { orderNumberInfo } from "@/lib/order-display-no";
+import { orderNumberInfoFor } from "@/lib/order-display-no";
 import { verifyAuth, isStaff } from "@/lib/auth";
 
 // GET /api/work-reports/search?type=order|todo|issue&q=xxx — 填写日报时搜索可带出的条目（员工也能搜全部）
@@ -26,10 +26,14 @@ export async function GET(req: NextRequest) {
        FROM orders o LEFT JOIN business_types b ON b.id = o.business_type_id
        WHERE o.id LIKE ? OR o.customer_name LIKE ?
           OR o.id IN (SELECT internal_order_id FROM sync_inbox WHERE source_order_no LIKE ? AND internal_order_id IS NOT NULL)
-       ORDER BY o.created_at DESC LIMIT 20`
+       ORDER BY o.created_at DESC LIMIT 200`
     ).all(like, like, sourceLike) as any[];
-    const numbers = orderNumberInfo(db);
-    return NextResponse.json(rows.map((r) => ({
+    // 一张客户单拆得很多时，搜的那个编号本身排最前，再取前 20 条
+    const numbers = orderNumberInfoFor(db, rows.map((r) => String(r.id)));
+    const exact = q.toLowerCase();
+    const isExact = (r: { id: unknown }) => (numbers.get(String(r.id))?.display || String(r.id)).toLowerCase() === exact;
+    const top = [...rows.filter(isExact), ...rows.filter((r) => !isExact(r))].slice(0, 20);
+    return NextResponse.json(top.map((r) => ({
       type: "order",
       id: String(r.id),
       title: `订单 ${numbers.get(String(r.id))?.display || r.id}`,

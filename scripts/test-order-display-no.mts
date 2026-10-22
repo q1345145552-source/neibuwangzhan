@@ -86,6 +86,14 @@ await test('daily-report order search finds orders by the business-system number
   assert.deepEqual(titles, ['订单 ORD20261022000000000002-1', '订单 ORD20261022000000000002-2', '订单 ORD20261022000000000002-3']);
 });
 
+await test('daily-report search puts the exact number first even when a customer order is split into more than 20', async () => {
+  await sync('ORD20261022000000000003', [{ qty: 25, amount: 2500 }]);
+  const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000003-1')}`, { headers: { authorization: `Bearer ${token}` } }));
+  const titles = (await res.json() as { title: string }[]).map(r => r.title);
+  assert.equal(titles.length, 20);
+  assert.equal(titles[0], '订单 ORD20261022000000000003-1');
+});
+
 await test('orders created inside the internal system keep their own number', async () => {
   assert.equal((await list()).get(own), own);
   assert.equal(await detail(own), own);

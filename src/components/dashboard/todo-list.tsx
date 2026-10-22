@@ -28,7 +28,7 @@ export function TodoList({ orders, title = "近期待办" }: Props) {
               const label = orderStatusLabel(order);
               return (
                 <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
-                  <td className="py-3 pr-4 font-mono text-xs font-medium tabular-nums"><Link href={`/orders/${order.id}`} className="text-[var(--accent-foreground)] hover:underline">{order.id}</Link></td>
+                  <td className="py-3 pr-4 font-mono text-xs font-medium tabular-nums"><Link href={`/orders/${order.id}`} className="text-[var(--accent-foreground)] hover:underline">{order.display_no || order.id}</Link></td>
                   <td className="py-3 pr-4 max-sm:hidden">
                     <span className="font-medium text-[var(--foreground)]">{order.customer_name}</span>
                   </td>

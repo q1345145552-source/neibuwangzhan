@@ -55,7 +55,7 @@ export default function BuyRTrademarkPage() {
           <tbody>
             {orders.map(o => (
               <tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
-                <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link></td>
+                <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.display_no || o.id}</Link></td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.trademark_name || "—"}</td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td>
                 <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">{formatCurrency(o.total_amount, o.currency)}</td>
@@ -69,7 +69,7 @@ export default function BuyRTrademarkPage() {
           {orders.map(o => (
             <div key={o.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex items-center justify-between gap-2">
-                <Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.id}</Link>
+                <Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.display_no || o.id}</Link>
                 <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(o))}>{orderStatusLabel(o)}</span>
               </div>
               <div className="mt-2 space-y-1.5 text-sm">
