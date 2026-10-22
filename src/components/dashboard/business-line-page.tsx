@@ -67,6 +67,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
   const filteredOrders = (search
     ? orders.filter((o) =>
         o.id.toLowerCase().includes(search.toLowerCase()) ||
+        (o.display_no || "").toLowerCase().includes(search.toLowerCase()) ||
         o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
         (o.trademark_name || "").toLowerCase().includes(search.toLowerCase())
       )
@@ -166,7 +167,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
               {filteredOrders.map((order) => (
                 <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
                   <td className="py-3 px-4">
-                    <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
+                    <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.display_no || order.id}</Link>
                   </td>
                   {businessKey === "商标" && <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>}
                   <td className="py-3 px-4 max-md:hidden"><div className="font-medium text-[var(--foreground)]">{order.customer_name}</div></td>
@@ -183,7 +184,7 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
             {filteredOrders.map((order) => (
               <div key={order.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
+                  <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.display_no || order.id}</Link>
                   <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(order))}>{orderStatusLabel(order)}</span>
                 </div>
                 <div className="mt-2 space-y-1.5 text-sm">

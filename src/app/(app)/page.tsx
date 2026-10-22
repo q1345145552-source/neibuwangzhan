@@ -87,11 +87,11 @@ export default function DashboardPage() {
     return map;
   }, [orders]);
 
-  // 订单搜索：只按订单号模糊匹配（不区分大小写）
+  // 订单搜索：按订单号模糊匹配（不区分大小写）；业务系统来的单也认业务系统单号（2026-10-22）
   const orderSearchResults = useMemo(() => {
     const q = orderSearch.trim().toLowerCase();
     if (!q) return [];
-    return orders.filter((o) => o.id.toLowerCase().includes(q));
+    return orders.filter((o) => o.id.toLowerCase().includes(q) || (o.display_no || "").toLowerCase().includes(q));
   }, [orders, orderSearch]);
 
   // 搜索结果按业务线分组
@@ -141,7 +141,7 @@ export default function DashboardPage() {
                           href={`/orders/${o.id}`}
                           className="flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2 transition-colors hover:bg-[var(--muted)]/30"
                         >
-                          <span className="font-mono text-sm font-medium text-[var(--primary)]">{o.id}</span>
+                          <span className="font-mono text-sm font-medium text-[var(--primary)]">{o.display_no || o.id}</span>
                           <span className="min-w-0 flex-1 truncate text-sm text-[var(--foreground)]">{o.customer_name}</span>
                           <span className={cn("inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", orderStatusClass(o))}>{orderStatusLabel(o)}</span>
                         </Link>

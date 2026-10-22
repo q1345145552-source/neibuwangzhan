@@ -662,7 +662,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     setCancelError("");
     try {
       const updated = await updateOrder(order.id, { cancel: true, cancel_reason: reason });
-      setOrder(updated);
+      setOrder({ ...updated, display_no: order.display_no }); // 保存接口不带显示编号，先沿用，reload 后再刷新
       setShowCancelModal(false);
       setCancelReason("");
       reload();
@@ -678,7 +678,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     if (!order) return;
     try {
       const updated = await updateOrder(order.id, { restore: true });
-      setOrder(updated);
+      setOrder({ ...updated, display_no: order.display_no });
       reload();
     } catch (err) {
       console.error("恢复订单失败:", err);

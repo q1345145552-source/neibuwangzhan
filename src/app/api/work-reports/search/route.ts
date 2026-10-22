@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { orderNumberInfo } from "@/lib/order-display-no";
 import { verifyAuth, isStaff } from "@/lib/auth";
 
 // GET /api/work-reports/search?type=order|todo|issue&q=xxx — 填写日报时搜索可带出的条目（员工也能搜全部）
@@ -18,16 +19,20 @@ export async function GET(req: NextRequest) {
   const like = `%${q}%`;
 
   if (type === "order") {
+    // 业务系统来的单也认业务系统单号（列表里显示的 ORD…-1 这种，去掉后面的 -几 再找），标题用同一个号（2026-10-22）
+    const sourceLike = `%${q.replace(/-\d+$/, "")}%`;
     const rows = db.prepare(
       `SELECT o.id, o.customer_name, o.responsible_person, b.name AS business_type_name
        FROM orders o LEFT JOIN business_types b ON b.id = o.business_type_id
        WHERE o.id LIKE ? OR o.customer_name LIKE ?
+          OR o.id IN (SELECT internal_order_id FROM sync_inbox WHERE source_order_no LIKE ? AND internal_order_id IS NOT NULL)
        ORDER BY o.created_at DESC LIMIT 20`
-    ).all(like, like) as any[];
+    ).all(like, like, sourceLike) as any[];
+    const numbers = orderNumberInfo(db);
     return NextResponse.json(rows.map((r) => ({
       type: "order",
       id: String(r.id),
-      title: `订单 ${r.id}`,
+      title: `订单 ${numbers.get(String(r.id))?.display || r.id}`,
       subtitle: r.customer_name || "",
       href: `/orders/${r.id}`,
       responsible: r.responsible_person || "",

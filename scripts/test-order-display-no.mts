@@ -14,8 +14,8 @@ const dir = fs.mkdtempSync('/tmp/xt-order-display-no-');
 delete process.env.CUSTOMER_SYNC_URL;
 Object.assign(process.env, { NODE_ENV: 'test', DB_PATH: path.join(dir, 'internal.db'), SYNC_SECRET: 'display-no-secret', JWT_SECRET: 'display-no-jwt' });
 globalThis.fetch = async () => { throw new Error('NETWORK_DISABLED_IN_REGRESSION'); };
-const [{ POST: syncPost }, listRoute, detailRoute, { getDb }, { signToken }] = await Promise.all([
-  import('../src/app/api/sync/orders/route'), import('../src/app/api/orders/route'), import('../src/app/api/orders/[id]/route'),
+const [{ POST: syncPost }, listRoute, detailRoute, reportSearch, { getDb }, { signToken }] = await Promise.all([
+  import('../src/app/api/sync/orders/route'), import('../src/app/api/orders/route'), import('../src/app/api/orders/[id]/route'), import('../src/app/api/work-reports/search/route'),
   import('../src/lib/db'), import('../src/lib/auth'),
 ]);
 process.chdir(dir);
@@ -77,6 +77,13 @@ await test('numbers stay the same when the customer site sends a later billing r
   assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
   const l = await list();
   assert.deepEqual(before.map(id => l.get(id)), ['ORD20261022000000000002-1', 'ORD20261022000000000002-2', 'ORD20261022000000000002-3']);
+});
+
+await test('daily-report order search finds orders by the business-system number and titles them with it', async () => {
+  const res = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ORD20261022000000000002-2')}`, { headers: { authorization: `Bearer ${token}` } }));
+  assert.equal(res.status, 200);
+  const titles = (await res.json() as { title: string }[]).map(r => r.title).sort();
+  assert.deepEqual(titles, ['订单 ORD20261022000000000002-1', '订单 ORD20261022000000000002-2', '订单 ORD20261022000000000002-3']);
 });
 
 await test('orders created inside the internal system keep their own number', async () => {

@@ -10,7 +10,7 @@ import { isStepClosed, currentOpenSteps } from "@/lib/step-status";
 import { currentStepTimings } from "@/lib/step-overdue";
 import { checkOrderCustomer, createOrderCustomer } from "@/lib/order-customer";
 import { awaitingConfirmationSql } from "@/lib/order-confirm";
-import { orderDisplayNumbers } from "@/lib/order-display-no";
+import { orderNumberInfo } from "@/lib/order-display-no";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -68,12 +68,8 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
     FROM finances WHERE type = 'income' GROUP BY order_id, COALESCE(currency,'CNY')`).all() as { order_id: string; currency: string; arrived: number; waiting: number }[];
   const moneyBy = new Map<string, typeof money>();
   for (const m of money) { const l = moneyBy.get(m.order_id); if (l) l.push(m); else moneyBy.set(m.order_id, [m]); }
-  // 业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），2026-10-22
-  const displayNos = orderDisplayNumbers(db);
-  const sources = new Map<string, string>();
-  for (const r of db.prepare("SELECT internal_order_id, source_order_no FROM sync_inbox WHERE internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all() as { internal_order_id: string; source_order_no: string }[]) {
-    if (!sources.has(r.internal_order_id)) sources.set(r.internal_order_id, r.source_order_no);
-  }
+  // 客户站单号 + 显示编号（业务系统来的单显示业务系统单号，拆成几张的加 -1、-2，2026-10-22），同一次读完
+  const numbers = orderNumberInfo(db);
   // 客户站来的单：客户站账单付没付（客户站标「已付」时会同步过来，2026-10-16）
   const clientBilling = new Map<string, string>();
   try {
@@ -100,8 +96,8 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
     const m = moneyBy.get(o.id) || [];
     return {
       ...o,
-      source_order_no: sources.get(o.id) || "",
-      display_no: displayNos.get(o.id) || o.id,
+      source_order_no: numbers.get(o.id)?.source || "",
+      display_no: numbers.get(o.id)?.display || o.id,
       awaiting_confirmation: awaiting.has(o.id),
       progress: {
         total: list.length,
@@ -120,7 +116,7 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
         // 有没有老板核对过「已到账」的收入（不分币种）：金额没填的单靠它判断收没收到钱
         has_arrived: m.some((x) => Number(x.arrived || 0) > 0),
         // 客户站来的单才有：客户站账单 paid / unpaid
-        client_billing: sources.has(o.id) ? clientBilling.get(sources.get(o.id)!) || null : null,
+        client_billing: numbers.has(o.id) ? clientBilling.get(numbers.get(o.id)!.source) || null : null,
       },
     };
   });
