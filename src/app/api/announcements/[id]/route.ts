@@ -21,7 +21,8 @@ export async function GET(
 
   let myRecipient: any = null;
   if (auth.role === "employee") {
-    myRecipient = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? AND employee_name = ?").get(id, auth.name) as any;
+    myRecipient = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? AND employee_name = ?").get(id, auth.name) ?? null;
+    if (!myRecipient && announcement.created_by !== auth.name) return NextResponse.json({ error: "无权查看该通知" }, { status: 403 });
     // 已撤回的通知不再标记已读（保持原状态，前端显示已撤回）
     if (myRecipient && myRecipient.status === "待读" && !announcement.recalled) {
       db.prepare("UPDATE announcement_recipients SET status = '已读待复述', updated_at = datetime('now') WHERE id = ?").run(myRecipient.id);

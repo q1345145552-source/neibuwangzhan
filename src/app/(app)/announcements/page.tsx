@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
@@ -39,6 +39,7 @@ const STATUS_COLOR: Record<string, string> = {
   需重述: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   逾期: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   已撤回: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  已发送: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
 };
 
 function parseAttachments(s: string): string[] {
@@ -48,12 +49,13 @@ function parseAttachments(s: string): string[] {
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const canPublish = isAdmin || user?.role === "employee";
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 新建通知（管理员）
+  // 新建通知（员工和管理员）
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", body: "", type: "短通知", deadline: "" });
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -61,6 +63,7 @@ export default function AnnouncementsPage() {
   const [sendAll, setSendAll] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const sendInFlight = useRef(false);
   const [err, setErr] = useState("");
 
   // 详情 + 复述（员工）
@@ -100,16 +103,17 @@ export default function AnnouncementsPage() {
   };
 
   const loadEmployees = () => {
-    if (!isAdmin) return;
+    if (!canPublish) return;
     fetchWithAuth("/api/employees", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setEmployees((Array.isArray(d) ? d : []).filter((e: any) => e.role === "employee" && e.status === "在职")))
       .catch(() => {});
   };
 
-  useEffect(() => { load(); loadEmployees(); }, [isAdmin]);
+  useEffect(() => { load(); loadEmployees(); }, [canPublish, isAdmin, user?.name]);
 
   const openForm = () => {
+    if (!canPublish || sendInFlight.current) return;
     setForm({ title: "", body: "", type: "短通知", deadline: "" });
     setAttachments([]);
     setSendAll(false);
@@ -200,25 +204,31 @@ export default function AnnouncementsPage() {
   };
 
   const submit = async () => {
+    if (!canPublish || sendInFlight.current || uploading) return;
     if (!form.title.trim()) { setErr("请填写标题"); return; }
     if (!form.body.trim()) { setErr("请填写正文"); return; }
     if (!form.deadline) { setErr("请填写截止时间"); return; }
     if (!sendAll && selectedEmployees.length === 0) { setErr("请选择接收人"); return; }
+    sendInFlight.current = true;
     setSaving(true);
-    const ok = await apiCall("/api/announcements", {
-      method: "POST",
-      body: {
-        title: form.title.trim(),
-        body: form.body,
-        attachments,
-        type: form.type,
-        recipients: sendAll ? "all" : selectedEmployees,
-        deadline: form.deadline,
-      },
-      onError: (m) => setErr(m),
-    });
-    setSaving(false);
-    if (ok) { setShowForm(false); setErr(""); load(); }
+    try {
+      const ok = await apiCall("/api/announcements", {
+        method: "POST",
+        body: {
+          title: form.title.trim(),
+          body: form.body,
+          attachments,
+          type: form.type,
+          recipients: sendAll ? "all" : selectedEmployees,
+          deadline: form.deadline,
+        },
+        onError: (m) => setErr(m),
+      });
+      if (ok) { setShowForm(false); setErr(""); load(); }
+    } finally {
+      sendInFlight.current = false;
+      setSaving(false);
+    }
   };
 
   // 打开详情：员工打开即标记已读
@@ -243,7 +253,7 @@ export default function AnnouncementsPage() {
   };
 
   const submitRetell = async () => {
-    if (!detail) return;
+    if (!detail?.my_recipient) return;
     if (!retellTh.trim()) { setRetellErr("请填写泰语复述"); return; }
     if (!retellZh.trim()) { setRetellErr("请填写中文复述"); return; }
     setRetellSaving(true);
@@ -398,10 +408,11 @@ export default function AnnouncementsPage() {
 
   // 员工：每个通知的「我的状态」+ 是否逾期
   const myStatusOf = (a: Announcement) => {
-    return a.recipients?.find((r) => r.employee_name === user?.name)?.status || "待读";
+    return a.recipients?.find((r) => r.employee_name === user?.name)?.status;
   };
   const isOverdue = (a: Announcement) => {
     const st = myStatusOf(a);
+    if (!st) return false;
     if (st === "已复述待确认" || st === "已确认") return false;
     if (!a.deadline) return false;
     // 截止时间按曼谷本地时间比较
@@ -411,6 +422,7 @@ export default function AnnouncementsPage() {
   const displayStatus = (a: Announcement): string => {
     if (a.recalled) return "已撤回";
     const st = myStatusOf(a);
+    if (!st) return a.created_by === user?.name ? "已发送" : "—";
     if (st === "需重述") return "需重述";
     if (isOverdue(a)) return "逾期";
     return st;
@@ -425,6 +437,7 @@ export default function AnnouncementsPage() {
   const adminRetellDueCount = (a: Announcement) => (a.recalled ? 0 : a.recipients.filter((r) => r.status === "需重述").length);
   const isUrgent = (a: Announcement) => {
     if (isAdmin) return adminOverdueCount(a) > 0 || adminRetellDueCount(a) > 0;
+    if (!myStatusOf(a)) return false;
     return !!a.recalled || isOverdue(a) || displayStatus(a) === "需重述";
   };
 
@@ -441,16 +454,16 @@ export default function AnnouncementsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">通知</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">老板向下发工作交代，员工收到后复述确认</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">向员工发送工作交代，接收人收到后复述确认</p>
         </div>
-        {isAdmin && (
+        {canPublish && (
           <Button size="sm" onClick={openForm} className="gap-1.5">
             <Plus className="size-3.5" />新建通知
           </Button>
         )}
       </div>
 
-      {showForm && isAdmin && (
+      {showForm && canPublish && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
           <h2 className="text-sm font-medium mb-4">新建通知</h2>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -514,8 +527,8 @@ export default function AnnouncementsPage() {
           </div>
           {err && <p className="mt-2 text-xs text-[var(--destructive)]">{err}</p>}
           <div className="mt-4 flex gap-2">
-            <Button size="sm" onClick={submit} disabled={saving}>{saving ? "发送中…" : "发送"}</Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>取消</Button>
+            <Button size="sm" onClick={submit} disabled={saving || uploading}>{saving ? "发送中…" : "发送"}</Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowForm(false)} disabled={saving}>取消</Button>
           </div>
         </div>
       )}
@@ -636,7 +649,11 @@ export default function AnnouncementsPage() {
               </div>
             )}
 
-            {!isAdmin && (
+            {!isAdmin && !detail.my_recipient && detail.created_by === user?.name && (
+              <p className="mt-4 border-t border-[var(--border)] pt-4 text-sm text-[var(--muted-foreground)]">这是你发送的通知；你不在接收人中，无需复述。</p>
+            )}
+
+            {!isAdmin && detail.my_recipient && (
               <div className="mt-4 border-t border-[var(--border)] pt-4">
                 {detail.recalled ? (
                   <p className="text-sm text-[var(--muted-foreground)]">该通知已撤回，无需复述。</p>

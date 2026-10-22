@@ -9,6 +9,8 @@ import { cn, toThaiTime, toThaiDate } from "@/lib/utils";
 import { bangkokToday, bangkokDayRange, utcSecondBefore, utcNowStr } from "@/lib/time";
 import { containsSensitiveWord } from "@/lib/sensitive-words";
 import { useAuth } from "@/components/auth-provider";
+import { MessageIssueDialog } from "@/components/message-issue-dialog";
+import { MessageAnnouncementDialog } from "@/components/message-announcement-dialog";
 import { subscribeOpenChat, takePendingChatTarget, type ChatOpenTarget } from "@/lib/chat-nav";
 
 interface Contact {
@@ -457,6 +459,7 @@ export default function MessagesPage() {
   const { user, setUser } = useAuth();
   const me = user?.name || "";
   const isAdmin = user?.role === "admin";
+  const canConvertMessage = isAdmin || user?.role === "employee";
   const router = useRouter();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -550,6 +553,8 @@ export default function MessagesPage() {
   const [todoModal, setTodoModal] = useState<{ content: string } | null>(null);
   const [todoForm, setTodoForm] = useState({ content: "", assignee: "", priority: "普通" });
   const [todoSaving, setTodoSaving] = useState(false);
+  const [issueContent, setIssueContent] = useState<string | null>(null);
+  const [announcementContent, setAnnouncementContent] = useState<string | null>(null);
   // 聊天背景设置
   const [bgOpen, setBgOpen] = useState(false);
   const [bgSaving, setBgSaving] = useState(false);
@@ -593,6 +598,7 @@ export default function MessagesPage() {
   // 长按消息菜单
   const [menuState, setMenuState] = useState<{ id: number; x: number; y: number } | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
   // 表情反应
   const [reactions, setReactions] = useState<Map<number, ReactionGroup[]>>(new Map());
   const [emojiPickerState, setEmojiPickerState] = useState<{ id: number; x: number; y: number } | null>(null);
@@ -718,14 +724,17 @@ export default function MessagesPage() {
   // 长按消息：弹出圆润操作菜单（桌面右键、移动端长按都触发）
   const showMessageMenu = (id: number, clientX: number, clientY: number) => {
     const x = Math.min(clientX, typeof window !== "undefined" ? window.innerWidth - 180 : clientX);
-    const y = Math.min(clientY, typeof window !== "undefined" ? window.innerHeight - 220 : clientY);
-    setMenuState({ id, x: Math.max(0, x), y: Math.max(0, y) });
+    const y = Math.min(clientY, typeof window !== "undefined" ? Math.max(8, window.innerHeight - 320) : clientY);
+    setMenuState({ id, x: Math.max(0, x), y: Math.max(8, y) });
   };
 
   const startLongPress = (e: React.TouchEvent, id: number) => {
+    cancelLongPress();
+    longPressTriggeredRef.current = false;
     const t = e.touches[0];
     if (!t) return;
     longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
       showMessageMenu(id, t.clientX, t.clientY);
     }, 500);
   };
@@ -735,6 +744,21 @@ export default function MessagesPage() {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+  };
+
+  const finishLongPress = (e: React.TouchEvent) => {
+    if (longPressTriggeredRef.current) {
+      // 阻止长按松手后的合成点击误关菜单或误点菜单项；普通短按保持原样。
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    longPressTriggeredRef.current = false;
+    cancelLongPress();
+  };
+
+  const abortLongPress = () => {
+    longPressTriggeredRef.current = false;
+    cancelLongPress();
   };
 
   // 复制消息文字
@@ -2619,8 +2643,9 @@ export default function MessagesPage() {
                         className={cn("group msg-bubble-anim flex items-end gap-2", mine ? "flex-row-reverse" : "flex-row")}
                         onContextMenu={(e) => { e.preventDefault(); showMessageMenu(m.id, e.clientX, e.clientY); }}
                         onTouchStart={(e) => startLongPress(e, m.id)}
-                        onTouchEnd={cancelLongPress}
+                        onTouchEnd={finishLongPress}
                         onTouchMove={cancelLongPress}
+                        onTouchCancel={abortLongPress}
                       >
                         <div className={cn("flex max-w-[70%] flex-col", mine ? "items-end" : "items-start")}>
                           {isGroup && !mine && (
@@ -3886,13 +3911,18 @@ export default function MessagesPage() {
           ...(canRecall ? [{ label: "撤回", onClick: () => { recallMessage(m); setMenuState(null); } }] : []),
           { label: "引用回复", onClick: () => { setReplyTo({ id: m.id, sender: m.sender, preview: quotePreview(m) }); setMenuState(null); } },
           { label: "转待办", onClick: () => { openTodoModal(m.content || ""); setMenuState(null); } },
+          ...(canConvertMessage ? [
+            { label: "转工单", onClick: () => { setIssueContent(m.content || ""); setMenuState(null); } },
+            { label: "转老板通知", onClick: () => { setAnnouncementContent(m.content || ""); setMenuState(null); } },
+          ] : []),
           { label: "表情反应", onClick: () => openEmojiPicker(m.id, menuState.x, menuState.y) },
         ];
         return (
           <>
             <div className="fixed inset-0 z-[99]" onClick={closeMenu} />
             <div
-              className="fixed z-[100] min-w-[128px] rounded-2xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-xl"
+              data-message-menu
+              className="fixed z-[100] max-h-[calc(100dvh-1rem)] min-w-[128px] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-xl"
               style={{ left: menuState.x, top: menuState.y }}
             >
               {items.map((it) => (
@@ -3908,6 +3938,9 @@ export default function MessagesPage() {
           </>
         );
       })()}
+
+      {issueContent !== null && canConvertMessage && <MessageIssueDialog content={issueContent} createdBy={me} onClose={() => setIssueContent(null)} />}
+      {announcementContent !== null && canConvertMessage && <MessageAnnouncementDialog content={announcementContent} onClose={() => setAnnouncementContent(null)} />}
 
       {/* 消息转待办弹窗 */}
       {todoModal && (
