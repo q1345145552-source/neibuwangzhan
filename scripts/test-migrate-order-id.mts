@@ -73,7 +73,7 @@ await test('one internal order linked to two customer orders: stop and change no
   assert.deepEqual([s.count('ORD-cccccccc-1111-2222-3333-444444444444'), s.count('ORD-dddddddd-1111-2222-3333-444444444444')], before, 'nothing renamed');
 });
 
-await test('without an uploads folder, or with a file named after an old number: stop and change nothing', async () => {
+await test('without an uploads folder, with a file named after an old number, or an unreadable folder: stop and change nothing', async () => {
   const s = scenario('uploads', [{ source: 'ORD20261001000000000004', internal: 'ORD-eeeeeeee-1111-2222-3333-444444444444' }]);
   const none = s.migrate('--apply');
   assert.equal(none.status, 1);
@@ -82,6 +82,14 @@ await test('without an uploads folder, or with a file named after an old number:
   const named = s.migrate('--uploads', path.join(s.dir, 'uploads'), '--apply');
   assert.equal(named.status, 1);
   assert.match(named.stdout, /带旧编号的文件/);
+  assert.equal(s.count('ORD-eeeeeeee-1111-2222-3333-444444444444'), 5);
+  fs.rmSync(path.join(s.dir, 'uploads', 'x_ORD-eeeeeeee-1111-2222-3333-444444444444.pdf'));
+  fs.mkdirSync(path.join(s.dir, 'uploads', 'locked'));
+  fs.chmodSync(path.join(s.dir, 'uploads', 'locked'), 0o000);
+  const locked = s.migrate('--uploads', path.join(s.dir, 'uploads'), '--apply');
+  fs.chmodSync(path.join(s.dir, 'uploads', 'locked'), 0o755);
+  assert.equal(locked.status, 1, 'an unreadable sub-folder must stop the run: ' + locked.stdout);
+  assert.match(locked.stdout, /读不了/);
   assert.equal(s.count('ORD-eeeeeeee-1111-2222-3333-444444444444'), 5);
 });
 

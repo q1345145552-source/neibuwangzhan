@@ -85,10 +85,15 @@ def main():
         print(f"[改编号]   {old} → {new}")
 
     # 2. 上传的文件名 / 目录里带旧编号的，改了数据库就找不到文件：直接停下
+    def unreadable(err):
+        stop(f"上传目录读不了 {err.filename}（{err.strerror}），没法确认文件名（什么都没动）")
+
     for folder in uploads:
         if not os.path.isdir(folder):
             stop(f"找不到上传目录 {folder}")
-        for root, dirs, files in os.walk(folder):
+        if not os.access(folder, os.R_OK | os.X_OK):
+            stop(f"上传目录读不了 {folder}，没法确认文件名（什么都没动）")
+        for root, dirs, files in os.walk(folder, onerror=unreadable):
             for name in dirs + files:
                 if any(old in name for old in mapping):
                     stop(f"上传目录里有带旧编号的文件 {os.path.join(root, name)}（什么都没动）")

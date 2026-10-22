@@ -20,34 +20,36 @@ export async function GET(req: NextRequest) {
 
   if (type === "order") {
     // 业务系统来的单也认业务系统单号，标题用同一个号（2026-10-22）
-    const rows = db.prepare(
-      `SELECT o.id, o.customer_name, o.responsible_person, b.name AS business_type_name
-       FROM orders o LEFT JOIN business_types b ON b.id = o.business_type_id
+    type Row = { id: string; customer_name: string | null; responsible_person: string | null; business_type_name: string | null };
+    const select = `SELECT o.id, o.customer_name, o.responsible_person, b.name AS business_type_name
+       FROM orders o LEFT JOIN business_types b ON b.id = o.business_type_id`;
+    // 搜的正好是一张业务系统单号：这张单拆出来的几张全列在最前（拆得再多也不漏）
+    const exactIds = [...new Set((db.prepare("SELECT internal_order_id AS id FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all(q) as { id: string }[]).map((r) => r.id))];
+    const exactRows = exactIds.length
+      ? (db.prepare(`${select} WHERE o.id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(exactIds)) as Row[]).sort((a, b) => exactIds.indexOf(a.id) - exactIds.indexOf(b.id))
+      : [];
+    const others = (db.prepare(
+      `${select}
        WHERE o.id LIKE ? OR o.customer_name LIKE ?
           OR o.id IN (SELECT internal_order_id FROM sync_inbox WHERE source_order_no LIKE ? AND internal_order_id IS NOT NULL)
-       ORDER BY o.created_at DESC LIMIT 200`
-    ).all(like, like, like) as any[];
-    // 搜的那个编号本身排最前，再取前 20 条
-    const numbers = orderNumberInfoFor(db, rows.map((r) => String(r.id)));
-    const exact = q.toLowerCase();
-    const isExact = (r: { id: unknown }) => (numbers.get(String(r.id))?.display || String(r.id)).toLowerCase() === exact;
-    const exactRows = rows.filter(isExact);
-    const top = [...exactRows, ...rows.filter((r) => !isExact(r))].slice(0, Math.max(20, exactRows.length));
-    // 一张客户单拆成几张办的，几张单号一样：标题后面带上业务，选的时候分得清
-    const partsOf = new Map<string, number>();
-    for (const n of numbers.values()) partsOf.set(n.source, (partsOf.get(n.source) || 0) + 1);
-    return NextResponse.json(top.map((r) => ({
-      type: "order",
-      id: String(r.id),
-      title: (() => {
-        const n = numbers.get(String(r.id));
-        return `订单 ${n?.display || r.id}${n && (partsOf.get(n.source) || 0) > 1 ? `（${r.business_type_name || "待分类"}）` : ""}`;
-      })(),
-      subtitle: r.customer_name || "",
-      href: `/orders/${r.id}`,
-      responsible: r.responsible_person || "",
-      businessType: r.business_type_name || "待分类",
-    })));
+       ORDER BY o.created_at DESC LIMIT 20`
+    ).all(like, like, like) as Row[]).filter((r) => !exactIds.includes(r.id));
+    const rows = [...exactRows, ...others].slice(0, Math.max(20, exactRows.length));
+    const numbers = orderNumberInfoFor(db, rows.map((r) => r.id));
+    return NextResponse.json(rows.map((r) => {
+      const n = numbers.get(r.id);
+      // 一张客户单拆成几张办的，几张单号一样：标题后面带上业务和第几份，选的时候分得清
+      const which = n && n.parts > 1 ? `（${r.business_type_name || "待分类"} 第${n.part}份）` : "";
+      return {
+        type: "order",
+        id: r.id,
+        title: `订单 ${n?.display || r.id}${which}`,
+        subtitle: r.customer_name || "",
+        href: `/orders/${r.id}`,
+        responsible: r.responsible_person || "",
+        businessType: r.business_type_name || "待分类",
+      };
+    }));
   }
 
   if (type === "todo") {

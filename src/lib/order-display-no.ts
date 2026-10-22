@@ -7,7 +7,8 @@ import type Database from "better-sqlite3";
  * 这里兜底拆单和还没改的老单。内部自己建的单照旧显示内部编号。
  */
 type Row = { source_order_no: string; internal_order_id: string };
-export type OrderNumberInfo = { source: string; display: string };
+/** part / parts：拆成几张时这是第几份、一共几份（按第几行商品、第几份排；只拆一张时都是 1） */
+export type OrderNumberInfo = { source: string; display: string; part: number; parts: number };
 
 function number(rows: Row[], into: Map<string, OrderNumberInfo>) {
   const bySource = new Map<string, Set<string>>();
@@ -18,7 +19,7 @@ function number(rows: Row[], into: Map<string, OrderNumberInfo>) {
   }
   for (const [source, set] of bySource) {
     const ids = [...set];
-    ids.forEach((id) => { if (!into.has(id)) into.set(id, { source, display: source }); });
+    ids.forEach((id, i) => { if (!into.has(id)) into.set(id, { source, display: source, part: i + 1, parts: ids.length }); });
   }
 }
 
