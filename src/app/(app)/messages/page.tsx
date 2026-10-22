@@ -469,6 +469,7 @@ export default function MessagesPage() {
     ? (selected.kind === "direct" ? (conversationId != null ? `direct:${conversationId}` : "") : `group:${selected.id}`)
     : "";
   const [messages, setMessages] = useState<Message[]>([]);
+  const [scrollRequest, setScrollRequest] = useState(0);
   const [input, setInput] = useState("");
   const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: number; sender: string; preview: string } | null>(null);
@@ -606,6 +607,8 @@ export default function MessagesPage() {
   const cursorRef = useRef(0);
   const openGeneration = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const forceBottomRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingPingRef = useRef(0);
@@ -776,7 +779,10 @@ export default function MessagesPage() {
   // 点击引用的原文 → 滚动到那条原消息
   const jumpToMessage = (id: number) => {
     const el = document.getElementById(`msg-${id}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el) {
+      nearBottomRef.current = false;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   };
 
   // 拉取当前会话所有消息的表情反应
@@ -819,7 +825,7 @@ export default function MessagesPage() {
       lastAt: g.last_at,
       lastSender: g.last_sender,
       lastPreview: g.last_preview,
-      unread: 0,
+      unread: g.unread || 0,
     }));
     const directItems: ConversationItem[] = contacts.map((c) => ({
       kind: "direct",
@@ -871,16 +877,25 @@ export default function MessagesPage() {
 
   // 群聊：把每条消息的已读成员列表刷到本地（用于「已读 X/Y」实时更新）
   const applyGroupReads = useCallback((reads: Record<string, string[]>) => {
-    setMessages((prev) => prev.map((m) => {
-      const members = reads[String(m.id)];
-      if (!members) return m;
-      return { ...m, read_members: members };
-    }));
+    setMessages((prev) => {
+      let changed = false;
+      const next = prev.map((m) => {
+        const members = reads[String(m.id)];
+        if (!members) return m;
+        const previous = m.read_members || [];
+        if (previous.length === members.length && members.every(member => previous.includes(member))) return m;
+        changed = true;
+        return { ...m, read_members: members };
+      });
+      return changed ? next : prev;
+    });
   }, []);
 
   // 打开一对一会话
   const openDirect = useCallback((name: string, messageId?: number) => {
     const generation = ++openGeneration.current;
+    nearBottomRef.current = true;
+    forceBottomRef.current = false;
     setSelected({ kind: "direct", name });
     setConversationId(null);
     setMessages([]);
@@ -903,6 +918,8 @@ export default function MessagesPage() {
   // 打开群会话
   const openGroup = useCallback((id: number, name: string) => {
     const generation = ++openGeneration.current;
+    nearBottomRef.current = true;
+    forceBottomRef.current = false;
     setSelected({ kind: "group", id, name });
     setMessages([]);
     setInput("");
@@ -917,9 +934,10 @@ export default function MessagesPage() {
         if (d && Array.isArray(d.recalledIds)) applyRecalledIds(d.recalledIds);
         if (d && typeof d.group?.member_count === "number") setGroupMemberCount(d.group.member_count);
         if (d && d.reads && typeof d.reads === "object") applyGroupReads(d.reads);
+        if (d && Array.isArray(d.messages)) loadGroups();
       })
       .catch(() => {});
-  }, [mergeIncoming, applyGroupReads, applyRecalledIds]);
+  }, [mergeIncoming, applyGroupReads, applyRecalledIds, loadGroups]);
 
   // 选定联系人/群后自动聚焦输入框，可直接敲键盘输入（电脑端/手机端都生效）
   useEffect(() => {
@@ -1069,21 +1087,29 @@ export default function MessagesPage() {
   // 滚到底部（新消息/切会话时用）
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) {
+      nearBottomRef.current = true;
+      el.scrollTop = el.scrollHeight;
+    }
   }, []);
 
-  // 新消息自动滚到底部
+  // 记录更新前的位置：翻历史时不打扰，自己的发送请求始终到底。
+  const handleMessageScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (forceBottomRef.current || nearBottomRef.current) {
+      forceBottomRef.current = false;
+      scrollToBottom();
+    }
+  }, [messages, scrollRequest, scrollToBottom]);
 
   // 图片加载完成后：如果用户还停在底部，就再补滚一次到底（防止图片高度撑开把最新消息顶下去）
   const handleImageLoad = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, []);
+    if (nearBottomRef.current) scrollToBottom();
+  }, [scrollToBottom]);
 
   // 搜索聊天记录（防抖 300ms）
   useEffect(() => {
@@ -1115,6 +1141,7 @@ export default function MessagesPage() {
     if (pendingScrollTo == null) return;
     const el = document.getElementById(`msg-${pendingScrollTo}`);
     if (el) {
+      nearBottomRef.current = false;
       el.scrollIntoView({ block: "center" });
       setPendingScrollTo(null);
     }
@@ -1139,6 +1166,8 @@ export default function MessagesPage() {
       const d = await r.json().catch(() => null);
       if (r.ok && d?.message) {
         const msg = d.message as Message;
+        forceBottomRef.current = true;
+        setScrollRequest(request => request + 1);
         setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg].sort((a, b) => a.id - b.id)));
         cursorRef.current = Math.max(cursorRef.current, msg.id);
         setReplyTo(null);
@@ -2559,7 +2588,7 @@ export default function MessagesPage() {
                 </div>
               )}
 
-              <div ref={scrollRef} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-1 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
+              <div ref={scrollRef} onScroll={handleMessageScroll} key={selectedKey} style={chatBgStyle} className="msg-list-anim min-h-0 flex-1 space-y-1 overflow-y-auto bg-[var(--muted)]/50 p-4 shadow-[inset_0_8px_14px_-8px_rgba(0,0,0,0.16)]">
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="size-9 text-[var(--muted-foreground)]/40" />

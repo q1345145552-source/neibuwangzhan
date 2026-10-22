@@ -16,11 +16,13 @@ export async function GET(req: NextRequest) {
       (SELECT m.content FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_content,
       (SELECT m.image_url FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_image_url,
       (SELECT m.order_id FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_order_id,
-      (SELECT m.created_at FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_at
+      (SELECT m.created_at FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1) AS last_at,
+      (SELECT COUNT(*) FROM messages m WHERE m.group_id = g.id AND m.sender <> ?
+        AND NOT EXISTS (SELECT 1 FROM message_reads mr WHERE mr.message_id = m.id AND mr.member = ?)) AS unread
     FROM chat_groups g
     JOIN group_members me ON me.group_id = g.id AND me.member = ?
     ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.group_id = g.id ORDER BY m.id DESC LIMIT 1), '') DESC, g.id DESC
-  `).all(auth.name) as {
+  `).all(auth.name, auth.name, auth.name) as {
     id: number;
     name: string;
     owner: string;
@@ -33,6 +35,7 @@ export async function GET(req: NextRequest) {
     last_image_url: string | null;
     last_order_id: string | null;
     last_at: string | null;
+    unread: number;
   }[];
 
   const membersStmt = db.prepare(
@@ -60,7 +63,7 @@ export async function GET(req: NextRequest) {
       last_at: g.last_at || null,
       last_sender: g.last_sender || null,
       last_preview: preview,
-      unread: 0,
+      unread: g.unread || 0,
     };
   });
   return NextResponse.json(result);
