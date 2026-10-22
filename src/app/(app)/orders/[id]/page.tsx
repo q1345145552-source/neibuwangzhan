@@ -230,7 +230,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [customerPool, setCustomerPool] = useState<PoolCustomer[]>([]);
   const [editNewCustomer, setEditNewCustomer] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string,label?:string}|null>(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [orderDeleteError, setOrderDeleteError] = useState<string | null>(null);
   // 费用编辑删除
@@ -763,7 +763,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <Button variant="outline" size="sm" onClick={() => { setShowCancelModal(true); setCancelReason(""); setCancelError(""); setError(""); }} className="gap-1.5 text-[var(--warning)] border-[var(--warning)]/30 hover:bg-[var(--warning)]/10"><Ban className="size-3.5" />取消订单</Button>
                   )}
                   {/* 10-16 老板定：只有管理员能删订单，员工只能取消 */}
-                  {user?.role === "admin" && <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>}
+                  {user?.role === "admin" && <Button variant="outline" size="sm" onClick={() => setDeleteTarget({id:order.id, name:order.customer_name, label:order.display_no})} className="gap-1.5 text-[var(--destructive)] border-[var(--destructive)]/30 hover:bg-[var(--destructive)]/10"><Trash2 className="size-3.5" />删除</Button>}
                 </>
               ) : (
                 <>
@@ -1836,7 +1836,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold text-[var(--foreground)]">确认删除订单</h3>
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              确定要删除订单 <span className="font-mono font-medium text-[var(--foreground)]">{deleteTarget.id}</span>（{deleteTarget.name}）吗？此操作会同时删除所有关联的步骤、文档、费用和证书，且不可恢复。
+              确定要删除订单 <span className="font-mono font-medium text-[var(--foreground)]">{deleteTarget.label || deleteTarget.id}</span>（{deleteTarget.name}）吗？此操作会同时删除所有关联的步骤、文档、费用和证书，且不可恢复。
             </p>
             {orderDeleteError && <p className="mt-3 text-sm text-[var(--destructive)]">{orderDeleteError}</p>}
             <div className="mt-5 flex justify-end gap-3">

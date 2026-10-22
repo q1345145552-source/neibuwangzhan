@@ -43,7 +43,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
     // 只在筛选变了时写网址；searchParams 跟着网址变，不放进依赖免得来回写
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, statusFilter, businessFilter, quick, unclassifiedOnly, pathname]);
-  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string}|null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{id:string,name:string,label?:string}|null>(null);
   const [deleting, setDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -280,7 +280,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
                 {user?.role === "admin" && (
                   <td className="py-3 px-4 text-center">
                     <button
-                      onClick={() => setDeleteTarget({ id: order.id, name: order.customer_name })}
+                      onClick={() => setDeleteTarget({ id: order.id, name: order.customer_name, label: order.display_no })}
                       className="inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] transition-colors"
                       title="删除订单"
                     >
@@ -301,7 +301,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
           <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold text-[var(--foreground)]">确认删除</h3>
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              确定要删除订单 <span className="font-mono font-medium text-[var(--foreground)]">{deleteTarget.id}</span>（{deleteTarget.name}）吗？此操作会同时删除所有关联的步骤、文档、费用和证书，且不可恢复。
+              确定要删除订单 <span className="font-mono font-medium text-[var(--foreground)]">{deleteTarget.label || deleteTarget.id}</span>（{deleteTarget.name}）吗？此操作会同时删除所有关联的步骤、文档、费用和证书，且不可恢复。
             </p>
             {errorMsg && <p className="mt-3 text-sm text-[var(--destructive)]">{errorMsg}</p>}
             <div className="mt-5 flex justify-end gap-3">

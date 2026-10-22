@@ -28,7 +28,17 @@ export async function GET(req: NextRequest) {
           OR o.id IN (SELECT internal_order_id FROM sync_inbox WHERE source_order_no LIKE ? AND internal_order_id IS NOT NULL)
        ORDER BY o.created_at DESC LIMIT 200`
     ).all(like, like, sourceLike) as any[];
-    // 一张客户单拆得很多时，搜的那个编号本身排最前，再取前 20 条
+    // 搜的是 ORD…-几 这种显示编号：直接按第几张找出那一张，补进候选（一张客户单拆得再多也找得到）
+    const split = /^(.+)-(\d+)$/.exec(q);
+    if (split) {
+      const siblings = db.prepare("SELECT DISTINCT internal_order_id AS id FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all(split[1]) as { id: string }[];
+      const target = siblings[Number(split[2]) - 1]?.id;
+      if (target && !rows.some((r) => String(r.id) === target)) {
+        const row = db.prepare(`SELECT o.id, o.customer_name, o.responsible_person, b.name AS business_type_name FROM orders o LEFT JOIN business_types b ON b.id = o.business_type_id WHERE o.id = ?`).get(target);
+        if (row) rows.unshift(row);
+      }
+    }
+    // 搜的那个编号本身排最前，再取前 20 条
     const numbers = orderNumberInfoFor(db, rows.map((r) => String(r.id)));
     const exact = q.toLowerCase();
     const isExact = (r: { id: unknown }) => (numbers.get(String(r.id))?.display || String(r.id)).toLowerCase() === exact;
