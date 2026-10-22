@@ -22,6 +22,8 @@ export interface Order {
   steps?: OrderStep[];
   /** 订单列表摘要（只有员工拿到，2026-10-16） */
   source_order_no?: string;
+  /** 员工看到的订单编号：业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），别的同 id（2026-10-22） */
+  display_no?: string;
   progress?: { total: number; closed: number; current_step: string; current_assignee: string; more_active: number; blocked: string[]; overdue?: { step: string; elapsed: number; expected: number } | null };
   payment?: { arrived: number; arrived_other: number; waiting: number; has_income: boolean; has_arrived: boolean; client_billing?: string | null };
   /** 订单详情：客户站来的单，客户站账单 paid / unpaid */

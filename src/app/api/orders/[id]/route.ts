@@ -14,6 +14,7 @@ import { isClientOrderVisible } from "@/lib/client-scope";
 import { AWAITING_CONFIRMATION_ERROR, confirmationOf, isAwaitingConfirmation } from "@/lib/order-confirm";
 import { resolveStepCopies } from "@/lib/step-public-copy";
 import { kitForOrder } from "@/lib/order-kit";
+import { orderDisplayNumber } from "@/lib/order-display-no";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
 const UNCLASSIFIED_SUB = "storefront-unclassified";
@@ -63,7 +64,7 @@ export async function GET(
   const ratings = new Map((db.prepare("SELECT step_order, stars, comment, rated_at FROM step_ratings WHERE internal_order_id = ?").all(id) as
     { step_order: number; stars: number; comment: string; rated_at: string }[]).map(r => [r.step_order, { stars: r.stars, comment: r.comment, rated_at: r.rated_at }]));
   const stepsWithCopy = (steps as Record<string, unknown>[]).map((step, i) => ({ ...step, customer_copy: copies[i], customer_rating: ratings.get(Number(step.step_order)) ?? null }));
-  return NextResponse.json({ ...order as object, steps: stepsWithCopy, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", client_billing: clientBilling,
+  return NextResponse.json({ ...order as object, steps: stepsWithCopy, commerce_purchase: readOrderPurchase(db,id), source_order_no: source?.source_order_no || "", display_no: orderDisplayNumber(db, id), client_billing: clientBilling,
     awaiting_confirmation: awaitingConfirmation, confirmation: confirmationOf(db, id), confirm_group_size: confirmGroupSize,
     // 流程设置里给这套流程配的说明书、资料收集表（客户在业务系统能看到，2026-10-20）
     customer_kit: kitForOrder(db, id).map(({ id: fileId, kind, name, file_url }) => ({ id: fileId, kind, name, file_url })) });

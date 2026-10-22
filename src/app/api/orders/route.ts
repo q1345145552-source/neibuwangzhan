@@ -10,6 +10,7 @@ import { isStepClosed, currentOpenSteps } from "@/lib/step-status";
 import { currentStepTimings } from "@/lib/step-overdue";
 import { checkOrderCustomer, createOrderCustomer } from "@/lib/order-customer";
 import { awaitingConfirmationSql } from "@/lib/order-confirm";
+import { orderDisplayNumbers } from "@/lib/order-display-no";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -67,6 +68,8 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
     FROM finances WHERE type = 'income' GROUP BY order_id, COALESCE(currency,'CNY')`).all() as { order_id: string; currency: string; arrived: number; waiting: number }[];
   const moneyBy = new Map<string, typeof money>();
   for (const m of money) { const l = moneyBy.get(m.order_id); if (l) l.push(m); else moneyBy.set(m.order_id, [m]); }
+  // 业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），2026-10-22
+  const displayNos = orderDisplayNumbers(db);
   const sources = new Map<string, string>();
   for (const r of db.prepare("SELECT internal_order_id, source_order_no FROM sync_inbox WHERE internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all() as { internal_order_id: string; source_order_no: string }[]) {
     if (!sources.has(r.internal_order_id)) sources.set(r.internal_order_id, r.source_order_no);
@@ -98,6 +101,7 @@ function withListSummary(db: ReturnType<typeof getDb>, rows: ListOrder[]) {
     return {
       ...o,
       source_order_no: sources.get(o.id) || "",
+      display_no: displayNos.get(o.id) || o.id,
       awaiting_confirmation: awaiting.has(o.id),
       progress: {
         total: list.length,

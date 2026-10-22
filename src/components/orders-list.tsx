@@ -92,7 +92,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
   // 搜索也认客户站单号（客户来问一般报 ORD2026…）
   const matchesSearch = (o: Order) => {
     const q = search.trim().toLowerCase();
-    return !q || o.id.toLowerCase().includes(q) || o.customer_name.toLowerCase().includes(q) ||
+    return !q || o.id.toLowerCase().includes(q) || (o.display_no || "").toLowerCase().includes(q) || o.customer_name.toLowerCase().includes(q) ||
       (o.trademark_name || "").toLowerCase().includes(q) || (o.source_order_no || "").toLowerCase().includes(q);
   };
   const me = (user?.name || "").trim().toLowerCase();
@@ -127,7 +127,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
   const handleExport = () => {
     const filtered_ = filtered;
     const cols: ExportColumn<Order>[] = [
-      { header: "订单编号", key: "id", width: 16 },
+      { header: "订单编号", render: (r) => r.display_no || r.id, width: 16 },
       { header: "客户名称", key: "customer_name" },
       { header: "业务类型", render: (r) => businessTypes.find(b => b.id === r.business_type_id)?.name || "—" },
       { header: "商标名称", render: (r) => r.trademark_name || "—" },
@@ -237,8 +237,9 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
             {sorted.map((order) => (
               <tr key={order.id} className="border-b border-[var(--border)] transition-colors hover:bg-[var(--secondary)]">
                 <td className="py-3 px-4">
-                  <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.id}</Link>
-                  {order.source_order_no && <div className="mt-0.5 font-mono text-[0.65rem] text-[var(--muted-foreground)]" title="客户站单号">{order.source_order_no}</div>}
+                  {/* 业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），下面小字是内部编号（2026-10-22） */}
+                  <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.display_no || order.id}</Link>
+                  {order.display_no && order.display_no !== order.id && <div className="mt-0.5 font-mono text-[0.65rem] text-[var(--muted-foreground)]" title="内部编号">{order.id}</div>}
                 </td>
                 <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>
                 <td className="py-3 px-4 max-md:hidden">

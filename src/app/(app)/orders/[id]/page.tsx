@@ -729,7 +729,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回订单列表"><ArrowLeft className="size-4" aria-hidden="true" /></Button>
           <div className="flex-1">
-            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{order.id}</h1>
+            {/* 业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），旁边小字是内部编号（2026-10-22） */}
+            <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{order.display_no || order.id}</h1>
+            {order.display_no && order.display_no !== order.id && <p className="font-mono text-[0.65rem] text-[var(--muted-foreground)]" title="内部编号">{order.id}</p>}
             <div className="mt-1 flex items-center gap-2">
               <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(order))}>{orderStatusLabel(order)}</span>
               {order.confirmation && <span className="text-xs text-[var(--muted-foreground)]" title={`客户站单号 ${order.confirmation.source_order_no}`}>{order.confirmation.confirmed_by || "员工"} {toThaiTime(order.confirmation.confirmed_at)} 已确认</span>}
