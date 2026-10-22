@@ -104,6 +104,8 @@ await test('daily-report search lists every part of a customer order split into 
   assert.equal(titles.length, 205);
   assert.equal(titles[204], '订单 ORD20261022000000000005（' + titles[204].split('（')[1]);
   assert.ok(titles[204].endsWith('第205份）'));
+  const lower = await reportSearch.GET(new NextRequest(`http://127.0.0.1/api/work-reports/search?type=order&q=${encodeURIComponent('ord20261022000000000005')}`, { headers: { authorization: `Bearer ${token}` } }));
+  assert.equal((await lower.json() as unknown[]).length, 205, 'case does not matter');
 });
 
 await test('orders created inside the internal system keep their own number', async () => {

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const select = `SELECT o.id, o.customer_name, o.responsible_person, b.name AS business_type_name
        FROM orders o LEFT JOIN business_types b ON b.id = o.business_type_id`;
     // 搜的正好是一张业务系统单号：这张单拆出来的几张全列在最前（拆得再多也不漏）
-    const exactIds = [...new Set((db.prepare("SELECT internal_order_id AS id FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all(q) as { id: string }[]).map((r) => r.id))];
+    const exactIds = [...new Set((db.prepare("SELECT internal_order_id AS id FROM sync_inbox WHERE source_order_no = ? COLLATE NOCASE AND internal_order_id IS NOT NULL AND internal_order_id <> '' ORDER BY line_no, copy_no").all(q) as { id: string }[]).map((r) => r.id))];
     const exactRows = exactIds.length
       ? (db.prepare(`${select} WHERE o.id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(exactIds)) as Row[]).sort((a, b) => exactIds.indexOf(a.id) - exactIds.indexOf(b.id))
       : [];
@@ -32,9 +32,9 @@ export async function GET(req: NextRequest) {
       `${select}
        WHERE o.id LIKE ? OR o.customer_name LIKE ?
           OR o.id IN (SELECT internal_order_id FROM sync_inbox WHERE source_order_no LIKE ? AND internal_order_id IS NOT NULL)
-       ORDER BY o.created_at DESC LIMIT 20`
-    ).all(like, like, like) as Row[]).filter((r) => !exactIds.includes(r.id));
-    const rows = [...exactRows, ...others].slice(0, Math.max(20, exactRows.length));
+       ORDER BY o.created_at DESC LIMIT ?`
+    ).all(like, like, like, 20 + exactIds.length) as Row[]).filter((r) => !exactIds.includes(r.id)).slice(0, 20);
+    const rows = [...exactRows, ...others];
     const numbers = orderNumberInfoFor(db, rows.map((r) => r.id));
     return NextResponse.json(rows.map((r) => {
       const n = numbers.get(r.id);
