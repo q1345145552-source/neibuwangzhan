@@ -7,9 +7,11 @@ import path from "path";
 import os from "os";
 import { verifyAuth } from "@/lib/auth";
 import { uploadsDir } from "@/lib/uploads";
+import { HEIC_TYPES, hasHeicSignature } from "@/lib/heic-upload";
 
 const ALLOWED_TYPES = [
   "image/jpeg", "image/png", "image/webp", "image/gif",
+  ...HEIC_TYPES,
   "application/pdf", "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
@@ -48,6 +50,7 @@ const MAGIC_SIGNATURES: Record<string, number[]> = {
 };
 
 function verifyMagic(buffer: Buffer, mimeType: string): boolean {
+  if (HEIC_TYPES.includes(mimeType)) return hasHeicSignature(buffer);
   const sig = MAGIC_SIGNATURES[mimeType];
   if (!sig) return true;
   if (buffer.length < sig.length) return false;
@@ -72,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    if (!verifyMagic(buffer.subarray(0, 8), file.type)) {
+    if (!verifyMagic(buffer.subarray(0, 128), file.type)) {
       return NextResponse.json({ error: "文件内容与类型不匹配" }, { status: 400 });
     }
 

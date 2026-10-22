@@ -21,6 +21,7 @@ function findFile(safeName: string): string | null {
 const MIME_MAP: Record<string, string> = {
   ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+  ".heic": "image/heic", ".heif": "image/heif",
   ".pdf": "application/pdf",
   ".doc": "application/msword",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
