@@ -7,6 +7,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { analyzeWorkReport } from "@/lib/deepseek";
 import { normalizeCompletedItems, completedItemText } from "@/lib/work-report-items";
+import { WORK_REPORT_RETURN_TITLE } from "@/lib/notification-types";
 
 // 校验并序列化关联业务对象 [{type, id, name}] → JSON 字符串
 function parseRelatedObjects(raw: unknown): string {
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id: rawId } = await params;
   const id = Number(rawId);
-  if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
+  if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
     return NextResponse.json({ error: "日报编号无效" }, { status: 400 });
   }
   const db = getDb();
@@ -67,21 +68,33 @@ export async function PATCH(
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
 
   const { id } = await params;
-  const db = getDb();
-  const report = db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
-  if (!report) return NextResponse.json({ error: "记录不存在" }, { status: 404 });
-
   const body = await readJson(req);
   const { action } = body;
+  if (action === "reject" && auth.role !== "admin") return NextResponse.json({ error: "仅管理员可退回" }, { status: 403 });
+  const db = getDb();
 
-  // 老板退回
   if (action === "reject") {
-    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可退回" }, { status: 403 });
-    if (report.status !== "已提交") return NextResponse.json({ error: "该记录不是已提交状态" }, { status: 400 });
-    db.prepare("UPDATE work_reports SET status = '退回', updated_at = datetime('now') WHERE id = ?").run(id);
-    logOperation(auth.name, "退回工作记录", "work_report", String(id), String(report.employee_name));
-    return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
+    const reason = typeof body.rejection_reason === "string" ? body.rejection_reason.trim() : "";
+    if (!reason) return NextResponse.json({ error: "请填写退回原因" }, { status: 400 });
+    return db.transaction(() => {
+      const report = db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
+      if (!report) return NextResponse.json({ error: "记录不存在" }, { status: 404 });
+      if (report.status !== "已提交") return NextResponse.json({ error: "该记录不是已提交状态" }, { status: 400 });
+      if (typeof report.employee_name !== "string" || !report.employee_name.trim()) return NextResponse.json({ error: "日报员工信息无效" }, { status: 409 });
+      if (body.submission_revision !== undefined && body.submission_revision !== reportSubmissionRevision(report)) return NextResponse.json({ error: "日报已重新提交，请重新打开后审核" }, { status: 409 });
+      const changed = db.prepare("UPDATE work_reports SET status = '退回', rejection_reason = ?, updated_at = datetime('now') WHERE id = ? AND status = '已提交'").run(reason, report.id);
+      if (changed.changes !== 1) return NextResponse.json({ error: "日报状态已变化，请刷新后重试" }, { status: 409 });
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "", WORK_REPORT_RETURN_TITLE, `${auth.name}退回了你 ${report.report_date} 的日报。\n退回原因：${reason}\n请修改日报后重新提交。`,
+        report.employee_name, String(report.id), "work_report_return"
+      );
+      logOperation(auth.name, "退回工作记录", "work_report", String(report.id), String(report.employee_name));
+      return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(report.id));
+    }).immediate();
   }
+
+  const report = db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
+  if (!report) return NextResponse.json({ error: "记录不存在" }, { status: 404 });
 
   // 老板点评：打 1-5 星 + 一句点评（任意状态都能点评）
   if (action === "review") {

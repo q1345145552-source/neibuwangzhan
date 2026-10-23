@@ -19,6 +19,7 @@ interface LeaveRecord {
   destination: string;
   reason: string;
   status: string;
+  rejection_reason?: string;
   created_at: string;
 }
 
@@ -304,6 +305,7 @@ export function LeaveSubmitTab() {
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{l.reason || "—"}</td>
                     <td className="py-2.5 px-4">
                       <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", l.status === "已通过" ? "bg-green-100 text-green-700" : l.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{l.status}</span>
+                      {l.status === "已驳回" && <p className="mt-1 whitespace-pre-wrap text-xs text-red-600 [overflow-wrap:anywhere]">驳回原因：{l.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
                     </td>
                     <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(l.created_at) || "—"}</td>
                   </tr>
@@ -329,7 +331,9 @@ export function LeaveSubmitTab() {
                       </button>
                     </span>
                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", l.status === "已通过" ? "bg-green-100 text-green-700" : l.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{l.status}</span>
+
                   </div>
+                    {l.status === "已驳回" && <p className="mt-1 whitespace-pre-wrap text-xs text-red-600 [overflow-wrap:anywhere]">驳回原因：{l.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
                   <div className="mt-2 space-y-1.5 text-sm">
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{l.start_date || "—"} {l.start_time || "09:00"} ~ {l.end_date || "—"} {l.end_time || "17:00"}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">目的地</span><span>{l.destination || "—"}</span></div>

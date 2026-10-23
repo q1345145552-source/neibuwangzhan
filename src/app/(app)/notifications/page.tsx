@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
-import { isSupervisionAlert, bossSubmissionNoticeHref } from "@/lib/notification-types";
+import { isSupervisionAlert, bossSubmissionNoticeHref, announcementFeedbackHref, isAnnouncementRetellFeedback, leaveReviewNoticeHref, isLeaveReviewFeedback, attendanceReviewNoticeHref, isAttendanceReviewFeedback, meetingReflectionReviewHref, isMeetingReflectionReview, workReportNoticeHref, isWorkReportNotice, ideaReviewNoticeHref, isIdeaReviewFeedback, withdrawalReviewNoticeHref, isWithdrawalReviewFeedback, payslipNoticeHref, isPayslipNotice, issueNoticeHref } from "@/lib/notification-types";
 import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
 import { SubmissionNoticeDialog } from "@/components/submission-notice-dialog";
 
@@ -49,7 +49,7 @@ const CUSTOMER_SITE_META: Record<(typeof CUSTOMER_SITE_ALERT_TITLES)[number], { 
   收入未到账: { label: "收款", icon: XCircle, href: orderHref },
 };
 const metaOf = (n: Notice) =>
-  (bossSubmissionNoticeHref(n) ? { label: "待处理", icon: Bell, href: () => bossSubmissionNoticeHref(n)! } : undefined) || (isSupervisionAlert(n) ? { label: "老板监督", icon: Bell, href: () => "/boss-supervision" } : undefined) || TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
+  (issueNoticeHref(n) ? { label: "工单", icon: Ticket, href: () => issueNoticeHref(n)! } : undefined) || (payslipNoticeHref(n) ? { label: "工资单", icon: FileText, href: () => payslipNoticeHref(n)! } : undefined) || (withdrawalReviewNoticeHref(n) ? { label: "提现审批", icon: Bell, href: () => withdrawalReviewNoticeHref(n)! } : undefined) || (ideaReviewNoticeHref(n) ? { label: "想法反馈", icon: Bell, href: () => ideaReviewNoticeHref(n)! } : undefined) || (workReportNoticeHref(n) ? { label: n.type === "日报点评" ? "日报点评" : "日报退回", icon: FileText, href: () => workReportNoticeHref(n)! } : undefined) || (meetingReflectionReviewHref(n) ? { label: "会议心得", icon: Bell, href: () => meetingReflectionReviewHref(n)! } : undefined) || (attendanceReviewNoticeHref(n) ? { label: "补签审批", icon: Bell, href: () => attendanceReviewNoticeHref(n)! } : undefined) || (leaveReviewNoticeHref(n) ? { label: "请假审批", icon: Bell, href: () => leaveReviewNoticeHref(n)! } : undefined) || (announcementFeedbackHref(n) ? { label: "复述反馈", icon: Bell, href: () => announcementFeedbackHref(n)! } : undefined) || (bossSubmissionNoticeHref(n) ? { label: "待处理", icon: Bell, href: () => bossSubmissionNoticeHref(n)! } : undefined) || (isSupervisionAlert(n) ? { label: "老板监督", icon: Bell, href: () => "/boss-supervision" } : undefined) || TYPE_META[n.type] || (n.type === "" && n.related_type === "order" ? CUSTOMER_SITE_META[n.title as keyof typeof CUSTOMER_SITE_META] : undefined);
 
 export default function NotificationsPage() {
   const { user } = useAuth();
@@ -135,7 +135,7 @@ export default function NotificationsPage() {
                         {bossSubmissionNoticeHref(n) && <span className={cn("text-xs", unread ? "text-red-600" : "text-emerald-600")}>{unread ? "未观看" : "已观看"}</span>}
                       </span>
                       <span className={cn("mt-0.5 block truncate text-sm text-[var(--foreground)]", unread && "font-semibold")}>{n.title}</span>
-                      {n.body && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", isSupervisionAlert(n) || bossSubmissionNoticeHref(n) ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>{n.body}</span>}
+                      {n.body && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", isSupervisionAlert(n) || bossSubmissionNoticeHref(n) || isAnnouncementRetellFeedback(n) || isLeaveReviewFeedback(n) || isAttendanceReviewFeedback(n) || isMeetingReflectionReview(n) || isWorkReportNotice(n) || isIdeaReviewFeedback(n) || isWithdrawalReviewFeedback(n) || isPayslipNotice(n) || issueNoticeHref(n) ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate")}>{n.body}</span>}
                       <span className="mt-1 block text-xs text-[var(--muted-foreground)]/70">{toThaiTime(n.created_at)}</span>
                     </span>
                   </button>

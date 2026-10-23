@@ -8,6 +8,7 @@ import { toThaiTime } from "@/lib/utils";
 interface AttendanceRequest {
   id: number; employee_name: string; date: string; time: string; type: string; reason: string;
   status: string; approved_by: string; approved_at: string; created_at: string;
+  rejection_reason?: string;
 }
 
 export function AttendanceRequestView({ targetRequestId }: { targetRequestId: string }) {
@@ -33,7 +34,7 @@ export function AttendanceRequestView({ targetRequestId }: { targetRequestId: st
   }, [targetRequestId, user, key]);
 
   if (state.key !== key) return <p role="status">正在加载补签申请…</p>;
-  if (state.error) return <p role="alert" className="text-sm text-red-600">{state.error}</p>;
+  if (state.error) return <div role="alert" className="space-y-2 text-sm text-red-600"><p>{state.error}</p><a href="/internal" className="inline-block underline">返回考勤页面</a></div>;
   const row = state.row;
   if (!row) return null;
   return <section id="attendance-requests" aria-label="我的补签申请" data-attendance-request-id={row.id} className="min-w-0 space-y-4 rounded-xl border border-blue-500/30 bg-blue-500/5 p-4 sm:p-6">
@@ -41,6 +42,10 @@ export function AttendanceRequestView({ targetRequestId }: { targetRequestId: st
       <h2 className="text-lg font-semibold">我的补签申请 #{row.id}</h2>
       <span className="rounded-full bg-blue-500/10 px-3 py-1 text-sm">{row.status}</span>
     </div>
+    {["已通过", "已驳回"].includes(row.status) && <div aria-label="审批结果" className="space-y-2 rounded-lg border border-[var(--border)] p-3 text-sm [overflow-wrap:anywhere]">
+      <p className="font-medium">审批结果：{row.status}</p>
+      {row.status === "已驳回" && <p className="whitespace-pre-wrap text-red-600">驳回原因：{row.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
+    </div>}
     <dl className="space-y-3 text-sm [overflow-wrap:anywhere]">
       <div><dt className="text-[var(--muted-foreground)]">申请人</dt><dd>{row.employee_name}</dd></div>
       <div><dt className="text-[var(--muted-foreground)]">申请补签时间</dt><dd>{row.date} {row.time}</dd></div>

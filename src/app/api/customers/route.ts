@@ -4,6 +4,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation } from "@/lib/db";
+import { WITHDRAWAL_REVIEW_TITLES } from "@/lib/notification-types";
 
 // Helper: apply status auto-flow rules
 function insertPointsRecord(db: any, employeeName: string, points: number, reason: string, ruleKey: string, refId?: string) {
@@ -145,8 +146,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ employee_name: name, total_customer_points: total.total });
   }
 
+  // 本人记录在客户自动流转之前返回，不开放管理员审核列表。
+  if (action === "my_withdrawals") {
+    if (!auth.name?.trim()) return NextResponse.json({ error: "无权限" }, { status: 403 });
+    const rows = db.prepare("SELECT * FROM point_withdrawals WHERE employee_name = ? ORDER BY created_at DESC, id DESC").all(auth.name);
+    return NextResponse.json(rows, { headers: { "Cache-Control": "private, no-store" } });
+  }
+
   // Admin: pending withdrawals
-  if (auth.role === "admin" && action === "withdrawals") {
+  if (action === "withdrawals") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可查看提现审核记录" }, { status: 403 });
     const rows = db.prepare("SELECT * FROM point_withdrawals ORDER BY CASE WHEN status = '待审核' THEN 0 ELSE 1 END, created_at DESC").all();
     return NextResponse.json(rows);
   }
@@ -363,16 +372,28 @@ export async function POST(req: NextRequest) {
     const { withdrawal_id, approve, note } = body;
     if (!withdrawal_id) return NextResponse.json({ error: "缺少提现申请 ID" }, { status: 400 });
     const db = getDb();
-    const w = db.prepare("SELECT * FROM point_withdrawals WHERE id = ?").get(withdrawal_id) as any;
-    if (!w) return NextResponse.json({ error: "申请不存在" }, { status: 404 });
-    if (w.status !== "待审核") return NextResponse.json({ error: "该申请已处理" }, { status: 400 });
-    const status = approve ? "已通过" : "已驳回";
-    db.prepare("UPDATE point_withdrawals SET status = ?, reviewed_by = ?, review_note = ?, reviewed_at = datetime('now') WHERE id = ?").run(status, auth.name!, note || "", withdrawal_id);
-    if (approve) {
-      // Deduct from points
-      db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, ?, ?, 'withdrawal', 'customer', 'system')").run(w.employee_name, -w.amount, `积分提现 -${w.amount} 分（管理员审核通过）`);
-    }
-    return NextResponse.json({ success: true });
+    return db.transaction(() => {
+      const w = db.prepare("SELECT * FROM point_withdrawals WHERE id = ?").get(withdrawal_id) as any;
+      if (!w) return NextResponse.json({ error: "申请不存在" }, { status: 404 });
+      if (w.status !== "待审核") return NextResponse.json({ error: "该申请已处理" }, { status: 400 });
+      if (typeof w.employee_name !== "string" || !w.employee_name.trim()) return NextResponse.json({ error: "提现申请人信息无效" }, { status: 409 });
+      const status = approve ? "已通过" : "已驳回";
+      const changed = db.prepare("UPDATE point_withdrawals SET status = ?, reviewed_by = ?, review_note = ?, reviewed_at = datetime('now') WHERE id = ? AND status = '待审核'").run(status, auth.name!, note || "", withdrawal_id);
+      if (changed.changes !== 1) return NextResponse.json({ error: "申请状态已变化，请刷新后重试" }, { status: 409 });
+      if (approve) {
+        // Deduct from points（保留原扣分内容与规则，不改变额度计算）
+        db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, created_by) VALUES (?, ?, ?, 'withdrawal', 'customer', 'system')").run(w.employee_name, -w.amount, `积分提现 -${w.amount} 分（管理员审核通过）`);
+      }
+      const saved = db.prepare("SELECT * FROM point_withdrawals WHERE id = ?").get(withdrawal_id) as any;
+      if (!saved) throw new Error("提现审核结果保存失败，请重试");
+      const reviewNote = String(saved.review_note || "").trim() ? saved.review_note : "未填写审核意见";
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "", approve ? WITHDRAWAL_REVIEW_TITLES[0] : WITHDRAWAL_REVIEW_TITLES[1],
+        `${auth.name}审核了你的 ${saved.amount} 积分提现申请 #${saved.id}。\n审批结果：${saved.status}\n审核意见：${reviewNote}${approve ? "\n本通知仅表示审批通过，付款和到账情况需另行确认。" : ""}`,
+        saved.employee_name, String(saved.id), "withdrawal_review"
+      );
+      return NextResponse.json({ success: true });
+    }).immediate();
   }
 
   // Claim: claim a 潜在 customer

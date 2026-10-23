@@ -1348,6 +1348,7 @@ function initTables(database: Database.Database) {
       status TEXT NOT NULL DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
       approved_by TEXT DEFAULT '',
       approved_at TEXT DEFAULT '',
+      rejection_reason TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -1502,6 +1503,7 @@ function initTables(database: Database.Database) {
       ai_comment TEXT DEFAULT '',
       boss_rating INTEGER NOT NULL DEFAULT 0,
       boss_comment TEXT DEFAULT '',
+      rejection_reason TEXT NOT NULL DEFAULT '',
       risk_flag INTEGER NOT NULL DEFAULT 0,
       risk_desc TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
@@ -1517,7 +1519,7 @@ function initTables(database: Database.Database) {
 
   // 工作记录迁移：关联业务对象（项目/客户/订单）
   const workReportColumns = database.prepare("PRAGMA table_info(work_reports)").all() as { name: string }[];
-  for (const column of ["completed_items_zh", "summary_zh", "tomorrow_plan_zh", "problems_zh"]) {
+  for (const column of ["completed_items_zh", "summary_zh", "tomorrow_plan_zh", "problems_zh", "rejection_reason"]) {
     if (!workReportColumns.some((existing) => existing.name === column)) {
       database.exec(`ALTER TABLE work_reports ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
@@ -1578,6 +1580,7 @@ function initTables(database: Database.Database) {
       employee_name TEXT NOT NULL,
       content TEXT NOT NULL DEFAULT '',
       content_zh TEXT NOT NULL DEFAULT '',
+      rejection_reason TEXT NOT NULL DEFAULT '',
       images TEXT NOT NULL DEFAULT '[]',
       status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
       created_at TEXT DEFAULT (datetime('now')),
@@ -1589,6 +1592,9 @@ function initTables(database: Database.Database) {
   const reflectionColumns = database.prepare("PRAGMA table_info(meeting_reflections)").all() as { name: string }[];
   if (!reflectionColumns.some((column) => column.name === "content_zh")) {
     database.exec("ALTER TABLE meeting_reflections ADD COLUMN content_zh TEXT NOT NULL DEFAULT ''");
+  }
+  if (!reflectionColumns.some((column) => column.name === "rejection_reason")) {
+    database.exec("ALTER TABLE meeting_reflections ADD COLUMN rejection_reason TEXT NOT NULL DEFAULT ''");
   }
 
   // 会议提醒去重表：同一员工 + 同一场会议 + 同类提醒（下午催交通知 / 第二天补交待办）只生成一次
@@ -2310,6 +2316,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE attendance ADD COLUMN check_in_photo TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE attendance ADD COLUMN check_out_photo TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE attendance_requests ADD COLUMN photo TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance_requests ADD COLUMN rejection_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN password TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_file TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN verify_by TEXT DEFAULT ''"); } catch {}

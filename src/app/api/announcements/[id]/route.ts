@@ -4,6 +4,7 @@ import { verifyAuth, isStaff } from "@/lib/auth";
 import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { clearAnnouncementOverdueTodos, syncAnnouncementOverdueTodos } from "@/lib/announcement-overdue";
+import { isPositiveRecordId } from "@/lib/announcement-feedback";
 
 // GET /api/announcements/[id] — 通知详情；员工打开即把「待读」改成「已读待复述」
 export async function GET(
@@ -19,6 +20,15 @@ export async function GET(
   const announcement = db.prepare("SELECT * FROM announcements WHERE id = ?").get(id) as any;
   if (!announcement) return NextResponse.json({ error: "通知不存在" }, { status: 404 });
 
+  const targetId = new URL(req.url).searchParams.get("recipient");
+  let targetRecipient: any = null;
+  if (targetId !== null) {
+    if (!isPositiveRecordId(targetId)) return NextResponse.json({ error: "接收记录编号无效" }, { status: 400 });
+    targetRecipient = db.prepare("SELECT * FROM announcement_recipients WHERE id = ? AND announcement_id = ?").get(targetId, id);
+    if (!targetRecipient) return NextResponse.json({ error: "对应的复述记录不存在" }, { status: 404 });
+    if (auth.role !== "admin" && targetRecipient.employee_name !== auth.name) return NextResponse.json({ error: "只能查看自己的复述反馈" }, { status: 403 });
+  }
+
   let myRecipient: any = null;
   if (auth.role === "employee") {
     myRecipient = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? AND employee_name = ?").get(id, auth.name) ?? null;
@@ -30,9 +40,12 @@ export async function GET(
     }
   }
 
-  const recipients = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? ORDER BY id ASC").all(id) as any[];
+  // 定位反馈时不能把其他接收人的复述内容一并返回给员工。
+  const recipients = auth.role === "admin"
+    ? db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? ORDER BY id ASC").all(id) as any[]
+    : myRecipient ? [myRecipient] : [];
 
-  return NextResponse.json({ ...announcement, my_recipient: myRecipient, recipients });
+  return NextResponse.json({ ...announcement, my_recipient: myRecipient, recipients, ...(targetId !== null ? { target_recipient: targetRecipient } : {}) });
 }
 
 // PATCH /api/announcements/[id] — 管理员编辑通知（改标题/正文/附件/类型/截止时间/接收人）

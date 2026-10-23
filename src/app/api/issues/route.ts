@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { canReadIssue } from "@/lib/chat-todo-issue-card";
+import { canReadIssue, parseIssueAssignees } from "@/lib/chat-todo-issue-card";
 
 const VALID_STATUS = ["待处理", "处理中", "已解决"];
 
@@ -82,11 +82,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "无效的优先级" }, { status: 400 });
   }
 
-  // 归属校验：员工只能处理指派给自己的或自己创建的工单，管理员可处理全部
+  return db.transaction(() => {
+  // 归属校验仍基于修改前的完整名单，不能把自己加进新名单来取得修改权限。
   const ticket = db.prepare("SELECT assignee, created_by, status FROM issue_tickets WHERE id = ?").get(id) as
     { assignee: string; created_by: string; status: string } | undefined;
   if (!ticket) return NextResponse.json({ error: "工单不存在" }, { status: 404 });
-  const assigneeList = (ticket.assignee || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const assigneeList = parseIssueAssignees(ticket.assignee);
   const isAssignee = assigneeList.includes(auth.name);
   if (auth.role !== "admin" && !isAssignee && ticket.created_by !== auth.name) {
     return NextResponse.json({ error: "只能处理指派给自己或自己创建的工单" }, { status: 403 });
@@ -111,20 +112,44 @@ export async function PATCH(req: NextRequest) {
   if (sets.length === 0) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
   sets.push("updated_at = datetime('now')");
   vals.push(id);
-  db.prepare(`UPDATE issue_tickets SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
-  if (status === "已解决") {
-    const updated = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(id) as any;
-    // 通知创建这张工单的人（跳过自己解决的）
-    if (updated.created_by && updated.created_by !== auth.name) {
-      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
-        "工单完成", "你派的工单已解决", `工单「${updated.description || ""}」已由 ${auth.name} 解决`, updated.created_by, String(id), "issue"
-      );
+  const changed = db.prepare(`UPDATE issue_tickets SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+  if (changed.changes !== 1) return NextResponse.json({ error: "工单已变化，请刷新后重试" }, { status: 409 });
+  const updated = db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(id) as any;
+  const currentNames = parseIssueAssignees(updated.assignee);
+  const previousNames = new Set(assigneeList);
+  const addedNames = currentNames.filter(name => !previousNames.has(name));
+  const statusChanged = ticket.status !== updated.status;
+  const notices = new Map<string, { assigned: boolean; status: boolean; resolved: boolean }>();
+  const add = (name: string, reason: "assigned" | "status" | "resolved") => {
+    const item = notices.get(name) || { assigned: false, status: false, resolved: false };
+    item[reason] = true; notices.set(name, item);
+  };
+  // 与原指派候选一致：真实员工/管理员账号。无对应账号不猜人，也不退回广播。
+  if (addedNames.length || (statusChanged && updated.status !== "已解决")) {
+    const validNames = new Set((db.prepare("SELECT DISTINCT name FROM employees WHERE role IN ('admin', 'employee') AND TRIM(name) <> ''").all() as { name: string }[]).map(row => row.name));
+    for (const name of addedNames) if (validNames.has(name)) add(name, "assigned");
+    if (statusChanged && updated.status !== "已解决") {
+      for (const name of currentNames) if (name !== auth.name && validNames.has(name)) add(name, "status");
+    }
+  }
+  // 已解决仍只走原创建人提醒；若此人同时新获指派，合为一条原完成提醒。
+  if (statusChanged && updated.status === "已解决" && updated.created_by && updated.created_by !== auth.name) add(updated.created_by, "resolved");
+  const insertNotice = db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)");
+  for (const [name, reason] of notices) {
+    const assignment = `${auth.name}已将你加入工单「${updated.description || ""}」的负责人。`;
+    if (reason.resolved) {
+      insertNotice.run("工单完成", "你派的工单已解决", `工单「${updated.description || ""}」已由 ${auth.name} 解决${reason.assigned ? `\n${assignment}` : ""}`, name, String(updated.id), "issue");
+    } else {
+      const title = reason.assigned && reason.status ? "工单负责人和状态已变更" : reason.assigned ? "工单负责人已变更" : "工单状态已变更";
+      const content = [reason.assigned ? assignment : "", reason.status ? `${auth.name}将工单「${updated.description || ""}」从「${ticket.status}」改为「${updated.status}」。` : ""].filter(Boolean).join("\n");
+      insertNotice.run("", title, content, name, String(updated.id), "issue_update");
     }
   }
   if (status) {
     logOperation(auth.name, status === "已解决" ? "解决工单" : "改工单状态", "issue", String(id), status);
   }
-  return NextResponse.json(db.prepare("SELECT * FROM issue_tickets WHERE id = ?").get(id));
+  return NextResponse.json(updated);
+  }).immediate();
 }
 
 export async function DELETE(req: NextRequest) {

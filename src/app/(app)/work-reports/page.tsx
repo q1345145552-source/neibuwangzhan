@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import { reportSubmissionRevision } from "@/lib/boss-submission-types";
 import Link from "next/link";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
@@ -34,6 +35,8 @@ interface WorkReport {
   is_backfill: number;
   submitted_at: string;
   created_at: string;
+  updated_at?: string;
+  rejection_reason?: string;
 }
 
 interface AutoItem { type: string; id: string; title: string; subtitle: string; href: string; checked: boolean; responsible?: string; businessType?: string; }
@@ -42,6 +45,15 @@ interface RelatedObject { type: "project" | "customer" | "order"; id: string; na
 interface PickObject { id: string; name: string; }
 interface BoardRow { name: string; report: WorkReport | null; }
 type ReportReview = Pick<WorkReport, "id" | "employee_name" | "report_date" | "boss_rating" | "boss_comment">;
+
+function ReportReturnFeedback({ report, onResubmit }: { report: WorkReport; onResubmit?: () => void }) {
+  if (report.status !== "退回" && !report.rejection_reason?.trim()) return null;
+  return <div className="min-w-0 space-y-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 [overflow-wrap:anywhere] dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+    <p className="whitespace-pre-wrap">{report.status === "退回" ? "退回原因" : "上次退回原因"}：{report.rejection_reason?.trim() || "历史记录未保存退回原因"}</p>
+    {report.status === "退回" && <p>请修改日报后重新提交。</p>}
+    {report.status === "退回" && onResubmit && <Button size="sm" className="min-h-11" onClick={event => { event.stopPropagation(); onResubmit(); }}>修改重交</Button>}
+  </div>;
+}
 
 type DayStatus = "已提交" | "补交" | "未提交" | "退回";
 
@@ -219,6 +231,7 @@ export default function WorkReportsPage() {
   const [jumpError, setJumpError] = useState("");
   const [highlightReportId, setHighlightReportId] = useState<number | null>(null);
   const jumpedReport = useRef<string | null>(null);
+  const reportLinkRequest = useRef(0);
   const notificationReport = linkedReport?.key === reportIdParam ? linkedReport.report : null;
 
   // 员工：自己的日报列表
@@ -268,6 +281,19 @@ export default function WorkReportsPage() {
 
   // 详情弹窗
   const [detail, setDetail] = useState<WorkReport | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<WorkReport | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectError, setRejectError] = useState("");
+  const [rejectSaving, setRejectSaving] = useState(false);
+  const rejectInFlight = useRef(false);
+  const [rejectViewport, setRejectViewport] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!rejectTarget || !viewport) { setRejectViewport(null); return; }
+    const update = () => setRejectViewport({ left: viewport.offsetLeft, top: viewport.offsetTop, width: viewport.width, height: viewport.height });
+    update(); viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
+    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
+  }, [rejectTarget]);
 
   // 老板点评（星级 + 一句点评）
   const [reviewRating, setReviewRating] = useState(0);
@@ -374,17 +400,18 @@ export default function WorkReportsPage() {
   // 编号查原记录，取其真实日期；不从通知文字/员工姓名猜日期，也不自动打开详情。
   useEffect(() => {
     let active = true;
+    const run = ++reportLinkRequest.current;
     const controller = new AbortController();
     jumpedReport.current = null;
     setLinkedReport(null);
     setHighlightReportId(null);
-    setJumpError("");
-    if (reportIdParam === null || !user) return;
+    setJumpError(""); setRejectTarget(null);
     setStoryOpen(false);
     setReviewsOpen(false);
-    setDetail(null);
+    setDetail(null); setFormOpen(false);
+    if (reportIdParam === null || !user) return;
     const id = Number(reportIdParam);
-    if (!/^\d+$/.test(reportIdParam) || !Number.isSafeInteger(id) || id <= 0) {
+    if (!/^[1-9]\d*$/.test(reportIdParam) || !Number.isSafeInteger(id) || id <= 0) {
       setJumpError("日报编号无效。");
       return;
     }
@@ -395,7 +422,7 @@ export default function WorkReportsPage() {
         const report: WorkReport = await response.json();
         if (report.id !== id || !/^\d{4}-\d{2}-\d{2}$/.test(report.report_date)
           || (!isAdmin && report.employee_name !== user.name)) throw new Error("日报不存在或你无权查看。");
-        if (!active) return;
+        if (!active || run !== reportLinkRequest.current) return;
         setLinkedReport({ key: reportIdParam, report });
         if (isAdmin) setBoardDate(report.report_date);
       })
@@ -610,20 +637,43 @@ export default function WorkReportsPage() {
     if (items.length === 0) { setFormErr("请至少勾选或填写一条今日已完成"); return; }
     setSaving(true);
     const body = { report_date: formDate, completed_items: items, summary: formSummary, tomorrow_plan: formPlan, problems: formProblems, related_objects: formRelated };
-    const ok = formMode === "create"
-      ? await apiCall("/api/work-reports", { method: "POST", body, onError: (m) => setFormErr(m) })
-      : await apiCall(`/api/work-reports/${formId}`, { method: "PATCH", body, onError: (m) => setFormErr(m) });
+    const linkRun = reportLinkRequest.current;
+    const saved: { ok: boolean; report?: WorkReport } = formMode === "create"
+      ? { ok: await apiCall("/api/work-reports", { method: "POST", body, onError: (m) => setFormErr(m) }) }
+      : await (async () => {
+        try {
+          const response = await fetchWithAuth(`/api/work-reports/${formId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) { setFormErr(data.error || "重交失败，请重试"); return { ok: false }; }
+          return { ok: true, report: data.id === formId && data.employee_name === user?.name ? data as WorkReport : undefined };
+        } catch { setFormErr("网络错误，请重试"); return { ok: false }; }
+      })();
     setSaving(false);
-    if (ok) { setFormOpen(false); setFormErr(""); refresh(); }
+    if (saved.ok) {
+      if (saved.report && linkRun === reportLinkRequest.current) {
+        const updated = saved.report;
+        setLinkedReport(target => target?.key === reportIdParam && target.report.id === updated.id ? { ...target, report: updated } : target);
+      }
+      setFormOpen(false); setFormErr(""); refresh();
+    }
   };
 
-  const reject = async (r: WorkReport) => {
-    if (!confirm(`确定退回 ${r.employee_name} ${r.report_date} 的工作记录？`)) return;
-    const ok = await apiCall(`/api/work-reports/${r.id}`, { method: "PATCH", body: { action: "reject" } });
+  const reject = (r: WorkReport) => {
+    if (rejectInFlight.current || r.status !== "已提交") return;
+    setRejectTarget(r); setRejectionReason(""); setRejectError("");
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget || rejectInFlight.current) return;
+    if (!rejectionReason.trim()) { setRejectError("请填写退回原因"); return; }
+    const target = rejectTarget;
+    const reason = rejectionReason.trim();
+    rejectInFlight.current = true; setRejectSaving(true); setRejectError("");
+    const ok = await apiCall(`/api/work-reports/${target.id}`, { method: "PATCH", body: { action: "reject", rejection_reason: reason, submission_revision: reportSubmissionRevision(target) }, onError: setRejectError });
+    rejectInFlight.current = false; setRejectSaving(false);
     if (ok) {
-      setLinkedReport(target => target?.report.id === r.id ? { ...target, report: { ...target.report, status: "退回" } } : target);
-      setDetail(null);
-      refresh();
+      setLinkedReport(link => link?.report.id === target.id ? { ...link, report: { ...link.report, status: "退回", rejection_reason: reason } } : link);
+      setRejectTarget(null); setDetail(null); refresh();
     }
   };
 
@@ -778,18 +828,21 @@ export default function WorkReportsPage() {
                     data-report-id={row.report?.id}
                     onClick={() => row.report && openDetail(row.report)}
                     className={cn(
-                      "flex items-center justify-between gap-2 rounded-xl border p-3",
+                      "flex flex-col gap-2 rounded-xl border p-3",
                       risky ? "border-red-400 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30" : "border-[var(--border)] bg-[var(--background)]",
                       row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]",
                       row.report?.id === highlightReportId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30"
                     )}
                   >
+                    <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="min-w-0 max-w-full truncate text-sm font-medium text-[var(--foreground)]">{row.name}</span>
                       {row.report && <ReviewStatus report={row.report} />}
                       {risky && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">风险</span>}
                     </div>
                     <StatusBadge st={st} />
+                    </div>
+                    {row.report && <ReportReturnFeedback report={row.report} />}
                   </div>
                 );
               })}
@@ -872,11 +925,12 @@ export default function WorkReportsPage() {
                     data-report-id={r?.id}
                     onClick={() => r && openDetail(r)}
                     className={cn(
-                      "flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
+                      "flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3",
                       r && "cursor-pointer transition-colors hover:border-[var(--primary)]",
                       r?.id === highlightReportId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30"
                     )}
                   >
+                    <div className="flex items-center justify-between gap-2">
                     <span className="text-sm text-[var(--foreground)]">{day}</span>
                     <div className="flex items-center gap-2">
                       {!r && day === today && <Button size="sm" onClick={(e) => { e.stopPropagation(); openCreate(today); }}>去填写</Button>}
@@ -884,6 +938,8 @@ export default function WorkReportsPage() {
                       {r && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openDetail(r); }}>查看</Button>}
                       <StatusBadge st={st} />
                     </div>
+                    </div>
+                    {r && <ReportReturnFeedback report={r} onResubmit={() => openResubmit(r)} />}
                   </div>
                 );
               })}
@@ -950,7 +1006,7 @@ export default function WorkReportsPage() {
       {/* 填写/重交弹窗 */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setFormOpen(false)}>
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label={formMode === "create" ? "填写工作记录" : "重新提交工作记录"} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="text-base font-semibold text-[var(--foreground)]">
                 {formMode === "create" ? (formDate === today ? "填写今日工作记录" : formDate === yesterday ? "补交昨日工作记录" : "补交历史工作记录") : "重新提交工作记录"}
@@ -1122,10 +1178,26 @@ export default function WorkReportsPage() {
         </div>
       )}
 
+      {rejectTarget && isAdmin && (
+        <div style={rejectViewport ? { left: rejectViewport.left, top: rejectViewport.top, width: rejectViewport.width, height: rejectViewport.height, right: "auto", bottom: "auto" } : undefined} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !rejectInFlight.current && setRejectTarget(null)}>
+          <div role="dialog" aria-modal="true" aria-label="退回日报" style={rejectViewport ? { maxHeight: Math.max(0, rejectViewport.height - 32) } : undefined} className="max-h-[88dvh] w-full min-w-0 max-w-sm space-y-3 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold">退回 {rejectTarget.employee_name} {rejectTarget.report_date} 的日报</h3>
+            <label className="block text-sm">退回原因（必填）
+              <textarea aria-label="退回原因" value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} disabled={rejectSaving} rows={3} className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--background)] p-2" autoFocus />
+            </label>
+            {rejectError && <p role="alert" className="text-sm text-red-600">{rejectError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" className="min-h-11" disabled={rejectSaving} onClick={() => setRejectTarget(null)}>取消</Button>
+              <Button variant="destructive" className="min-h-11" disabled={rejectSaving || !rejectionReason.trim()} onClick={confirmReject}>{rejectSaving ? "退回中…" : "确认退回"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 详情弹窗 */}
       {detail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetail(null)}>
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label={`日报详情：${detail.employee_name} ${detail.report_date}`} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-[var(--foreground)]">
@@ -1137,9 +1209,10 @@ export default function WorkReportsPage() {
                   <StatusBadge st={reportStatus(detail)} />
                 </div>
               </div>
-              <button onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              <button aria-label="关闭日报详情" onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
 
+            <div className="mt-3"><ReportReturnFeedback report={detail} onResubmit={!isAdmin && detail.employee_name === user?.name ? () => openResubmit(detail) : undefined} /></div>
             <div className="mt-4 space-y-3 text-sm">
               <ReportTranslation key={`${detail.id}-completed_items`} report={detail} field="completed_items" onTranslated={onTranslated}>
                 <ul className="mt-1 space-y-1">
@@ -1237,14 +1310,10 @@ export default function WorkReportsPage() {
 
             {isAdmin && detail.status === "已提交" && (
               <div className="mt-4 border-t border-[var(--border)] pt-3">
-                <Button size="sm" variant="destructive" onClick={() => reject(detail)}>退回</Button>
+                <Button size="sm" variant="destructive" disabled={rejectSaving} onClick={() => reject(detail)}>退回</Button>
               </div>
             )}
-            {!isAdmin && detail.status === "退回" && detail.employee_name === user?.name && (
-              <div className="mt-4 border-t border-[var(--border)] pt-3">
-                <Button size="sm" onClick={() => openResubmit(detail)}>修改重交</Button>
-              </div>
-            )}
+
           </div>
         </div>
       )}

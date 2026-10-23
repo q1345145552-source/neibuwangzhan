@@ -12,8 +12,9 @@ const ideas = [0, 1].flatMap(is_boss => statuses.map((status, n) => ({ id: is_bo
 let role = 'employee', state = [], cursor = 0;
 const originalLoad = Module._load;
 Module._load = function(name, ...args) {
-  if (name === 'react') return { ...React, useEffect() {}, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = Array.isArray(initial) ? ideas : initial === true ? false : initial; return [state[i], value => { state[i] = value; }]; } };
+  if (name === 'react') return { ...React, useEffect() {}, useRef(value) { return { current: value }; }, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = Array.isArray(initial) ? ideas : initial === true ? false : initial; return [state[i], value => { state[i] = value; }]; } };
   if (name === '@/components/auth-provider') return { useAuth: () => ({ user: { role, name: role } }) };
+  if (name === 'next/navigation') return { useSearchParams: () => ({ get: () => null }) };
   if (name === '@/lib/api') return { fetchWithAuth() {} };
   if (name === '@/lib/api-call') return { apiCall() {} };
   if (name === '@/lib/utils') return { cn: (...s) => s.join(' '), toThaiTime: s => s };
@@ -45,7 +46,7 @@ for (role of ['employee', 'admin']) {
     assert(columnHtml.includes((role === 'admin' ? '2' : '1') + ' 条'));
     for (const other of statuses.filter(value => value !== status)) assert(!columnHtml.includes('同事' + other));
   }
-  assert(html.includes('奖金')); assert(html.includes('¥0')); assert(html.includes('关联功能A'));
+  assert(html.includes('奖金')); assert(html.includes('本次采纳无奖金（0 CNY）')); assert(html.includes('关联功能A'));
   assert(html.includes('业务改进')); assert(html.includes('来源：')); assert(html.includes('2026-10-15'));
   assert.equal(html.includes('老板待评估'), role === 'admin');
   assert.equal(html.includes('拒绝原因A'), role === 'admin');

@@ -39,9 +39,19 @@ interface Reflection {
   status: string;
   created_at: string;
   updated_at: string;
+  rejection_reason?: string;
 }
 
 interface EmpOption { id: number; name: string; }
+
+function ReflectionReviewFeedback({ reflection, onRewrite }: { reflection: Reflection; onRewrite?: () => void }) {
+  if (reflection.status !== "退回" && !reflection.rejection_reason?.trim()) return null;
+  return <div className="mt-2 space-y-1 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 [overflow-wrap:anywhere] dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+    <p className="whitespace-pre-wrap">{reflection.status === "退回" ? "退回原因" : "上次退回原因"}：{reflection.rejection_reason?.trim() || "历史记录未保存退回原因"}</p>
+    {reflection.status === "退回" && <p>请修改心得后重新提交。</p>}
+    {reflection.status === "退回" && onRewrite && <Button size="sm" className="min-h-11" onClick={onRewrite}>修改重交</Button>}
+  </div>;
+}
 
 function ReflectionTranslation({ reflection, onTranslated }: {
   reflection: Reflection;
@@ -191,6 +201,20 @@ export default function MeetingsPage() {
 
   // 会议详情 + 心得
   const [detailMeeting, setDetailMeeting] = useState<Meeting | null>(null);
+  const openedMeetingId = useRef<number | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Reflection | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectError, setRejectError] = useState("");
+  const [rejectSaving, setRejectSaving] = useState(false);
+  const rejectInFlight = useRef(false);
+  const [rejectViewport, setRejectViewport] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!rejectTarget || !viewport) { setRejectViewport(null); return; }
+    const update = () => setRejectViewport({ left: viewport.offsetLeft, top: viewport.offsetTop, width: viewport.width, height: viewport.height });
+    update(); viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
+    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
+  }, [rejectTarget]);
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [refLoading, setRefLoading] = useState(false);
   const [refError, setRefError] = useState("");
@@ -308,6 +332,7 @@ export default function MeetingsPage() {
   };
 
   const openMeeting = (m: Meeting) => {
+    openedMeetingId.current = m.id; setRejectTarget(null);
     setDetailMeeting(m);
     setJumpError("");
     setHighlightReflectionId(null);
@@ -319,24 +344,25 @@ export default function MeetingsPage() {
   };
 
   const closeMeeting = () => {
+    openedMeetingId.current = null; setRejectTarget(null);
     reflectionRequest.current++;
     setDetailMeeting(null);
     setHighlightReflectionId(null);
   };
 
   useEffect(() => {
-    let active = true;
+    let active = true; const controller = new AbortController();
     openedReflection.current = null; locatedReflection.current = null;
     setReflectionTarget(null); setJumpError(""); setHighlightReflectionId(null);
-    if (reflectionParam === null) return;
     closeMeeting(); setRfOpen(false); setFormOpen(false); setLightbox(null);
+    if (reflectionParam === null) return;
     if (!user) return;
     if (user.role !== "admin" && user.role !== "employee") { setJumpError("无权查看会议心得。"); return; }
     const id = Number(reflectionParam);
-    if (!/^\d+$/.test(reflectionParam) || !Number.isSafeInteger(id) || id <= 0) {
+    if (!/^[1-9]\d*$/.test(reflectionParam) || !Number.isSafeInteger(id) || id <= 0) {
       setJumpError("心得编号无效。"); return;
     }
-    fetchWithAuth(`/api/meetings/reflections/${id}`, { cache: "no-store" })
+    fetchWithAuth(`/api/meetings/reflections/${id}`, { cache: "no-store", signal: controller.signal })
       .then(async response => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "心得加载失败，请刷新后重试。");
@@ -344,7 +370,7 @@ export default function MeetingsPage() {
         if (active) setReflectionTarget(data);
       })
       .catch(error => { if (active) setJumpError(error.message || "心得加载失败，请刷新后重试。"); });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [reflectionParam, user?.id, user?.name, user?.role]);
 
   useEffect(() => {
@@ -494,11 +520,26 @@ export default function MeetingsPage() {
     if (ok) { loadReflections(detailMeeting.id); load(); }
   };
 
-  const rejectRf = async (r: Reflection) => {
-    if (!detailMeeting) return;
-    if (!confirm(`确定退回 ${r.employee_name} 的这条心得？`)) return;
-    const ok = await apiCall(`/api/meetings/${detailMeeting.id}/reflections/${r.id}`, { method: "PATCH", body: { action: "reject" } });
-    if (ok) { loadReflections(detailMeeting.id); load(); }
+  const rejectRf = (r: Reflection) => {
+    if (!detailMeeting || rejectInFlight.current || r.status !== "已提交") return;
+    setRejectTarget(r); setRejectionReason(""); setRejectError("");
+  };
+
+  const confirmRejectRf = async () => {
+    if (!rejectTarget || rejectInFlight.current) return;
+    if (!rejectionReason.trim()) { setRejectError("请填写退回原因"); return; }
+    const target = rejectTarget;
+    rejectInFlight.current = true; setRejectSaving(true); setRejectError("");
+    const ok = await apiCall(`/api/meetings/${target.meeting_id}/reflections/${target.id}`, {
+      method: "PATCH", body: { action: "reject", rejection_reason: rejectionReason.trim(), submission: { updated_at: target.updated_at || "", content: target.content || "", images: target.images || "" } },
+      onError: setRejectError,
+    });
+    rejectInFlight.current = false; setRejectSaving(false);
+    if (ok) {
+      setRejectTarget(null); setRejectionReason("");
+      if (openedMeetingId.current === target.meeting_id) loadReflections(target.meeting_id);
+      load();
+    }
   };
 
   const dateTimeLabel = (m: Meeting) => (m.meeting_time ? `${m.meeting_date} ${m.meeting_time}` : m.meeting_date);
@@ -589,7 +630,7 @@ export default function MeetingsPage() {
       {/* 会议详情弹窗（含心得） */}
       {detailMeeting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeMeeting}>
-          <div ref={detailScrollRef} role="dialog" aria-modal="true" aria-labelledby="meeting-detail-title" className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div ref={detailScrollRef} role="dialog" aria-modal="true" aria-labelledby="meeting-detail-title" className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <h3 id="meeting-detail-title" className="text-base font-semibold text-[var(--foreground)]">{detailMeeting.title}</h3>
@@ -663,6 +704,7 @@ export default function MeetingsPage() {
                                 <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
                                 {statusBadge(r.status)}
                               </div>
+                              <ReflectionReviewFeedback reflection={r} />
                               {r.content && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
                               <ReflectionTranslation reflection={r} onTranslated={onTranslated} />
                               {parseList(r.images).length > 0 && (
@@ -674,7 +716,7 @@ export default function MeetingsPage() {
                               )}
                               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                 <TaskMessageButton type="meeting" id={r.id} ownerNames={[r.employee_name]} />
-                                {r.status === "已提交" && <Button size="sm" variant="destructive" onClick={() => rejectRf(r)}>退回</Button>}
+                                {r.status === "已提交" && <Button size="sm" variant="destructive" disabled={rejectSaving} onClick={() => rejectRf(r)}>退回</Button>}
                               </div>
                             </div>
                           ))}
@@ -702,6 +744,7 @@ export default function MeetingsPage() {
                           <span className="text-xs text-[var(--muted-foreground)]">{toThaiTime(r.created_at)}</span>
                           {statusBadge(r.status)}
                         </div>
+                        <ReflectionReviewFeedback reflection={r} onRewrite={() => openRfEdit(r)} />
                         {r.content && <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">{r.content}</p>}
                         <ReflectionTranslation reflection={r} onTranslated={onTranslated} />
                         {parseList(r.images).length > 0 && (
@@ -713,7 +756,6 @@ export default function MeetingsPage() {
                         )}
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <TaskMessageButton type="meeting" id={r.id} ownerNames={[r.employee_name]} />
-                          {r.status === "退回" && <Button size="sm" onClick={() => openRfEdit(r)}>修改重交</Button>}
                           <Button size="sm" variant="ghost" onClick={() => deleteRf(r)} className="gap-1 text-[var(--muted-foreground)]"><Trash2 className="size-3.5" />删除</Button>
                         </div>
                       </div>
@@ -726,10 +768,26 @@ export default function MeetingsPage() {
         </div>
       )}
 
+      {rejectTarget && isAdmin && (
+        <div style={rejectViewport ? { left: rejectViewport.left, top: rejectViewport.top, width: rejectViewport.width, height: rejectViewport.height, right: "auto", bottom: "auto" } : undefined} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !rejectInFlight.current && setRejectTarget(null)}>
+          <div role="dialog" aria-modal="true" aria-label="退回会议心得" style={rejectViewport ? { maxHeight: Math.max(0, rejectViewport.height - 32) } : undefined} className="max-h-[88dvh] w-full min-w-0 max-w-sm space-y-3 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold">退回 {rejectTarget.employee_name} 的心得 #{rejectTarget.id}</h3>
+            <label className="block text-sm">退回原因（必填）
+              <textarea aria-label="退回原因" value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} disabled={rejectSaving} rows={3} className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--background)] p-2" autoFocus />
+            </label>
+            {rejectError && <p role="alert" className="text-sm text-red-600">{rejectError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" className="min-h-11" disabled={rejectSaving} onClick={() => setRejectTarget(null)}>取消</Button>
+              <Button variant="destructive" className="min-h-11" disabled={rejectSaving || !rejectionReason.trim()} onClick={confirmRejectRf}>{rejectSaving ? "退回中…" : "确认退回"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 提交/重交心得弹窗 */}
       {rfOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setRfOpen(false)}>
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label={rfMode === "create" ? "提交心得" : "修改重交"} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="text-base font-semibold text-[var(--foreground)]">{rfMode === "create" ? "提交心得" : "修改重交"}</h3>
               <button onClick={() => setRfOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
@@ -737,7 +795,7 @@ export default function MeetingsPage() {
 
             <div className="mt-4">
               <label className="text-xs font-medium">心得内容 <span className="text-[var(--destructive)]">*</span></label>
-              <textarea value={rfContent} onChange={(e) => setRfContent(e.target.value)} rows={4} placeholder="写下你这场会议的收获、心得" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+              <textarea aria-label="心得内容" value={rfContent} onChange={(e) => setRfContent(e.target.value)} rows={4} placeholder="写下你这场会议的收获、心得" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
             </div>
 
             <div className="mt-3">

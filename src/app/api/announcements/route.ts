@@ -28,10 +28,16 @@ export async function GET(req: NextRequest) {
   }
 
   const recipientsStmt = db.prepare("SELECT * FROM announcement_recipients WHERE announcement_id = ? ORDER BY id ASC");
-  const result = announcements.map((a) => ({
-    ...a,
-    recipients: recipientsStmt.all(a.id),
-  }));
+  const result = announcements.map((a) => {
+    const recipients = recipientsStmt.all(a.id) as any[];
+    return {
+      ...a,
+      // 员工列表保留原接收人/状态信息，不借列表旁路读取他人的复述和批注。
+      recipients: isAdmin ? recipients : recipients.map(r => r.employee_name === auth.name ? r : {
+        id: r.id, announcement_id: r.announcement_id, employee_name: r.employee_name, status: r.status,
+      }),
+    };
+  });
   return NextResponse.json(result);
 }
 

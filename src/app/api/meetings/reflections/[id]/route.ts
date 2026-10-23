@@ -10,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const rawId = (await params).id;
   const id = Number(rawId);
-  if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) return NextResponse.json({ error: "心得编号无效。" }, { status: 400 });
+  if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) return NextResponse.json({ error: "心得编号无效。" }, { status: 400 });
   const row = getDb().prepare(`SELECT r.id, r.meeting_id, r.employee_name, m.participants
     FROM meeting_reflections r JOIN meetings m ON m.id=r.meeting_id WHERE r.id=?`).get(id) as {
     id: number; meeting_id: number; employee_name: string; participants: string;

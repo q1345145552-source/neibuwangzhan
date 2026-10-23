@@ -125,7 +125,7 @@ function createAnnouncementHarness() {
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/auth': { verifyAuth: async () => actor, isStaff: value => ['admin', 'employee'].includes(value.role) },
     '@/lib/db': { getDb() { dbCalls++; return db; }, logOperation(...args) { assert(locks > 0, 'Creation audit is inside the same transaction'); logs.push({ args: copy(args) }); } },
-    '@/lib/req': load('src/lib/req.ts'), '@/lib/enums': load('src/lib/enums.ts'),
+    '@/lib/req': load('src/lib/req.ts'), '@/lib/enums': load('src/lib/enums.ts'), '@/lib/announcement-feedback': load('src/lib/announcement-feedback.ts'),
     '@/lib/announcement-overdue': { syncAnnouncementOverdueTodos(name) { syncCalls.push(name); }, clearAnnouncementOverdueTodos() { throw Error('No existing notice mutations are authorized in this harness'); } },
     '@/lib/deepseek': { async compareRetell() { aiCalls++; throw Error('AI is not authorized in this mock'); } },
   };
@@ -135,7 +135,7 @@ function createAnnouncementHarness() {
     ai: load('src/app/api/announcements/[id]/ai-compare/route.ts', deps), rule: load('src/app/api/announcements/[id]/to-rule/route.ts', deps),
   };
   return {
-    employees, announcements, recipients, notifications, logs, writes, syncCalls,
+    db, employees, announcements, recipients, notifications, logs, writes, syncCalls,
     get actor() { return actor; }, setActor(value) { actor = value; },
     get dbCalls() { return dbCalls; }, get transactions() { return transactions; }, get aiCalls() { return aiCalls; },
     failNextNotification(nth = 1) { assert(Number.isInteger(nth) && nth > 0); failedNotification = notificationAttempts + nth; },

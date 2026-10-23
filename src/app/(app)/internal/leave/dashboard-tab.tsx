@@ -26,6 +26,8 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
   const [rejectModal, setRejectModal] = useState<{ id: number } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
+  const [rejectError, setRejectError] = useState("");
+  const reviewInFlight = useRef(false);
   const [aiResult, setAiResult] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -172,11 +174,13 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
   };
 
   const handleApprove = async (id: number, status: string) => {
+    if (reviewInFlight.current) return;
     if (status === "已驳回") {
       setRejectModal({ id });
-      setRejectReason("");
+      setRejectReason(""); setRejectError("");
       return;
     }
+    reviewInFlight.current = true;
     setApproving(true);
     try {
       const res = await fetchWithAuth("/api/leave", {
@@ -188,7 +192,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
         const data = await res.json().catch(() => ({}));
         alert(data.error || "操作失败");
       } else {
-        setPendingDetail(null);
+        setPendingDetail(null); loadRecords();
         // 刷新看板数据
         fetchWithAuth("/api/leave/dashboard")
           .then(r => r.json())
@@ -197,11 +201,13 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
       }
     } catch (e) { alert("网络错误"); }
     setApproving(false);
+    reviewInFlight.current = false;
   };
 
   const handleConfirmReject = async () => {
-    if (!rejectModal) return;
-    if (!rejectReason.trim()) return;
+    if (!rejectModal || reviewInFlight.current) return;
+    if (!rejectReason.trim()) { setRejectError("请填写驳回原因"); return; }
+    reviewInFlight.current = true; setRejectError("");
     setRejecting(true);
     try {
       const res = await fetchWithAuth("/api/leave", {
@@ -211,17 +217,18 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "操作失败");
+        setRejectError(data.error || "操作失败");
       } else {
         setRejectModal(null);
-        setPendingDetail(null);
+        setPendingDetail(null); loadRecords();
         fetchWithAuth("/api/leave/dashboard")
           .then(r => r.json())
           .then(d => { if (!d.error) setDashboard(d); })
           .catch(() => {});
       }
-    } catch (e) { alert("网络错误"); }
+    } catch (e) { setRejectError("网络错误，请重试"); }
     setRejecting(false);
+    reviewInFlight.current = false;
   };
 
   // 手动触发 AI 分析（三档建议 + 理由 + 详细分析），结果走缓存，同一条不重复分析
@@ -533,6 +540,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                       <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{r.reason || "—"}</td>
                       <td className="py-2.5 px-4">
                         <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                        {r.status === "已驳回" && <p className="mt-1 whitespace-pre-wrap text-xs text-red-600 [overflow-wrap:anywhere]">驳回原因：{r.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
                       </td>
                     </tr>
                   ))}
@@ -545,7 +553,9 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">{r.employee_name}</span>
                       <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+
                     </div>
+                    {r.status === "已驳回" && <p className="mt-1 whitespace-pre-wrap text-xs text-red-600 [overflow-wrap:anywhere]">驳回原因：{r.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
                     <div className="mt-2 space-y-1.5 text-sm">
                       <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">类型</span><span>{r.leave_type}</span></div>
                       <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{r.start_date || "—"} {r.start_time || "09:00"} ~ {r.end_date || "—"} {r.end_time || "17:00"}</span></div>
@@ -630,16 +640,18 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
       {/* ── 驳回原因弹窗 ── */}
       {rejectModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onClick={() => !rejecting && setRejectModal(null)}>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label="驳回请假申请" className="max-h-[88dvh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
             <p className="text-sm font-medium text-[var(--foreground)]">驳回请假申请</p>
             <p className="text-xs text-[var(--muted-foreground)] mt-1">请填写驳回原因（必填）</p>
             <textarea
+              aria-label="驳回原因" disabled={rejecting}
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
               placeholder="驳回原因..."
               className="mt-3 w-full h-24 rounded border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)] resize-none"
               autoFocus
             />
+            {rejectError && <p role="alert" className="mt-2 text-sm text-red-600">{rejectError}</p>}
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => { setRejectModal(null); setRejectReason(""); }} disabled={rejecting} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]">取消</button>
               <button onClick={handleConfirmReject} disabled={!rejectReason.trim() || rejecting} className="rounded-md bg-red-500 hover:bg-red-600 px-3 py-1.5 text-sm text-white font-medium disabled:opacity-50">{rejecting ? "驳回中…" : "确认驳回"}</button>

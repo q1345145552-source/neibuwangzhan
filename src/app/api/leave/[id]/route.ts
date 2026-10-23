@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const n = Number(id);
   if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(n)) return NextResponse.json({ error: "请假编号无效。" }, { status: 400 });
   const own = auth.role !== "admin";
-  const row = getDb().prepare(`SELECT id,employee_name,leave_type,start_date,end_date,start_time,end_time,destination,reason,status,created_at
+  const row = getDb().prepare(`SELECT id,employee_name,leave_type,start_date,end_date,start_time,end_time,destination,reason,status,created_at,rejection_reason,approved_by,approved_at
     FROM leave_requests WHERE id=?${own ? " AND employee_name=?" : ""}`).get(n, ...(own ? [auth.name] : []));
   if (!row) return NextResponse.json({ error: "请假记录不存在或你无权查看。" }, { status: 404 });
   return NextResponse.json(row, { headers: { "Cache-Control": "private, no-store" } });

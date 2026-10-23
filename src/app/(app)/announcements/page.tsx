@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useCallback, useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime, fileUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus, X, ImagePlus } from "lucide-react";
+import { isPositiveRecordId } from "@/lib/announcement-feedback";
 
 interface Recipient {
   id: number;
@@ -15,6 +17,7 @@ interface Recipient {
   retell_th?: string;
   retell_zh?: string;
   reject_comment?: string;
+  updated_at?: string;
 }
 interface Announcement {
   id: number;
@@ -46,10 +49,14 @@ function parseAttachments(s: string): string[] {
   try { const a = JSON.parse(s || "[]"); return Array.isArray(a) ? a : []; } catch { return []; }
 }
 
-export default function AnnouncementsPage() {
+function AnnouncementsContent() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const canPublish = isAdmin || user?.role === "employee";
+  const searchParams = useSearchParams();
+  const openId = searchParams.get("open");
+  const recipientId = searchParams.get("recipient");
+  const invalidFeedback = searchParams.get("feedback") === "invalid";
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
@@ -73,6 +80,16 @@ export default function AnnouncementsPage() {
   const [retellZh, setRetellZh] = useState("");
   const [retellSaving, setRetellSaving] = useState(false);
   const [retellErr, setRetellErr] = useState("");
+  const retellInFlight = useRef(false);
+  const [detailError, setDetailError] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [targetRecipientId, setTargetRecipientId] = useState<number | null>(null);
+  const detailRequest = useRef(0);
+  const detailPanel = useRef<HTMLDivElement>(null);
+  const reviewPanel = useRef<HTMLDivElement>(null);
+  const retellSection = useRef<HTMLDivElement>(null);
+  const retellForm = useRef<HTMLDivElement>(null);
+  const retellInput = useRef<HTMLTextAreaElement>(null);
 
   // 管理员复核
   const [reviewRec, setReviewRec] = useState<Recipient | null>(null);
@@ -81,6 +98,7 @@ export default function AnnouncementsPage() {
   const [rejectComment, setRejectComment] = useState("");
   const [reviewErr, setReviewErr] = useState("");
   const [reviewSaving, setReviewSaving] = useState(false);
+  const rejectInFlight = useRef(false);
 
   // 编辑通知（管理员）
   const [editTarget, setEditTarget] = useState<Announcement | null>(null);
@@ -231,31 +249,70 @@ export default function AnnouncementsPage() {
     }
   };
 
-  // 打开详情：员工打开即标记已读
-  const openDetail = async (a: Announcement) => {
+  // 与普通打开详情共用接口；只有实际接收人的原待读状态会按既有规则改变。
+  const loadDetail = useCallback(async (id: string, target?: string, signal?: AbortSignal) => {
+    const generation = ++detailRequest.current;
+    setDetailOpen(false); setDetail(null); setReviewRec(null); setTargetRecipientId(null);
+    setDetailError(""); setDetailLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/announcements/${a.id}`, { cache: "no-store" });
-      const d = await res.json();
-      if (!res.ok) { setDetail(a); }
-      else {
-        setDetail(d);
-        const rec = d.my_recipient;
-        if (rec) {
-          setRetellTh(rec.retell_th || "");
-          setRetellZh(rec.retell_zh || "");
-        } else {
-          setRetellTh(""); setRetellZh("");
+      if (!isPositiveRecordId(id) || (target !== undefined && !isPositiveRecordId(target))) throw new Error("提醒链接无效，请返回通知列表查看");
+      const res = await fetchWithAuth(`/api/announcements/${id}${target ? `?recipient=${target}` : ""}`, { cache: "no-store", signal });
+      const d = await res.json().catch(() => null);
+      if (signal?.aborted || generation !== detailRequest.current) return;
+      if (!res.ok || !d) throw new Error(d?.error || "通知详情加载失败，请重试");
+      if (target && String(d.target_recipient?.id) !== target) throw new Error("未找到对应的复述记录，请返回通知列表查看");
+      setDetail(d);
+      setRetellTh(d.my_recipient?.retell_th || ""); setRetellZh(d.my_recipient?.retell_zh || "");
+      setRetellErr("");
+      if (target) {
+        setTargetRecipientId(Number(target));
+        if (isAdmin) {
+          setReviewRec(d.target_recipient); setAiConclusion(""); setRejectComment(""); setReviewErr("");
         }
       }
-    } catch { setDetail(a); }
-    setRetellErr("");
-    setDetailOpen(true);
+      setDetailOpen(true);
+    } catch (e) {
+      if (!signal?.aborted && generation === detailRequest.current) setDetailError(e instanceof Error ? e.message : "通知详情加载失败，请重试");
+    } finally { if (generation === detailRequest.current) setDetailLoading(false); }
+  }, [isAdmin]);
+
+  const openDetail = (a: Announcement) => { void loadDetail(String(a.id)); };
+  const closeDetail = () => {
+    detailRequest.current++; setDetailOpen(false); setReviewRec(null); setTargetRecipientId(null); setDetailLoading(false);
   };
 
+  useEffect(() => {
+    if (!user) return;
+    if (invalidFeedback || (recipientId !== null && openId === null)) {
+      detailRequest.current++; setDetailOpen(false); setReviewRec(null); setDetailLoading(false); setDetailError("提醒链接无效，请返回通知列表查看"); return;
+    }
+    if (openId === null) {
+      detailRequest.current++; setDetailOpen(false); setReviewRec(null); setTargetRecipientId(null); setDetailLoading(false); setDetailError(""); return;
+    }
+    const controller = new AbortController();
+    void loadDetail(openId, recipientId ?? undefined, controller.signal);
+    return () => controller.abort();
+  }, [openId, recipientId, invalidFeedback, user?.name, loadDetail]);
+
+  const scrollDetailTo = useCallback((element: HTMLElement | null) => {
+    const panel = detailPanel.current;
+    if (panel && element) panel.scrollTop += element.getBoundingClientRect().top - panel.getBoundingClientRect().top - 16;
+  }, []);
+
+  useEffect(() => {
+    if (!detailOpen || !targetRecipientId || !detail) return;
+    const frame = requestAnimationFrame(() => {
+      if (isAdmin && reviewPanel.current) reviewPanel.current.scrollTop = 0;
+      else scrollDetailTo(retellSection.current);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [detailOpen, detail?.id, targetRecipientId, isAdmin, reviewRec?.id, scrollDetailTo]);
+
   const submitRetell = async () => {
-    if (!detail?.my_recipient) return;
+    if (!detail?.my_recipient || retellInFlight.current) return;
     if (!retellTh.trim()) { setRetellErr("请填写泰语复述"); return; }
     if (!retellZh.trim()) { setRetellErr("请填写中文复述"); return; }
+    retellInFlight.current = true;
     setRetellSaving(true);
     const ok = await apiCall(`/api/announcements/${detail.id}/retell`, {
       method: "PATCH",
@@ -263,7 +320,8 @@ export default function AnnouncementsPage() {
       onError: (m) => setRetellErr(m),
     });
     setRetellSaving(false);
-    if (ok) { setRetellErr(""); load(); openDetail(detail as Announcement); }
+    retellInFlight.current = false;
+    if (ok) { setRetellErr(""); load(); void loadDetail(String(detail.id), targetRecipientId ? String(targetRecipientId) : undefined); }
   };
 
   // 管理员：打开某员工复核
@@ -296,14 +354,17 @@ export default function AnnouncementsPage() {
 
   const doReview = async (action: "confirm" | "reject") => {
     if (!detail || !reviewRec) return;
+    if (action === "reject" && rejectInFlight.current) return;
     if (action === "reject" && !rejectComment.trim()) { setReviewErr("请填写打回批注"); return; }
+    if (action === "reject") rejectInFlight.current = true;
     setReviewSaving(true);
     const ok = await apiCall(`/api/announcements/${detail.id}/review`, {
       method: "PATCH",
-      body: { employee_name: reviewRec.employee_name, action, comment: rejectComment.trim() },
+      body: { employee_name: reviewRec.employee_name, action, comment: rejectComment.trim(), ...(action === "reject" ? { recipient_id: reviewRec.id, submission: { updated_at: reviewRec.updated_at || "", retell_th: reviewRec.retell_th || "", retell_zh: reviewRec.retell_zh || "" } } : {}) },
       onError: (m) => setReviewErr(m),
     });
     setReviewSaving(false);
+    if (action === "reject") rejectInFlight.current = false;
     if (ok) {
       setReviewErr("");
       setRejectComment("");
@@ -463,6 +524,9 @@ export default function AnnouncementsPage() {
         )}
       </div>
 
+      {detailLoading && <p role="status" className="text-sm text-[var(--muted-foreground)]">正在打开通知和对应复述…</p>}
+      {detailError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"><p>{detailError}</p><a href="/announcements" className="mt-2 inline-block underline">返回通知列表</a></div>}
+
       {showForm && canPublish && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
           <h2 className="text-sm font-medium mb-4">新建通知</h2>
@@ -595,11 +659,11 @@ export default function AnnouncementsPage() {
 
       {/* 详情弹窗 */}
       {detailOpen && detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailOpen(false)}>
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeDetail}>
+          <div ref={detailPanel} role="dialog" aria-modal="true" aria-label={`通知详情：${detail.title}`} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="text-base font-semibold text-[var(--foreground)]">{detail.title}</h3>
-              <button onClick={() => setDetailOpen(false)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              <button onClick={closeDetail} aria-label="关闭通知详情" className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
               <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">{detail.type}</span>
@@ -654,15 +718,20 @@ export default function AnnouncementsPage() {
             )}
 
             {!isAdmin && detail.my_recipient && (
-              <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <div ref={retellSection} data-retell-recipient={detail.my_recipient.id} className="mt-4 border-t border-[var(--border)] pt-4">
                 {detail.recalled ? (
                   <p className="text-sm text-[var(--muted-foreground)]">该通知已撤回，无需复述。</p>
                 ) : (
                   <>
                     <h4 className="text-sm font-medium">我的复述</h4>
+                    {targetRecipientId && detail.my_recipient.status !== "需重述" && <p role="status" className="mt-2 text-sm text-[var(--muted-foreground)]">该复述当前为「{detail.my_recipient.status}」，{["已复述待确认", "已确认"].includes(detail.my_recipient.status) ? "该次打回已处理，无需按旧提醒重复提交。" : "请按当前通知要求操作。"}</p>}
                     {detail.my_recipient?.status === "需重述" && detail.my_recipient?.reject_comment && (
-                      <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-                        管理员批注：{detail.my_recipient.reject_comment}
+                      <div aria-label="被打回的复述" className="mt-2 space-y-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 [overflow-wrap:anywhere] dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                        <p className="font-medium">复述被打回，请重新复述</p>
+                        <p className="whitespace-pre-wrap">打回原因：{detail.my_recipient.reject_comment}</p>
+                        <p className="whitespace-pre-wrap">被打回的泰语复述：{detail.my_recipient.retell_th || "—"}</p>
+                        <p className="whitespace-pre-wrap">被打回的中文复述：{detail.my_recipient.retell_zh || "—"}</p>
+                        <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => { scrollDetailTo(retellForm.current); retellInput.current?.focus({ preventScroll: true }); }}>重新复述</Button>
                       </div>
                     )}
                     {detail.my_recipient?.status === "已复述待确认" || detail.my_recipient?.status === "已确认" ? (
@@ -674,18 +743,18 @@ export default function AnnouncementsPage() {
                         <p className="text-xs text-[var(--muted-foreground)]">当前状态：{detail.my_recipient.status}</p>
                       </div>
                     ) : (
-                      <>
+                      <div ref={retellForm}>
                         <div className="mt-3">
                           <label className="text-xs font-medium">泰语复述 <span className="text-[var(--destructive)]">*</span></label>
-                          <textarea value={retellTh} onChange={(e) => setRetellTh(e.target.value)} rows={3} placeholder="用你自己的话把要办的事重新写一遍（泰语）" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                          <textarea ref={retellInput} aria-label="泰语复述" value={retellTh} onChange={(e) => setRetellTh(e.target.value)} rows={3} placeholder="用你自己的话把要办的事重新写一遍（泰语）" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
                         </div>
                         <div className="mt-3">
                           <label className="text-xs font-medium">中文复述 <span className="text-[var(--destructive)]">*</span></label>
-                          <textarea value={retellZh} onChange={(e) => setRetellZh(e.target.value)} rows={3} placeholder="会中文自己写，不会的用翻译器翻好写上来（中文）" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+                          <textarea aria-label="中文复述" value={retellZh} onChange={(e) => setRetellZh(e.target.value)} rows={3} placeholder="会中文自己写，不会的用翻译器翻好写上来（中文）" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
                         </div>
                         {retellErr && <p className="mt-2 text-xs text-[var(--destructive)]">{retellErr}</p>}
                         <Button size="sm" onClick={submitRetell} disabled={retellSaving} className="mt-3">{retellSaving ? "提交中…" : "提交复述"}</Button>
-                      </>
+                      </div>
                     )}
                   </>
                 )}
@@ -698,10 +767,11 @@ export default function AnnouncementsPage() {
       {/* 管理员复核单个员工弹窗 */}
       {reviewRec && isAdmin && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setReviewRec(null)}>
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div ref={reviewPanel} role="dialog" aria-modal="true" aria-label={`复述审核：${reviewRec.employee_name}`} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-[var(--foreground)]">{reviewRec.employee_name}</h3>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)] [overflow-wrap:anywhere]">所属通知：{detail?.title}</p>
                 <span className={cn("mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR[reviewRec.status] || "bg-gray-100 text-gray-600")}>{reviewRec.status}</span>
               </div>
               <button onClick={() => setReviewRec(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
@@ -733,11 +803,11 @@ export default function AnnouncementsPage() {
 
             <div className="mt-4 border-t border-[var(--border)] pt-3">
               <label className="text-xs font-medium">打回批注（标不对时必填）</label>
-              <textarea value={rejectComment} onChange={(e) => setRejectComment(e.target.value)} rows={2} placeholder="哪里理解错了，说清楚让员工重述" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
-              {reviewErr && <p className="mt-2 text-xs text-[var(--destructive)]">{reviewErr}</p>}
+              <textarea aria-label="打回原因" value={rejectComment} disabled={reviewSaving} onChange={(e) => setRejectComment(e.target.value)} rows={2} placeholder="哪里理解错了，说清楚让员工重述" className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
+              {reviewErr && <p role="alert" className="mt-2 text-xs text-[var(--destructive)]">{reviewErr}</p>}
               <div className="mt-3 flex gap-2">
                 <Button size="sm" onClick={() => doReview("confirm")} disabled={reviewSaving || reviewRec.status === "已确认" || !!detail?.recalled}>标对（已确认）</Button>
-                <Button size="sm" variant="destructive" onClick={() => doReview("reject")} disabled={reviewSaving || !!detail?.recalled}>标不对（需重述）</Button>
+                <Button size="sm" variant="destructive" onClick={() => doReview("reject")} disabled={reviewSaving || reviewRec.status !== "已复述待确认" || !!detail?.recalled}>标不对（需重述）</Button>
               </div>
             </div>
           </div>
@@ -822,4 +892,8 @@ export default function AnnouncementsPage() {
       )}
     </div>
   );
+}
+
+export default function AnnouncementsPage() {
+  return <Suspense fallback={<p className="text-sm text-[var(--muted-foreground)]">加载通知中…</p>}><AnnouncementsContent /></Suspense>;
 }
