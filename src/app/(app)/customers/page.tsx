@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { MyWithdrawals } from "@/components/my-withdrawals";
 import { apiCall } from "@/lib/api-call";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -174,6 +175,10 @@ export default function CustomersPage() {
   const jumpedWithdrawal = useRef<string | null>(null);
   const withdrawalRequest = useRef(0);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
+  const reviewInFlight = useRef(false);
+  const [reviewError, setReviewError] = useState<{ id: number; message: string } | null>(null);
   const [dashboard, setDashboard] = useState<{potential:number;following:number;cooperated:number;dormant:number;new_this_month:number;alerts:any[];dormant_with_deals:number;dormant_no_deals:number} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [reassignTarget, setReassignTarget] = useState("");
@@ -345,12 +350,17 @@ export default function CustomersPage() {
   };
 
   const handleReview = async (withdrawal_id: number, approve: boolean) => {
-    const res = await fetchWithAuth("/api/customers", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "withdraw_review", withdrawal_id, approve }),
-    });
-    if (res.ok) { loadWithdrawals(); loadMyPoints(); }
-    else { const d = await res.json(); alert(d.error || "操作失败"); }
+    if (user?.role !== "admin" || reviewInFlight.current) return;
+    reviewInFlight.current = true; setReviewingId(withdrawal_id); setReviewError(null);
+    try {
+      const res = await fetchWithAuth("/api/customers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "withdraw_review", withdrawal_id, approve, note: reviewNotes[withdrawal_id] || "" }),
+      });
+      if (res.ok) { loadWithdrawals(); loadMyPoints(); }
+      else { const d = await res.json().catch(() => ({})); setReviewError({ id: withdrawal_id, message: d.error || "操作失败" }); }
+    } catch { setReviewError({ id: withdrawal_id, message: "网络错误，请重试" }); }
+    finally { reviewInFlight.current = false; setReviewingId(null); }
   };
 
   const handleExportSales = async () => {
@@ -438,12 +448,13 @@ export default function CustomersPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">客户管理</h1>
-          <div className="flex items-center gap-3 mt-0.5">
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <p className="text-sm text-[var(--muted-foreground)]">统一管理合作客户与潜客</p>
             <span className="inline-flex items-center gap-1 rounded bg-[color-mix(in_oklch,var(--success),var(--background)_85%)] px-2 py-0.5 text-xs font-medium text-[var(--success)]">
               <Banknote className="size-3" />我的销售积分: {myPoints}
             </span>
             <button onClick={() => setShowWithdraw(true)} className="text-xs text-[var(--primary)] hover:underline">提现</button>
+            <MyWithdrawals key={user?.name} />
             {user?.role === "admin" && <button onClick={() => setShowReviewPanel(!showReviewPanel)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">审核{withdrawals.filter((w: any) => w.status === "待审核").length > 0 ? `(${withdrawals.filter((w: any) => w.status === "待审核").length})` : ""}</button>}
             {user?.role === "admin" && <button onClick={handleExportSales} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">导出月报</button>}
           </div>
@@ -679,11 +690,16 @@ export default function CustomersPage() {
                     <span className="ml-2 text-xs text-[var(--muted-foreground)]">{w.created_at?.slice(0, 10)}</span>
                   </div>
                   {w.status === "待审核" && (
-                    <div className="flex gap-1">
-                      <Button size="xs" variant="outline" className="h-7 text-xs text-green-600" onClick={() => handleReview(w.id, true)}>通过</Button>
-                      <Button size="xs" variant="outline" className="h-7 text-xs text-[var(--destructive)]" onClick={() => handleReview(w.id, false)}>驳回</Button>
+                    <div className="w-full min-w-0 space-y-2">
+                      <label className="block text-xs text-[var(--muted-foreground)]">审核意见（选填）<textarea aria-label={`提现 #${w.id} 审核意见`} value={reviewNotes[w.id] || ""} disabled={reviewingId !== null} onChange={event => setReviewNotes(notes => ({ ...notes, [w.id]: event.target.value }))} rows={2} className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] p-2 text-sm" /></label>
+                      <div className="flex gap-2">
+                        <Button size="xs" variant="outline" disabled={reviewingId !== null} className="min-h-11 text-xs text-green-600" onClick={() => handleReview(w.id, true)}>通过</Button>
+                        <Button size="xs" variant="outline" disabled={reviewingId !== null} className="min-h-11 text-xs text-[var(--destructive)]" onClick={() => handleReview(w.id, false)}>驳回</Button>
+                      </div>
                     </div>
                   )}
+                  {w.status !== "待审核" && <p className="w-full whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">审核意见：{String(w.review_note || "").trim() ? w.review_note : "未填写审核意见"}</p>}
+                  {reviewError && reviewError.id === w.id && <p role="alert" className="w-full break-words text-sm text-red-600">{reviewError.message}</p>}
                 </div>
               ))}
             </div>
@@ -841,7 +857,7 @@ export default function CustomersPage() {
                   className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] font-mono" placeholder="输入要提现的分数" />
               </div>
               {withdrawMsg && <p className="text-xs text-[var(--destructive)] mb-3">{withdrawMsg}</p>}
-              <p className="text-xs text-[var(--muted-foreground)] mb-4">10 泰铢 = 1 分，管理员审核通过后到账</p>
+              <p className="text-xs text-[var(--muted-foreground)] mb-4">10 泰铢 = 1 分，审核通过后扣除积分，付款和到账情况需另行确认</p>
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" onClick={() => { setShowWithdraw(false); setWithdrawMsg(""); }}>取消</Button>
                 <Button size="sm" onClick={handleWithdraw}>提交申请</Button>

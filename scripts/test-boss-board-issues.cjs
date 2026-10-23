@@ -19,7 +19,7 @@ function load(file, dependencies = {}) {
 }
 const types = load('src/lib/boss-submission-types.ts');
 const submissions = load('src/lib/boss-submissions.ts', { './boss-submission-types': types });
-const notifications = load('src/lib/notification-types.ts', { './boss-submission-types': types });
+const notifications = load('src/lib/notification-types.ts', { './boss-submission-types': types, './announcement-feedback': load('src/lib/announcement-feedback.ts') });
 const categories = ['leave', 'attendance', 'notice', 'report', 'meeting', 'todo', 'problem', 'issue'];
 assert.deepEqual(Object.keys(types.BOSS_PENDING_TYPES), categories);
 assert.equal(types.BOSS_PENDING_TYPES.issue.label, '工单');
