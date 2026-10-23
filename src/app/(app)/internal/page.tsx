@@ -22,7 +22,7 @@ interface WorkloadData { employees: Workload[]; thresholds: { warn: number; crit
 interface AttendanceRequest {
   id: number; employee_name: string; date: string; time: string;
   type: string; reason: string; photo: string; status: string; approved_by: string;
-  approved_at: string; created_at: string;
+  approved_at: string; created_at: string; rejection_reason?: string;
 }
 interface TodayStatus {
   name: string; hasCheckedIn: boolean; hasCheckedOut: boolean;
@@ -66,6 +66,19 @@ function InternalPageContent() {
   const [clockAnim, setClockAnim] = useState<"in" | "out" | null>(null);
   const [currentTime, setCurrentTime] = useState("");
   const [attendanceRequests, setAttendanceRequests] = useState<AttendanceRequest[]>([]);
+  const [rejectRequestId, setRejectRequestId] = useState<number | null>(null);
+  const [requestRejectionReason, setRequestRejectionReason] = useState("");
+  const [requestApprovalError, setRequestApprovalError] = useState("");
+  const [approvingRequestId, setApprovingRequestId] = useState<number | null>(null);
+  const requestReviewInFlight = useRef(false);
+  const [requestDialogViewport, setRequestDialogViewport] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (rejectRequestId === null || !viewport) { setRequestDialogViewport(null); return; }
+    const update = () => setRequestDialogViewport({ left: viewport.offsetLeft, top: viewport.offsetTop, width: viewport.width, height: viewport.height });
+    update(); viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
+    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
+  }, [rejectRequestId]);
   const [todayStatuses, setTodayStatuses] = useState<TodayStatus[]>([]);
   const [monthlySummaries, setMonthlySummaries] = useState<MonthlySummary[]>([]);
   const [summaryMonth, setSummaryMonth] = useState(bangkokMonthKey());
@@ -409,10 +422,22 @@ function InternalPageContent() {
     } catch (e) { console.error("[内部管理] 提交补卡申请失败", e); }
   };
 
-  const handleApproveRequest = async (id: number, status: string) => {
-    // 后端可能返回 403（非管理员）/404（申请不存在），失败要给提示而不是静默刷新
-    const ok = await apiCall("/api/attendance/request", { method: "PATCH", body: { id, status } });
-    if (ok) loadAttendance();
+  const handleApproveRequest = async (id: number, status: string, rejectionReason?: string) => {
+    if (requestReviewInFlight.current) return;
+    if (status === "已驳回" && rejectionReason === undefined) {
+      setRejectRequestId(id); setRequestRejectionReason(""); setRequestApprovalError(""); return;
+    }
+    if (status === "已驳回" && !rejectionReason?.trim()) { setRequestApprovalError("请填写驳回原因"); return; }
+    requestReviewInFlight.current = true; setApprovingRequestId(id); setRequestApprovalError("");
+    const ok = await apiCall("/api/attendance/request", {
+      method: "PATCH", body: { id, status, ...(status === "已驳回" ? { rejection_reason: rejectionReason!.trim() } : {}) },
+      onError: setRequestApprovalError,
+    });
+    requestReviewInFlight.current = false; setApprovingRequestId(null);
+    if (ok) {
+      jumpedAttendanceRequest.current = null; setHighlightAttendanceRequestId(null);
+      setRejectRequestId(null); setRequestRejectionReason(""); loadAttendance();
+    }
   };
 
   const isAdmin = user?.role === "admin";
@@ -422,6 +447,7 @@ function InternalPageContent() {
     setHighlightAttendanceRequestId(null);
     setAttendanceJumpError("");
     if (attendanceRequestParam !== null) {
+      setRejectRequestId(null); setRequestApprovalError("");
       setCalDetailDay(null);
       setAnomalyModal(null);
       setPhotoModal(null);
@@ -435,7 +461,7 @@ function InternalPageContent() {
     if (attendanceRequestParam === null || jumpedAttendanceRequest.current === attendanceRequestParam || !user) return;
     if (!isAdmin) { setAttendanceJumpError("补卡审批仅管理员可查看。"); return; }
     const id = Number(attendanceRequestParam);
-    if (!/^\d+$/.test(attendanceRequestParam) || !Number.isSafeInteger(id) || id <= 0) {
+    if (!/^[1-9]\d*$/.test(attendanceRequestParam) || !Number.isSafeInteger(id) || id <= 0) {
       setAttendanceJumpError("补卡申请编号无效。");
       return;
     }
@@ -1333,8 +1359,8 @@ function InternalPageContent() {
                         {r.photo ? <a href={r.photo} target="_blank" className="text-blue-500 underline text-xs">查看</a> : "—"}
                       </td>
                       <td className="py-2.5 px-4 flex gap-1.5">
-                        <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
-                        <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
+                        <Button size="sm" className="min-h-11 text-xs bg-green-500 hover:bg-green-600" disabled={approvingRequestId !== null} onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
+                        <Button size="sm" variant="outline" className="min-h-11 text-xs text-red-500" disabled={approvingRequestId !== null} onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
                       </td>
                     </tr>
                   ))}
@@ -1353,8 +1379,8 @@ function InternalPageContent() {
                       <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">照片</span>{r.photo ? <a href={r.photo} target="_blank" className="text-blue-500 underline text-xs">查看</a> : <span>—</span>}</div>
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <Button size="sm" className="h-6 text-xs bg-green-500 hover:bg-green-600" onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
-                      <Button size="sm" variant="outline" className="h-6 text-xs text-red-500" onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
+                      <Button size="sm" className="min-h-11 text-xs bg-green-500 hover:bg-green-600" disabled={approvingRequestId !== null} onClick={() => handleApproveRequest(r.id, "已通过")}>通过</Button>
+                      <Button size="sm" variant="outline" className="min-h-11 text-xs text-red-500" disabled={approvingRequestId !== null} onClick={() => handleApproveRequest(r.id, "已驳回")}>驳回</Button>
                     </div>
                   </div>
                 ))}
@@ -1403,9 +1429,12 @@ function InternalPageContent() {
                     ? (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批" && isWithinDays(r.created_at, 30))
                     : (Array.isArray(attendanceRequests)?attendanceRequests:[]).filter(r => r.status !== "待审批")
                   ).map(r => (
-                    <div key={r.id} id={`attendance-request-${r.id}`} data-attendance-request-id={r.id} className={cn("flex items-center justify-between py-1 text-xs", r.id === highlightAttendanceRequestId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
-                      <span>{r.employee_name} · {r.date} {r.time}</span>
-                      <span className={cn(r.status === "已通过" ? "text-green-600" : "text-red-500")}>{r.status}{r.approved_by ? ` · ${r.approved_by}` : ""}</span>
+                    <div key={r.id} id={`attendance-request-${r.id}`} data-attendance-request-id={r.id} className={cn("space-y-1 py-2 text-xs [overflow-wrap:anywhere]", r.id === highlightAttendanceRequestId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{r.employee_name} · {r.date} {r.time}</span>
+                        <span className={cn(r.status === "已通过" ? "text-green-600" : "text-red-500")}>{r.status}{r.approved_by ? ` · ${r.approved_by}` : ""}</span>
+                      </div>
+                      {r.status === "已驳回" && <p className="whitespace-pre-wrap text-red-600">驳回原因：{r.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
                     </div>
                   ))
                 )}
@@ -1413,6 +1442,23 @@ function InternalPageContent() {
             )}
           </div>
         )}
+        </div>
+      )}
+
+      {requestApprovalError && rejectRequestId === null && <p role="alert" className="text-sm text-red-600">{requestApprovalError}</p>}
+      {rejectRequestId !== null && isAdmin && (
+        <div style={requestDialogViewport ? { left: requestDialogViewport.left, top: requestDialogViewport.top, width: requestDialogViewport.width, height: requestDialogViewport.height, right: "auto", bottom: "auto" } : undefined} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !requestReviewInFlight.current && setRejectRequestId(null)}>
+          <div role="dialog" aria-modal="true" aria-label="驳回补签申请" style={requestDialogViewport ? { maxHeight: Math.max(0, requestDialogViewport.height - 32) } : undefined} className="max-h-[88dvh] w-full min-w-0 max-w-sm space-y-3 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold">驳回补签申请 #{rejectRequestId}</h3>
+            <label className="block text-sm">驳回原因（必填）
+              <textarea aria-label="驳回原因" value={requestRejectionReason} onChange={e => setRequestRejectionReason(e.target.value)} disabled={approvingRequestId !== null} rows={3} className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--background)] p-2" autoFocus />
+            </label>
+            {requestApprovalError && <p role="alert" className="text-sm text-red-600">{requestApprovalError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" className="min-h-11" disabled={approvingRequestId !== null} onClick={() => setRejectRequestId(null)}>取消</Button>
+              <Button variant="destructive" className="min-h-11" disabled={approvingRequestId !== null || !requestRejectionReason.trim()} onClick={() => handleApproveRequest(rejectRequestId, "已驳回", requestRejectionReason)}>{approvingRequestId !== null ? "驳回中…" : "确认驳回"}</Button>
+            </div>
+          </div>
         </div>
       )}
 

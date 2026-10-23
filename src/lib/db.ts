@@ -1348,6 +1348,7 @@ function initTables(database: Database.Database) {
       status TEXT NOT NULL DEFAULT '待审批' CHECK(status IN ('待审批','已通过','已驳回')),
       approved_by TEXT DEFAULT '',
       approved_at TEXT DEFAULT '',
+      rejection_reason TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -2310,6 +2311,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE attendance ADD COLUMN check_in_photo TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE attendance ADD COLUMN check_out_photo TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE attendance_requests ADD COLUMN photo TEXT DEFAULT ''"); } catch {}
+  try { database.exec("ALTER TABLE attendance_requests ADD COLUMN rejection_reason TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE employees ADD COLUMN password TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN slip_file TEXT DEFAULT ''"); } catch {}
   try { database.exec("ALTER TABLE finances ADD COLUMN verify_by TEXT DEFAULT ''"); } catch {}

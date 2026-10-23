@@ -16,6 +16,16 @@ export function leaveReviewNoticeHref(notice: { type: string; related_type: stri
     ? `/internal/leave?leave=${notice.related_id}` : "/internal/leave?leave=invalid";
 }
 
+export const ATTENDANCE_REVIEW_TITLES = ["补签审批通过", "补签审批驳回"] as const;
+export function isAttendanceReviewFeedback(notice: { type: string; related_type: string; title: string }): boolean {
+  return notice.type === "" && notice.related_type === "attendance_review" && ATTENDANCE_REVIEW_TITLES.some(title => title === notice.title);
+}
+export function attendanceReviewNoticeHref(notice: { type: string; related_type: string; title: string; related_id: string }): string | undefined {
+  if (!isAttendanceReviewFeedback(notice)) return;
+  return typeof notice.related_id === "string" && /^[1-9]\d*$/.test(notice.related_id) && Number.isSafeInteger(Number(notice.related_id))
+    ? `/internal?attendance_request=${notice.related_id}#attendance-requests` : "/internal?attendance_request=invalid#attendance-requests";
+}
+
 // 客户站同步来的订单提醒（src/lib/order-alerts.ts 写入）。10-03 老板定：客户站新单、待分类待领取、
 // 客户交资料、客户申请取消都要提醒员工。表上类型约束里没有这几类，写入时 type 为空（不动约束），
 // 所以按「related_type=order + 这几个标题」认出来，一起放进消息中心。
@@ -44,7 +54,7 @@ export function messageCenterFilter(includeSupervision = true): { sql: string; p
   const types = MESSAGE_CENTER_TYPES.map(() => "?").join(",");
   const titles = CUSTOMER_SITE_ALERT_TITLES.map(() => "?").join(",");
   return {
-    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) OR (type = '' AND related_type = 'leave_review' AND title IN (${LEAVE_REVIEW_TITLES.map(() => "?").join(",")})) ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'boss_submission' AND title IN (${Object.values(BOSS_SUBMISSION_TYPES).map(() => "?").join(",")}))` : ""})`,
-    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...LEAVE_REVIEW_TITLES, ...(includeSupervision ? [...SUPERVISION_ALERT_TITLES, ...Object.values(BOSS_SUBMISSION_TYPES).map(type => type.title)] : [])],
+    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) OR (type = '' AND related_type = 'leave_review' AND title IN (${LEAVE_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'attendance_review' AND title IN (${ATTENDANCE_REVIEW_TITLES.map(() => "?").join(",")})) ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'boss_submission' AND title IN (${Object.values(BOSS_SUBMISSION_TYPES).map(() => "?").join(",")}))` : ""})`,
+    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...LEAVE_REVIEW_TITLES, ...ATTENDANCE_REVIEW_TITLES, ...(includeSupervision ? [...SUPERVISION_ALERT_TITLES, ...Object.values(BOSS_SUBMISSION_TYPES).map(type => type.title)] : [])],
   };
 }
