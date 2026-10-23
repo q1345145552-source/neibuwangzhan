@@ -10,7 +10,7 @@ function createRetellFeedbackHarness(){
  h.bosses=[];h.transactionModes=[];h.zeroNextUpdate=()=>{zero=true;};
  db.transaction=fn=>{const work=transaction(()=>{locks++;try{return fn();}finally{locks--;}});const run=()=>{h.transactionModes.push('default');return work();};run.immediate=()=>{h.transactionModes.push('immediate');return work.immediate();};return run;};
  const time=()=>`2026-10-23 08:00:${String(++tick).padStart(2,'0')}`;
- const allowed=n=>types.MESSAGE_CENTER_TYPES.includes(n.type)||types.isLeaveReviewFeedback(n)||types.isAttendanceReviewFeedback(n)||(n.type===''&&n.related_type==='order'&&types.CUSTOMER_SITE_ALERT_TITLES.includes(n.title))||(h.actor?.role==='admin'&&((n.related_type==='boss_supervision'&&types.SUPERVISION_ALERT_TITLES.includes(n.title))||(n.related_type==='boss_submission'&&Object.values(boss.BOSS_SUBMISSION_TYPES).some(x=>x.title===n.title))));
+ const allowed=n=>types.MESSAGE_CENTER_TYPES.includes(n.type)||types.isLeaveReviewFeedback(n)||types.isAttendanceReviewFeedback(n)||types.isMeetingReflectionReview(n)||(n.type===''&&n.related_type==='order'&&types.CUSTOMER_SITE_ALERT_TITLES.includes(n.title))||(h.actor?.role==='admin'&&((n.related_type==='boss_supervision'&&types.SUPERVISION_ALERT_TITLES.includes(n.title))||(n.related_type==='boss_submission'&&Object.values(boss.BOSS_SUBMISSION_TYPES).some(x=>x.title===n.title))));
  const notices=()=>h.notifications.filter(n=>!n.hidden&&(n.recipient===h.actor.name||n.recipient==='')&&allowed(n));
  db.prepare=raw=>{const sql=raw.replace(/\s+/g,' ').trim(),fallback=prepare(raw);return{
   get(...a){
