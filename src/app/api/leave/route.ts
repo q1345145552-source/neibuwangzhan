@@ -7,6 +7,7 @@ import { readJson } from "@/lib/req";
 import { annualLeaveTotal, annualLeaveBalance } from "@/lib/annual-leave";
 import { computeLeaveRules } from "@/lib/leave-rules";
 import { bangkokToday } from "@/lib/time";
+import { LEAVE_REVIEW_TITLES } from "@/lib/notification-types";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -174,18 +175,29 @@ export async function PATCH(req: NextRequest) {
   const validStatuses = ["待审批", "已通过", "已驳回"];
   if (!validStatuses.includes(status)) return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
 
-  const target = db.prepare("SELECT id, employee_name FROM leave_requests WHERE id = ?").get(id) as { id: number; employee_name: string } | undefined;
-  if (!target) return NextResponse.json({ error: "请假记录不存在" }, { status: 404 });
+  const rejectionReason = typeof rejection_reason === "string" ? rejection_reason.trim() : "";
+  if (status === "已驳回" && !rejectionReason) return NextResponse.json({ error: "请填写驳回原因" }, { status: 400 });
 
-  const sets = ["status = ?"]; const vals: any[] = [status];
-  if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
-  // 审批人以登录身份为准，不信任请求体
-  if (status === "已通过" || status === "已驳回") { sets.push("approved_at = datetime('now')"); sets.push("approved_by = ?"); vals.push(auth.name); }
-  vals.push(id);
+  // 审批、原考勤回写、申请人提醒和日志同一事务；任何一步失败全部回滚。
+  return db.transaction(() => {
+    const target = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id) as any;
+    if (!target) return NextResponse.json({ error: "请假记录不存在" }, { status: 404 });
+    if (target.status === status) {
+      // 保留旧调用附带替换附件的能力，但不重复审批、回写考勤或发结果提醒。
+      if (images !== undefined) {
+        const nextImages = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
+        if (nextImages !== target.images) db.prepare("UPDATE leave_requests SET images = ? WHERE id = ?").run(nextImages, id);
+      }
+      return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
+    }
 
-  // 审批 + 回写考勤放进同一个事务：中途失败会留下"状态已通过、但考勤只标了一半"的数据
-  db.transaction(() => {
-    db.prepare(`UPDATE leave_requests SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+    const sets = ["status = ?", "rejection_reason = ?"];
+    const vals: any[] = [status, status === "已驳回" ? rejectionReason : ""];
+    if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
+    if (status === "已通过" || status === "已驳回") { sets.push("approved_at = datetime('now')"); sets.push("approved_by = ?"); vals.push(auth.name); }
+    vals.push(id, target.status);
+    const changed = db.prepare(`UPDATE leave_requests SET ${sets.join(", ")} WHERE id = ? AND status = ?`).run(...vals);
+    if (changed.changes !== 1) return NextResponse.json({ error: "请假状态已变化，请刷新后重试" }, { status: 409 });
 
     // 请假通过：在该日期范围内自动创建/标记考勤为请假
     if (status === "已通过") {
@@ -204,12 +216,16 @@ export async function PATCH(req: NextRequest) {
         }
       }
     }
-  })();
 
-  // 审批通过/驳回记日志
-  if (status === "已通过" || status === "已驳回") {
-    logOperation(target.employee_name, status === "已通过" ? "请假审批通过" : "请假审批驳回", "leave", String(id));
-  }
-
-  return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
+    if (status === "已通过" || status === "已驳回") {
+      const title = LEAVE_REVIEW_TITLES[status === "已通过" ? 0 : 1];
+      const range = `${target.start_date} ${target.start_time || "09:00"} 至 ${target.end_date} ${target.end_time || "17:00"}`;
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "", title, `${auth.name}${status === "已通过" ? "已通过" : "已驳回"}你的${target.leave_type}申请（${range}）。${status === "已驳回" ? `\n驳回原因：${rejectionReason}` : ""}`,
+        target.employee_name, String(target.id), "leave_review"
+      );
+      logOperation(auth.name, title, "leave", String(target.id), target.employee_name);
+    }
+    return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
+  }).immediate();
 }
