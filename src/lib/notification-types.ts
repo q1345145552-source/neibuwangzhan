@@ -5,6 +5,16 @@ export { announcementFeedbackHref, isAnnouncementRetellFeedback } from "./announ
 // 复述打回/提交沿用「老板通知」，因此列表和未读角标都由现有筛选覆盖，不增删旧类型。
 export const MESSAGE_CENTER_TYPES = ["工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知"] as const;
 
+export const ISSUE_CHANGE_TITLES = ["工单负责人已变更", "工单状态已变更", "工单负责人和状态已变更"] as const;
+export function isIssueChangeNotice(notice: { type: string; related_type: string; title: string }): boolean {
+  return notice.type === "" && notice.related_type === "issue_update" && ISSUE_CHANGE_TITLES.some(title => title === notice.title);
+}
+export function issueNoticeHref(notice: { type: string; related_type: string; title: string; related_id: string }): string | undefined {
+  if (!isIssueChangeNotice(notice) && !["工单指派", "工单完成"].includes(notice.type)) return;
+  const id = typeof notice.related_id === "string" && /^[1-9]\d*$/.test(notice.related_id) && Number.isSafeInteger(Number(notice.related_id)) ? notice.related_id : "invalid";
+  return `/issues?open=${id}`;
+}
+
 // 审批反馈复用允许的空类型，以业务关联和标题识别，不改旧类型约束。
 export const LEAVE_REVIEW_TITLES = ["请假审批通过", "请假审批驳回"] as const;
 export function isLeaveReviewFeedback(notice: { type: string; related_type: string; title: string }): boolean {
@@ -108,7 +118,7 @@ export function messageCenterFilter(includeSupervision = true): { sql: string; p
   const types = MESSAGE_CENTER_TYPES.map(() => "?").join(",");
   const titles = CUSTOMER_SITE_ALERT_TITLES.map(() => "?").join(",");
   return {
-    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) OR (type = '' AND related_type = 'leave_review' AND title IN (${LEAVE_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'attendance_review' AND title IN (${ATTENDANCE_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'meeting_reflection_review' AND title = ?) OR (type = '' AND related_type = 'work_report_return' AND title = ?) OR (type = '日报点评' AND related_type = 'work_report') OR (type = '' AND related_type = 'idea_review' AND title IN (${IDEA_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'withdrawal_review' AND title IN (${WITHDRAWAL_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'payslip_rejected' AND title = ?) OR (type = '' AND related_type = 'payslip_paid' AND title = ?) OR (type = 'payslip' AND related_type = 'payslip' AND title = '工资单待确认') ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'boss_submission' AND title IN (${Object.values(BOSS_SUBMISSION_TYPES).map(() => "?").join(",")}))` : ""})`,
-    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...LEAVE_REVIEW_TITLES, ...ATTENDANCE_REVIEW_TITLES, MEETING_REFLECTION_REVIEW_TITLE, WORK_REPORT_RETURN_TITLE, ...IDEA_REVIEW_TITLES, ...WITHDRAWAL_REVIEW_TITLES, PAYSLIP_REJECTED_TITLE, PAYSLIP_PAID_TITLE, ...(includeSupervision ? [...SUPERVISION_ALERT_TITLES, ...Object.values(BOSS_SUBMISSION_TYPES).map(type => type.title)] : [])],
+    sql: `(type IN (${types}) OR (type = '' AND related_type = 'order' AND title IN (${titles})) OR (type = '' AND related_type = 'leave_review' AND title IN (${LEAVE_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'attendance_review' AND title IN (${ATTENDANCE_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'meeting_reflection_review' AND title = ?) OR (type = '' AND related_type = 'work_report_return' AND title = ?) OR (type = '日报点评' AND related_type = 'work_report') OR (type = '' AND related_type = 'idea_review' AND title IN (${IDEA_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'withdrawal_review' AND title IN (${WITHDRAWAL_REVIEW_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'payslip_rejected' AND title = ?) OR (type = '' AND related_type = 'payslip_paid' AND title = ?) OR (type = '' AND related_type = 'issue_update' AND title IN (${ISSUE_CHANGE_TITLES.map(() => "?").join(",")})) OR (type = 'payslip' AND related_type = 'payslip' AND title = '工资单待确认') ${includeSupervision ? `OR (type = '' AND related_type = 'boss_supervision' AND title IN (${SUPERVISION_ALERT_TITLES.map(() => "?").join(",")})) OR (type = '' AND related_type = 'boss_submission' AND title IN (${Object.values(BOSS_SUBMISSION_TYPES).map(() => "?").join(",")}))` : ""})`,
+    params: [...MESSAGE_CENTER_TYPES, ...CUSTOMER_SITE_ALERT_TITLES, ...LEAVE_REVIEW_TITLES, ...ATTENDANCE_REVIEW_TITLES, MEETING_REFLECTION_REVIEW_TITLE, WORK_REPORT_RETURN_TITLE, ...IDEA_REVIEW_TITLES, ...WITHDRAWAL_REVIEW_TITLES, PAYSLIP_REJECTED_TITLE, PAYSLIP_PAID_TITLE, ...ISSUE_CHANGE_TITLES, ...(includeSupervision ? [...SUPERVISION_ALERT_TITLES, ...Object.values(BOSS_SUBMISSION_TYPES).map(type => type.title)] : [])],
   };
 }

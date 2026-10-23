@@ -39,6 +39,11 @@ export default function IssuesPage() {
   const searchParams = useSearchParams();
   const openIssueId = searchParams.get("open");
   const autoOpenedIssue = useRef<string | null>(null);
+  const previousIssueLink = useRef<string | null>(null);
+  const listRequest = useRef(0);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState("");
+  const [linkError, setLinkError] = useState("");
 
   const [issues, setIssues] = useState<IssueTicket[]>([]);
   // 工单指派人/解决人候选：老板(admin) + 普通员工，仅排除客户
@@ -81,12 +86,15 @@ export default function IssuesPage() {
 
   const loadAll = async () => {
     if (!user?.name) return;
+    const request = ++listRequest.current;
+    setListLoading(true); setListError("");
     try {
       const res = await fetchWithAuth("/api/issues", { cache: "no-store" });
-      if (!res.ok) { console.error(`[工单] HTTP ${res.status}`); return; }
       const raw = await res.json().catch(() => null);
-      if (Array.isArray(raw)) setIssues(raw as IssueTicket[]);
-    } catch (e) { console.error("[工单] 加载失败", e); }
+      if (!res.ok || !Array.isArray(raw)) throw new Error(raw?.error || "工单加载失败，请重试");
+      if (request === listRequest.current) setIssues(raw as IssueTicket[]);
+    } catch (e) { if (request === listRequest.current) { setIssues([]); setListError(e instanceof Error ? e.message : "工单加载失败，请重试"); } }
+    finally { if (request === listRequest.current) setListLoading(false); }
   };
 
   // 加载员工列表（供工单指派人下拉框使用）
@@ -105,7 +113,7 @@ export default function IssuesPage() {
     loadStaff();
   }, []);
 
-  useEffect(() => { loadAll(); }, [user?.name]);
+  useEffect(() => { setIssues([]); setIssueDetailModal(null); autoOpenedIssue.current = null; loadAll(); return () => { ++listRequest.current; }; }, [user?.name, user?.role]);
 
   // 从剪贴板事件里取出图片文件（没有图片返回空数组）
   const getPastedImages = (e: React.ClipboardEvent): File[] => {
@@ -269,13 +277,20 @@ export default function IssuesPage() {
 
   // 消息中心跳转：工单列表加载后，自动打开指定的那张工单
   useEffect(() => {
-    if (!openIssueId || autoOpenedIssue.current === openIssueId) return;
+    if (previousIssueLink.current !== openIssueId) {
+      previousIssueLink.current = openIssueId; autoOpenedIssue.current = null;
+      setIssueDetailModal(null); setTranslating(false); setTranslateErr("");
+    }
+    setLinkError("");
+    if (openIssueId === null) return;
+    if (!/^[1-9]\d*$/.test(openIssueId) || !Number.isSafeInteger(Number(openIssueId))) { setLinkError("工单链接无效，请返回工单列表。"); return; }
+    if (listLoading || listError) return;
     const t = issues.find((x) => String(x.id) === openIssueId);
     if (t) {
-      autoOpenedIssue.current = openIssueId;
-      openIssueDetail(t);
-    }
-  }, [issues, openIssueId]);
+      if (autoOpenedIssue.current !== openIssueId) { autoOpenedIssue.current = openIssueId; openIssueDetail(t); }
+      else setIssueDetailModal(previous => previous?.id === t.id ? t : previous);
+    } else { setIssueDetailModal(null); setLinkError("该工单不存在或无权查看，请返回工单列表。"); }
+  }, [issues, openIssueId, listLoading, listError]);
 
   // 把问题描述翻译成中文，结果缓存，下次直接显示
   const handleTranslateDescription = async () => {
@@ -332,6 +347,9 @@ export default function IssuesPage() {
         </div>
         <Button size="sm" className="h-8 text-xs" variant="outline" onClick={() => setShowIssueForm(true)}><Plus className="size-3" />新增工单</Button>
       </div>
+
+      {listLoading && <p role="status" className="text-sm text-[var(--muted-foreground)]">加载工单中…</p>}
+      {(listError || linkError) && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"><p>{listError || linkError}</p>{listError ? <Button variant="outline" className="mt-2 min-h-11" onClick={loadAll}>重新加载工单</Button> : <a href="/issues" className="mt-2 inline-block underline">返回工单列表</a>}</div>}
 
       {/* ── 问题工单 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
@@ -650,13 +668,13 @@ export default function IssuesPage() {
       {/* ── 工单详情弹窗 ── */}
       {issueDetailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setIssueDetailModal(null)}>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="issue-detail-title" className="min-w-0 [overflow-wrap:anywhere] rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-[var(--background)] border-b border-[var(--border)] px-5 py-4 flex items-center justify-between rounded-t-xl">
-              <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
+              <h3 id="issue-detail-title" className="font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <FileEdit className="size-4" />
                 工单详情 {issueDetailModal.ticket_number || '#' + issueDetailModal.id}
               </h3>
-              <button onClick={() => setIssueDetailModal(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
+              <button aria-label="关闭工单详情" onClick={() => setIssueDetailModal(null)} className="flex min-h-11 min-w-11 items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-4" /></button>
             </div>
             <div className="p-5 space-y-4">
               {/* 状态和紧急程度 */}

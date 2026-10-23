@@ -3,6 +3,11 @@ import type Database from "better-sqlite3";
 type Actor = { role: string; name: string };
 type IssueOwner = { assignee: string | null; created_by: string | null };
 
+/** 工单沿用逗号分隔的完整名单；按姓名精确去重，不取第一人或做子串匹配。 */
+export function parseIssueAssignees(value: string | null | undefined): string[] {
+  return [...new Set((value || "").split(",").map(name => name.trim()).filter(Boolean))];
+}
+
 /** 与工单原负责人/创建人范围一致；逐个姓名比较，不使用子串或SQL通配符。 */
 export function canReadIssue(actor: Actor, row: IssueOwner): boolean {
   return actor.role === "admin" || (actor.role === "employee" && !!actor.name && (
