@@ -65,6 +65,8 @@ export default function PayslipsPage() {
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkError, setLinkError] = useState("");
   const monthRequest = useRef(0);
+  const payInFlight = useRef(false);
+  const [payingId, setPayingId] = useState<number | null>(null);
   const [tab, setTab] = useState<"payslips" | "attendance" | "history">("payslips");
   const [month, setMonth] = useState(currentMonthKey());
 
@@ -238,6 +240,13 @@ export default function PayslipsPage() {
   };
 
   const flowAction = async (id: number, action: string, reason?: string) => {
+    if (action === "pay") {
+      if (payInFlight.current) return;
+      payInFlight.current = true;
+      const row = payslips.find(p => p.id === id);
+      if (!confirm(`请确认已完成${row ? ` ${row.employee_name} ${row.month}` : "该工资单对应"}的实际工资付款。\n确认后只记录为已发放并通知员工，不会执行转账。`)) { payInFlight.current = false; return; }
+      setPayingId(id);
+    }
     setErr("");
     try {
       const r = await fetchWithAuth("/api/payslips/flow", {
@@ -254,7 +263,7 @@ export default function PayslipsPage() {
       }
     } catch {
       setErr("操作失败");
-    }
+    } finally { if (action === "pay") { payInFlight.current = false; setPayingId(null); } }
   };
 
   const deleteRow = async (id: number) => {
@@ -487,7 +496,7 @@ export default function PayslipsPage() {
                               <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "send")}>重发</Button>
                             )}
                             {p.status === "已确认" && (
-                              <Button size="sm" className="h-7 text-xs ml-1" onClick={() => flowAction(p.id, "pay")}>发放</Button>
+                              <Button size="sm" disabled={payingId !== null} className="min-h-11 text-xs ml-1" onClick={() => flowAction(p.id, "pay")}>{payingId === p.id ? "记录中…" : "确认已付款"}</Button>
                             )}
                             {(p.status === "草稿" || p.status === "打回") && (
                               <Button size="sm" variant="outline" className="h-7 text-xs ml-1 text-red-500" onClick={() => deleteRow(p.id)}>删除</Button>

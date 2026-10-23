@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, sendNotification, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
-import { PAYSLIP_REJECTED_TITLE } from "@/lib/notification-types";
+import { PAYSLIP_REJECTED_TITLE, PAYSLIP_PAID_TITLE } from "@/lib/notification-types";
 
 const FIELDS = "id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, withholding_tax, status, reject_reason, summary";
 
@@ -19,6 +19,28 @@ export async function POST(req: NextRequest) {
   const action = String(body?.action || "").trim();
   const reason = String(body?.reason || "").trim();
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "缺少工资单" }, { status: 400 });
+
+  // pay 沿用管理员手动确认已实际付款的入口，不对接或执行转账。
+  if (action === "pay") {
+    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
+    return db.transaction(() => {
+      const p = db.prepare(`SELECT ${FIELDS}, merit_income, absence_deduction, demerit_deduction FROM payslips WHERE id = ?`).get(id) as Record<string, any> | undefined;
+      if (!p) return NextResponse.json({ error: "工资单不存在" }, { status: 404 });
+      if (p.status !== "已确认") return NextResponse.json({ error: `当前状态（${p.status}）不能发放` }, { status: 400 });
+      if (typeof p.employee_name !== "string" || !p.employee_name.trim()) return NextResponse.json({ error: "工资单员工信息无效" }, { status: 409 });
+      const changed = db.prepare("UPDATE payslips SET status = '已发放' WHERE id = ? AND status = '已确认'").run(id);
+      if (changed.changes !== 1) return NextResponse.json({ error: "工资单状态已变化，请刷新后重试" }, { status: 409 });
+      // 仅汇总已存字段供提醒展示，与员工工资条原口径一致，不重算或写回任何工资金额。
+      const income = ["base_salary", "diligence_bonus", "skill_allowance", "bonus", "commission", "overtime", "merit_income"].reduce((sum, field) => sum + (Number(p[field]) || 0), 0);
+      const deduction = ["social_security", "late_deduction", "personal_leave_deduction", "sick_leave_deduction", "absence_deduction", "demerit_deduction", "withholding_tax"].reduce((sum, field) => sum + (Number(p[field]) || 0), 0);
+      db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
+        "", PAYSLIP_PAID_TITLE, `${auth.name}已确认完成你 ${p.month} 的工资实际付款，工资单已记录为已发放。\n工资单记录金额：收入合计 ${income.toFixed(2)}，扣除合计 ${deduction.toFixed(2)}，净收入 ${(income - deduction).toFixed(2)}。`,
+        p.employee_name, String(p.id), "payslip_paid"
+      );
+      logOperation(auth.name, "发放工资单", "payslip", String(id), p.employee_name);
+      return NextResponse.json(db.prepare(`SELECT ${FIELDS} FROM payslips WHERE id = ?`).get(id));
+    }).immediate();
+  }
 
   if (action === "reject") return db.transaction(() => {
     const p = db.prepare("SELECT id, employee_name, month, status FROM payslips WHERE id = ?").get(id) as
@@ -52,11 +74,6 @@ export async function POST(req: NextRequest) {
     if (p.status !== "待确认") return NextResponse.json({ error: `当前状态（${p.status}）不能确认` }, { status: 400 });
     db.prepare("UPDATE payslips SET status = '已确认' WHERE id = ?").run(id);
     logOperation(auth.name, "确认工资单", "payslip", String(id));
-  } else if (action === "pay") {
-    if (auth.role !== "admin") return NextResponse.json({ error: "仅管理员可操作" }, { status: 403 });
-    if (p.status !== "已确认") return NextResponse.json({ error: `当前状态（${p.status}）不能发放` }, { status: 400 });
-    db.prepare("UPDATE payslips SET status = '已发放' WHERE id = ?").run(id);
-    logOperation(auth.name, "发放工资单", "payslip", String(id), p.employee_name);
   } else {
     return NextResponse.json({ error: "未知操作" }, { status: 400 });
   }
