@@ -2,7 +2,7 @@ import { BOSS_SUBMISSION_TYPES, bossSubmissionHref, type BossSubmissionCategory 
 export { announcementFeedbackHref, isAnnouncementRetellFeedback } from "./announcement-feedback";
 
 // 通用消息类型，老板提交提醒由独立 related_type 识别。
-// 复述打回沿用「老板通知」，因此列表和未读角标都由现有筛选覆盖，不增删旧类型。
+// 复述打回/提交沿用「老板通知」，因此列表和未读角标都由现有筛选覆盖，不增删旧类型。
 export const MESSAGE_CENTER_TYPES = ["工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知"] as const;
 
 // 客户站同步来的订单提醒（src/lib/order-alerts.ts 写入）。10-03 老板定：客户站新单、待分类待领取、

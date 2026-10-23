@@ -1,5 +1,6 @@
 /** 沿用现有「老板通知」类型，以独立关联区分复述反馈，不变更数据库类型约束。 */
 export const ANNOUNCEMENT_RETELL_REJECTED = "announcement_retell_rejected";
+export const ANNOUNCEMENT_RETELL_SUBMITTED = "announcement_retell_submitted";
 
 export function isPositiveRecordId(value: string): boolean {
   return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
@@ -13,7 +14,7 @@ export function parseAnnouncementFeedbackTarget(value: unknown): { announcementI
 }
 
 export function isAnnouncementRetellFeedback(notice: { type: string; related_type: string }): boolean {
-  return notice.type === "老板通知" && notice.related_type === ANNOUNCEMENT_RETELL_REJECTED;
+  return notice.type === "老板通知" && [ANNOUNCEMENT_RETELL_REJECTED, ANNOUNCEMENT_RETELL_SUBMITTED].includes(notice.related_type);
 }
 
 export function announcementFeedbackHref(notice: { type: string; related_type: string; related_id: string }): string | undefined {

@@ -80,6 +80,7 @@ function AnnouncementsContent() {
   const [retellZh, setRetellZh] = useState("");
   const [retellSaving, setRetellSaving] = useState(false);
   const [retellErr, setRetellErr] = useState("");
+  const retellInFlight = useRef(false);
   const [detailError, setDetailError] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [targetRecipientId, setTargetRecipientId] = useState<number | null>(null);
@@ -308,9 +309,10 @@ function AnnouncementsContent() {
   }, [detailOpen, detail?.id, targetRecipientId, isAdmin, reviewRec?.id, scrollDetailTo]);
 
   const submitRetell = async () => {
-    if (!detail?.my_recipient) return;
+    if (!detail?.my_recipient || retellInFlight.current) return;
     if (!retellTh.trim()) { setRetellErr("请填写泰语复述"); return; }
     if (!retellZh.trim()) { setRetellErr("请填写中文复述"); return; }
+    retellInFlight.current = true;
     setRetellSaving(true);
     const ok = await apiCall(`/api/announcements/${detail.id}/retell`, {
       method: "PATCH",
@@ -318,6 +320,7 @@ function AnnouncementsContent() {
       onError: (m) => setRetellErr(m),
     });
     setRetellSaving(false);
+    retellInFlight.current = false;
     if (ok) { setRetellErr(""); load(); void loadDetail(String(detail.id), targetRecipientId ? String(targetRecipientId) : undefined); }
   };
 
@@ -768,6 +771,7 @@ function AnnouncementsContent() {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-[var(--foreground)]">{reviewRec.employee_name}</h3>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)] [overflow-wrap:anywhere]">所属通知：{detail?.title}</p>
                 <span className={cn("mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium", STATUS_COLOR[reviewRec.status] || "bg-gray-100 text-gray-600")}>{reviewRec.status}</span>
               </div>
               <button onClick={() => setReviewRec(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
