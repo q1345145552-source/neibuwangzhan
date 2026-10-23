@@ -562,20 +562,47 @@ function InternalPageContent() {
   };
 
   // ── 我的工资单（员工）──
+  const payslipParam = useSearchParams().get("payslip");
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
   const [myPayslipsLoading, setMyPayslipsLoading] = useState(false);
+  const [myPayslipsLoaded, setMyPayslipsLoaded] = useState(false);
+  const [myPayslipsError, setMyPayslipsError] = useState("");
+  const [myPayslipLinkError, setMyPayslipLinkError] = useState("");
+  const [highlightMyPayslip, setHighlightMyPayslip] = useState<number | null>(null);
+  const myPayslipRequest = useRef(0);
+  const myPayslipJumped = useRef<string | null>(null);
+  const payslipInFlight = useRef(false);
+  const [payslipSaving, setPayslipSaving] = useState(false);
   // 员工端只显示这三种状态的工资单；草稿/打回不显示
   const visiblePayslipStatuses = ["待确认", "已确认", "已发放"];
 
   useEffect(() => {
     if (isAdmin) return;
-    setMyPayslipsLoading(true);
+    const run = ++myPayslipRequest.current;
+    setMyPayslipsLoading(true); setMyPayslipsLoaded(false); setMyPayslipsError("");
     fetchWithAuth("/api/payslips", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setMyPayslips(Array.isArray(d) ? d.filter((p: any) => visiblePayslipStatuses.includes(p.status)) : []))
-      .catch(() => setMyPayslips([]))
-      .finally(() => setMyPayslipsLoading(false));
-  }, [isAdmin]);
+      .then(async r => { if (!r.ok) throw new Error("工资单加载失败，请重试。"); return r.json(); })
+      .then((d) => { if (run === myPayslipRequest.current) setMyPayslips(Array.isArray(d) ? d.filter((p: any) => visiblePayslipStatuses.includes(p.status)) : []); })
+      .catch(() => { if (run === myPayslipRequest.current) { setMyPayslips([]); setMyPayslipsError("工资单加载失败，请重试。"); } })
+      .finally(() => { if (run === myPayslipRequest.current) { setMyPayslipsLoading(false); setMyPayslipsLoaded(true); } });
+    return () => { ++myPayslipRequest.current; };
+  }, [isAdmin, user?.name]);
+
+  useEffect(() => { myPayslipJumped.current = null; setHighlightMyPayslip(null); setMyPayslipLinkError(""); }, [payslipParam]);
+  useEffect(() => {
+    if (payslipParam === null || !user) return;
+    if (isAdmin) { window.location.replace(`/internal/payslips?payslip=${encodeURIComponent(payslipParam)}`); return; }
+    if (!/^[1-9]\d*$/.test(payslipParam) || !Number.isSafeInteger(Number(payslipParam))) { setMyPayslipLinkError("工资单编号无效。"); return; }
+    if (user.role !== "employee") { setMyPayslipLinkError("你无权查看工资单。"); return; }
+    if (!myPayslipsLoaded || myPayslipsLoading) return;
+    if (myPayslipsError) { setMyPayslipLinkError(myPayslipsError); return; }
+    if (!myPayslips.some(row => row.id === Number(payslipParam))) { setMyPayslipLinkError("工资单不存在、当前不可展示或你无权查看，请以当前工资状态为准。"); return; }
+    setMyPayslipLinkError(""); setHighlightMyPayslip(Number(payslipParam));
+    if (myPayslipJumped.current === payslipParam) return;
+    myPayslipJumped.current = payslipParam;
+    const frame = requestAnimationFrame(() => document.querySelector(`[data-my-payslip-id="${payslipParam}"] [data-payslip-heading]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    return () => cancelAnimationFrame(frame);
+  }, [payslipParam, user?.name, isAdmin, myPayslipsLoaded, myPayslipsLoading, myPayslipsError, myPayslips]);
 
   const payslipTotal = (p: any) => (Number(p.base_salary) || 0) + (Number(p.diligence_bonus) || 0) + (Number(p.skill_allowance) || 0) + (Number(p.bonus) || 0) + (Number(p.commission) || 0) + (Number(p.overtime) || 0) + (Number(p.merit_income) || 0);
   const payslipDeduct = (p: any) => (Number(p.social_security) || 0) + (Number(p.late_deduction) || 0) + (Number(p.personal_leave_deduction) || 0) + (Number(p.sick_leave_deduction) || 0) + (Number(p.absence_deduction) || 0) + (Number(p.demerit_deduction) || 0) + (Number(p.withholding_tax) || 0);
@@ -589,6 +616,8 @@ function InternalPageContent() {
   const payslipMoney = (v: any) => (Number(v) || 0).toFixed(2);
 
   const payslipAction = async (id: number, action: string, reason?: string) => {
+    if (payslipInFlight.current) return;
+    payslipInFlight.current = true; setPayslipSaving(true);
     try {
       const r = await fetchWithAuth("/api/payslips/flow", {
         method: "POST",
@@ -606,13 +635,15 @@ function InternalPageContent() {
       }
     } catch {
       alert("操作失败");
-    }
+    } finally { payslipInFlight.current = false; setPayslipSaving(false); }
   };
 
   const confirmPayslip = (id: number) => {
+    if (payslipInFlight.current) return;
     if (confirm("确认这份工资单无误？")) payslipAction(id, "confirm");
   };
   const rejectPayslip = (id: number) => {
+    if (payslipInFlight.current) return;
     const reason = prompt("请填写修改意见");
     if (reason === null) return;
     const trimmed = reason.trim();
@@ -735,9 +766,10 @@ function InternalPageContent() {
 
       {/* ── 我的工资单（员工） ── */}
       {!isAdmin && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+        <div id="my-payslips" className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
           <div className="px-5 py-4 border-b border-[var(--border)]">
             <h2 className="text-sm font-medium flex items-center gap-2"><Wallet className="size-4" />我的工资单</h2>
+            {myPayslipLinkError && <p role="alert" className="mt-2 text-sm text-red-600">{myPayslipLinkError}</p>}
           </div>
           <div className="p-5">
             {myPayslipsLoading ? (
@@ -751,8 +783,8 @@ function InternalPageContent() {
                   const deduct = payslipDeduct(p);
                   const net = income - deduct;
                   return (
-                    <div key={p.id} className="rounded-lg border border-[var(--border)] p-4">
-                      <div className="mb-3 flex items-center justify-between">
+                    <div key={p.id} data-my-payslip-id={p.id} className={cn("rounded-lg border border-[var(--border)] p-4", p.id === highlightMyPayslip && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
+                      <div data-payslip-heading className="mb-3 flex items-center justify-between">
                         <span className="font-medium text-[var(--foreground)]">{p.month} 工资单</span>
                         <span className={cn("rounded-full px-2 py-0.5 text-[0.65rem] font-medium", payslipStatusClass(p.status))}>{p.status}</span>
                       </div>
@@ -800,8 +832,8 @@ function InternalPageContent() {
                       )}
                       {p.status === "待确认" && (
                         <div className="mt-3 flex gap-2">
-                          <Button size="sm" className="h-7 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
+                          <Button size="sm" disabled={payslipSaving} className="min-h-11 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
+                          <Button size="sm" variant="outline" disabled={payslipSaving} className="min-h-11 text-xs text-red-500" onClick={() => rejectPayslip(p.id)}>打回</Button>
                         </div>
                       )}
                     </div>

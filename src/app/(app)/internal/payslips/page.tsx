@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
@@ -60,6 +61,10 @@ function parseJson<T>(s: string, fallback: T): T {
 export default function PayslipsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const payslipParam = useSearchParams().get("payslip");
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState("");
+  const monthRequest = useRef(0);
   const [tab, setTab] = useState<"payslips" | "attendance" | "history">("payslips");
   const [month, setMonth] = useState(currentMonthKey());
 
@@ -86,17 +91,47 @@ export default function PayslipsPage() {
 
   // 医院证明大图（工资单详情和考勤汇总详情共用）
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [detailViewport, setDetailViewport] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!detail || !viewport) { setDetailViewport(null); return; }
+    const update = () => setDetailViewport({ left: viewport.offsetLeft, top: viewport.offsetTop, width: viewport.width, height: viewport.height });
+    update(); viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
+    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
+  }, [detail]);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setDetail(null); setAttDetail(null); setLightbox(null); setLinkError(""); setLinkLoading(false);
+    if (payslipParam === null || !user) return;
+    if (!isAdmin) { setLinkError("仅管理员可查看工资详情。"); return; }
+    if (!/^[1-9]\d*$/.test(payslipParam) || !Number.isSafeInteger(Number(payslipParam))) { setLinkError("工资单编号无效，请返回工资单列表查看。"); return; }
+    setTab("payslips"); setLinkLoading(true);
+    fetchWithAuth(`/api/payslips/${payslipParam}`, { cache: "no-store", signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error(response.status === 403 || response.status === 404 ? "工资单不存在或你无权查看。" : "工资单加载失败，请重试。");
+        const row: Payslip = await response.json();
+        if (row.id !== Number(payslipParam) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(row.month)) throw new Error("工资单记录无效，请返回列表查看。");
+        if (active) { setMonth(row.month); setDetail(row); }
+      })
+      .catch(error => { if (active) setLinkError(error instanceof Error ? error.message : "工资单加载失败，请重试。"); })
+      .finally(() => { if (active) setLinkLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [payslipParam, user?.name, isAdmin]);
 
   useEffect(() => {
     if (!isAdmin || !month) return;
+    const run = ++monthRequest.current;
     setLoading(true);
     setErr("");
     fetchWithAuth(`/api/payslips?month=${month}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPayslips(Array.isArray(d) ? d : []))
-      .catch(() => setPayslips([]))
-      .finally(() => setLoading(false));
-  }, [month, isAdmin]);
+      .then((d) => { if (run === monthRequest.current) setPayslips(Array.isArray(d) ? d : []); })
+      .catch(() => { if (run === monthRequest.current) setPayslips([]); })
+      .finally(() => { if (run === monthRequest.current) setLoading(false); });
+    return () => { ++monthRequest.current; };
+  }, [month, isAdmin, user?.name]);
 
   useEffect(() => {
     if (!month) return;
@@ -213,6 +248,7 @@ export default function PayslipsPage() {
       const d = await r.json().catch(() => ({}));
       if (r.ok && d?.id) {
         setPayslips((prev) => prev.map((p) => (p.id === id ? { ...p, status: d.status, reject_reason: d.reject_reason } : p)));
+        setDetail(current => current?.id === id ? { ...current, status: d.status, reject_reason: d.reject_reason } : current);
       } else {
         setErr(d?.error || "操作失败");
       }
@@ -302,7 +338,9 @@ export default function PayslipsPage() {
   const goLeavePage = () => { window.location.href = "/internal/leave"; };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6 [contain:inline-size]">
+      {linkLoading && <p role="status" className="text-sm text-[var(--muted-foreground)]">正在打开通知对应的工资单…</p>}
+      {linkError && <p role="alert" className="break-words text-sm text-red-600">{linkError}</p>}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">工资单</h1>
@@ -403,7 +441,7 @@ export default function PayslipsPage() {
                     </thead>
                     <tbody>
                       {payslips.map((p) => (
-                        <tr key={p.id} className={cn("border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20", p.status === "打回" && "bg-red-500/[0.06]")}>
+                        <tr key={p.id} data-payslip-id={p.id} className={cn("border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]/20", p.status === "打回" && "bg-red-500/[0.06]")}>
                           <td className="py-2.5 px-4 font-medium whitespace-nowrap text-[var(--foreground)]">{p.employee_name}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums">{p.base_salary}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums">{p.diligence_bonus}</td>
@@ -469,12 +507,14 @@ export default function PayslipsPage() {
               const lates: { date: string; minutes: number }[] = Array.isArray(s.late_details) ? s.late_details : [];
               const leaves: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = Array.isArray(s.leave_details) ? s.leave_details : [];
               return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetail(null)}>
-                  <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="font-semibold text-[var(--foreground)]">{detail.employee_name} · {detail.month} 工资单</h3>
-                      <button onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+                <div style={detailViewport ? { left: detailViewport.left, top: detailViewport.top, width: detailViewport.width, height: detailViewport.height, right: "auto", bottom: "auto" } : undefined} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetail(null)}>
+                  <div role="dialog" aria-modal="true" aria-label={`工资单详情：${detail.employee_name} ${detail.month}`} data-payslip-detail={detail.id} style={detailViewport ? { maxHeight: Math.max(0, detailViewport.height - 32) } : undefined} className="max-h-[85dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl [overflow-wrap:anywhere]" onClick={(e) => e.stopPropagation()}>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h3 className="min-w-0 font-semibold text-[var(--foreground)]">{detail.employee_name} · {detail.month} 工资单</h3>
+                      <button aria-label="关闭工资单详情" className="flex size-11 shrink-0 items-center justify-center" onClick={() => setDetail(null)}><X className="size-5" /></button>
                     </div>
+                    <p className="mb-3 text-sm">当前状态：{detail.status}</p>
+                    {(detail.status === "打回" || detail.reject_reason) && <p className="mb-4 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{detail.status === "打回" ? "修改意见" : "上次修改意见"}：{detail.reject_reason || "历史记录未保存修改意见"}</p>}
 
                     {/* 工资条：收入 / 扣除 / 净收入 */}
                     <div className="mb-4 rounded-lg border border-[var(--border)] p-3">
