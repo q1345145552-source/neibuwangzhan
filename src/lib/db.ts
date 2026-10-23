@@ -1503,6 +1503,7 @@ function initTables(database: Database.Database) {
       ai_comment TEXT DEFAULT '',
       boss_rating INTEGER NOT NULL DEFAULT 0,
       boss_comment TEXT DEFAULT '',
+      rejection_reason TEXT NOT NULL DEFAULT '',
       risk_flag INTEGER NOT NULL DEFAULT 0,
       risk_desc TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT '已提交' CHECK(status IN ('已提交','退回')),
@@ -1518,7 +1519,7 @@ function initTables(database: Database.Database) {
 
   // 工作记录迁移：关联业务对象（项目/客户/订单）
   const workReportColumns = database.prepare("PRAGMA table_info(work_reports)").all() as { name: string }[];
-  for (const column of ["completed_items_zh", "summary_zh", "tomorrow_plan_zh", "problems_zh"]) {
+  for (const column of ["completed_items_zh", "summary_zh", "tomorrow_plan_zh", "problems_zh", "rejection_reason"]) {
     if (!workReportColumns.some((existing) => existing.name === column)) {
       database.exec(`ALTER TABLE work_reports ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
