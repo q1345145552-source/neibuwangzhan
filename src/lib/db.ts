@@ -2727,6 +2727,8 @@ function initTables(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS todos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,
+      content_zh TEXT NOT NULL DEFAULT '',
+      content_zh_key TEXT NOT NULL DEFAULT '',
       assignee TEXT DEFAULT '',
       priority TEXT NOT NULL DEFAULT '普通' CHECK(priority IN ('紧急','普通','不急')),
       status TEXT NOT NULL DEFAULT '未完成' CHECK(status IN ('未完成','已完成')),
@@ -2805,6 +2807,14 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
   // todos 迁移：补分类列（分类表 todo_categories 建表见上）
   try { database.exec("ALTER TABLE todos ADD COLUMN category_id INTEGER DEFAULT NULL"); } catch {}
+
+  // 待办正文翻译缓存：按列检查兼容旧表，不改动原正文、状态和业务记录。
+  const todoTranslationColumns = database.prepare("PRAGMA table_info(todos)").all() as { name: string }[];
+  for (const column of ["content_zh", "content_zh_key"]) {
+    if (!todoTranslationColumns.some(existing => existing.name === column)) {
+      database.exec(`ALTER TABLE todos ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
 
   // 工资单：每个员工每月一张
   // 收入 = 底薪 + 勤奋奖 + 技能津贴 + 奖金 + 佣金 + 加班费

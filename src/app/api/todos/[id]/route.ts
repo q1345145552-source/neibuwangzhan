@@ -80,12 +80,12 @@ export async function PATCH(
     if (finalAssignee !== todo.assignee) {
       // 改派给新人：新负责人未看过
       db.prepare(
-        "UPDATE todos SET content = ?, priority = ?, assignee = ?, category_id = ?, seen_at = '', updated_at = datetime('now') WHERE id = ?"
-      ).run(content.trim(), finalPriority, finalAssignee, categoryId, id);
+        "UPDATE todos SET content_zh = CASE WHEN content = ? AND category_id IS ? THEN content_zh ELSE '' END, content_zh_key = CASE WHEN content = ? AND category_id IS ? THEN content_zh_key ELSE '' END, content = ?, priority = ?, assignee = ?, category_id = ?, seen_at = '', updated_at = datetime('now') WHERE id = ?"
+      ).run(content.trim(), categoryId, content.trim(), categoryId, content.trim(), finalPriority, finalAssignee, categoryId, id);
     } else {
       db.prepare(
-        "UPDATE todos SET content = ?, priority = ?, category_id = ?, updated_at = datetime('now') WHERE id = ?"
-      ).run(content.trim(), finalPriority, categoryId, id);
+        "UPDATE todos SET content_zh = CASE WHEN content = ? AND category_id IS ? THEN content_zh ELSE '' END, content_zh_key = CASE WHEN content = ? AND category_id IS ? THEN content_zh_key ELSE '' END, content = ?, priority = ?, category_id = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(content.trim(), categoryId, content.trim(), categoryId, content.trim(), finalPriority, categoryId, id);
     }
     logOperation(auth.name, "编辑待办", "todo", String(id), content.trim());
     const edited = db.prepare("SELECT * FROM todos WHERE id = ?").get(id);

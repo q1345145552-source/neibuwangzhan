@@ -3,6 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { syncAnnouncementOverdueTodos } from "@/lib/announcement-overdue";
+import { withValidTodoTranslation } from "@/lib/todo-translation";
 
 // GET /api/todos — 待办列表（紧急的排前面）
 // 管理员看所有员工的待办（前端按员工分组）；员工只看自己的
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   // 每条待办附带图片列表（按上传顺序）
   const imgsStmt = db.prepare("SELECT url FROM todo_images WHERE todo_id = ? ORDER BY id ASC");
-  const result = rows.map((r: any) => ({ ...r, images: imgsStmt.all(r.id).map((i: any) => i.url) }));
+  const result = rows.map((r: any) => ({ ...withValidTodoTranslation(r), images: imgsStmt.all(r.id).map((i: any) => i.url) }));
   return NextResponse.json(result);
 }
 

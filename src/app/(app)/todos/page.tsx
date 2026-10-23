@@ -12,6 +12,8 @@ import { Plus, X, MessageSquare, Check, ChevronDown, ChevronRight, ChevronLeft, 
 interface Todo {
   id: number;
   content: string;
+  content_zh?: string | null;
+  content_zh_key?: string | null;
   assignee: string;
   priority: string;
   status: string;
@@ -25,6 +27,8 @@ interface Todo {
   category_id?: number | null;
   category_name?: string | null;
 }
+
+const translationSource = (todo: Todo) => JSON.stringify([todo.content, todo.category_id ?? null, todo.category_name || ""]);
 
 const STATUS_CLASS: Record<string, string> = {
   "未完成": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -74,6 +78,9 @@ export default function TodosPage() {
   const todoIdParam = searchParams.get("todo");
   const autoJumpedTodo = useRef<string | null>(null);
   const [todos, setTodos] = useState<Todo[]>([]);
+  const translatingRequests = useRef(new Set<string>());
+  const [translatingTodos, setTranslatingTodos] = useState<Record<number, string>>({});
+  const [translationErrors, setTranslationErrors] = useState<Record<number, { source: string; message: string }>>({});
   const [employees, setEmployees] = useState<{ id: number; name: string; role?: string }[]>([]);
   const [employeesLoaded, setEmployeesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -386,7 +393,7 @@ export default function TodosPage() {
       body: JSON.stringify({ id, name }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok) { loadCategories(); setEditCatId(null); setEditCatName(""); }
+    if (res.ok) { loadCategories(); load(); setEditCatId(null); setEditCatName(""); }
     else setCatModalErr(data.error || "重命名失败");
   };
 
@@ -628,6 +635,47 @@ export default function TodosPage() {
     } catch { alert("操作失败"); }
   };
 
+  const translateTodo = async (todo: Todo) => {
+    if (!["admin", "employee"].includes(user?.role || "") || todo.content_zh?.trim()) return;
+    const source = translationSource(todo);
+    const requestKey = `${todo.id}:${source}`;
+    if (translatingRequests.current.has(requestKey)) return;
+    translatingRequests.current.add(requestKey);
+    setTranslatingTodos(previous => ({ ...previous, [todo.id]: source }));
+    setTranslationErrors(previous => ({ ...previous, [todo.id]: { source, message: "" } }));
+    try {
+      const response = await fetchWithAuth("/api/todos/translate", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: todo.id }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) { if (response.status === 409 || response.status === 403 || response.status === 404) load(); throw new Error(data?.error || "翻译失败，请重试"); }
+      if (typeof data?.content_zh !== "string" || !data.content_zh.trim()) throw new Error("翻译结果为空，请重试");
+      if (translationSource(data) !== source) { load(); return; }
+      // 编辑/换分类后，迟到的旧请求不能覆盖当前行。
+      setTodos(previous => previous.map(row => row.id === todo.id && translationSource(row) === source
+        ? { ...row, content_zh: data.content_zh, content_zh_key: data.content_zh_key } : row));
+    } catch (error) {
+      setTranslationErrors(previous => ({ ...previous, [todo.id]: { source, message: error instanceof Error ? error.message : "翻译失败，请重试" } }));
+    } finally {
+      translatingRequests.current.delete(requestKey);
+      setTranslatingTodos(previous => previous[todo.id] === source ? { ...previous, [todo.id]: "" } : previous);
+    }
+  };
+
+  const renderTodoContent = (todo: Todo, completed = false) => {
+    const source = translationSource(todo);
+    const translating = translatingTodos[todo.id] === source;
+    const error = translationErrors[todo.id];
+    return <div className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1">
+        <span className={cn("min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere]", completed ? "text-[var(--muted-foreground)] line-through" : "text-base font-semibold text-[var(--foreground)]")}>{todo.content}</span>
+        {["admin", "employee"].includes(user?.role || "") && <Button type="button" variant="ghost" disabled={translating} onClick={() => translateTodo(todo)} className="min-h-11 shrink-0 px-2 text-xs text-blue-600 dark:text-blue-400" aria-label={todo.content_zh ? "显示已保存的中文翻译" : "翻译待办工作内容"}>{translating ? "翻译中…" : todo.content_zh ? "已翻译" : "翻译"}</Button>}
+      </div>
+      {todo.content_zh && <div data-todo-translation className="mt-1 rounded-md bg-blue-50 p-2 text-sm text-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><span className="text-xs font-medium">中文翻译</span><p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{todo.content_zh}</p></div>}
+      {error?.source === source && error.message && <p role="alert" className="mt-1 text-xs text-[var(--destructive)] [overflow-wrap:anywhere]">{error.message}</p>}
+    </div>;
+  };
+
   // 未完成待办表格（员工视角 + 管理员每个分组共用）
   const renderTodoTable = (list: Todo[]) => (
     <div className="overflow-x-auto">
@@ -647,7 +695,7 @@ export default function TodosPage() {
           {list.map((t) => (
             <tr key={t.id} id={`todo-${t.id}`} data-todo-id={t.id} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
               <td className="py-3 px-5">
-                <div className="text-base font-semibold text-[var(--foreground)]">{t.content}</div>
+                {renderTodoContent(t)}
                 {t.latest_follow_content && (
                   <div className="mt-1 text-sm text-[var(--foreground)]">
                     最新：{t.latest_follow_content}
@@ -713,7 +761,7 @@ export default function TodosPage() {
         {list.map((t) => (
           <div key={t.id} id={`todo-${t.id}-mobile`} data-todo-id={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
             <div className="flex items-start justify-between gap-2">
-              <span className="min-w-0 flex-1 break-words text-base font-semibold text-[var(--foreground)]">{t.content}</span>
+              <div className="min-w-0 flex-1">{renderTodoContent(t)}</div>
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
             </div>
             {t.latest_follow_content && (
@@ -1142,7 +1190,7 @@ export default function TodosPage() {
                 <tbody>
                   {completedFiltered.map((t) => (
                     <tr key={t.id} id={`todo-${t.id}`} data-todo-id={t.id} className={cn("border-b border-[var(--border)]", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
-                      <td className="py-3 px-5 text-[var(--muted-foreground)] line-through">{t.content}</td>
+                      <td className="py-3 px-5">{renderTodoContent(t, true)}</td>
                       <td className="py-3 px-4 text-[var(--muted-foreground)]">{t.assignee || "—"}</td>
                       <td className="py-3 px-4 text-xs text-[var(--muted-foreground)]">{toThaiTime(t.completed_at) || "—"}</td>
                       <td className="py-3 px-4">
@@ -1162,7 +1210,7 @@ export default function TodosPage() {
                 {completedFiltered.map((t) => (
                   <div key={t.id} id={`todo-${t.id}-mobile`} data-todo-id={t.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", t.id === highlightTodoId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="min-w-0 flex-1 break-words text-[var(--muted-foreground)] line-through">{t.content}</span>
+                      <div className="min-w-0 flex-1">{renderTodoContent(t, true)}</div>
                       <span className="text-xs text-[var(--muted-foreground)] shrink-0">{t.assignee || "—"}</span>
                     </div>
                     <div className="mt-1.5 text-xs text-[var(--muted-foreground)]">完成于 {toThaiTime(t.completed_at) || "—"}</div>
