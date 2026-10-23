@@ -12,8 +12,9 @@ const ideas = [0, 1].flatMap(is_boss => statuses.map((status, n) => ({ id: is_bo
 let role = 'admin', state = [], cursor = 0, calls = [];
 const originalLoad = Module._load;
 Module._load = function(name, ...args) {
-  if (name === 'react') return { ...React, useEffect() {}, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = Array.isArray(initial) ? ideas : initial === true ? false : initial; return [state[i], value => { state[i] = value; }]; } };
+  if (name === 'react') return { ...React, useEffect() {}, useRef(value) { return { current: value }; }, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = Array.isArray(initial) ? ideas : initial === true ? false : initial; return [state[i], value => { state[i] = value; }]; } };
   if (name === '@/components/auth-provider') return { useAuth: () => ({ user: { role, name: role } }) };
+  if (name === 'next/navigation') return { useSearchParams: () => ({ get: () => null }) };
   if (name === '@/lib/api') return { fetchWithAuth() {} };
   if (name === '@/lib/api-call') return { async apiCall(url, options) { calls.push({ url, ...options }); return false; } };
   if (name === '@/lib/utils') return { cn: (...s) => s.join(' '), toThaiTime: s => s };
