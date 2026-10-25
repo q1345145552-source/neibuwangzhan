@@ -20,7 +20,10 @@ interface Todo {
   completed_at?: string | null;
   created_by: string;
   created_at: string;
+  latest_follow_id?: number | null;
   latest_follow_content?: string | null;
+  latest_follow_content_zh?: string | null;
+  latest_follow_content_zh_key?: string | null;
   latest_follow_by?: string | null;
   latest_follow_at?: string | null;
   images?: string[];
@@ -29,6 +32,19 @@ interface Todo {
 }
 
 const translationSource = (todo: Todo) => JSON.stringify([todo.content, todo.category_id ?? null, todo.category_name || ""]);
+
+interface FollowUp {
+  id: number;
+  content: string;
+  content_zh?: string | null;
+  content_zh_key?: string | null;
+  images: string[];
+  created_by: string;
+  created_at: string;
+}
+
+type FollowUpContent = Pick<FollowUp, "id" | "content" | "content_zh" | "content_zh_key">;
+const followTranslationSource = (todoId: number, follow: FollowUpContent) => JSON.stringify([todoId, follow.id, follow.content]);
 
 const STATUS_CLASS: Record<string, string> = {
   "未完成": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -100,8 +116,14 @@ export default function TodosPage() {
   const [followImages, setFollowImages] = useState<string[]>([]);
   const [followUploading, setFollowUploading] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<Todo | null>(null);
-  const [historyRecords, setHistoryRecords] = useState<{ id: number; content: string; images: string[]; created_by: string; created_at: string }[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<FollowUp[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const historyTodoId = useRef<number | null>(null);
+  const historyRequestSequence = useRef(0);
+  const followTranslationRequests = useRef(new Set<string>());
+  const [translatingFollowUps, setTranslatingFollowUps] = useState<Record<string, boolean>>({});
+  const [followTranslationErrors, setFollowTranslationErrors] = useState<Record<string, string>>({});
+  const [translatedFollowUps, setTranslatedFollowUps] = useState<Record<string, { content_zh: string; content_zh_key: string }>>({});
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
   const [editForm, setEditForm] = useState({ content: "", priority: "普通", assignee: "", category_id: "" });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -424,24 +446,39 @@ export default function TodosPage() {
     setLightboxIdx(startIdx);
   };
 
-  // 打开跟进历史弹窗：拉取该待办所有跟进记录（后端已按时间倒序）
-  const openFollowHistory = async (todo: Todo) => {
-    // 打开跟进历史 = 看过这条待办（清掉「新跟进」未读）
-    fetchWithAuth(`/api/todos/${todo.id}/seen`, { method: "POST" }).catch(() => {});
-    loadUnseen();
-    setHistoryTarget(todo);
-    setHistoryRecords([]);
+  const loadFollowHistory = async (todoId: number) => {
+    const sequence = ++historyRequestSequence.current;
     setLoadingHistory(true);
     try {
-      const res = await fetchWithAuth(`/api/todos/${todo.id}/follow-ups`, { cache: "no-store" });
+      const res = await fetchWithAuth(`/api/todos/${todoId}/follow-ups`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
-        setHistoryRecords(Array.isArray(data) ? data : []);
-      } else {
+        if (historyRequestSequence.current === sequence && historyTodoId.current === todoId) setHistoryRecords(Array.isArray(data) ? data : []);
+      } else if (historyRequestSequence.current === sequence && historyTodoId.current === todoId) {
         setHistoryRecords([]);
       }
-    } catch { setHistoryRecords([]); }
-    finally { setLoadingHistory(false); }
+    } catch {
+      if (historyRequestSequence.current === sequence && historyTodoId.current === todoId) setHistoryRecords([]);
+    } finally {
+      if (historyRequestSequence.current === sequence && historyTodoId.current === todoId) setLoadingHistory(false);
+    }
+  };
+
+  // 打开跟进历史弹窗：拉取该待办所有跟进记录（后端已按时间倒序）。
+  const openFollowHistory = (todo: Todo) => {
+    // 打开跟进历史 = 看过这条待办（清掉「新跟进」未读）。翻译本身不标记已读。
+    fetchWithAuth(`/api/todos/${todo.id}/seen`, { method: "POST" }).catch(() => {});
+    loadUnseen();
+    historyTodoId.current = todo.id;
+    setHistoryTarget(todo);
+    setHistoryRecords([]);
+    void loadFollowHistory(todo.id);
+  };
+
+  const closeFollowHistory = () => {
+    historyTodoId.current = null;
+    historyRequestSequence.current += 1;
+    setHistoryTarget(null);
   };
 
   const openEdit = (todo: Todo) => {
@@ -676,6 +713,66 @@ export default function TodosPage() {
     </div>;
   };
 
+  const translateFollowUp = async (todoId: number, follow: FollowUpContent) => {
+    if (!["admin", "employee"].includes(user?.role || "")) return;
+    const source = followTranslationSource(todoId, follow);
+    if (follow.content_zh?.trim() || translatedFollowUps[source]?.content_zh.trim() || followTranslationRequests.current.has(source)) return;
+    followTranslationRequests.current.add(source);
+    setTranslatingFollowUps(previous => ({ ...previous, [source]: true }));
+    setFollowTranslationErrors(previous => ({ ...previous, [source]: "" }));
+    try {
+      const response = await fetchWithAuth(`/api/todos/${todoId}/follow-ups/${follow.id}/translate`, { method: "POST" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        if ([403, 404, 409].includes(response.status)) {
+          load();
+          if (historyTodoId.current === todoId) void loadFollowHistory(todoId);
+        }
+        throw new Error(data?.error || "翻译失败，请重试");
+      }
+      if (typeof data?.content_zh !== "string" || !data.content_zh.trim()) throw new Error("翻译结果为空，请重试");
+      if (data.id !== follow.id || data.todo_id !== todoId || data.content !== follow.content) {
+        load();
+        if (historyTodoId.current === todoId) void loadFollowHistory(todoId);
+        return;
+      }
+      // 按跟进编号及原文共享结果：历史、最新跟进同步展示，迟到响应不会覆盖另一条跟进或修改后的原文。
+      setTranslatedFollowUps(previous => ({ ...previous, [source]: { content_zh: data.content_zh, content_zh_key: data.content_zh_key } }));
+    } catch (error) {
+      setFollowTranslationErrors(previous => ({ ...previous, [source]: error instanceof Error ? error.message : "翻译失败，请重试" }));
+    } finally {
+      followTranslationRequests.current.delete(source);
+      setTranslatingFollowUps(previous => ({ ...previous, [source]: false }));
+    }
+  };
+
+  const renderFollowUpContent = (todoId: number, follow: FollowUpContent, latest = false) => {
+    const source = followTranslationSource(todoId, follow);
+    const translation = translatedFollowUps[source]?.content_zh || follow.content_zh;
+    const translating = !!translatingFollowUps[source];
+    return <div className="min-w-0" data-follow-up-id={follow.id}>
+      <div className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1">
+        <p className="min-w-0 max-w-full whitespace-pre-wrap text-sm text-[var(--foreground)] [overflow-wrap:anywhere]">{latest && "最新："}{follow.content}</p>
+        {["admin", "employee"].includes(user?.role || "") && <Button type="button" variant="ghost" disabled={translating} onClick={() => translateFollowUp(todoId, follow)} className="min-h-11 shrink-0 px-2 text-xs text-blue-600 dark:text-blue-400" aria-label={translation ? "显示已保存的跟进中文翻译" : "翻译跟进记录"}>{translating ? "翻译中…" : translation ? "已翻译" : "翻译"}</Button>}
+      </div>
+      {translation && <div data-follow-up-translation className="mt-1 rounded-md bg-blue-50 p-2 text-sm text-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><span className="text-xs font-medium">中文翻译</span><p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{translation}</p></div>}
+      {followTranslationErrors[source] && <p role="alert" className="mt-1 text-xs text-[var(--destructive)] [overflow-wrap:anywhere]">{followTranslationErrors[source]}</p>}
+    </div>;
+  };
+
+  const renderLatestFollowUp = (todo: Todo) => {
+    if (!todo.latest_follow_content) return null;
+    return <div className="mt-1.5 min-w-0">
+      {todo.latest_follow_id ? renderFollowUpContent(todo.id, {
+        id: todo.latest_follow_id,
+        content: todo.latest_follow_content,
+        content_zh: todo.latest_follow_content_zh,
+        content_zh_key: todo.latest_follow_content_zh_key,
+      }, true) : <p className="whitespace-pre-wrap text-sm text-[var(--foreground)] [overflow-wrap:anywhere]">最新：{todo.latest_follow_content}</p>}
+      <p className="mt-1 text-xs text-[var(--muted-foreground)] [overflow-wrap:anywhere]">{todo.latest_follow_by} · {toThaiTime(todo.latest_follow_at)}</p>
+    </div>;
+  };
+
   // 未完成待办表格（员工视角 + 管理员每个分组共用）
   const renderTodoTable = (list: Todo[]) => (
     <div className="overflow-x-auto">
@@ -696,12 +793,7 @@ export default function TodosPage() {
             <tr key={t.id} id={`todo-${t.id}`} data-todo-id={t.id} className={cn("border-b border-[var(--border)]", t.priority === "紧急" && "bg-red-50/60 dark:bg-red-950/20", t.id === highlightTodoId && "bg-amber-100 dark:bg-amber-900/30")}>
               <td className="py-3 px-5">
                 {renderTodoContent(t)}
-                {t.latest_follow_content && (
-                  <div className="mt-1 text-sm text-[var(--foreground)]">
-                    最新：{t.latest_follow_content}
-                    <span className="ml-1 text-[var(--muted-foreground)]">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
-                  </div>
-                )}
+                {renderLatestFollowUp(t)}
                 {t.images && t.images.length > 0 && (
                   <div className="mt-1.5 flex items-center gap-2">
                     <img src={fileUrl(t.images[0])} alt="" className="h-10 w-10 cursor-pointer rounded border border-[var(--border)] object-cover hover:opacity-80" onClick={() => openLightbox(t.images || [], 0)} />
@@ -764,12 +856,7 @@ export default function TodosPage() {
               <div className="min-w-0 flex-1">{renderTodoContent(t)}</div>
               <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium shrink-0", STATUS_CLASS[t.status] || "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{t.status}</span>
             </div>
-            {t.latest_follow_content && (
-              <div className="mt-1.5 break-words text-sm text-[var(--foreground)]">
-                最新：{t.latest_follow_content}
-                <span className="ml-1 text-[var(--muted-foreground)]">· {t.latest_follow_by} · {toThaiTime(t.latest_follow_at)}</span>
-              </div>
-            )}
+            {renderLatestFollowUp(t)}
             {t.images && t.images.length > 0 && (
               <div className="mt-2 flex items-center gap-2">
                 <img src={fileUrl(t.images[0])} alt="" className="h-12 w-12 cursor-pointer rounded border border-[var(--border)] object-cover hover:opacity-80" onClick={() => openLightbox(t.images || [], 0)} />
@@ -1442,11 +1529,11 @@ export default function TodosPage() {
 
       {/* 跟进历史弹窗 */}
       {historyTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHistoryTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeFollowHistory}>
           <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-semibold text-[var(--foreground)]">跟进历史</h3>
-              <button onClick={() => setHistoryTarget(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
+              <button onClick={closeFollowHistory} aria-label="关闭跟进历史" className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
             <p className="mb-3 text-sm text-[var(--muted-foreground)]">待办：{historyTarget.content}</p>
             {loadingHistory ? (
@@ -1461,7 +1548,7 @@ export default function TodosPage() {
                       <span className="text-sm font-medium text-[var(--foreground)]">{h.created_by}</span>
                       <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{toThaiTime(h.created_at) || "—"}</span>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--foreground)]">{h.content}</p>
+                    <div className="mt-1">{renderFollowUpContent(historyTarget.id, h)}</div>
                     {h.images && h.images.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {h.images.map((url, i) => (

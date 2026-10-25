@@ -2752,6 +2752,8 @@ function initTables(database: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       todo_id INTEGER NOT NULL REFERENCES todos(id),
       content TEXT NOT NULL,
+      content_zh TEXT NOT NULL DEFAULT '',
+      content_zh_key TEXT NOT NULL DEFAULT '',
       images TEXT DEFAULT '[]',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
@@ -2807,6 +2809,14 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
   // todos 迁移：补分类列（分类表 todo_categories 建表见上）
   try { database.exec("ALTER TABLE todos ADD COLUMN category_id INTEGER DEFAULT NULL"); } catch {}
+
+  // 待办跟进翻译缓存：兼容旧表，保留所有原有跟进和图片。
+  const followUpTranslationColumns = database.prepare("PRAGMA table_info(todo_follow_ups)").all() as { name: string }[];
+  for (const column of ["content_zh", "content_zh_key"]) {
+    if (!followUpTranslationColumns.some(existing => existing.name === column)) {
+      database.exec(`ALTER TABLE todo_follow_ups ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+    }
+  }
 
   // 待办正文翻译缓存：按列检查兼容旧表，不改动原正文、状态和业务记录。
   const todoTranslationColumns = database.prepare("PRAGMA table_info(todos)").all() as { name: string }[];

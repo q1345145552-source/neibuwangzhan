@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
+import { withValidFollowUpTranslation } from "@/lib/todo-translation";
 
 // GET /api/todos/:id/follow-ups — 该待办的所有跟进记录（按时间倒序，最新的在上面）
 export async function GET(
@@ -32,7 +33,7 @@ export async function GET(
       const parsed = JSON.parse(r.images || "[]");
       if (Array.isArray(parsed)) images = parsed.filter((u: unknown) => typeof u === "string");
     } catch {}
-    return { ...r, images };
+    return { ...withValidFollowUpTranslation(r), images };
   });
   return NextResponse.json(result);
 }

@@ -3,7 +3,7 @@ import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { readJson } from "@/lib/req";
 import { syncAnnouncementOverdueTodos } from "@/lib/announcement-overdue";
-import { withValidTodoTranslation } from "@/lib/todo-translation";
+import { withValidTodoTranslation, withValidFollowUpTranslation } from "@/lib/todo-translation";
 
 // GET /api/todos — 待办列表（紧急的排前面）
 // 管理员看所有员工的待办（前端按员工分组）；员工只看自己的
@@ -21,7 +21,10 @@ export async function GET(req: NextRequest) {
   // 每条待办附带最新一条跟进记录（按时间倒序取第一条），列表页直接展示进展
   const select = `SELECT t.*,
       (SELECT name FROM todo_categories tc WHERE tc.id = t.category_id) AS category_name,
+      (SELECT id FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_id,
       (SELECT content FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_content,
+      (SELECT content_zh FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_content_zh,
+      (SELECT content_zh_key FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_content_zh_key,
       (SELECT created_by FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_by,
       (SELECT created_at FROM todo_follow_ups f WHERE f.todo_id = t.id ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS latest_follow_at
      FROM todos t`;
@@ -33,7 +36,10 @@ export async function GET(req: NextRequest) {
 
   // 每条待办附带图片列表（按上传顺序）
   const imgsStmt = db.prepare("SELECT url FROM todo_images WHERE todo_id = ? ORDER BY id ASC");
-  const result = rows.map((r: any) => ({ ...withValidTodoTranslation(r), images: imgsStmt.all(r.id).map((i: any) => i.url) }));
+  const result = rows.map((r: any) => {
+    const followUp = withValidFollowUpTranslation({ content: r.latest_follow_content || "", content_zh: r.latest_follow_content_zh, content_zh_key: r.latest_follow_content_zh_key });
+    return { ...withValidTodoTranslation(r), latest_follow_content_zh: followUp.content_zh, latest_follow_content_zh_key: followUp.content_zh_key, images: imgsStmt.all(r.id).map((i: any) => i.url) };
+  });
   return NextResponse.json(result);
 }
 
