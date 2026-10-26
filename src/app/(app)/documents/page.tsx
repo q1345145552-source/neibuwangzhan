@@ -46,9 +46,9 @@ interface DocRecord {
 }
 
 export default function DocumentsPage() {
-  const [search, setSearch] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const businessFilter = searchParams.get("biz");
   const { user } = useAuth();
   const isClient = user?.role === "client";

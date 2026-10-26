@@ -22,7 +22,7 @@ function createTodoFollowUpTranslationHarness() {
     [4103, 3102, 'ตรวจสอบข้อมูลของพาร์ทเนอร์แล้ว', '2026-10-25 03:00:00'],
     [4104, 3101, '', '2026-10-25 01:00:00'],
     [4105, 3103, 'ส่งเอกสารเรียบร้อยแล้ว', '2026-10-25 03:00:00'],
-  ]) followUps.set(id, { id, todo_id, content, content_zh: '', content_zh_key: '',
+  ]) followUps.set(id, { id, todo_id, content, content_zh: '', content_zh_key: '', revision: 0,
     images: id === 4102 ? '{invalid-json' : '["/api/files/mock.jpg"]', created_by: id === 4103 ? '员工乙' : '员工甲', created_at });
   const forTodo = id => [...followUps.values()].filter(follow => follow.todo_id === Number(id))
     .sort((left, right) => right.created_at.localeCompare(left.created_at) || right.id - left.id);
@@ -31,7 +31,7 @@ function createTodoFollowUpTranslationHarness() {
     return {
       get(...args) {
         if (sql === 'SELECT * FROM todo_follow_ups WHERE id = ?') return copy(followUps.get(Number(args[0])));
-        if (sql === 'SELECT f.id, f.todo_id, f.content, f.content_zh, f.content_zh_key, t.assignee, t.content AS todo_content FROM todo_follow_ups f JOIN todos t ON t.id = f.todo_id WHERE f.id = ? AND f.todo_id = ?') {
+        if (sql === 'SELECT f.id, f.todo_id, f.content, f.revision, f.content_zh, f.content_zh_key, t.assignee, t.content AS todo_content FROM todo_follow_ups f JOIN todos t ON t.id = f.todo_id WHERE f.id = ? AND f.todo_id = ?') {
           assert.equal(args.length, 2);
           const follow = followUps.get(Number(args[0])), todo = follow && h.todos.get(follow.todo_id);
           return follow && todo && follow.todo_id === Number(args[1]) ? { ...copy(follow), assignee: todo.assignee, todo_content: todo.content } : undefined;
@@ -44,7 +44,7 @@ function createTodoFollowUpTranslationHarness() {
           assert(sql.includes('AS latest_follow_id') && sql.includes('AS latest_follow_content_zh') && sql.includes('AS latest_follow_content_zh_key'));
           return fallback.all(...args).map(todo => {
             const latest = forTodo(todo.id)[0];
-            return { ...todo, latest_follow_id: latest?.id ?? null, latest_follow_content: latest?.content ?? null,
+            return { ...todo, latest_follow_id: latest?.id ?? null, latest_follow_revision: latest?.revision ?? 0, latest_follow_content: latest?.content ?? null,
               latest_follow_content_zh: latest?.content_zh ?? null, latest_follow_content_zh_key: latest?.content_zh_key ?? null,
               latest_follow_by: latest?.created_by ?? null, latest_follow_at: latest?.created_at ?? null };
           });
@@ -52,21 +52,21 @@ function createTodoFollowUpTranslationHarness() {
         return fallback.all(...args);
       },
       run(...args) {
-        if (sql === 'UPDATE todo_follow_ups SET content_zh = ?, content_zh_key = ? WHERE id = ? AND todo_id = ? AND content = ? AND EXISTS (SELECT 1 FROM todos WHERE id = todo_follow_ups.todo_id AND assignee = ? AND content = ?)') {
-          assert.equal(args.length, 7);
+        if (sql === 'UPDATE todo_follow_ups SET content_zh = ?, content_zh_key = ? WHERE id = ? AND todo_id = ? AND content = ? AND revision = ? AND EXISTS (SELECT 1 FROM todos WHERE id = todo_follow_ups.todo_id AND assignee = ? AND content = ?)') {
+          assert.equal(args.length, 8);
           h.writes.push({ sql, args: copy(args) });
           if (beforeFollowWrite) { const callback = beforeFollowWrite; beforeFollowWrite = undefined; callback({ sql, args }); }
           if (zeroNextFollowWrite) { zeroNextFollowWrite = false; return { changes: 0 }; }
-          const [translated, key, id, todoId, content, assignee, todoContent] = args;
+          const [translated, key, id, todoId, content, revision, assignee, todoContent] = args;
           const follow = followUps.get(Number(id)), todo = follow && h.todos.get(follow.todo_id);
-          if (!follow || follow.todo_id !== Number(todoId) || follow.content !== content || !todo || todo.assignee !== assignee || todo.content !== todoContent) return { changes: 0 };
+          if (!follow || follow.todo_id !== Number(todoId) || follow.content !== content || follow.revision !== revision || !todo || todo.assignee !== assignee || todo.content !== todoContent) return { changes: 0 };
           follow.content_zh = translated; follow.content_zh_key = key;
           return { changes: 1 };
         }
         if (sql === 'INSERT INTO todo_follow_ups (todo_id, content, images, created_by) VALUES (?, ?, ?, ?)') {
           const [todo_id, content, images, created_by] = args;
           const follow = { id: ++nextFollowId, todo_id: Number(todo_id), content, images, created_by,
-            content_zh: '', content_zh_key: '', created_at: '2026-10-25 04:00:00' };
+            content_zh: '', content_zh_key: '', revision: 0, created_at: '2026-10-25 04:00:00' };
           followUps.set(follow.id, follow); h.writes.push({ sql, args: copy(args) });
           return { changes: 1, lastInsertRowid: follow.id };
         }

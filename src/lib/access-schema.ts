@@ -21,6 +21,10 @@ export function ensureAccessSchema(db: Database.Database): void {
       INSERT OR IGNORE INTO client_scope_settings (employee_id, mode)
         SELECT DISTINCT employee_id, 'explicit' FROM client_account_customers;
     `);
+    const uploadColumns = db.prepare('PRAGMA table_info(file_uploads)').all() as { name: string }[];
+    if (!uploadColumns.some(column => column.name === 'original_name')) {
+      db.exec("ALTER TABLE file_uploads ADD COLUMN original_name TEXT NOT NULL DEFAULT ''");
+    }
     const documentColumns = db.prepare('PRAGMA table_info(documents)').all() as { name: string }[];
     if (!documentColumns.some(column => column.name === 'publication_verified')) {
       db.exec('ALTER TABLE documents ADD COLUMN publication_verified INTEGER NOT NULL DEFAULT 0 CHECK (publication_verified IN (0, 1))');

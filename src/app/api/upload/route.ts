@@ -5,7 +5,7 @@ import { writeFile, mkdir, unlink } from "fs/promises";
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
 import path from "path";
 import os from "os";
-import { verifyAuth } from "@/lib/auth";
+import { verifyAuth, isStaff } from "@/lib/auth";
 import { uploadsDir } from "@/lib/uploads";
 import { HEIC_TYPES, hasHeicSignature } from "@/lib/heic-upload";
 
@@ -64,6 +64,15 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const personal = formData.has("personal_folder_id");
+    const rawFolder = formData.get("personal_folder_id");
+    const folderId = rawFolder === "" ? null : Number(rawFolder);
+    if (personal) {
+      if (!isStaff(auth)) return NextResponse.json({error:"仅员工可用"},{status:403});
+      if (folderId !== null && (!Number.isSafeInteger(folderId) || folderId <= 0 || !getDb().prepare("SELECT 1 FROM personal_folders WHERE id=? AND owner_id=?").get(folderId,auth.id))) {
+        return NextResponse.json({error:"文件夹不存在或无权操作"},{status:403});
+      }
+    }
 
     if (!file) return NextResponse.json({ error: "请选择文件" }, { status: 400 });
     if (!ALLOWED_TYPES.includes(file.type)) {
@@ -88,8 +97,12 @@ export async function POST(req: NextRequest) {
 
     await writeFile(filePath, buffer, { flag: "wx" });
     try {
-      getDb().prepare("INSERT INTO file_uploads (filename, uploaded_by_id, uploaded_by_role, mime_type, size) VALUES (?, ?, ?, ?, ?)")
-        .run(safeName, auth.id, auth.role, file.type, buffer.length);
+      const db = getDb();
+      db.transaction(() => {
+        db.prepare("INSERT INTO file_uploads (filename, uploaded_by_id, uploaded_by_role, mime_type, size, original_name) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(safeName, auth.id, auth.role, file.type, buffer.length, file.name);
+        if (personal) db.prepare("INSERT INTO personal_files(filename,owner_id,folder_id) VALUES (?,?,?)").run(safeName,auth.id,folderId);
+      })();
     } catch (error) {
       // An unregistered write is not exposed as an uploaded file.
       await unlink(filePath);

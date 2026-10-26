@@ -3,7 +3,33 @@ export { announcementFeedbackHref, isAnnouncementRetellFeedback } from "./announ
 
 // 通用消息类型，老板提交提醒由独立 related_type 识别。
 // 复述打回/提交沿用「老板通知」，因此列表和未读角标都由现有筛选覆盖，不增删旧类型。
-export const MESSAGE_CENTER_TYPES = ["工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知"] as const;
+export const MESSAGE_CENTER_TYPES = ["工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "日报提醒", "日报风险", "会议提醒"] as const;
+
+export const NOTIFICATION_CATEGORIES = ["工单", "待办", "问题", "老板通知", "请假/补签", "日报", "会议", "工资/提现", "客户站/订单", "其他"] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+export const NOTIFICATION_TABS = ["全部", ...NOTIFICATION_CATEGORIES] as const;
+export type NotificationTab = (typeof NOTIFICATION_TABS)[number];
+
+/** 按业务关联识别空类型提醒，员工提交也归入对应业务。 */
+export function notificationCategory(notice: { type: string; related_type: string; related_id: string }): NotificationCategory {
+  if (notice.related_type === "boss_submission") {
+    const categories: Record<string, NotificationCategory> = {
+      leave: "请假/补签", attendance: "请假/补签", notice: "老板通知", report: "日报",
+      meeting: "会议", todo: "待办", problem: "问题", withdrawal: "工资/提现",
+    };
+    return categories[notice.related_id.split(":")[0]] || "其他";
+  }
+  if (notice.related_type === "order") return "客户站/订单";
+  if (notice.type === "老板通知" || notice.related_type === "boss_supervision") return "老板通知";
+  if (["工单指派", "工单完成", "issue_assigned"].includes(notice.type) || ["issue", "issue_update"].includes(notice.related_type)) return "工单";
+  if (["待办指派", "待办完成"].includes(notice.type) || notice.related_type === "todo") return "待办";
+  if (notice.type.startsWith("problem_") || notice.related_type === "problem") return "问题";
+  if (["leave", "leave_review", "attendance", "attendance_review"].includes(notice.related_type) || ["leave_requested", "leave_overdue"].includes(notice.type)) return "请假/补签";
+  if (notice.type.startsWith("日报") || ["work_report", "work_report_return"].includes(notice.related_type)) return "日报";
+  if (notice.type === "会议提醒" || ["meeting", "meeting_reflection_review"].includes(notice.related_type)) return "会议";
+  if (notice.type === "payslip" || ["payslip", "payslip_rejected", "payslip_paid", "withdrawal", "withdrawal_review"].includes(notice.related_type)) return "工资/提现";
+  return "其他";
+}
 
 export const ISSUE_CHANGE_TITLES = ["工单负责人已变更", "工单状态已变更", "工单负责人和状态已变更"] as const;
 export function isIssueChangeNotice(notice: { type: string; related_type: string; title: string }): boolean {

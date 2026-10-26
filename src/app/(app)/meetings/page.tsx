@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffectEvent, useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { reflectionSubmissionRevision } from "@/lib/boss-submission-types";
@@ -169,7 +169,10 @@ function MeetingSummaryBoard({ meetings }: { meetings: Meeting[] }) {
 export default function MeetingsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const reflectionParam = useSearchParams().get("reflection");
+  const searchParams = useSearchParams();
+  const reflectionParam = searchParams.get("reflection");
+  const meetingParam = searchParams.get("meeting");
+  const linkedMeeting = useRef<string | null>(null);
   const [reflectionTarget, setReflectionTarget] = useState<{ id: number; meeting_id: number } | null>(null);
   const [jumpError, setJumpError] = useState("");
   const [meetingsError, setMeetingsError] = useState("");
@@ -342,6 +345,19 @@ export default function MeetingsPage() {
     setReflections([]);
     loadReflections(m.id);
   };
+
+  const openLinkedMeeting = useEffectEvent((meeting: Meeting) => openMeeting(meeting));
+  useEffect(() => {
+    if (meetingParam === null) { linkedMeeting.current = null; return; }
+    if (reflectionParam !== null || !user || loading) return;
+    const key = `${user.id}:${meetingParam}`;
+    if (linkedMeeting.current === key) return;
+    const meeting = meetings.find(row => String(row.id) === meetingParam);
+    if (!meeting) return;
+    // 排在原有心得定位的清理之后打开会议详情。
+    const timer = setTimeout(() => { linkedMeeting.current = key; openLinkedMeeting(meeting); }, 0);
+    return () => clearTimeout(timer);
+  }, [meetingParam, reflectionParam, user, loading, meetings]);
 
   const closeMeeting = () => {
     openedMeetingId.current = null; setRejectTarget(null);

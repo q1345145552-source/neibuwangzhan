@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { useRouter } from "next/navigation";
 import { MessageSquare, X, Users, ImagePlus, FileText, Search, Download, Sparkles, Eye, ListChecks, ChevronLeft, Palette, Megaphone, Pin, Languages, Smile, Plus, Bell, BellOff, Archive, PanelLeftClose, Pencil, LogOut, Trash2, MoreVertical } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { getStoredAuthToken } from "@/lib/auth-storage";
@@ -460,7 +459,6 @@ export default function MessagesPage() {
   const me = user?.name || "";
   const isAdmin = user?.role === "admin";
   const canConvertMessage = isAdmin || user?.role === "employee";
-  const router = useRouter();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
@@ -2668,8 +2666,10 @@ export default function MessagesPage() {
                               <p className="italic">已撤回</p>
                             </div>
                           ) : card ? (
-                            <button
-                              onClick={() => router.push(CARD_META[card.kind].href(card.id))}
+                            <a
+                              href={CARD_META[card.kind].href(card.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               onTouchStart={(e) => e.stopPropagation()}
                               onTouchEnd={(e) => e.stopPropagation()}
                               className={cn(
@@ -2686,7 +2686,7 @@ export default function MessagesPage() {
                               {card.subtitle && (
                                 <span className={cn("mt-0.5 block text-xs", (card.kind === "leave" || card.kind === "attendance" || card.kind === "notice" || card.kind === "report" || card.kind === "meeting") ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate", mine ? "text-[var(--primary-foreground)]/70" : "text-[var(--muted-foreground)]")}>{card.subtitle}</span>
                               )}
-                            </button>
+                            </a>
                           ) : (
                             <div
                               className={cn(
@@ -3407,14 +3407,16 @@ export default function MessagesPage() {
                               ) : m.image_url ? (
                                 <img src={imgSrc(m.image_url)} alt="图片" className="max-h-60 max-w-full rounded-xl object-contain" />
                               ) : card ? (
-                                <button
-                                  onClick={() => router.push(CARD_META[card.kind].href(card.id))}
+                                <a
+                                  href={CARD_META[card.kind].href(card.id)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   className="block max-w-[240px] rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left transition-colors hover:border-[var(--primary)]"
                                 >
                                   <span className="inline-flex items-center gap-1 text-[0.65rem] text-[var(--muted-foreground)]"><FileText className="size-3.5" /> {CARD_META[card.kind].label}</span>
                                   <span className={cn("mt-1 block text-sm font-medium text-[var(--foreground)]", (card.kind === "leave" || card.kind === "attendance" || card.kind === "notice" || card.kind === "report" || card.kind === "meeting") ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{card.title}</span>
                                   {card.subtitle && <span className={cn("mt-0.5 block text-xs text-[var(--muted-foreground)]", (card.kind === "leave" || card.kind === "attendance" || card.kind === "notice" || card.kind === "report" || card.kind === "meeting") ? "whitespace-normal [overflow-wrap:anywhere]" : "truncate")}>{card.subtitle}</span>}
-                                </button>
+                                </a>
                               ) : (
                                 <div className={cn(
                                   "rounded-2xl px-3 py-2 text-sm",

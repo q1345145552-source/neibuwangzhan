@@ -21,6 +21,7 @@ interface Todo {
   created_by: string;
   created_at: string;
   latest_follow_id?: number | null;
+  latest_follow_revision?: number | null;
   latest_follow_content?: string | null;
   latest_follow_content_zh?: string | null;
   latest_follow_content_zh_key?: string | null;
@@ -35,6 +36,7 @@ const translationSource = (todo: Todo) => JSON.stringify([todo.content, todo.cat
 
 interface FollowUp {
   id: number;
+  revision?: number;
   content: string;
   content_zh?: string | null;
   content_zh_key?: string | null;
@@ -43,8 +45,8 @@ interface FollowUp {
   created_at: string;
 }
 
-type FollowUpContent = Pick<FollowUp, "id" | "content" | "content_zh" | "content_zh_key">;
-const followTranslationSource = (todoId: number, follow: FollowUpContent) => JSON.stringify([todoId, follow.id, follow.content]);
+type FollowUpContent = Pick<FollowUp, "id" | "revision" | "content" | "content_zh" | "content_zh_key">;
+const followTranslationSource = (todoId: number, follow: FollowUpContent) => JSON.stringify([todoId, follow.id, follow.content, follow.revision ?? 0]);
 
 const STATUS_CLASS: Record<string, string> = {
   "未完成": "bg-[color-mix(in_oklch,var(--warning),var(--background)_85%)] text-[oklch(0.40_0.14_85)]",
@@ -94,6 +96,7 @@ export default function TodosPage() {
   const todoIdParam = searchParams.get("todo");
   const autoJumpedTodo = useRef<string | null>(null);
   const [todos, setTodos] = useState<Todo[]>([]);
+  const todoListSequence = useRef(0);
   const translatingRequests = useRef(new Set<string>());
   const [translatingTodos, setTranslatingTodos] = useState<Record<number, string>>({});
   const [translationErrors, setTranslationErrors] = useState<Record<number, { source: string; message: string }>>({});
@@ -124,6 +127,13 @@ export default function TodosPage() {
   const [translatingFollowUps, setTranslatingFollowUps] = useState<Record<string, boolean>>({});
   const [followTranslationErrors, setFollowTranslationErrors] = useState<Record<string, string>>({});
   const [translatedFollowUps, setTranslatedFollowUps] = useState<Record<string, { content_zh: string; content_zh_key: string }>>({});
+  const [followEditTarget, setFollowEditTarget] = useState<{ todoId: number; record: FollowUp } | null>(null);
+  const [followDeleteTarget, setFollowDeleteTarget] = useState<{ todoId: number; record: FollowUp } | null>(null);
+  const [followEditForm, setFollowEditForm] = useState({ content: "", images: [] as string[] });
+  const [followMutationBusy, setFollowMutationBusy] = useState(false);
+  const followMutationLock = useRef(false);
+  const [followEditUploading, setFollowEditUploading] = useState(false);
+  const [followMutationError, setFollowMutationError] = useState("");
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
   const [editForm, setEditForm] = useState({ content: "", priority: "普通", assignee: "", category_id: "" });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -145,6 +155,7 @@ export default function TodosPage() {
   // 待办分类：每个员工自己的一套
   const [categories, setCategories] = useState<{ id: number; name: string; created_by: string }[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [completedCategoryFilter, setCompletedCategoryFilter] = useState("all");
   // 分类管理弹窗
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [catModalErr, setCatModalErr] = useState("");
@@ -164,6 +175,7 @@ export default function TodosPage() {
   }, [isAdmin]);
 
   const load = useCallback(() => {
+    const sequence = ++todoListSequence.current;
     fetchWithAuth("/api/todos", { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(r.status === 403 ? "无权查看待办。" : "待办加载失败，请刷新后重试。");
@@ -171,11 +183,10 @@ export default function TodosPage() {
       })
       .then((d) => {
         if (!Array.isArray(d)) throw new Error("待办加载失败，请刷新后重试。");
-        setTodos(d);
-        setLoadError("");
+        if (todoListSequence.current === sequence) { setTodos(d); setLoadError(""); }
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : "待办加载失败，请刷新后重试。"))
-      .finally(() => setLoading(false));
+      .catch((e) => { if (todoListSequence.current === sequence) setLoadError(e instanceof Error ? e.message : "待办加载失败，请刷新后重试。"); })
+      .finally(() => { if (todoListSequence.current === sequence) setLoading(false); });
     loadStats();
   }, [loadStats]);
 
@@ -239,11 +250,16 @@ export default function TodosPage() {
   }, [isAdmin, employees, unfinished]);
 
   // 点卡片后：该员工的未完成待办列表（可按分类筛选）
-  const selectedList = selectedAssignee
-    ? unfinished
-        .filter((t) => (t.assignee || "未分配") === selectedAssignee)
-        .filter((t) => categoryFilter === "all" || String(t.category_id ?? "") === categoryFilter)
+  const selectedUnfinished = selectedAssignee
+    ? unfinished.filter((t) => (t.assignee || "未分配") === selectedAssignee)
     : [];
+  const selectedList = selectedUnfinished
+    .filter((t) => categoryFilter === "all" || String(t.category_id ?? "") === categoryFilter);
+  const unfinishedCategoryCounts = new Map<string, number>([["all", selectedUnfinished.length]]);
+  for (const todo of selectedUnfinished) {
+    const category = String(todo.category_id ?? "");
+    unfinishedCategoryCounts.set(category, (unfinishedCategoryCounts.get(category) || 0) + 1);
+  }
 
   // 点积压提醒：进入对应负责人的待办列表，并定位+高亮那条待办
   const jumpToTodo = (assignee: string, todoId: number) => {
@@ -285,14 +301,15 @@ export default function TodosPage() {
 
   // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
   const completedFiltered = useMemo(() => {
-    if (completedRange === "all") return completed;
+    const byCategory = completed.filter((t) => completedCategoryFilter === "all" || String(t.category_id ?? "") === completedCategoryFilter);
+    if (completedRange === "all") return byCategory;
     const today = bangkokToday();
     const start = completedRange === "today" ? today : completedRange === "7d" ? bangkokDaysAgo(6) : bangkokDaysAgo(29);
-    return completed.filter((t) => {
+    return byCategory.filter((t) => {
       const d = (toThaiTime(t.completed_at) || "").slice(0, 10);
       return d >= start && d <= today;
     });
-  }, [completed, completedRange]);
+  }, [completed, completedRange, completedCategoryFilter]);
 
   // 只在原权限返回的完整列表里找目标，不按通知编号额外获取其他人的记录。
   useEffect(() => {
@@ -308,6 +325,7 @@ export default function TodosPage() {
     if (!target) { setJumpError("待办不存在或你无权查看。"); return; }
     if (target.status === "已完成") {
       setCompletedOpen(true);
+      setCompletedCategoryFilter("all");
       if (!completedFiltered.some((t) => t.id === id)) setCompletedRange("all");
     } else {
       setSelectedAssignee(target.assignee || "未分配");
@@ -425,6 +443,7 @@ export default function TodosPage() {
     const res = await fetchWithAuth(`/api/todo-categories?id=${id}`, { method: "DELETE" });
     if (res.ok) {
       if (String(categoryFilter) === String(id)) setCategoryFilter("all");
+      if (completedCategoryFilter === String(id)) setCompletedCategoryFilter("all");
       loadCategories();
       load();
     } else {
@@ -479,6 +498,64 @@ export default function TodosPage() {
     historyTodoId.current = null;
     historyRequestSequence.current += 1;
     setHistoryTarget(null);
+  };
+
+  const openFollowEdit = (todoId: number, record: FollowUp) => {
+    setFollowEditTarget({ todoId, record });
+    setFollowEditForm({ content: record.content, images: [...(record.images || [])] });
+    setFollowMutationError("");
+  };
+
+  const uploadFollowEditImages = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setFollowEditUploading(true); setFollowMutationError("");
+    try {
+      for (const file of files) {
+        const form = new FormData(); form.append("file", file);
+        const response = await fetchWithAuth("/api/upload", { method: "POST", body: form });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || typeof data?.url !== "string") throw new Error(data?.error || "图片上传失败");
+        setFollowEditForm(previous => ({ ...previous, images: [...previous.images, data.url] }));
+      }
+    } catch (error) { setFollowMutationError(error instanceof Error ? error.message : "图片上传失败"); }
+    finally { setFollowEditUploading(false); event.target.value = ""; }
+  };
+
+  const mutateFollowUp = async (remove: boolean) => {
+    const target = remove ? followDeleteTarget : followEditTarget;
+    if (!target || followMutationLock.current || followEditUploading) return;
+    if (!remove && !followEditForm.content.trim()) { setFollowMutationError("请填写跟进内容"); return; }
+    followMutationLock.current = true; setFollowMutationBusy(true); setFollowMutationError("");
+    try {
+      const { todoId, record } = target;
+      const response = await fetchWithAuth(`/api/todos/${todoId}/follow-ups/${record.id}${remove ? `?revision=${record.revision ?? 0}` : ""}`, {
+        method: remove ? "DELETE" : "PATCH",
+        ...(!remove ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...followEditForm, revision: record.revision ?? 0 }) } : {}),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        if ([403, 404, 409].includes(response.status)) { load(); if (historyTodoId.current === todoId) void loadFollowHistory(todoId); }
+        throw new Error(data?.error || (remove ? "删除失败" : "修改失败"));
+      }
+      const remaining = historyRecords.filter(row => row.id !== record.id);
+      if (historyTodoId.current === todoId) {
+        // 使较早发出的历史请求失效，避免它把刚改/删的记录放回弹窗。
+        historyRequestSequence.current += 1;
+        setHistoryRecords(previous => remove ? previous.filter(row => row.id !== record.id) : previous.map(row => row.id === record.id ? data : row));
+      }
+      setTodos(previous => previous.map(todo => {
+        if (todo.id !== todoId || todo.latest_follow_id !== record.id) return todo;
+        const latest: FollowUp | undefined = remove ? remaining[0] : data;
+        return { ...todo, latest_follow_id: latest?.id ?? null, latest_follow_revision: latest?.revision ?? 0,
+          latest_follow_content: latest?.content ?? null, latest_follow_content_zh: latest?.content_zh || "", latest_follow_content_zh_key: latest?.content_zh_key || "",
+          latest_follow_by: latest?.created_by ?? null, latest_follow_at: latest?.created_at ?? null };
+      }));
+      setFollowEditTarget(null); setFollowDeleteTarget(null);
+      load(); loadUnseen();
+      if (historyTodoId.current === todoId) void loadFollowHistory(todoId);
+    } catch (error) { setFollowMutationError(error instanceof Error ? error.message : "操作失败"); }
+    finally { followMutationLock.current = false; setFollowMutationBusy(false); }
   };
 
   const openEdit = (todo: Todo) => {
@@ -731,7 +808,7 @@ export default function TodosPage() {
         throw new Error(data?.error || "翻译失败，请重试");
       }
       if (typeof data?.content_zh !== "string" || !data.content_zh.trim()) throw new Error("翻译结果为空，请重试");
-      if (data.id !== follow.id || data.todo_id !== todoId || data.content !== follow.content) {
+      if (data.id !== follow.id || data.todo_id !== todoId || data.content !== follow.content || (data.revision ?? 0) !== (follow.revision ?? 0)) {
         load();
         if (historyTodoId.current === todoId) void loadFollowHistory(todoId);
         return;
@@ -761,10 +838,11 @@ export default function TodosPage() {
   };
 
   const renderLatestFollowUp = (todo: Todo) => {
-    if (!todo.latest_follow_content) return null;
+    if (!todo.latest_follow_content) return <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">暂无跟进</p>;
     return <div className="mt-1.5 min-w-0">
       {todo.latest_follow_id ? renderFollowUpContent(todo.id, {
         id: todo.latest_follow_id,
+        revision: todo.latest_follow_revision ?? 0,
         content: todo.latest_follow_content,
         content_zh: todo.latest_follow_content_zh,
         content_zh_key: todo.latest_follow_content_zh_key,
@@ -908,8 +986,25 @@ export default function TodosPage() {
     .sort((a, b) => b[statsRange].followups - a[statsRange].followups)
     .slice(0, 5);
 
+  const renderCategoryTabs = (value: string, onChange: (value: string) => void, label: string, counts?: Map<string, number>) => (
+    <div role="group" aria-label={label} className="flex w-full min-w-0 gap-1 overflow-x-auto border-b border-[var(--border)] px-3 py-2">
+      {[{ value: "all", label: "全部" }, ...categories.map((c) => ({ value: String(c.id), label: c.name })), { value: "", label: "未分类" }].map((tab) => (
+        <button key={tab.value} type="button" aria-pressed={value === tab.value} onClick={() => onChange(tab.value)}
+          className={cn("inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--ring)]",
+            value === tab.value ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]")}>
+          {tab.label}
+          {(counts?.get(tab.value) || 0) > 0 && (
+            <span aria-label={`${counts?.get(tab.value)} 项未完成`} className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-xs leading-4 text-white">
+              {counts?.get(tab.value)}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">我的待办</h1>
@@ -1184,7 +1279,7 @@ export default function TodosPage() {
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
       ) : selectedAssignee ? (
         // 点卡片进入：该员工的未完成待办列表（与之前一致）
-        <div className="rounded-xl border border-[var(--border)]">
+        <div className="min-w-0 rounded-xl border border-[var(--border)]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-3">
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelectedAssignee(null)} className="gap-1 px-2">
@@ -1194,19 +1289,12 @@ export default function TodosPage() {
               <span className="text-xs text-[var(--muted-foreground)]">{selectedList.length} 项未完成</span>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-              >
-                <option value="all">全部分类</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
               <Button size="sm" variant="ghost" onClick={() => { setCatModalOpen(true); setCatModalErr(""); setEditCatId(null); setEditCatName(""); setNewCatName(""); }} className="gap-1 px-2 text-xs">
                 管理分类
               </Button>
             </div>
           </div>
+          {renderCategoryTabs(categoryFilter, setCategoryFilter, "未完成待办分类", unfinishedCategoryCounts)}
           {selectedList.length === 0 ? (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无待办</div>
           ) : (
@@ -1223,7 +1311,7 @@ export default function TodosPage() {
               {cards.map((c) => (
                 <button
                   key={c.name}
-                  onClick={() => setSelectedAssignee(c.name)}
+                  onClick={() => { setSelectedAssignee(c.name); setCategoryFilter("all"); }}
                   className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-left transition-colors hover:border-[var(--primary)]"
                 >
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{c.name}</p>
@@ -1236,8 +1324,8 @@ export default function TodosPage() {
         </div>
       )}
 
-      {/* 已完成分类：默认收起，点开看；时间筛选只作用于已完成 */}
-      <div className="rounded-xl border border-[var(--border)]">
+      {/* 已完成分类：默认收起，分类与时间筛选只作用于已完成 */}
+      <div className="min-w-0 rounded-xl border border-[var(--border)]">
         <div className="flex items-center justify-between">
           <button
             onClick={() => setCompletedOpen((o) => !o)}
@@ -1260,7 +1348,8 @@ export default function TodosPage() {
           </select>
         </div>
         {completedOpen && (
-          <div className="overflow-x-auto border-t border-[var(--border)]">
+          <div className="min-w-0 overflow-x-auto border-t border-[var(--border)]">
+            {renderCategoryTabs(completedCategoryFilter, setCompletedCategoryFilter, "已完成待办分类")}
             {completedFiltered.length === 0 ? (
               <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无已完成待办</div>
             ) : (
@@ -1543,12 +1632,16 @@ export default function TodosPage() {
             ) : (
               <div className="space-y-3">
                 {historyRecords.map((h) => (
-                  <div key={h.id} className="rounded-md border border-[var(--border)] px-3 py-2">
+                  <div key={h.id} data-history-follow-id={h.id} className="rounded-md border border-[var(--border)] px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium text-[var(--foreground)]">{h.created_by}</span>
                       <span className="shrink-0 text-xs text-[var(--muted-foreground)]">{toThaiTime(h.created_at) || "—"}</span>
                     </div>
                     <div className="mt-1">{renderFollowUpContent(historyTarget.id, h)}</div>
+                    {(isAdmin || (user?.role === "employee" && h.created_by === user.name)) && <div className="mt-1 flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="ghost" className="min-h-11 gap-1" onClick={() => openFollowEdit(historyTarget.id, h)}><Pencil className="size-3.5" />修改</Button>
+                      <Button type="button" size="sm" variant="ghost" className="min-h-11 gap-1 text-[var(--destructive)]" onClick={() => { setFollowDeleteTarget({ todoId: historyTarget.id, record: h }); setFollowMutationError(""); }}><Trash2 className="size-3.5" />删除</Button>
+                    </div>}
                     {h.images && h.images.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {h.images.map((url, i) => (
@@ -1569,6 +1662,30 @@ export default function TodosPage() {
           </div>
         </div>
       )}
+
+      {followEditTarget && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!followMutationBusy && !followEditUploading) setFollowEditTarget(null); }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="follow-edit-title" className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <h3 id="follow-edit-title" className="font-semibold">修改跟进记录</h3>
+          <label className="mt-4 block text-sm" htmlFor="follow-edit-content">跟进内容（必填）</label>
+          <textarea id="follow-edit-content" value={followEditForm.content} onChange={e => setFollowEditForm(previous => ({ ...previous, content: e.target.value }))} disabled={followMutationBusy} rows={4} className="mt-2 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-sm" />
+          <div className="mt-3 flex flex-wrap gap-2">{followEditForm.images.map((url, index) => <div key={`${url}-${index}`} className="relative">
+            <img src={fileUrl(url)} alt={`跟进图片 ${index + 1}`} className="size-20 rounded-md border border-[var(--border)] object-cover" />
+            <button type="button" aria-label={`移除图片 ${index + 1}`} disabled={followMutationBusy || followEditUploading} onClick={() => setFollowEditForm(previous => ({ ...previous, images: previous.images.filter((_, i) => i !== index) }))} className="absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full bg-red-600 text-white"><X className="size-4" /></button>
+          </div>)}</div>
+          <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-md border border-[var(--border)] px-3 text-sm">{followEditUploading ? "上传中…" : "添加图片"}<input type="file" aria-label="添加跟进图片" accept="image/*" multiple disabled={followMutationBusy || followEditUploading} onChange={uploadFollowEditImages} className="sr-only" /></label>
+          {followMutationError && <p role="alert" className="mt-3 text-sm text-[var(--destructive)]">{followMutationError}</p>}
+          <div className="mt-5 flex justify-end gap-2"><Button variant="outline" disabled={followMutationBusy || followEditUploading} onClick={() => setFollowEditTarget(null)}>取消</Button><Button disabled={followMutationBusy || followEditUploading} onClick={() => mutateFollowUp(false)}>{followMutationBusy ? "保存中…" : "保存修改"}</Button></div>
+        </div>
+      </div>}
+
+      {followDeleteTarget && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!followMutationBusy) setFollowDeleteTarget(null); }}>
+        <div role="alertdialog" aria-modal="true" aria-labelledby="follow-delete-title" aria-describedby="follow-delete-description" className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <h3 id="follow-delete-title" className="font-semibold">删除跟进记录</h3>
+          <p id="follow-delete-description" className="mt-3 break-words text-sm">确认删除这条跟进「{followDeleteTarget.record.content}」？删除后无法恢复。</p>
+          {followMutationError && <p role="alert" className="mt-3 text-sm text-[var(--destructive)]">{followMutationError}</p>}
+          <div className="mt-5 flex justify-end gap-2"><Button variant="outline" disabled={followMutationBusy} onClick={() => setFollowDeleteTarget(null)}>取消</Button><Button variant="destructive" disabled={followMutationBusy} onClick={() => mutateFollowUp(true)}>{followMutationBusy ? "删除中…" : "确认删除"}</Button></div>
+        </div>
+      </div>}
 
       {/* 编辑待办弹窗 */}
       {editTarget && (

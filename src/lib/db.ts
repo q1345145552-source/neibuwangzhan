@@ -1,3 +1,4 @@
+import { ensureWorkspaceSchema } from "./workspace-schema";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { initializeSyncSchema } from "./sync-schema";
@@ -32,6 +33,7 @@ export function getDb(): Database.Database {
       migrateInfluencersCheck(database);
       migrateEmployeeStatusCheck(database);
       ensureAccessSchema(database);
+      ensureWorkspaceSchema(database);
       ensureWorkflowSchema(database);
       ensureCustomerKitSchema(database);
       if (commercePilotEnabled()) ensureCommerceSchema(database);
@@ -2754,6 +2756,7 @@ function initTables(database: Database.Database) {
       content TEXT NOT NULL,
       content_zh TEXT NOT NULL DEFAULT '',
       content_zh_key TEXT NOT NULL DEFAULT '',
+      revision INTEGER NOT NULL DEFAULT 0,
       images TEXT DEFAULT '[]',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
@@ -2809,6 +2812,12 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
   // todos 迁移：补分类列（分类表 todo_categories 建表见上）
   try { database.exec("ALTER TABLE todos ADD COLUMN category_id INTEGER DEFAULT NULL"); } catch {}
+
+  // 跟进修改版本：修改图片或文字后，防止旧翻译请求重新写回缓存。
+  const followUpColumns = database.prepare("PRAGMA table_info(todo_follow_ups)").all() as { name: string }[];
+  if (!followUpColumns.some(column => column.name === "revision")) {
+    database.exec("ALTER TABLE todo_follow_ups ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  }
 
   // 待办跟进翻译缓存：兼容旧表，保留所有原有跟进和图片。
   const followUpTranslationColumns = database.prepare("PRAGMA table_info(todo_follow_ups)").all() as { name: string }[];
@@ -2948,6 +2957,20 @@ function initTables(database: Database.Database) {
       console.log("[DB] problems 表已升级：新增来源/客户需求/截止日期，紧急程度扩展为 3 档");
     }
   } catch (e) { console.error("[DB] problems 迁移失败:", e); }
+
+  // 问题截止日期历史：在旧 problems 重建迁移之后建表，避免外键被改指向 problems_old。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS problem_deadline_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+      old_deadline TEXT NOT NULL DEFAULT '',
+      new_deadline TEXT NOT NULL DEFAULT '',
+      changed_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_problem_deadline_history_problem_time
+      ON problem_deadline_history(problem_id, created_at DESC, id DESC);
+  `);
 
   // ── 性能索引（原位于建表语句中间，2026-09-11 移到所有表之后——
   //    空库首次初始化时前面的表尚不存在，CREATE INDEX 会抛 "no such table" 并中断建表）──
