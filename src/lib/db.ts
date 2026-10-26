@@ -2754,6 +2754,7 @@ function initTables(database: Database.Database) {
       content TEXT NOT NULL,
       content_zh TEXT NOT NULL DEFAULT '',
       content_zh_key TEXT NOT NULL DEFAULT '',
+      revision INTEGER NOT NULL DEFAULT 0,
       images TEXT DEFAULT '[]',
       created_by TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
@@ -2809,6 +2810,12 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE todo_follow_ups ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
   // todos 迁移：补分类列（分类表 todo_categories 建表见上）
   try { database.exec("ALTER TABLE todos ADD COLUMN category_id INTEGER DEFAULT NULL"); } catch {}
+
+  // 跟进修改版本：修改图片或文字后，防止旧翻译请求重新写回缓存。
+  const followUpColumns = database.prepare("PRAGMA table_info(todo_follow_ups)").all() as { name: string }[];
+  if (!followUpColumns.some(column => column.name === "revision")) {
+    database.exec("ALTER TABLE todo_follow_ups ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  }
 
   // 待办跟进翻译缓存：兼容旧表，保留所有原有跟进和图片。
   const followUpTranslationColumns = database.prepare("PRAGMA table_info(todo_follow_ups)").all() as { name: string }[];
