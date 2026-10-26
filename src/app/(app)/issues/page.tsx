@@ -7,6 +7,7 @@ import { TaskMessageButton } from "@/components/task-message-button";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, fileUrl, toThaiTime } from "@/lib/utils";
+import { parseIssueAssignees } from "@/lib/chat-todo-issue-card";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -75,6 +76,8 @@ export default function IssuesPage() {
   const [issueCustomTo, setIssueCustomTo] = useState("");
   const [issueAssigneeFilter, setIssueAssigneeFilter] = useState("");
   const [issueCreatorFilter, setIssueCreatorFilter] = useState("");
+  const [issueSearch, setIssueSearch] = useState("");
+  const [issueStatusFilter, setIssueStatusFilter] = useState("");
 
   const safeJsonParseArray = (raw: any): string[] => {
     if (!raw) return [];
@@ -338,6 +341,22 @@ export default function IssuesPage() {
     } catch (e) { console.error("[工单] 开始处理工单失败", e); }
   };
 
+  const keyword = issueSearch.trim().toLocaleLowerCase();
+  const now = Date.now(); const today = new Date().toDateString();
+  // 计数、桌面表格和手机卡片共用同一份结果，所有条件叠加。
+  const filteredIssues = (Array.isArray(issues) ? issues : []).filter(t => {
+    const d = new Date(t.created_at);
+    if (issueDateFilter === "today" && d.toDateString() !== today) return false;
+    if (issueDateFilter === "7" && d < new Date(now - 7 * 86400000)) return false;
+    if (issueDateFilter === "30" && d < new Date(now - 30 * 86400000)) return false;
+    if (issueDateFilter === "custom" && issueCustomFrom && d < new Date(issueCustomFrom)) return false;
+    if (issueDateFilter === "custom" && issueCustomTo && d > new Date(issueCustomTo + "T23:59:59")) return false;
+    if (issueAssigneeFilter && !parseIssueAssignees(t.assignee).includes(issueAssigneeFilter)) return false;
+    if (issueCreatorFilter && t.created_by !== issueCreatorFilter) return false;
+    if (issueStatusFilter && t.status !== issueStatusFilter) return false;
+    return !keyword || [t.description, t.ticket_number || `#${t.id}`].some(text => (text || "").toLocaleLowerCase().includes(keyword));
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -354,24 +373,12 @@ export default function IssuesPage() {
       {/* ── 问题工单 ── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-sm font-medium flex items-center gap-2"><FileEdit className="size-4" />问题工单 ({(() => {
-            const now = Date.now(); const today = new Date().toDateString();
-            return (Array.isArray(issues) ? issues : []).filter(t => {
-              const d = new Date(t.created_at);
-              if (issueDateFilter === "today" && d.toDateString() !== today) return false;
-              if (issueDateFilter === "7" && d < new Date(now - 7*86400000)) return false;
-              if (issueDateFilter === "30" && d < new Date(now - 30*86400000)) return false;
-              if (issueDateFilter === "custom" && issueCustomFrom && d < new Date(issueCustomFrom)) return false;
-              if (issueDateFilter === "custom" && issueCustomTo && d > new Date(issueCustomTo+"T23:59:59")) return false;
-              if (issueAssigneeFilter && t.assignee !== issueAssigneeFilter) return false;
-              if (issueCreatorFilter && t.created_by !== issueCreatorFilter) return false;
-              return true;
-            }).length;
-          })()})</h2>
+          <h2 className="text-sm font-medium flex items-center gap-2"><FileEdit className="size-4" />问题工单 ({filteredIssues.length})</h2>
           <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => setShowIssueForm(true)}><Plus className="size-3" />新增工单</Button>
         </div>
         {/* Filters */}
         <div className="px-5 py-3 border-b border-[var(--border)] flex flex-wrap items-center gap-2">
+          <input type="search" aria-label="搜索工单" placeholder="搜索问题描述或工单编号" value={issueSearch} onChange={e => setIssueSearch(e.target.value)} className="min-h-11 w-full min-w-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)] sm:w-64" />
           <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-0.5">
             {([["all","全部"],["today","今天"],["7","7天"],["30","30天"],["custom","自定义"]] as [string,string][]).map(([k,l]) => (
               <button key={k} onClick={() => setIssueDateFilter(k as any)}
@@ -387,11 +394,15 @@ export default function IssuesPage() {
             </div>
           )}
           <span className="text-[var(--border)] mx-1">|</span>
-          <select value={issueAssigneeFilter} onChange={e=>setIssueAssigneeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+          <select aria-label="筛选状态" value={issueStatusFilter} onChange={e => { setIssueStatusFilter(e.target.value); if (e.target.value === "已解决") setShowResolved(true); }} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+            <option value="">全部状态</option>
+            {["待处理", "处理中", "已解决"].map(status => <option key={status} value={status}>{status}</option>)}
+          </select>
+          <select aria-label="筛选负责人" value={issueAssigneeFilter} onChange={e=>setIssueAssigneeFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部指派人</option>
             {issueStaffNames.map(n=><option key={n} value={n}>{n}</option>)}
           </select>
-          <select value={issueCreatorFilter} onChange={e=>setIssueCreatorFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
+          <select aria-label="筛选创建人" value={issueCreatorFilter} onChange={e=>setIssueCreatorFilter(e.target.value)} className="h-7 rounded border border-[var(--border)] px-2 text-xs outline-none">
             <option value="">全部创建人</option>
             {[...new Set((Array.isArray(issues)?issues:[]).map(t=>t.created_by).filter(Boolean))].sort().map(n=><option key={n} value={n}>{n}</option>)}
           </select>
@@ -467,18 +478,7 @@ export default function IssuesPage() {
         )}
 
         {(() => {
-          const now = Date.now(); const today = new Date().toDateString();
-          const filtered = (Array.isArray(issues) ? issues : []).filter(t => {
-            const d = new Date(t.created_at);
-            if (issueDateFilter === "today" && d.toDateString() !== today) return false;
-            if (issueDateFilter === "7" && d < new Date(now-7*86400000)) return false;
-            if (issueDateFilter === "30" && d < new Date(now-30*86400000)) return false;
-            if (issueDateFilter === "custom" && issueCustomFrom && d < new Date(issueCustomFrom)) return false;
-            if (issueDateFilter === "custom" && issueCustomTo && d > new Date(issueCustomTo+"T23:59:59")) return false;
-            if (issueAssigneeFilter && t.assignee !== issueAssigneeFilter) return false;
-            if (issueCreatorFilter && t.created_by !== issueCreatorFilter) return false;
-            return true;
-          });
+          const filtered = filteredIssues;
           const active = filtered.filter(t => t.status !== "已解决");
           const resolved = filtered.filter(t => t.status === "已解决");
           if (filtered.length === 0) return (

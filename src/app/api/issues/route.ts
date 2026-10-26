@@ -20,7 +20,19 @@ export async function GET(req: NextRequest) {
   // 老板原筛选保留；员工名单逐人精确比较，与手动分享的权限一致。
   if (auth.role === "admin") {
     if (status) { sql += " AND status = ?"; params.push(status); }
-    if (assignee) { sql += " AND assignee = ?"; params.push(assignee); }
+    if (assignee) {
+      // 拆分逗号名单后匹配完整姓名，避免 Bam 漏掉 Bam,Ing，或误匹配 Bambi。
+      sql += ` AND EXISTS (
+        WITH RECURSIVE names(name, rest) AS (
+          SELECT '', COALESCE(issue_tickets.assignee, '') || ','
+          UNION ALL
+          SELECT TRIM(SUBSTR(rest, 1, INSTR(rest, ',') - 1)), SUBSTR(rest, INSTR(rest, ',') + 1)
+          FROM names WHERE rest <> ''
+        )
+        SELECT 1 FROM names WHERE name = ? AND name <> ''
+      )`;
+      params.push(assignee);
+    }
     if (created_by) { sql += " AND created_by = ?"; params.push(created_by); }
   }
   sql += " ORDER BY created_at DESC";
