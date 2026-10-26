@@ -155,6 +155,7 @@ export default function TodosPage() {
   // 待办分类：每个员工自己的一套
   const [categories, setCategories] = useState<{ id: number; name: string; created_by: string }[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [completedCategoryFilter, setCompletedCategoryFilter] = useState("all");
   // 分类管理弹窗
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [catModalErr, setCatModalErr] = useState("");
@@ -295,14 +296,15 @@ export default function TodosPage() {
 
   // 已完成待办的时间筛选（只作用于已完成，不影响未完成列表）
   const completedFiltered = useMemo(() => {
-    if (completedRange === "all") return completed;
+    const byCategory = completed.filter((t) => completedCategoryFilter === "all" || String(t.category_id ?? "") === completedCategoryFilter);
+    if (completedRange === "all") return byCategory;
     const today = bangkokToday();
     const start = completedRange === "today" ? today : completedRange === "7d" ? bangkokDaysAgo(6) : bangkokDaysAgo(29);
-    return completed.filter((t) => {
+    return byCategory.filter((t) => {
       const d = (toThaiTime(t.completed_at) || "").slice(0, 10);
       return d >= start && d <= today;
     });
-  }, [completed, completedRange]);
+  }, [completed, completedRange, completedCategoryFilter]);
 
   // 只在原权限返回的完整列表里找目标，不按通知编号额外获取其他人的记录。
   useEffect(() => {
@@ -318,6 +320,7 @@ export default function TodosPage() {
     if (!target) { setJumpError("待办不存在或你无权查看。"); return; }
     if (target.status === "已完成") {
       setCompletedOpen(true);
+      setCompletedCategoryFilter("all");
       if (!completedFiltered.some((t) => t.id === id)) setCompletedRange("all");
     } else {
       setSelectedAssignee(target.assignee || "未分配");
@@ -435,6 +438,7 @@ export default function TodosPage() {
     const res = await fetchWithAuth(`/api/todo-categories?id=${id}`, { method: "DELETE" });
     if (res.ok) {
       if (String(categoryFilter) === String(id)) setCategoryFilter("all");
+      if (completedCategoryFilter === String(id)) setCompletedCategoryFilter("all");
       loadCategories();
       load();
     } else {
@@ -977,8 +981,20 @@ export default function TodosPage() {
     .sort((a, b) => b[statsRange].followups - a[statsRange].followups)
     .slice(0, 5);
 
+  const renderCategoryTabs = (value: string, onChange: (value: string) => void, label: string) => (
+    <div role="group" aria-label={label} className="flex w-full min-w-0 gap-1 overflow-x-auto border-b border-[var(--border)] px-3 py-2">
+      {[{ value: "all", label: "全部" }, ...categories.map((c) => ({ value: String(c.id), label: c.name })), { value: "", label: "未分类" }].map((tab) => (
+        <button key={tab.value} type="button" aria-pressed={value === tab.value} onClick={() => onChange(tab.value)}
+          className={cn("shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--ring)]",
+            value === tab.value ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]")}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">我的待办</h1>
@@ -1253,7 +1269,7 @@ export default function TodosPage() {
         <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
       ) : selectedAssignee ? (
         // 点卡片进入：该员工的未完成待办列表（与之前一致）
-        <div className="rounded-xl border border-[var(--border)]">
+        <div className="min-w-0 rounded-xl border border-[var(--border)]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-3">
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelectedAssignee(null)} className="gap-1 px-2">
@@ -1263,19 +1279,12 @@ export default function TodosPage() {
               <span className="text-xs text-[var(--muted-foreground)]">{selectedList.length} 项未完成</span>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-              >
-                <option value="all">全部分类</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
               <Button size="sm" variant="ghost" onClick={() => { setCatModalOpen(true); setCatModalErr(""); setEditCatId(null); setEditCatName(""); setNewCatName(""); }} className="gap-1 px-2 text-xs">
                 管理分类
               </Button>
             </div>
           </div>
+          {renderCategoryTabs(categoryFilter, setCategoryFilter, "未完成待办分类")}
           {selectedList.length === 0 ? (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无待办</div>
           ) : (
@@ -1292,7 +1301,7 @@ export default function TodosPage() {
               {cards.map((c) => (
                 <button
                   key={c.name}
-                  onClick={() => setSelectedAssignee(c.name)}
+                  onClick={() => { setSelectedAssignee(c.name); setCategoryFilter("all"); }}
                   className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 text-left transition-colors hover:border-[var(--primary)]"
                 >
                   <p className="truncate text-sm font-medium text-[var(--foreground)]">{c.name}</p>
@@ -1305,8 +1314,8 @@ export default function TodosPage() {
         </div>
       )}
 
-      {/* 已完成分类：默认收起，点开看；时间筛选只作用于已完成 */}
-      <div className="rounded-xl border border-[var(--border)]">
+      {/* 已完成分类：默认收起，分类与时间筛选只作用于已完成 */}
+      <div className="min-w-0 rounded-xl border border-[var(--border)]">
         <div className="flex items-center justify-between">
           <button
             onClick={() => setCompletedOpen((o) => !o)}
@@ -1329,7 +1338,8 @@ export default function TodosPage() {
           </select>
         </div>
         {completedOpen && (
-          <div className="overflow-x-auto border-t border-[var(--border)]">
+          <div className="min-w-0 overflow-x-auto border-t border-[var(--border)]">
+            {renderCategoryTabs(completedCategoryFilter, setCompletedCategoryFilter, "已完成待办分类")}
             {completedFiltered.length === 0 ? (
               <div className="py-8 text-center text-sm text-[var(--muted-foreground)]">暂无已完成待办</div>
             ) : (
