@@ -2956,6 +2956,20 @@ function initTables(database: Database.Database) {
     }
   } catch (e) { console.error("[DB] problems 迁移失败:", e); }
 
+  // 问题截止日期历史：在旧 problems 重建迁移之后建表，避免外键被改指向 problems_old。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS problem_deadline_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+      old_deadline TEXT NOT NULL DEFAULT '',
+      new_deadline TEXT NOT NULL DEFAULT '',
+      changed_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_problem_deadline_history_problem_time
+      ON problem_deadline_history(problem_id, created_at DESC, id DESC);
+  `);
+
   // ── 性能索引（原位于建表语句中间，2026-09-11 移到所有表之后——
   //    空库首次初始化时前面的表尚不存在，CREATE INDEX 会抛 "no such table" 并中断建表）──
   database.exec(`

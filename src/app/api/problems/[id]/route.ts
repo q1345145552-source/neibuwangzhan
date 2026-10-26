@@ -47,7 +47,11 @@ export async function GET(
     "SELECT * FROM problem_attachments WHERE problem_id = ? ORDER BY created_at DESC, id DESC"
   ).all(id);
 
-  return NextResponse.json({ ...(problem as object), follow_ups: followUps, attachments });
+  const deadlineHistory = db.prepare(
+    "SELECT * FROM problem_deadline_history WHERE problem_id = ? ORDER BY created_at DESC, id DESC"
+  ).all(id);
+
+  return NextResponse.json({ ...(problem as object), follow_ups: followUps, attachments, deadline_history: deadlineHistory });
 }
 
 // PATCH /api/problems/:id — 状态流转
@@ -98,6 +102,7 @@ export async function PATCH(
     if (!description?.trim()) return NextResponse.json({ error: "请填写问题描述" }, { status: 400 });
     if (!assignee?.trim()) return NextResponse.json({ error: "请选择负责人" }, { status: 400 });
     if (!source?.trim()) return NextResponse.json({ error: "请选择来源" }, { status: 400 });
+    if (deadline !== undefined && typeof deadline !== "string") return NextResponse.json({ error: "截止日期格式无效" }, { status: 400 });
 
     const enumErr = validateEnums({
       "problems.problem_type": problem_type,
@@ -106,7 +111,13 @@ export async function PATCH(
     });
     if (enumErr) return NextResponse.json({ error: enumErr }, { status: 400 });
 
-    db.transaction(() => {
+    return db.transaction(() => {
+      // 事务内读取最新日期和负责人，连续/并发编辑也能记录真实的前后值。
+      const current = db.prepare("SELECT assignee, deadline FROM problems WHERE id = ?").get(id) as { assignee: string; deadline: string | null } | undefined;
+      if (!current) return NextResponse.json({ error: "问题不存在" }, { status: 404 });
+      if (!isAdmin && current.assignee !== auth.name) return NextResponse.json({ error: "只有负责人或管理员能操作" }, { status: 403 });
+      const oldDeadline = current.deadline || "";
+      const newDeadline = deadline === undefined ? oldDeadline : deadline.trim();
       db.prepare(
         "UPDATE problems SET company_name = ?, description = ?, problem_type = ?, source = ?, assignee = ?, priority = ?, deadline = ?, customer_requirement = ?, updated_at = datetime('now') WHERE id = ?"
       ).run(
@@ -116,15 +127,19 @@ export async function PATCH(
         source.trim(),
         assignee.trim(),
         priority || "普通",
-        deadline || "",
+        newDeadline,
         customer_requirement || "",
         id
       );
+      if (newDeadline !== oldDeadline) {
+        db.prepare("INSERT INTO problem_deadline_history (problem_id, old_deadline, new_deadline, changed_by) VALUES (?, ?, ?, ?)")
+          .run(id, oldDeadline, newDeadline, auth.name);
+      }
       syncProblemTodo(db, Number(id));
+      logOperation(auth.name, "编辑问题", "problem", String(id));
+      const edited = db.prepare("SELECT * FROM problems WHERE id = ?").get(id);
+      return NextResponse.json(edited);
     }).immediate();
-    logOperation(auth.name, "编辑问题", "problem", String(id));
-    const edited = db.prepare("SELECT * FROM problems WHERE id = ?").get(id);
-    return NextResponse.json(edited);
   }
 
   const validStatuses = ["待处理", "跟进中", "已解决", "老板验收", "搁置"];

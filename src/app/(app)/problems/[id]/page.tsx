@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
@@ -47,6 +47,7 @@ interface ProblemDetail {
   created_at: string;
   follow_ups: FollowUp[];
   attachments: Attachment[];
+  deadline_history?: { id: number; old_deadline: string; new_deadline: string; changed_by: string; created_at: string }[];
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -86,6 +87,7 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
   const { user } = useAuth();
   const [problem, setProblem] = useState<ProblemDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const loadSequence = useRef(0);
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -100,6 +102,7 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
   const [deleting, setDeleting] = useState(false);
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([]);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeadlineHistory, setShowDeadlineHistory] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editForm, setEditForm] = useState({
     company_name: "",
@@ -113,14 +116,15 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
   });
 
   const load = () => {
+    const sequence = ++loadSequence.current;
     fetchWithAuth(`/api/problems/${id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setProblem(d); })
+      .then((d) => { if (d && loadSequence.current === sequence) setProblem(d); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (loadSequence.current === sequence) setLoading(false); });
   };
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { setShowDeadlineHistory(false); load(); return () => { ++loadSequence.current; }; }, [id]);
 
   // 拉订单列表（关联订单选择）+ 员工列表（编辑负责人）
   useEffect(() => {
@@ -400,6 +404,7 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
             {problem.priority === "紧急" ? <span className="font-medium text-red-600 dark:text-red-400">紧急</span> : problem.priority === "不急" ? <span className="text-[var(--muted-foreground)]">不急</span> : <span className="text-[var(--muted-foreground)]">普通</span>}
           </InfoRow>
           <InfoRow label="截止日期">
+            <div className="flex flex-wrap items-center gap-2">
             {problem.deadline ? (
               <span className={cn(
                 deadlineWarn === "overdue" && "font-medium text-red-600 dark:text-red-400",
@@ -410,6 +415,8 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
                 {deadlineWarn === "soon" && <span className="ml-2 text-xs">即将到期</span>}
               </span>
             ) : "—"}
+            {!!problem.deadline_history?.length && <Button type="button" variant="ghost" size="sm" className="min-h-11 text-xs text-blue-600 dark:text-blue-400" onClick={() => setShowDeadlineHistory(true)}>已延期 {problem.deadline_history.length} 次</Button>}
+            </div>
           </InfoRow>
           <InfoRow label="创建时间">{toThaiTime(problem.created_at) || "—"}</InfoRow>
         </div>
@@ -526,6 +533,16 @@ export default function ProblemDetailPage({ params }: { params: Promise<{ id: st
           </div>
         )}
       </div>
+
+      {showDeadlineHistory && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowDeadlineHistory(false)}>
+        <div role="dialog" aria-modal="true" aria-labelledby="deadline-history-title" className="max-h-[80dvh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={event => event.stopPropagation()}>
+          <div className="mb-4 flex items-center justify-between gap-2"><h3 id="deadline-history-title" className="font-semibold">延期历史</h3><button type="button" aria-label="关闭延期历史" className="flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-[var(--muted)]" onClick={() => setShowDeadlineHistory(false)}><X className="size-5" /></button></div>
+          <div className="space-y-3">{(problem.deadline_history || []).map(change => <div key={change.id} data-deadline-change-id={change.id} className="rounded-md border border-[var(--border)] p-3">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm"><span>{change.old_deadline || "未设置"}</span><span aria-label="改为">→</span><span>{change.new_deadline || "未设置"}</span></p>
+            <p className="mt-2 break-words text-xs text-[var(--muted-foreground)]">{change.changed_by} · {toThaiTime(change.created_at) || "—"}</p>
+          </div>)}</div>
+        </div>
+      </div>}
 
       {/* 标记已解决弹窗 */}
       {showResolveModal && (
