@@ -523,7 +523,7 @@ export async function searchStorefrontCustomers(q: string): Promise<StorefrontAc
   return data.customers;
 }
 
-export async function createStorefrontCustomer(body: { name: string; phone: string; email: string; password: string }): Promise<StorefrontAccount> {
+export async function createStorefrontCustomer(body: { name: string; phone: string; email: string; password: string }): Promise<StorefrontAccount & { login_url?: string | null }> {
   return jsonOrThrow(await fetch("/api/storefront/customers", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "建客户账号失败");
 }
 

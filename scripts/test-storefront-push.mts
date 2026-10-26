@@ -116,6 +116,7 @@ await test('admin creates the customer account from the internal system (phone o
   const created = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { name: '线下客户甲', phone: '0812345678', email: '', password: '24681357' } })));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.email, '', 'placeholder email is not shown to staff');
+  assert.equal(created.body.login_url, `${CLIENT}/login`, 'the login address to hand to the customer (opening an account without an order)');
   account = created.body;
   const dup = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { name: '别人', phone: '0812345678', password: '24681357' } })));
   assert.equal(dup.status, 409);

@@ -53,6 +53,12 @@ export function customerOrderLink(sourceOrderNo: string): string | null {
   return url ? `${url.replace(/\/$/, "")}/o/${encodeURIComponent(sourceOrderNo)}` : null;
 }
 
+/** 客户登录业务系统的网址（没有订单、只开账号时发给客户，2026-10-26） */
+export function customerLoginLink(): string | null {
+  const url = process.env.CUSTOMER_SYNC_URL;
+  return url ? `${url.replace(/\/$/, "")}/login` : null;
+}
+
 export async function searchStorefrontCustomers(q: string): Promise<StorefrontAccount[]> {
   const body = await json<{ customers: StorefrontAccount[] }>(await call(`/api/sync/customers?q=${encodeURIComponent(q.slice(0, 50))}`));
   return body.customers;

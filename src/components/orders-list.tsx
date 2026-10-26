@@ -9,6 +9,7 @@ import { useAuth } from "@/components/auth-provider";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
 import { exportToExcel, type ExportColumn } from "@/lib/export";
+import { OpenCustomerAccountButton } from "@/components/storefront-account-dialog";
 import { bangkokDateStr } from "@/lib/time";
 
 /** 订单管理列表；unclassifiedOnly 时只列「待分类」业务线（侧栏「待分类（待领取）」，2026-10-15） */
@@ -155,6 +156,8 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
           <button onClick={handleExport} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium transition-all hover:bg-[var(--muted)]">
             <Download className="size-3.5" />导出
           </button>
+          {/* 没有订单也能给客户开业务系统账号（2026-10-26 老板选 A），只给管理员 */}
+          {user?.role === "admin" && !unclassifiedOnly && <OpenCustomerAccountButton />}
           <Link href="/orders/new" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
             <Plus className="size-3.5" aria-hidden="true" />新建订单
           </Link>
