@@ -1,14 +1,28 @@
 "use client";
 import Link from 'next/link';
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useRef, useState } from 'react';
 const ViewerContext = createContext<(role: string) => void>(() => {});
 export const useVisualizationViewer = () => useContext(ViewerContext);
+import { clearVisualizationPreferences, useVisualizationCredential } from './credential';
 import { usePathname } from 'next/navigation';
 import { BarChart3, ArrowLeft, Package, DollarSign, LayoutDashboard, Search, FolderOpen } from 'lucide-react';
 /** Intentionally no AuthProvider/ChatNotifier/legacy badge pollers on this read-only route. */
 export function VisualizationShell({ children }: { children: React.ReactNode }) {
+  const credential=useVisualizationCredential();
+  return <VerifiedVisualizationShell key={credential.revision}>{children}</VerifiedVisualizationShell>;
+}
+function VerifiedVisualizationShell({children}:{children:React.ReactNode}) {
   const pathname = usePathname();
-  const [viewer, setViewer] = useState('unknown');
+  const [authorization,setAuthorization]=useState({role:'unknown',revision:0});
+  const previousRole=useRef('unknown');
+  const viewer=authorization.role;
+  const setViewer=useCallback((role:string)=>{
+    const previous=previousRole.current;if(previous===role)return;
+    previousRole.current=role;
+    const reset=(previous==='admin'||previous==='employee')&&role!==previous;
+    if(reset)clearVisualizationPreferences();
+    setAuthorization(current=>({role,revision:current.revision+(reset?1:0)}));
+  },[]);
   return <ViewerContext.Provider value={setViewer}><div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <aside className="border-b border-[var(--border)] bg-[var(--sidebar)] px-5 py-5 text-[var(--sidebar-foreground)] lg:fixed lg:inset-y-0 lg:w-60 lg:border-r lg:border-b-0 lg:py-8">
       <Link prefetch={false} href="/" className="flex items-center gap-3 text-lg font-semibold"><span className="rounded-xl bg-[var(--sidebar-primary)] p-2 text-[var(--sidebar-primary-foreground)]"><BarChart3 size={20} /></span>湘泰内部系统</Link>
@@ -18,6 +32,6 @@ export function VisualizationShell({ children }: { children: React.ReactNode }) 
       </nav>
       <div className="mt-6 hidden border-t border-current/15 pt-5 text-xs leading-6 opacity-60 lg:absolute lg:inset-x-5 lg:bottom-6 lg:block">原业务功能保持独立<br />总览不执行业务操作</div>
     </aside>
-    <main id="main-content" className="min-w-0 px-4 py-6 sm:px-6 lg:ml-60 lg:px-9 lg:py-9"><div className="mx-auto max-w-7xl">{children}<Link prefetch={false} href="/" className="mt-8 inline-flex items-center gap-2 text-sm text-[var(--muted-foreground)]"><ArrowLeft size={15} />返回原仪表盘</Link></div></main>
+    <main id="main-content" className="min-w-0 px-4 py-6 sm:px-6 lg:ml-60 lg:px-9 lg:py-9"><div className="mx-auto max-w-7xl"><div key={authorization.revision}>{children}</div><Link prefetch={false} href="/" className="mt-8 inline-flex items-center gap-2 text-sm text-[var(--muted-foreground)]"><ArrowLeft size={15} />返回原仪表盘</Link></div></main>
   </div></ViewerContext.Provider>;
 }

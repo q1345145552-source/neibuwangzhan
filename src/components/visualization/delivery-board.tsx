@@ -1,10 +1,12 @@
 "use client";
+import { useVisualizationDialog } from './dialog-focus';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { getStoredAuthToken } from '@/lib/auth-storage';
 import type { DeliverySnapshot, DeliveryRow, Material, Fact } from '@/lib/visualization/delivery';
 import { nextDay, sources, phases, displayTime as date } from './model';
 import styles from './delivery.module.css';
+import { credentialStillCurrent, deniedNavigationRole, useVisualizationUiState } from './credential';
 import { useVisualizationViewer } from './shell';
 import { BottleneckOverview, OrderBottlenecks, bottleneckNames } from './bottlenecks';
 import type { BottleneckFilter } from '@/lib/visualization/bottlenecks';
@@ -16,11 +18,11 @@ function useDelivery(key:string,retry:number){
  const setViewer=useVisualizationViewer();
  const [state,set]=useState<{key:string;data:DeliverySnapshot|null;error:string;loading:boolean}>({key:'',data:null,error:'',loading:true});const sequence=useRef(0);
  useEffect(()=>{const n=++sequence.current,c=new AbortController(),id=key+'|'+retry;set({key:id,data:null,error:'',loading:true});
- const load=async()=>{try{const token=getStoredAuthToken();if(!token)throw Error('请先登录');const r=await fetch('/api/visualization/delivery?'+key,{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:c.signal});if(r.status===403&&n===sequence.current&&!c.signal.aborted)setViewer('denied');if(!r.ok)throw Error(r.status===403?'当前账号无权读取订单交付':r.status===401?'登录已失效，请重新登录':r.status===400?'筛选条件无效，请检查日期和筛选':'读取失败，请重试');const data:DeliverySnapshot=await r.json();if(!data.generatedAt||!Array.isArray(data.items))throw Error('读取失败，请重试');if(n===sequence.current&&!c.signal.aborted){setViewer(data.viewerRole);set({key:id,data,error:'',loading:false});}}catch(e){if(n===sequence.current&&!c.signal.aborted)set({key:id,data:null,error:e instanceof Error?e.message:'读取失败，请重试',loading:false});}};
+ const token=getStoredAuthToken();const load=async()=>{try{if(!token){setViewer('denied');throw Error('请先登录');}const r=await fetch('/api/visualization/delivery?'+key,{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:c.signal});if(!credentialStillCurrent(token))return;const deniedRole=r.status===401||r.status===403?await deniedNavigationRole(r):null;if(!credentialStillCurrent(token))return;if(deniedRole&&n===sequence.current&&!c.signal.aborted)setViewer(deniedRole);if(!r.ok)throw Error(r.status===403?'当前账号无权读取订单交付':r.status===401?'登录已失效，请重新登录':r.status===400?'筛选条件无效，请检查日期和筛选':'读取失败，请重试');const data:DeliverySnapshot=await r.json();if(!data.generatedAt||!Array.isArray(data.items))throw Error('读取失败，请重试');if(n===sequence.current&&!c.signal.aborted&&credentialStillCurrent(token)){setViewer(data.viewerRole);set({key:id,data,error:'',loading:false});}}catch(e){if(n===sequence.current&&!c.signal.aborted&&credentialStillCurrent(token))set({key:id,data:null,error:e instanceof Error?e.message:'读取失败，请重试',loading:false});}};
  void load();return()=>{++sequence.current;c.abort();};},[key,retry,setViewer]);return state.key===key+'|'+retry?state:{key,data:null,error:'',loading:true};
 }
 function MaterialsDialog({row,category,close}:{row:DeliveryRow;category:Material;close:()=>void}){
- const ref=useRef<HTMLDialogElement>(null);const[page,setPage]=useState(1);useEffect(()=>{const d=ref.current;d?.showModal();return()=>d?.close();},[]);
+ const ref=useRef<HTMLDialogElement>(null);const[page,setPage]=useState(1);useVisualizationDialog(ref);
  const facts=row.facts?.filter(f=>f.category===category)||[],total=facts.length;
  return <dialog ref={ref} className={styles.dialog} onCancel={e=>{e.preventDefault();close();}} aria-labelledby="materials-title"><header><div><h2 id="materials-title">{labels[category]}</h2><p>{row.id} · {total}条{category.startsWith('file_')?'文件':'需求/记录'} · 当前范围</p></div><button onClick={close} aria-label="关闭资料明细">关闭</button></header>
  <p>按记录编号定位；进入原订单查看资料。此处不提供上传、审核或文件下载。</p>
@@ -28,8 +30,11 @@ function MaterialsDialog({row,category,close}:{row:DeliveryRow;category:Material
  <footer><button disabled={page===1} onClick={()=>setPage(page-1)}>上一页资料</button><span>第{page}页 / {Math.max(1,Math.ceil(total/20))}页 · 共{total}条</span><button disabled={page*20>=total} onClick={()=>setPage(page+1)}>下一页资料</button></footer></dialog>;
 }
 export function DeliveryBoard(){
- const[draft,setDraft]=useState<Filters>(defaults),[applied,setApplied]=useState<Filters>(defaults),[page,setPage]=useState(1),[retry,setRetry]=useState(0),[validation,setValidation]=useState(''),[modal,setModal]=useState<{row:DeliveryRow;category:Material}|null>(null);
- const dirty=JSON.stringify(draft)!==JSON.stringify(applied),resource=useDelivery(params(applied,page),retry),data=dirty?null:resource.data;
+ const[draft,setDraft]=useVisualizationUiState<Filters>('delivery:draft',defaults),[applied,setApplied]=useVisualizationUiState<Filters>('delivery:applied',defaults),[page,setPage]=useVisualizationUiState<number>('delivery:page',1),[retry,setRetry]=useState(0),[validation,setValidation]=useState(''),[modal,setModal]=useState<{row:DeliveryRow;category:Material}|null>(null);
+ const dirty=JSON.stringify(draft)!==JSON.stringify(applied),resource=useDelivery(params(applied,page),retry);
+ const invalidPage=resource.data?.total!==null&&resource.data?.total!==undefined&&page>Math.max(1,Math.ceil(resource.data.total/20));
+ useEffect(()=>{if(invalidPage)setPage(1);if(resource.loading||resource.error||resource.data?.status==='failed')setModal(null);},[invalidPage,setPage,resource.loading,resource.error,resource.data?.status]);
+ const data=dirty||invalidPage?null:resource.data;
  const edit=(k:keyof Filters,v:string)=>{setDraft(x=>({...x,[k]:v}));setValidation('');setModal(null);};
  const choose=(material:string)=>{setDraft(x=>({...x,material}));setApplied(x=>({...x,material}));setPage(1);setModal(null);};
  const chooseBottleneck=(bottleneck:BottleneckFilter)=>{setDraft(x=>({...x,bottleneck}));setApplied(x=>({...x,bottleneck}));setPage(1);setModal(null);};
@@ -62,5 +67,5 @@ export function DeliveryBoard(){
  {row.warnings.map(t=><p className={styles.warning} key={t}>{t}</p>)}<Link prefetch={false} href={row.href}>进入原订单</Link></article>)}</div>
  {data.total===0&&<p>{data.selectionUnknownOrders>0?'暂无可确认的匹配记录，仍有部分办理份无法判断。':'查询成功，当前筛选没有匹配记录。'}</p>}
  <footer className={styles.pagination}><button disabled={page===1} onClick={()=>{setPage(x=>x-1);setModal(null);}}>上一页</button><span>第{page}页 / {Math.max(1,Math.ceil((data.total||0)/20))}页 · 共{data.total}份</span><button disabled={page*20>=(data.total||0)} onClick={()=>{setPage(x=>x+1);setModal(null);}}>下一页</button></footer></>}
- {modal&&!dirty&&<MaterialsDialog key={modal.row.id+modal.category} {...modal} close={()=>setModal(null)}/>}</section>;
+ {modal&&!dirty&&!resource.loading&&!resource.error&&data&&data.status!=='failed'&&<MaterialsDialog key={modal.row.id+modal.category} {...modal} close={()=>setModal(null)}/>}</section>;
 }

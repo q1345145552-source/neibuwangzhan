@@ -1,9 +1,11 @@
 "use client";
+import { useVisualizationDialog } from './dialog-focus';
 import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ExceptionSnapshot } from '@/lib/visualization/exceptions';
 import { EXCEPTION_CATEGORIES,EXCEPTION_GROUPS,type ExceptionCategory,type ExceptionGroup,type ExceptionItem } from '@/lib/visualization/exception-types';
 import { getStoredAuthToken } from '@/lib/auth-storage';
+import { credentialStillCurrent, deniedNavigationRole, useVisualizationUiState } from './credential';
 import { useVisualizationViewer } from './shell';
 import { decimal, displayTime, nextDay, sources } from './model';
 import styles from './exceptions.module.css';
@@ -15,37 +17,47 @@ function useExceptions(key:string,retry:number){
   const [state,setState]=useState<{key:string;data:ExceptionSnapshot|null;loading:boolean;error:string}>({key:'',data:null,loading:true,error:''});
   useEffect(()=>{const generation=++sequence.current,controller=new AbortController(),id=key+'|'+retry;
     setState({key:id,data:null,loading:true,error:''});
-    void(async()=>{try{const token=getStoredAuthToken();if(!token)throw Error('请先登录');const r=await fetch('/api/visualization/exceptions?'+key,{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:controller.signal});
-      if((r.status===403||r.status===401)&&generation===sequence.current&&!controller.signal.aborted)setViewer('denied');
+    const token=getStoredAuthToken();void(async()=>{try{if(!token){setViewer('denied');throw Error('请先登录');}const r=await fetch('/api/visualization/exceptions?'+key,{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:controller.signal});
+      if(!credentialStillCurrent(token))return;const deniedRole=r.status===401||r.status===403?await deniedNavigationRole(r):null;if(!credentialStillCurrent(token))return;
+      if(deniedRole&&generation===sequence.current&&!controller.signal.aborted)setViewer(deniedRole);
       if(!r.ok)throw Error(r.status===403?'当前账号无权读取老板异常清单':r.status===401?'登录已失效，请重新登录':r.status===400?'筛选条件无效，请检查日期及选项':'异常清单读取失败，请重试');
       const data:ExceptionSnapshot=await r.json();if(!Array.isArray(data.items)||!Array.isArray(data.modules)||!data.generatedAt)throw Error('异常清单读取失败，请重试');
-      if(generation===sequence.current&&!controller.signal.aborted){setViewer('admin');setState({key:id,data,loading:false,error:''});}
-    }catch(e){if(generation===sequence.current&&!controller.signal.aborted)setState({key:id,data:null,loading:false,error:e instanceof Error?e.message:'读取失败，请重试'});}})();
+      if(generation===sequence.current&&!controller.signal.aborted&&credentialStillCurrent(token)){setViewer('admin');setState({key:id,data,loading:false,error:''});}
+    }catch(e){if(generation===sequence.current&&!controller.signal.aborted&&credentialStillCurrent(token))setState({key:id,data:null,loading:false,error:e instanceof Error?e.message:'读取失败，请重试'});}})();
     return()=>{++sequence.current;controller.abort();};
   },[key,retry,setViewer]);
   return state.key===key+'|'+retry?state:{key,data:null,loading:true,error:''};
 }
 function ItemDialog({item,close}:{item:ExceptionItem;close:()=>void}){
-  const ref=useRef<HTMLDialogElement>(null),id=useId();const[page,setPage]=useState(1);
-  useEffect(()=>{const d=ref.current;d?.showModal();return()=>d?.close();},[]);
-  return <dialog ref={ref} className={styles.dialog} aria-labelledby={id} onCancel={e=>{e.preventDefault();close();}}><header><div><h2 id={id}>{item.title}</h2><p>{EXCEPTION_CATEGORIES[item.category]} · {item.unit}编号 {item.recordId}</p></div><button onClick={close} aria-label="关闭异常明细">关闭</button></header>
-    <p>{item.dateLabel}：{item.date?displayTime(item.date)+'（曼谷）':'无法判断'}{item.closedMaterial&&' · 关闭订单事实，不计当前催办'}</p>
-    {item.channel&&<dl><div><dt>通道</dt><dd>{item.channel==='progress'?'进度出站':'资料出站'}</dd></div><div><dt>事件类型</dt><dd>{item.kind}</dd></div><div><dt>尝试次数</dt><dd>{item.attempts??'无法判断'}</dd></div><div><dt>下次尝试时间（本地记录）</dt><dd>{item.nextAttemptAt?displayTime(item.nextAttemptAt):'未记录或无法判断'}</dd></div><div><dt>安全提炼的失败类别</dt><dd>{item.failureCategory}</dd></div></dl>}
-    {item.group==='finance'&&<p>币种：{item.currency==='CNY'?'人民币':item.currency==='THB'?'泰铢':'无法判断'} · 金额：{item.amountCents===null?'无法判断':decimal(item.amountCents)} · 对应finance_id：{item.recordId}。未核对不等于欠款，未到账不等于逾期。</p>}
-    {item.atExistingThreshold&&<p>已达到原有6次提醒门槛；此页只读，不触发提醒或重试。</p>}
-    {item.notes.map((note,i)=><p key={i}>{note}</p>)}
-    {item.reason&&<p className={styles.warning}>{item.reason}</p>}
-    {item.orders.length>0?<><h3>全部可信关联办理份：{item.orders.length}份</h3><p>其中符合当前订单筛选{item.matchedOrders.length}份；影响份只按匹配范围去重。</p><div className={styles.links}>{item.orders.slice((page-1)*20,page*20).map(order=><article key={order.id}><strong>{order.id}</strong><p>{sources[order.source]||'来源无法判断'} · {order.status==='unknown'?'状态无法判断':order.status}</p><Link prefetch={false} href={order.href}>进入原订单（对应{item.unit} #{item.recordId}）</Link></article>)}</div><footer><button disabled={page===1} onClick={()=>setPage(page-1)}>上一页关联办理份</button><span>第{page}页 / {Math.ceil(item.orders.length/20)}页 · 共{item.orders.length}份</span><button disabled={page*20>=item.orders.length} onClick={()=>setPage(page+1)}>下一页关联办理份</button></footer></>:item.link?<Link prefetch={false} href={item.link}>进入原事项（#{item.recordId}）</Link>:<p>未关联可靠原记录，不构造跳转地址。</p>}
+  const ref=useRef<HTMLDialogElement>(null),body=useRef<HTMLDivElement>(null),id=useId();const[page,setPage]=useState(1);
+  useVisualizationDialog(ref);
+  useEffect(()=>{body.current?.scrollTo({top:0});},[page]);
+  return <dialog ref={ref} className={styles.dialog} aria-labelledby={id} onCancel={e=>{e.preventDefault();close();}}>
+    <header><div><h2 id={id}>{item.title}</h2><p>{EXCEPTION_CATEGORIES[item.category]} · {item.unit}编号 {item.recordId}</p></div><button onClick={close} aria-label="关闭异常明细">关闭</button></header>
+    <div ref={body} className={styles.dialogBody} data-testid="exception-dialog-body" tabIndex={0} aria-label="异常记录和关联办理份，可滚动">
+      <details className={styles.metadata} open={item.orders.length<=1} key={page}><summary>记录信息与核对说明（点击展开）</summary>
+        <p>{item.dateLabel}：{item.date?displayTime(item.date)+'（曼谷）':'无法判断'}{item.closedMaterial&&' · 关闭订单事实，不计当前催办'}</p>
+        {item.channel&&<dl><div><dt>通道</dt><dd>{item.channel==='progress'?'进度出站':'资料出站'}</dd></div><div><dt>事件类型</dt><dd>{item.kind}</dd></div><div><dt>尝试次数</dt><dd>{item.attempts??'无法判断'}</dd></div><div><dt>下次尝试时间（本地记录）</dt><dd>{item.nextAttemptAt?displayTime(item.nextAttemptAt):'未记录或无法判断'}</dd></div><div><dt>安全提炼的失败类别</dt><dd>{item.failureCategory}</dd></div></dl>}
+        {item.group==='finance'&&<p>币种：{item.currency==='CNY'?'人民币':item.currency==='THB'?'泰铢':'无法判断'} · 金额：{item.amountCents===null?'无法判断':decimal(item.amountCents)} · 对应finance_id：{item.recordId}。未核对不等于欠款，未到账不等于逾期。</p>}
+        {item.atExistingThreshold&&<p>已达到原有6次提醒门槛；此页只读，不触发提醒或重试。</p>}
+        {item.notes.map((note,i)=><p key={i}>{note}</p>)}{item.reason&&<p className={styles.warning}>{item.reason}</p>}
+      </details>
+      {item.orders.length>0?<><h3>全部可信关联办理份：{item.orders.length}份</h3><p>其中符合当前订单筛选{item.matchedOrders.length}份；影响份只按匹配范围去重。</p><div className={styles.links}>{item.orders.slice((page-1)*20,page*20).map(order=><article key={order.id}><strong>{order.id}</strong><p>{sources[order.source]||'来源无法判断'} · {order.status==='unknown'?'状态无法判断':order.status}</p><Link prefetch={false} href={order.href}>进入原订单（对应{item.unit} #{item.recordId}）</Link></article>)}</div></>:item.link?<Link prefetch={false} href={item.link}>进入原事项（#{item.recordId}）</Link>:<p>未关联可靠原记录，不构造跳转地址。</p>}
+    </div>
+    {item.orders.length>0&&<footer><button disabled={page===1} onClick={()=>setPage(page-1)}>上一页关联办理份</button><span>第{page}页 / {Math.ceil(item.orders.length/20)}页 · 共{item.orders.length}份</span><button disabled={page*20>=item.orders.length} onClick={()=>setPage(page+1)}>下一页关联办理份</button></footer>}
   </dialog>;
 }
 export function ExceptionsDashboard(){
-  const[draft,setDraft]=useState<Filters>(defaults),[applied,setApplied]=useState<Filters>(defaults),[page,setPage]=useState(1),[retry,setRetry]=useState(0),[error,setError]=useState(''),[detail,setDetail]=useState<ExceptionItem|null>(null);
-  const dirty=JSON.stringify(draft)!==JSON.stringify(applied),resource=useExceptions(query(applied,page),retry),data=dirty?null:resource.data;
+  const[draft,setDraft]=useVisualizationUiState<Filters>('exceptions:draft',defaults),[applied,setApplied]=useVisualizationUiState<Filters>('exceptions:applied',defaults),[page,setPage]=useVisualizationUiState<number>('exceptions:page',1),[retry,setRetry]=useState(0),[error,setError]=useState(''),[detail,setDetail]=useState<ExceptionItem|null>(null);
+  const dirty=JSON.stringify(draft)!==JSON.stringify(applied),resource=useExceptions(query(applied,page),retry);
+  const invalidPage=resource.data?.total!==null&&resource.data?.total!==undefined&&page>Math.max(1,Math.ceil(resource.data.total/20));
+  useEffect(()=>{if(invalidPage)setPage(1);},[invalidPage,setPage]);
+  const data=dirty||invalidPage?null:resource.data;
   const edit=(key:keyof Filters,value:string)=>{setDraft(f=>({...f,[key]:value,...(key==='group'?{channel:value==='outbox'||value==='all'?f.channel:'all',currency:value==='finance'||value==='all'?f.currency:'all',category:'all'}:{})}));setError('');setDetail(null);};
   const apply=()=>{if(Boolean(draft.from)!==Boolean(draft.end)||draft.from>draft.end){setError('请填写完整且有效的起止日期');return;}setApplied({...draft});setPage(1);setRetry(x=>x+1);setDetail(null);};
   const choose=(changes:Partial<Filters>)=>{setDraft(f=>({...f,...changes}));setApplied(f=>({...f,...changes}));setPage(1);setDetail(null);};
   const unavailable=data?.status==='failed';
-  return <section className={styles.page}><header className={styles.heading}><div><p>老板专属 · 内部已保存记录</p><h1>异常与待核对清单</h1><p>只呈现可证事实，不代表客户站健康或两站全量。</p></div><Link prefetch={false} href="/visualization">返回数据总览</Link></header>
+  return <section className={styles.page}><header className={styles.heading}><div><p>老板专属 · 内部已保存记录</p><h1>异常与待核对清单</h1><p>只呈现可证事实，不代表客户站健康或两站全量。</p></div>{data?.viewerRole==='admin'&&<Link prefetch={false} href="/visualization">返回数据总览</Link>}</header>
     <p className={styles.notice}>不同类别可以重叠，事件、需求、文件、步骤、财务记录和人工事项分单位，不能相加作为全域待办业务总量。默认不限当月；仅资料与阻塞使用未完成、未取消催办池。取消订单的出站结果和现存待核对收入继续保留。</p>
     <form onSubmit={e=>{e.preventDefault();apply();}} className={styles.filters}>
       <label>类别组<select aria-label="类别组" value={draft.group} onChange={e=>edit('group',e.target.value)}><option value="all">全部事实类别</option>{Object.entries(EXCEPTION_GROUPS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
@@ -73,6 +85,6 @@ export function ExceptionsDashboard(){
       <div className={styles.rows}>{data.items.map(item=><article key={item.key}><header><div><span className={styles.tag}>{EXCEPTION_CATEGORIES[item.category]}</span><h2>{item.title}</h2></div><span>{item.unit} #{item.recordId}</span></header><p>{item.dateLabel}：{item.date?displayTime(item.date):'无法判断'}（曼谷）</p>{item.channel&&<p>{item.channel==='progress'?'进度出站':'资料出站'} · {item.kind} · 尝试{item.attempts??'无法判断'}次 · {item.failureCategory}{item.atExistingThreshold&&' · 达到既有提醒门槛'}</p>}{item.closedMaterial&&<p>关闭订单事实，不计当前催办</p>}<p>全部关联{item.orders.length}份，当前匹配{item.matchedOrders.length}份{item.reason&&' · '+item.reason}</p><button onClick={()=>setDetail(item)} aria-label={'查看异常明细 '+item.recordId+' '+EXCEPTION_CATEGORIES[item.category]}>查看准确明细</button></article>)}</div>
       {data.total===0&&<p>{data.unknownScope>0||data.modules.some(m=>(applied.group==='all'||m.group===applied.group)&&m.status!=='success')?'暂无可确认匹配记录；仍有缺口或读取失败，不能据此判断没有异常。':'查询成功，当前筛选没有匹配记录。'}</p>}
       <footer className={styles.pagination}><button disabled={page===1} onClick={()=>{setPage(x=>x-1);setDetail(null);}}>上一页事实</button><span>第{page}页 / {Math.max(1,Math.ceil((data.total||0)/20))}页 · 共{data.total}条匹配事实</span><button disabled={page*20>=(data.total||0)} onClick={()=>{setPage(x=>x+1);setDetail(null);}}>下一页事实</button></footer></>}
-    {detail&&!dirty&&<ItemDialog key={detail.key} item={detail} close={()=>setDetail(null)}/>}
+    {detail&&!dirty&&!resource.loading&&!resource.error&&data&&!unavailable&&<ItemDialog key={detail.key} item={detail} close={()=>setDetail(null)}/>}
   </section>;
 }

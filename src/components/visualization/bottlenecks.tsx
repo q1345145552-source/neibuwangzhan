@@ -1,4 +1,5 @@
 "use client";
+import { useVisualizationDialog } from './dialog-focus';
 import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { BottleneckFilter, BottleneckRow, StepTiming, bottleneckSummary } from '@/lib/visualization/bottlenecks';
@@ -38,7 +39,7 @@ type DetailKind = 'blocked' | 'overdue' | 'timing_unknown' | 'current';
 function StepDialog({ row, kind, close }: { row: BottleneckRow; kind: DetailKind; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null), titleId = useId();
   const [page, setPage] = useState(1);
-  useEffect(() => { const d = dialog.current; d?.showModal(); return () => d?.close(); }, []);
+  useVisualizationDialog(dialog);
   const blocked = kind === 'blocked';
   const timing = row.bottleneck.timing?.filter(t => kind === 'overdue' ? t.overdue === true : kind === 'timing_unknown' ? t.overdue === null : true) || [];
   const items = blocked ? row.bottleneck.blockedSteps || [] : timing;

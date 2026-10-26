@@ -14,6 +14,18 @@ function paginate(rows: Row[], options: Options) {
   const offset = (options.page - 1) * options.pageSize;
   return { total: sorted.length, items: sorted.slice(offset, offset + options.pageSize), page: options.page, pageSize: options.pageSize };
 }
+
+/** Presentation only, after statistics/subset/date selection: malformed typed fields are not free text. */
+function safeDetailItems(rows:Row[],detail:Options['detail']):Row[] {
+  return rows.map(row=>{
+    const result={...row};
+    for(const field of ['created_at','verify_at','submitted_at'])if(field in result&&utcMillis(result[field])===null)result[field]=null;
+    if(detail==='orders')delete result.source_system;
+    if(detail==='finances'){if(!validAmount(result.amount))result.amount=null;if(result.currency!=='CNY'&&result.currency!=='THB')result.currency=null;}
+    if(detail==='billing'&&result.currency!=='CNY'&&result.currency!=='THB')result.currency=null;
+    return result;
+  });
+}
 export function overview(reader: Reader, options: Options, now = new Date()) {
   const cache = new Map<string, Row[]>();
   const all = (name: keyof typeof QUERIES) => {
@@ -116,9 +128,10 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
     }
   });
   const detailModule = options.detail === 'orders' ? orders : options.detail === 'parents' ? parents : options.detail === 'finances' ? finances : options.detail === 'billing' ? billing : pending;
+  const pageData=selectedDetails?paginate(options.basis === 'period' ? selectedDetails.filter(r => { const time = utcMillis(r.created_at); return time !== null && time >= options.startUtc && time < options.endUtc; }) : selectedDetails,options):null;
   return {
     policyVersion: POLICY_VERSION, generatedAt: now.toISOString(), timezone: 'Asia/Bangkok', scope: { source: options.source, internalSavedRecordsOnly: true, independentLedgersExcluded: ['vat', 'influencer'], currentStockDateFiltered: false, pendingSourceFilterApplies: false }, period: { fromInclusive: options.from, toExclusive: options.to, startUtc: new Date(options.startUtc).toISOString(), endUtc: new Date(options.endUtc).toISOString(), axis: 'internal_created_at', historicalRestatement: true },
     modules: { orders, parents, finances, billing, pending, delivery: { status: 'unsupported', reason: 'ROUND_6_READ_ADAPTER_NOT_IMPLEMENTED', units: ['order', 'step', 'requirement'], scope: 'existing-object-permission', fields: ['status', 'phase', 'currentSteps', 'assignee', 'materials'] }, overdue: { status: 'unsupported', reason: 'ROUND_7_READ_ADAPTER_NOT_IMPLEMENTED', algorithm: 'existing_workday_expected_days', missingConfiguration: 'unknown' }, exceptions: { status: 'unsupported', reason: 'ROUND_8_READ_ADAPTER_NOT_IMPLEMENTED', scope: 'admin', channels: ['progress', 'documents'], fields: ['eventId', 'attempts', 'nextAttemptAt', 'lastAcknowledgedAt'] } },
-    details: selectedDetails ? moduleResult({ ...paginate(options.basis === 'period' ? selectedDetails.filter(r => { const time = utcMillis(r.created_at); return time !== null && time >= options.startUtc && time < options.endUtc; }) : selectedDetails, options), selection: { subset: options.subset || 'all', status: options.status, currency: options.currency, category: options.category }, basis: options.basis, kind: options.detail }, detailModule.gaps) : failed(), consistency: 'sequential_read_only_current_records_not_historical_snapshot',
+    details: selectedDetails ? moduleResult({ ...pageData!, items:safeDetailItems(pageData!.items,options.detail), selection: { subset: options.subset || 'all', status: options.status, currency: options.currency, category: options.category }, basis: options.basis, kind: options.detail }, detailModule.gaps) : failed(), consistency: 'sequential_read_only_current_records_not_historical_snapshot',
   };
 }

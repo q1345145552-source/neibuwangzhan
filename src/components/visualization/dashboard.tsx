@@ -5,6 +5,7 @@ import { ArrowUpRight, Clock3, LockKeyhole, RefreshCw, LoaderCircle, SlidersHori
 import type { ModuleResult, Money } from '@/lib/visualization/types';
 import { CreationTrend } from './trend';
 import { DetailDialog } from './details';
+import { useVisualizationUiState } from './credential';
 import { useOverviewResource } from './resource';
 import { categories, decimal, displayTime, gapText, initialFilter, query, sources, type DetailSpec, type Filter } from './model';
 import s from './dashboard.module.css';
@@ -17,7 +18,7 @@ function ModuleView<T>({ result, retry, children }: { result: ModuleResult<T>; r
 function MoneyValue({ value }: { value: Money }) { return <span className={s.money}><span className={s.moneyLine}><span className={s.moneyLabel}>人民币</span>{decimal(value.CNY)}<span className={s.unit}>元</span></span><span className={s.moneyLine}><span className={s.moneyLabel}>泰铢</span>{decimal(value.THB)}<span className={s.unit}>฿</span></span></span>; }
 function Chip({ children, onClick }: { children: React.ReactNode; onClick(): void }) { return <button className={s.chip} onClick={onClick}>{children}</button>; }
 export function OverviewDashboard() {
-  const [draft, setDraft] = useState<Filter>(initialFilter), [applied, setApplied] = useState<Filter>(initialFilter);
+  const [draft, setDraft] = useVisualizationUiState<Filter>('overview:draft',initialFilter), [applied, setApplied] = useVisualizationUiState<Filter>('overview:applied',initialFilter);
   const [retry, setRetry] = useState(0), [detail, setDetail] = useState<DetailSpec | null>(null), [validation, setValidation] = useState('');
   const state = useOverviewResource(query(applied), retry);
   const dirty = JSON.stringify(draft) !== JSON.stringify(applied);

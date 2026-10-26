@@ -10,7 +10,7 @@ export function createGET(open: OpenSession) {
     try {
       session = await open(request);
       if (!session?.actor) return json({ error: 'LOGIN_REQUIRED' }, 401);
-      if (session.actor.role !== 'admin') return json({ error: 'FORBIDDEN' }, 403);
+      if (session.actor.role !== 'admin') return json({ error: 'FORBIDDEN', viewerRole: session.actor.role }, 403);
       let options;
       try { options = parseOptions(new URL(request.url)); }
       catch { return json({ error: 'INVALID_QUERY' }, 400); }
