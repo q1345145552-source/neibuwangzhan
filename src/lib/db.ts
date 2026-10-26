@@ -1,3 +1,4 @@
+import { ensureWorkspaceSchema } from "./workspace-schema";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { initializeSyncSchema } from "./sync-schema";
@@ -32,6 +33,7 @@ export function getDb(): Database.Database {
       migrateInfluencersCheck(database);
       migrateEmployeeStatusCheck(database);
       ensureAccessSchema(database);
+      ensureWorkspaceSchema(database);
       ensureWorkflowSchema(database);
       ensureCustomerKitSchema(database);
       if (commercePilotEnabled()) ensureCommerceSchema(database);

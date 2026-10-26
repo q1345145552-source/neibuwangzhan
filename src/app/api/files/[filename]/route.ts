@@ -1,3 +1,4 @@
+import { getDb } from "@/lib/db";
 import { isClientFileVisible } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
@@ -52,6 +53,8 @@ export async function GET(
   if (auth.role === "client" && !isClientFileVisible(auth.id, auth.name, safeName)) {
     return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
+  const personal = getDb().prepare("SELECT owner_id FROM personal_files WHERE filename = ?").get(safeName) as { owner_id: number } | undefined;
+  if (personal && personal.owner_id !== auth.id) return NextResponse.json({error:"无权限"},{status:403});
   const filePath = findFile(safeName);
 
   if (!filePath) {
