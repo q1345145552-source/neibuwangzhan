@@ -250,11 +250,16 @@ export default function TodosPage() {
   }, [isAdmin, employees, unfinished]);
 
   // 点卡片后：该员工的未完成待办列表（可按分类筛选）
-  const selectedList = selectedAssignee
-    ? unfinished
-        .filter((t) => (t.assignee || "未分配") === selectedAssignee)
-        .filter((t) => categoryFilter === "all" || String(t.category_id ?? "") === categoryFilter)
+  const selectedUnfinished = selectedAssignee
+    ? unfinished.filter((t) => (t.assignee || "未分配") === selectedAssignee)
     : [];
+  const selectedList = selectedUnfinished
+    .filter((t) => categoryFilter === "all" || String(t.category_id ?? "") === categoryFilter);
+  const unfinishedCategoryCounts = new Map<string, number>([["all", selectedUnfinished.length]]);
+  for (const todo of selectedUnfinished) {
+    const category = String(todo.category_id ?? "");
+    unfinishedCategoryCounts.set(category, (unfinishedCategoryCounts.get(category) || 0) + 1);
+  }
 
   // 点积压提醒：进入对应负责人的待办列表，并定位+高亮那条待办
   const jumpToTodo = (assignee: string, todoId: number) => {
@@ -981,13 +986,18 @@ export default function TodosPage() {
     .sort((a, b) => b[statsRange].followups - a[statsRange].followups)
     .slice(0, 5);
 
-  const renderCategoryTabs = (value: string, onChange: (value: string) => void, label: string) => (
+  const renderCategoryTabs = (value: string, onChange: (value: string) => void, label: string, counts?: Map<string, number>) => (
     <div role="group" aria-label={label} className="flex w-full min-w-0 gap-1 overflow-x-auto border-b border-[var(--border)] px-3 py-2">
       {[{ value: "all", label: "全部" }, ...categories.map((c) => ({ value: String(c.id), label: c.name })), { value: "", label: "未分类" }].map((tab) => (
         <button key={tab.value} type="button" aria-pressed={value === tab.value} onClick={() => onChange(tab.value)}
-          className={cn("shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--ring)]",
+          className={cn("inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--ring)]",
             value === tab.value ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]")}>
           {tab.label}
+          {(counts?.get(tab.value) || 0) > 0 && (
+            <span aria-label={`${counts?.get(tab.value)} 项未完成`} className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-xs leading-4 text-white">
+              {counts?.get(tab.value)}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -1284,7 +1294,7 @@ export default function TodosPage() {
               </Button>
             </div>
           </div>
-          {renderCategoryTabs(categoryFilter, setCategoryFilter, "未完成待办分类")}
+          {renderCategoryTabs(categoryFilter, setCategoryFilter, "未完成待办分类", unfinishedCategoryCounts)}
           {selectedList.length === 0 ? (
             <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无待办</div>
           ) : (
