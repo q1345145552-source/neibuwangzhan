@@ -3,6 +3,7 @@ import { classifyOrders, text, unique } from './aggregate';
 import { QUERIES } from './queries';
 import { utcMillis } from './time';
 import { currentOpenSteps, STEP_STATUSES } from '../step-status';
+import { BOTTLENECK_FILTERS, withBottlenecks, matchesBottleneck, bottleneckSummary, type BottleneckFilter } from './bottlenecks';
 export const DELIVERY_QUERIES = {
  orders: 'SELECT id, business_type_id, sub_service_type, status, phase, responsible_person, source_system, created_at FROM orders',
  business: 'SELECT id, name FROM business_types',
@@ -16,12 +17,13 @@ export const MATERIALS = ['step_pending','unsubmitted','returned','review','file
 export type Material = typeof MATERIALS[number];
 export type Fact = { id: string; kind: string; name: string; status: string; category: Material | 'satisfied'; documentId?: string; submissionId?: string };
 export type DeliveryRow = { id: string; business: string; source: Source | 'unknown'; status: string; phase: string; owner: string; createdAt: string; href: string; steps: {id:string;name:string;status:string;assignee:string;current:boolean}[] | null; facts: Fact[] | null; requirementCount: number | null; counts: Record<Material,number> | null; warnings:string[] };
-export type DeliveryOptions = { source:string; status:string; owner:string; ownerUnassigned:boolean; search:string; material:string; from:string; to:string; start:number|null; end:number|null; page:number; pageSize:number };
+export type DeliveryOptions = { source:string; status:string; owner:string; ownerUnassigned:boolean; bottleneck:BottleneckFilter; search:string; material:string; from:string; to:string; start:number|null; end:number|null; page:number; pageSize:number };
 export function parseDelivery(url:URL):DeliveryOptions {
- const p=url.searchParams;const keys=['source','status','owner','ownerUnassigned','search','material','from','to','page','pageSize'];
+ const p=url.searchParams;const keys=['source','status','owner','ownerUnassigned','search','material','bottleneck','from','to','page','pageSize'];
  for(const k of p.keys()) if(!keys.includes(k)||p.getAll(k).length!==1) throw Error('QUERY');
  const source=p.get('source')||'all', status=p.get('status')||'pool',material=p.get('material')||'all';
  if(!['all','local','commerce','saved_source','conflict'].includes(source)||!['pool','all','待处理','进行中','已完成','客户取消','unknown'].includes(status)||!['all',...MATERIALS].includes(material)) throw Error('QUERY');
+ const bottleneck=p.get('bottleneck')||'all';if(!BOTTLENECK_FILTERS.includes(bottleneck as BottleneckFilter))throw Error('QUERY');
  const owner=p.get('owner')||'',search=p.get('search')||'',from=p.get('from')||'',to=p.get('to')||'';
  const ownerUnassigned=p.get('ownerUnassigned')==='1';if(p.has('ownerUnassigned')&&(!ownerUnassigned||owner))throw Error('QUERY');
  if(owner.length>200||search.length>200||Boolean(from)!==Boolean(to))throw Error('QUERY');
@@ -29,14 +31,14 @@ export function parseDelivery(url:URL):DeliveryOptions {
  const start=from?day(from):null,end=to?day(to):null;
  if(start!==null&&end!==null&&(end<=start||end-start>366*86400000))throw Error('QUERY');
  const integer=(k:string,d:number,max:number)=>{const v=p.get(k)||String(d);if(!/^[1-9]\d*$/.test(v)||Number(v)>max)throw Error('QUERY');return Number(v);};
- return {source,status,material,owner,ownerUnassigned,search,from,to,start,end,page:integer('page',1,1000000),pageSize:integer('pageSize',20,100)};
+ return {source,status,material,owner,ownerUnassigned,bottleneck:bottleneck as BottleneckFilter,search,from,to,start,end,page:integer('page',1,1000000),pageSize:integer('pageSize',20,100)};
 }
-export function delivery(reader:Reader,o:DeliveryOptions) {
+export function delivery(reader:Reader,o:DeliveryOptions,now:Date=new Date()) {
  const failed:string[]=[],gaps:{code:string;count:number}[]=[];
  const read=(key:string,sql:string):Row[]|null=>{try{const u=unique(reader.all(sql),'id');if(u.conflicts)gaps.push({code:key,count:u.conflicts});return u.rows;}catch{failed.push(key);return null;}};
  const raw=read('orders',DELIVERY_QUERIES.orders);
- const base={generatedAt:new Date().toISOString(),selection:o,scope:'staff-all-orders',failed,gaps};
- if(!raw)return {...base,status:'failed',items:[],total:null,summary:null,owners:[]};
+ const base={generatedAt:now.toISOString(),selection:o,scope:'staff-all-orders',failed,gaps};
+ if(!raw)return {...base,status:'failed',items:[],total:null,summary:null,bottlenecks:null,scopeUnknownOrders:0,selectionUnknownOrders:0,owners:[]};
  const business=read('business',DELIVERY_QUERIES.business),steps=read('steps',DELIVERY_QUERIES.steps),requirements=read('requirements',DELIVERY_QUERIES.requirements),requests=read('requests',DELIVERY_QUERIES.requests),documents=read('documents',DELIVERY_QUERIES.documents),submissions=read('submissions',DELIVERY_QUERIES.submissions);
  // Source graph uses the confirmed overview classifier, not source labels alone.
  const graphKeys=['sales','lines','fulfillments','inbox','parents'] as const;
@@ -87,19 +89,36 @@ export function delivery(reader:Reader,o:DeliveryOptions) {
  return {id,business:text(business?.find(b=>b.id===r.business_type_id)?.name)||'业务名称未记录',source:r.source as DeliveryRow['source'],status:text(r.status)||'unknown',phase:text(r.phase),owner:text(r.responsible_person),createdAt:text(r.created_at),href:'/orders/'+encodeURIComponent(id),steps:current?ss!.map(s=>({id:String(s.id),name:text(s.step_name),status:text(s.status),assignee:text(s.assignee),current:current.some(c=>c.id===s.id)})):null,facts,counts,requirementCount:localReq&&req?localReq.length+req.length:null,warnings};
  });
  const owners=[...new Set(rows.map(r=>r.owner))].sort();
- const selected=rows.filter(r=>{
- if(o.status==='pool'&&['已完成','客户取消'].includes(r.status))return false;
- if(!['pool','all'].includes(o.status)&&r.status!==o.status)return false;
- if(o.source!=='all'&&r.source!==o.source)return false;
- if(o.ownerUnassigned&&r.owner!=='')return false;
- if(o.owner&&r.owner!==o.owner)return false;
- if(o.search&&r.id!==o.search)return false;
- if(o.start!==null){const t=utcMillis(r.createdAt);if(t===null||t<o.start||t>=o.end!)return false;}
- if(o.material!=='all'&&(o.material==='unknown'?!(r.counts===null||r.counts.unknown>0):!(r.counts&&r.counts[o.material as Material]>0)))return false;
- return true;
- }).sort((a,b)=>a.id.localeCompare(b.id,'en',{numeric:true}));
+ const membership=(r:DeliveryRow):'match'|'unknown'|'out'=>{
+   const tests:(boolean|null)[]=[];
+   if(o.status==='pool')tests.push(!['已完成','客户取消'].includes(r.status));
+   else if(o.status!=='all')tests.push(r.status==='unknown'&&o.status!=='unknown'?null:r.status===o.status);
+   if(o.source!=='all')tests.push(r.source==='unknown'?null:r.source===o.source);
+   if(o.ownerUnassigned||o.owner)tests.push(r.warnings.includes('负责人字段缺失')?null:o.ownerUnassigned?r.owner==='':r.owner===o.owner);
+   if(o.search)tests.push(r.id===o.search);
+   if(o.start!==null){const t=utcMillis(r.createdAt);tests.push(t===null?null:t>=o.start&&t<o.end!);}
+   if(o.material!=='all'){
+     if(o.material==='unknown')tests.push(r.counts===null||r.counts.unknown>0);
+     else tests.push(r.counts===null?null:r.counts[o.material as Material]>0?true:r.counts.unknown>0?null:false);
+   }
+   return tests.includes(false)?'out':tests.includes(null)?'unknown':'match';
+ };
+ const scopeUnknownOrders=rows.filter(r=>membership(r)==='unknown').length;
+ const scoped=rows.filter(r=>membership(r)==='match');
+ const evaluated=withBottlenecks(scoped,reader,now);
+ const selected=evaluated.filter(r=>matchesBottleneck(r,o.bottleneck)).sort((a,b)=>a.id.localeCompare(b.id,'en',{numeric:true}));
+ const selectedIds=new Set(selected.map(r=>r.id));
+ const selectionUnknownOrders=scopeUnknownOrders+evaluated.filter(r=>{
+   if(selectedIds.has(r.id)||o.bottleneck==='all'||o.bottleneck==='timing_unknown')return false;
+   if(r.bottleneck.eligibilityUnknown)return true;
+   if(o.bottleneck==='closed_blocked')return !r.bottleneck.eligible&&r.bottleneck.blockedSteps===null;
+   if(!r.bottleneck.eligible)return false;
+   if(o.bottleneck==='blocked')return r.bottleneck.blockedSteps===null;
+   if(o.bottleneck==='overdue')return matchesBottleneck(r,'timing_unknown');
+   return r.bottleneck.blockedSteps===null||matchesBottleneck(r,'timing_unknown')||r.counts===null||r.counts.unknown>0;
+ }).length;
  const summary={orders:selected.length,states: {} as Record<string,number>,materials:Object.fromEntries(MATERIALS.map(k=>[k,{items:0,orders:0}])) as Record<Material,{items:number;orders:number}>,materialUnknownOrders:0,stepsUnrecordedOrders:selected.filter(r=>r.steps?.length===0).length,materialUnknownFacts:selected.reduce((n,r)=>n+(r.counts?.unknown||0),0),dateUnknownOrders:rows.filter(r=>utcMillis(r.createdAt)===null).length,sourceUnknownOrders:rows.filter(r=>r.source==='unknown').length};
  for(const r of selected){summary.states[r.status]=(summary.states[r.status]||0)+1;if(!r.counts){summary.materialUnknownOrders++;summary.materials.unknown.orders++;continue;}for(const k of MATERIALS){summary.materials[k].items+=r.counts[k];if(r.counts[k])summary.materials[k].orders++;}}
- return {...base,status:failed.length||gaps.length||selected.some(r=>r.warnings.length)?'unknown':'success',total:selected.length,items:selected.slice((o.page-1)*o.pageSize,o.page*o.pageSize),summary,owners};
+ return {...base,status:failed.length||gaps.length||scopeUnknownOrders||evaluated.some(r=>r.warnings.length||['unknown','failed'].includes(r.bottleneck.timingState))?'unknown':'success',total:selected.length,items:selected.slice((o.page-1)*o.pageSize,o.page*o.pageSize),summary,bottlenecks:bottleneckSummary(evaluated),scopeUnknownOrders,selectionUnknownOrders,owners};
 }
 export type DeliverySnapshot=ReturnType<typeof delivery> & {viewerRole:'admin'|'employee'};
