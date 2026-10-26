@@ -1,6 +1,6 @@
 import { bossPendingSubmissions } from '../boss-submissions';
 import { readBilling } from '../commerce-ledger';
-import { classifyOrders, failed, moduleResult, money, orderAggregation, text, unique } from './aggregate';
+import { classifyOrders, failed, moduleResult, money, orderAggregation, text, unique, validAmount } from './aggregate';
 import { QUERIES } from './queries';
 import { utcMillis } from './time';
 import { POLICY_VERSION, type Gap, type ModuleResult, type Options, type Reader, type Row } from './types';
@@ -37,8 +37,8 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
     if (conflicts) baseGaps.push({ code: 'SOURCE_CONFLICT', count: conflicts });
     orders = orderAggregation(orderRows, options, baseGaps);
     const allParents: Row[] = [
-      ...unique(all('sales'), 'id').rows.map(r => ({ id: 'commerce:' + r.id, source: 'commerce', created_at: r.created_at })),
-      ...unique(all('parents'), 'source_order_no').rows.map(r => ({ id: 'saved_source:' + r.source_order_no, source: 'saved_source', created_at: r.created_at })),
+      ...unique(all('sales'), 'id').rows.map(r => ({ id: 'commerce:' + r.id, parent_no: r.id, source: 'commerce', created_at: r.created_at })),
+      ...unique(all('parents'), 'source_order_no').rows.map(r => ({ id: 'saved_source:' + r.source_order_no, parent_no: r.source_order_no, source: 'saved_source', created_at: r.created_at })),
     ];
     parentRows = allParents.filter(r => options.source === 'all' || options.source === r.source).map(r => ({ ...r, fulfillments: orderRows!.filter(o => o.parentKey === r.id).map(o => ({ id: o.id, href: o.href, status: o.status })) }));
     const parentStats = orderAggregation(parentRows, options, baseGaps);
@@ -53,7 +53,7 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
       const raw = unique(all('finances'), 'id');
       const rows = raw.rows.filter(r => ids.has(text(r.order_id)));
       const refunds = new Set(all('refunds').map(r => String(r.finance_id)));
-      financeDetails = rows.map(r => ({ ...r, kind: refunds.has(String(r.id)) ? 'commerce_refund' : r.type === 'expense' ? 'cost' : 'income', href: '/orders/' + encodeURIComponent(text(r.order_id)) }));
+      financeDetails = rows.map(r => ({ ...r, amount_valid: validAmount(r.amount), currency_known: r.currency === 'CNY' || r.currency === 'THB', kind: refunds.has(String(r.id)) ? 'commerce_refund' : r.type === 'expense' ? 'cost' : 'income', href: '/orders/' + encodeURIComponent(text(r.order_id)) }));
       const paid = rows.filter(r => r.type === 'income' && r.status === 'paid');
       const waiting = rows.filter(r => r.type === 'income' && ['待核对', 'pending'].includes(text(r.status)));
       const notArrived = rows.filter(r => r.type === 'income' && r.status === '未到账');
@@ -63,7 +63,7 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
       const orderIds = new Set(unique(all('orders'), 'id').rows.map(r => text(r.id)));
       const dangling = raw.rows.filter(r => !orderIds.has(text(r.order_id))).length;
       if (dangling) gaps.push({ code: 'FINANCE_ORDER_MISSING', count: dangling });
-      finances = moduleResult({ unit: 'minor_currency_unit', label: '内部已记录到账收入', bankVerified: false, currentIncome: money(paid), missingVerification: { count: missingVerification.length, money: money(missingVerification) }, awaitingVerification: { count: waiting.length, money: money(waiting) }, notArrived: { count: notArrived.length, money: money(notArrived) }, detailsCount: financeDetails.length, financialTrend: { status: 'unsupported', reason: 'CONFIRMED_CREATION_TRENDS_ONLY' } }, gaps);
+      finances = moduleResult({ unit: 'minor_currency_unit', label: '内部已记录到账收入', bankVerified: false, currentIncome: money(paid), currentIncomeCount: paid.length, missingVerification: { count: missingVerification.length, money: money(missingVerification) }, awaitingVerification: { count: waiting.length, money: money(waiting) }, notArrived: { count: notArrived.length, money: money(notArrived) }, detailsCount: financeDetails.length, financialTrend: { status: 'unsupported', reason: 'CONFIRMED_CREATION_TRENDS_ONLY' } }, gaps);
     } catch { /* other modules can still succeed */ }
     try {
       const saleIds = unique(all('sales'), 'id').rows.filter(r => options.source === 'all' || options.source === 'commerce');
@@ -85,7 +85,7 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
         const invalidDetail = linked.some(r => { const f = financeMap.get(String(r.finance_id)); return !f || f.order_id !== r.order_id || money([f]).unknownCount > 0 || !invoiceRows.some(i => i.id === r.invoice_id && i.sale_id === sale.id); }) || [...credits.map(r => ({ ...r, cents: r.credit_cents } as Row)), ...refunds.map(r => ({ ...r, cents: r.amount_cents } as Row))].filter(r => allocations.some(a => a.order_id === r.order_id)).some(r => typeof r.cents !== 'number' || !Number.isSafeInteger(r.cents) || r.cents < 0);
         const valid = sale.currency === 'CNY' && !badRelation && !invalidDetail && amounts.every(n => Number.isSafeInteger(n) && n >= 0);
         if (valid) total += value.balance_due_cents; else unknownCount++;
-        billingDetails.push({ id: sale.id, currency: sale.currency, status: valid ? 'success' : 'unknown', originalCents: valid ? value.original_cents : null, creditedCents: valid ? value.credited_cents : null, receivedCents: valid ? value.received_cents : null, refundedCents: valid ? value.refunded_cents : null, dueCents: valid ? value.balance_due_cents : null, refundDueCents: valid ? value.refund_due_cents : null, mappedIncomeDiffersFromPaid: mismatch, fulfillments: links });
+        billingDetails.push({ id: sale.id, currency: sale.currency, status: valid ? 'success' : 'unknown', originalCents: valid ? value.original_cents : null, adjustedCents: valid ? value.adjusted_cents : null, creditedCents: valid ? value.credited_cents : null, receivedCents: valid ? value.received_cents : null, refundedCents: valid ? value.refunded_cents : null, dueCents: valid ? value.balance_due_cents : null, refundDueCents: valid ? value.refund_due_cents : null, mappedIncomeDiffersFromPaid: mismatch, fulfillments: links });
       }
       const gaps = [...baseGaps, ...(unknownCount ? [{ code: 'BILLING_UNKNOWN', count: unknownCount }] : []), ...(mismatchCount ? [{ code: 'MAPPED_INCOME_DIFFERS_FROM_PAID', count: mismatchCount }] : [])];
       billing = moduleResult({ unit: 'minor_currency_unit', currentDue: { CNY: total, unknownCount }, scope: 'commerce_only', recordCount: billingDetails.length }, gaps);
@@ -98,10 +98,27 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
     pending = moduleResult({ current: { unit: 'category_source_item', total: pendingDetails.length, counts: original.counts }, scope: 'existing_boss_categories', sourceFilterApplies: false });
   } catch { /* do not call /api/todos */ }
   const details = options.detail === 'orders' ? orderRows : options.detail === 'parents' ? parentRows : options.detail === 'finances' ? (finances.status === 'failed' ? null : financeDetails) : options.detail === 'billing' ? (billing.status === 'failed' ? null : billingDetails) : pending.status === 'failed' ? null : pendingDetails;
+  const selectedDetails = details?.filter(row => {
+    if (options.status && (text(row.status) || 'unknown') !== options.status) return false;
+    if (options.category && row.category !== options.category) return false;
+    if (options.currency && (options.currency === 'unknown' ? ['CNY', 'THB'].includes(text(row.currency)) : row.currency !== options.currency)) return false;
+    switch (options.subset) {
+      case 'awaiting': return row.awaiting_confirmation === true;
+      case 'without_parent': return !row.parentKey;
+      case 'date_unknown': return utcMillis(row.created_at) === null;
+      case 'income_paid': return row.type === 'income' && row.status === 'paid';
+      case 'income_waiting': return row.type === 'income' && ['待核对', 'pending'].includes(text(row.status));
+      case 'income_not_arrived': return row.type === 'income' && row.status === '未到账';
+      case 'missing_verification': return row.type === 'income' && row.status === 'paid' && (!text(row.verify_by) || utcMillis(row.verify_at) === null);
+      case 'cost': return row.kind === 'cost';
+      case 'refund': return row.kind === 'commerce_refund';
+      default: return true;
+    }
+  });
   const detailModule = options.detail === 'orders' ? orders : options.detail === 'parents' ? parents : options.detail === 'finances' ? finances : options.detail === 'billing' ? billing : pending;
   return {
     policyVersion: POLICY_VERSION, generatedAt: now.toISOString(), timezone: 'Asia/Bangkok', scope: { source: options.source, internalSavedRecordsOnly: true, independentLedgersExcluded: ['vat', 'influencer'], currentStockDateFiltered: false, pendingSourceFilterApplies: false }, period: { fromInclusive: options.from, toExclusive: options.to, startUtc: new Date(options.startUtc).toISOString(), endUtc: new Date(options.endUtc).toISOString(), axis: 'internal_created_at', historicalRestatement: true },
     modules: { orders, parents, finances, billing, pending, delivery: { status: 'unsupported', reason: 'ROUND_6_READ_ADAPTER_NOT_IMPLEMENTED', units: ['order', 'step', 'requirement'], scope: 'existing-object-permission', fields: ['status', 'phase', 'currentSteps', 'assignee', 'materials'] }, overdue: { status: 'unsupported', reason: 'ROUND_7_READ_ADAPTER_NOT_IMPLEMENTED', algorithm: 'existing_workday_expected_days', missingConfiguration: 'unknown' }, exceptions: { status: 'unsupported', reason: 'ROUND_8_READ_ADAPTER_NOT_IMPLEMENTED', scope: 'admin', channels: ['progress', 'documents'], fields: ['eventId', 'attempts', 'nextAttemptAt', 'lastAcknowledgedAt'] } },
-    details: details ? moduleResult({ ...paginate(options.basis === 'period' ? details.filter(r => { const time = utcMillis(r.created_at); return time !== null && time >= options.startUtc && time < options.endUtc; }) : details, options), basis: options.basis, kind: options.detail }, detailModule.gaps) : failed(), consistency: 'sequential_read_only_current_records_not_historical_snapshot',
+    details: selectedDetails ? moduleResult({ ...paginate(options.basis === 'period' ? selectedDetails.filter(r => { const time = utcMillis(r.created_at); return time !== null && time >= options.startUtc && time < options.endUtc; }) : selectedDetails, options), selection: { subset: options.subset || 'all', status: options.status, currency: options.currency, category: options.category }, basis: options.basis, kind: options.detail }, detailModule.gaps) : failed(), consistency: 'sequential_read_only_current_records_not_historical_snapshot',
   };
 }

@@ -15,7 +15,7 @@ function validDay(day: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(value) && new Date(value).toISOString().slice(0, 10) === day;
 }
 export function parseOptions(url: URL): Options {
-  const allowed = new Set(['from', 'to', 'page', 'pageSize', 'source', 'detail', 'basis']);
+  const allowed = new Set(['from', 'to', 'page', 'pageSize', 'source', 'detail', 'basis', 'subset', 'status', 'currency', 'category']);
   for (const key of url.searchParams.keys()) if (!allowed.has(key) || url.searchParams.getAll(key).length !== 1) throw new Error('INVALID_QUERY');
   const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || '';
   if (!validDay(from) || !validDay(to)) throw new Error('INVALID_DATE');
@@ -33,6 +33,12 @@ export function parseOptions(url: URL): Options {
   const basis = url.searchParams.get('basis') || 'current';
   if (!['current', 'period'].includes(basis) || (basis === 'period' && !['orders', 'parents'].includes(detail))) throw new Error('INVALID_BASIS');
   if (!['all', 'local', 'commerce', 'saved_source', 'conflict'].includes(source) || !['orders', 'parents', 'finances', 'billing', 'pending'].includes(detail)) throw new Error('INVALID_FILTER');
-  return { from, to, startUtc, endUtc, page: integer('page', 1, 1000000), pageSize: integer('pageSize', 25, 100), basis: basis as Options['basis'], source: source as Options['source'], detail: detail as Options['detail'] };
+  const subset = url.searchParams.get('subset') || 'all';
+  const status = url.searchParams.get('status') || undefined;
+  const currency = url.searchParams.get('currency') || undefined;
+  const category = url.searchParams.get('category') || undefined;
+  const subsets: Record<string, string[]> = { orders: ['all', 'awaiting', 'without_parent', 'date_unknown'], parents: ['all', 'date_unknown'], finances: ['all', 'income_paid', 'income_waiting', 'income_not_arrived', 'missing_verification', 'cost', 'refund'], billing: ['all'], pending: ['all'] };
+  if (!subsets[detail].includes(subset) || (status && (detail !== 'orders' || !['待处理', '进行中', '已完成', '客户取消', 'unknown'].includes(status))) || (currency && (detail !== 'finances' || !['CNY', 'THB', 'unknown'].includes(currency))) || (category && (detail !== 'pending' || !['leave', 'attendance', 'notice', 'report', 'meeting', 'todo', 'problem', 'issue'].includes(category)))) throw new Error('INVALID_SUBSET');
+  return { subset: subset as Options['subset'], status, currency: currency as Options['currency'], category, from, to, startUtc, endUtc, page: integer('page', 1, 1000000), pageSize: integer('pageSize', 25, 100), basis: basis as Options['basis'], source: source as Options['source'], detail: detail as Options['detail'] };
 }
 export function bangkokDay(ms: number): string { return new Date(ms + 7 * 3600000).toISOString().slice(0, 10); }

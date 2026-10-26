@@ -1,0 +1,31 @@
+"use client";
+import { useEffect, useRef, useState } from 'react';
+import { getStoredAuthToken } from '@/lib/auth-storage';
+import type { Snapshot } from './model';
+type Resource = { key: string; data: Snapshot | null; error: 'login' | 'forbidden' | 'query' | 'failed' | null; loading: boolean };
+export function useOverviewResource(key: string | null, retry: number) {
+  const [state, setState] = useState<Resource>({ key: '', data: null, error: null, loading: false });
+  const sequence = useRef(0);
+  useEffect(() => {
+    if (!key) return;
+    const current = ++sequence.current;
+    const requestKey = key + '|' + retry;
+    const controller = new AbortController();
+    const load = async () => {
+      setState({ key: requestKey, data: null, error: null, loading: true });
+      const token = getStoredAuthToken();
+      if (!token) { setState({ key: requestKey, data: null, error: 'login', loading: false }); return; }
+      try {
+        const response = await fetch('/api/visualization/overview?' + key, { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store', signal: controller.signal });
+        const error = response.status === 401 ? 'login' : response.status === 403 ? 'forbidden' : response.status === 400 ? 'query' : !response.ok ? 'failed' : null;
+        if (error) { if (current === sequence.current && !controller.signal.aborted) setState({ key: requestKey, data: null, error, loading: false }); return; }
+        const data = await response.json();
+        if (!data?.modules?.orders || !data?.modules?.finances || !data?.details || !data.generatedAt) throw new Error('INVALID_RESPONSE');
+        if (current === sequence.current && !controller.signal.aborted) setState({ key: requestKey, data, error: null, loading: false });
+      } catch { if (current === sequence.current && !controller.signal.aborted) setState({ key: requestKey, data: null, error: 'failed', loading: false }); }
+    };
+    void load();
+    return () => { ++sequence.current; controller.abort(); };
+  }, [key, retry]);
+  return key && state.key !== key + '|' + retry ? { key, data: null, error: null, loading: true } : state;
+}

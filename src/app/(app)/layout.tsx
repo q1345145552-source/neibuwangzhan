@@ -1,5 +1,6 @@
 "use client";
 
+import { VisualizationShell } from "@/components/visualization/shell";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
@@ -56,6 +57,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/visualization" || pathname.startsWith("/visualization/")) return <VisualizationShell>{children}</VisualizationShell>;
   return (
     <AuthProvider>
       <AuthGuard>
