@@ -122,6 +122,8 @@ await test('admin creates the customer account from the internal system (phone o
   assert.equal(dup.status, 409);
   const found = await call(await customersRoute.GET(req('/api/storefront/customers?q=2345', adminToken)));
   assert.deepEqual(found.body.customers.map((c: { id: string }) => c.id), [account.id]);
+  const dashed = await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('081-234 5678')}`, adminToken)));
+  assert.deepEqual(dashed.body.customers.map((c: { id: string }) => c.id), [account.id], 'a number typed with dashes and spaces still finds the account');
   assert.equal((await client('GET', '/api/sync/customers?q=')).status, 401, 'the customer site endpoint needs the shared secret');
 });
 

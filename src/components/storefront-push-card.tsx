@@ -5,6 +5,7 @@ import { Check, Copy, Globe, Loader2, Search, Send, UserPlus, X } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createStorefrontCustomer, fetchStorefrontPush, pushOrderToStorefront, searchStorefrontCustomers, type StorefrontAccount, type StorefrontPushState } from "@/lib/api";
+import { useLeaveGuard } from "@/lib/use-leave-guard";
 
 /** 复制到剪贴板；浏览器不让复制（http 访问等）就返回 false，界面上的文字可以手动选中复制 */
 async function copyText(text: string): Promise<boolean> {
@@ -106,6 +107,7 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
   const [done, setDone] = useState<{ id: string; source_order_no: string; link: string | null; pending: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
   const [handedOut, setHandedOut] = useState(false);
+  useLeaveGuard(!!createdPassword && !handedOut);
 
   useEffect(() => {
     if (mode !== "search" || account) return;

@@ -60,7 +60,10 @@ export function customerLoginLink(): string | null {
 }
 
 export async function searchStorefrontCustomers(q: string): Promise<StorefrontAccount[]> {
-  const body = await json<{ customers: StorefrontAccount[] }>(await call(`/api/sync/customers?q=${encodeURIComponent(q.slice(0, 50))}`));
+  // 搜手机号时去掉空格、横杠、括号、点：业务系统存的是纯数字（2026-10-26），照着「081-234 5678」搜也能搜到
+  const term = q.trim();
+  const key = /^[+\d\s().-]+$/.test(term) ? term.replace(/[\s().-]/g, "") : term;
+  const body = await json<{ customers: StorefrontAccount[] }>(await call(`/api/sync/customers?q=${encodeURIComponent(key.slice(0, 50))}`));
   return body.customers;
 }
 

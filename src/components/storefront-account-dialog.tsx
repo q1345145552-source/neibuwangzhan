@@ -5,6 +5,7 @@ import { Check, Copy, Loader2, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createStorefrontCustomer, type StorefrontAccount } from "@/lib/api";
+import { useLeaveGuard } from "@/lib/use-leave-guard";
 
 /** 复制到剪贴板；浏览器不让复制（http 访问等）就返回 false，界面上的文字可以手动选中复制 */
 async function copyText(text: string): Promise<boolean> {
@@ -38,6 +39,7 @@ function OpenCustomerAccountDialog({ onClose }: { onClose: () => void }) {
   const [done, setDone] = useState<(StorefrontAccount & { login_url?: string | null; password: string }) | null>(null);
   const [copied, setCopied] = useState(false);
   const [handedOut, setHandedOut] = useState(false);
+  useLeaveGuard(!!done && !handedOut);
 
   const create = async () => {
     setBusy(true); setMessage("");
@@ -46,7 +48,10 @@ function OpenCustomerAccountDialog({ onClose }: { onClose: () => void }) {
       setDone({ ...account, password: form.password });
     } catch (e) {
       const text = e instanceof Error ? e.message : "开账号失败";
-      setMessage(text.includes("已经有账号") ? "这个手机号或邮箱已经开过账号了，不用再开。推单时在「推到业务系统」里搜名字或手机号就能选到。" : text);
+      const what = text.includes("邮箱") ? "邮箱" : "手机号";
+      setMessage(text.includes("已经有账号")
+        ? `这个${what}已经开过账号了，不用再开。推单时在「推到业务系统」里搜这个${what}就能选到；搜不到的话，可能是账号被停用了，到业务系统后台「客户列表」看一下。`
+        : text);
     } finally { setBusy(false); }
   };
 
