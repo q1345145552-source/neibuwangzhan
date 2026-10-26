@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   if (auth.role === "client") return NextResponse.json({ error: "无权限" }, { status: 403 });
   const db = getDb();
   const { searchParams } = new URL(req.url);
-  const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
+  // 分类页需要完整列表，避免分类与未读角标被默认的 100 条截断；其他调用保留原有限额。
+  const limit = searchParams.get("all") === "1" ? -1 : Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
 
   const filter = messageCenterFilter(auth.role === "admin");
   const sql = `SELECT * FROM notifications

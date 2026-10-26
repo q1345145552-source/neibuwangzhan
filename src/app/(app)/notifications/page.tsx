@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 import { cn, toThaiTime } from "@/lib/utils";
 import { Ticket, ListTodo, BookOpen, Bell, EyeOff, ShoppingCart, FileText, XCircle } from "lucide-react";
-import { isSupervisionAlert, bossSubmissionNoticeHref, announcementFeedbackHref, isAnnouncementRetellFeedback, leaveReviewNoticeHref, isLeaveReviewFeedback, attendanceReviewNoticeHref, isAttendanceReviewFeedback, meetingReflectionReviewHref, isMeetingReflectionReview, workReportNoticeHref, isWorkReportNotice, ideaReviewNoticeHref, isIdeaReviewFeedback, withdrawalReviewNoticeHref, isWithdrawalReviewFeedback, payslipNoticeHref, isPayslipNotice, issueNoticeHref } from "@/lib/notification-types";
+import { NOTIFICATION_TABS, notificationCategory, type NotificationTab, isSupervisionAlert, bossSubmissionNoticeHref, announcementFeedbackHref, isAnnouncementRetellFeedback, leaveReviewNoticeHref, isLeaveReviewFeedback, attendanceReviewNoticeHref, isAttendanceReviewFeedback, meetingReflectionReviewHref, isMeetingReflectionReview, workReportNoticeHref, isWorkReportNotice, ideaReviewNoticeHref, isIdeaReviewFeedback, withdrawalReviewNoticeHref, isWithdrawalReviewFeedback, payslipNoticeHref, isPayslipNotice, issueNoticeHref } from "@/lib/notification-types";
 import type { CUSTOMER_SITE_ALERT_TITLES } from "@/lib/notification-types";
 import { SubmissionNoticeDialog } from "@/components/submission-notice-dialog";
 
@@ -29,6 +29,13 @@ const TYPE_META: Record<string, { label: string; icon: typeof Ticket; href: (n: 
   工单完成: { label: "工单", icon: Ticket, href: (n) => `/issues?open=${n.related_id}` },
   待办指派: { label: "待办", icon: ListTodo, href: (n) => `/todos?todo=${n.related_id}` },
   待办完成: { label: "待办", icon: ListTodo, href: (n) => `/todos?todo=${n.related_id}` },
+  problem_assigned: { label: "问题", icon: Ticket, href: n => `/problems/${n.related_id}` },
+  problem_followup: { label: "问题", icon: Ticket, href: n => `/problems/${n.related_id}` },
+  problem_accepted: { label: "问题", icon: Ticket, href: n => `/problems/${n.related_id}` },
+  problem_rejected: { label: "问题", icon: Ticket, href: n => `/problems/${n.related_id}` },
+  日报提醒: { label: "日报", icon: FileText, href: () => "/work-reports" },
+  日报风险: { label: "日报", icon: FileText, href: n => `/work-reports?report=${n.related_id}` },
+  会议提醒: { label: "会议", icon: Bell, href: () => "/meetings" },
   规则更新: { label: "规则", icon: BookOpen, href: () => `/rules` },
   老板通知: { label: "老板通知", icon: Bell, href: () => `/announcements` },
 };
@@ -55,19 +62,19 @@ export default function NotificationsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [items, setItems] = useState<Notice[]>([]);
+  const [activeTab, setActiveTab] = useState<NotificationTab>("全部");
   const [loading, setLoading] = useState(true);
   const [submission, setSubmission] = useState<Notice | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    fetchWithAuth("/api/notifications", { cache: "no-store" })
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithAuth("/api/notifications?all=1", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setItems(Array.isArray(d) ? d : []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, [user?.name]);
+      .then((d) => { if (!cancelled) setItems(Array.isArray(d) ? d : []); })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.name]);
 
   const handleClick = (n: Notice) => {
     if (user?.role === "admin" && bossSubmissionNoticeHref(n)) {
@@ -98,20 +105,45 @@ export default function NotificationsPage() {
       .catch(() => {});
   };
 
+  const visibleItems = activeTab === "全部" ? items : items.filter(n => notificationCategory(n) === activeTab);
+  const unreadCounts = new Map<NotificationTab, number>();
+  for (const item of items) {
+    if (item.is_read) continue;
+    const category = notificationCategory(item);
+    unreadCounts.set(category, (unreadCounts.get(category) || 0) + 1);
+    unreadCounts.set("全部", (unreadCounts.get("全部") || 0) + 1);
+  }
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <div>
         <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]">消息中心</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">工单、待办、规则、老板通知、员工提交和客户站订单的系统提醒都在这</p>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">按业务分类查看系统提醒，点击分类切换通知</p>
       </div>
 
+      <div role="group" aria-label="通知业务分类" className="flex w-full min-w-0 gap-1 overflow-x-auto border-b border-[var(--border)] pb-2">
+        {NOTIFICATION_TABS.map(tab => {
+          const count = unreadCounts.get(tab) || 0;
+          return (
+            <button key={tab} type="button" aria-pressed={activeTab === tab} aria-controls="notification-list"
+              onClick={() => setActiveTab(tab)}
+              className={cn("flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-[var(--primary)]",
+                activeTab === tab ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]")}>
+              {tab}
+              {count > 0 && <span aria-label={`${count} 条未读`} className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-xs leading-4 text-white">{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div id="notification-list" aria-busy={loading}>
       {loading ? (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
-      ) : items.length === 0 ? (
-        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">暂无通知</p>
+      ) : visibleItems.length === 0 ? (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">{activeTab === "全部" ? "暂无通知" : `暂无${activeTab}通知`}</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {items.map((n) => {
+          {visibleItems.map((n) => {
             const meta = metaOf(n);
             const Icon = meta?.icon || Bell;
             const unread = !n.is_read;
@@ -152,6 +184,7 @@ export default function NotificationsPage() {
           })}
         </div>
       )}
+      </div>
       {user?.role === "admin" && submission && bossSubmissionNoticeHref(submission) && <SubmissionNoticeDialog key={submission.id}
         notice={submission} href={bossSubmissionNoticeHref(submission)!} onClose={() => setSubmission(null)}
         onConfirmed={id => {
