@@ -1,12 +1,13 @@
+import type { TrendDay } from './trend-model';
 import type { Gap, ModuleResult, Money, Row } from '@/lib/visualization/types';
-export type DetailSpec = { title: string; detail: 'orders' | 'parents' | 'finances' | 'billing' | 'pending'; basis?: 'current' | 'period'; subset?: string; status?: string; source?: string; currency?: string; category?: string };
+export type DetailSpec = { title: string; from?: string; end?: string; detail: 'orders' | 'parents' | 'finances' | 'billing' | 'pending'; basis?: 'current' | 'period'; subset?: string; status?: string; source?: string; currency?: string; category?: string };
 export type Filter = { from: string; end: string; source: string };
 export type Breakdown = { count: number; statuses: Record<string, number>; sources: Record<string, number>; awaitingConfirmation: number };
 export interface Snapshot {
   generatedAt: string;
   modules: {
-    orders: ModuleResult<{ current: Breakdown; period: Breakdown & { dateUnknownCount: number } }>;
-    parents: ModuleResult<{ current: { count: number; bySource: Record<string, number> }; period: { count: number }; withoutTrustedParent: number }>;
+    orders: ModuleResult<{ current: Breakdown; period: Breakdown & { dateUnknownCount: number }; trend: TrendDay[] }>;
+    parents: ModuleResult<{ current: { count: number; bySource: Record<string, number> }; period: { count: number; dateUnknownCount: number }; trend: TrendDay[]; withoutTrustedParent: number }>;
     finances: ModuleResult<{ currentIncome: Money; currentIncomeCount: number; missingVerification: { count: number; money: Money }; awaitingVerification: { count: number; money: Money }; notArrived: { count: number; money: Money } }>;
     billing: ModuleResult<{ currentDue: { CNY: number; unknownCount: number }; recordCount: number }>;
     pending: ModuleResult<{ current: { total: number; counts: Record<string, number> } }>;
@@ -21,7 +22,7 @@ export const gapText = (gaps: Gap[]) => gaps.map(g => `${gapNames[g.code] || 'éƒ
 export function nextDay(day: string) { const ms = Date.parse(day + 'T00:00:00Z'); return Number.isFinite(ms) ? new Date(ms + 86400000).toISOString().slice(0, 10) : ''; }
 export function initialFilter(): Filter { const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10); return { from: today.slice(0, 7) + '-01', end: today, source: 'all' }; }
 export function query(filter: Filter, spec?: DetailSpec, page = 1): string {
-  const params = new URLSearchParams({ from: filter.from, to: nextDay(filter.end), source: spec?.source || filter.source, detail: spec?.detail || 'orders', basis: spec?.basis || 'current', page: String(page), pageSize: '20' });
+  const params = new URLSearchParams({ from: spec?.from || filter.from, to: nextDay(spec?.end || filter.end), source: spec?.source || filter.source, detail: spec?.detail || 'orders', basis: spec?.basis || 'current', page: String(page), pageSize: '20' });
   for (const key of ['subset', 'status', 'currency', 'category'] as const) if (spec?.[key]) params.set(key, spec[key]);
   return params.toString();
 }

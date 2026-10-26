@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Clock3, LockKeyhole, RefreshCw, LoaderCircle, SlidersHorizontal } from 'lucide-react';
 import type { ModuleResult, Money } from '@/lib/visualization/types';
+import { CreationTrend } from './trend';
 import { DetailDialog } from './details';
 import { useOverviewResource } from './resource';
 import { categories, decimal, displayTime, gapText, initialFilter, query, sources, type DetailSpec, type Filter } from './model';
@@ -49,6 +50,7 @@ export function OverviewDashboard() {
         <ModuleView result={data.modules.orders} retry={refresh}>{o => <Card title="期间内部新增办理份" value={o.period.count} unit="份" note="包括后来取消和仍待确认的记录，不代表原下单日。" onClick={() => open({ title: '期间内部新增办理份', detail: 'orders', basis: 'period' })}><div className={s.chips}>{Object.entries(o.period.statuses).map(([status, count]) => <Chip key={status} onClick={() => open({ title: `期间新增 · ${status === 'unknown' ? '状态未记录' : status}`, detail: 'orders', basis: 'period', status })}>{status === 'unknown' ? '状态未记录' : status} {count}</Chip>)}<Chip onClick={() => open({ title: '期间新增 · 仍待确认', detail: 'orders', basis: 'period', subset: 'awaiting' })}>其中待确认 {o.period.awaitingConfirmation}</Chip>{o.period.dateUnknownCount > 0 && <Chip onClick={() => open({ title: '创建日期无法判断的办理份', detail: 'orders', subset: 'date_unknown' })}>另有日期未知 {o.period.dateUnknownCount}份</Chip>}</div></Card>}</ModuleView>
         <ModuleView result={data.modules.parents} retry={refresh}>{p => <Card title="期间内部新增父交易" value={p.period.count} unit="笔" note="按父记录内部创建 / 接收日期；可与办理份跨期。" onClick={() => open({ title: '期间内部新增父交易', detail: 'parents', basis: 'period' })} />}</ModuleView>
       </div></section>
+      <CreationTrend data={data} filter={applied} onOpen={open} onRetry={refresh} />
       <section className={s.section} aria-labelledby="pending-heading"><div className={s.sectionHead}><h2 id="pending-heading">老板待处理事项</h2><span>当前原业务分类 · 不适用订单来源或日期筛选</span></div><div className={s.grid}><ModuleView result={data.modules.pending} retry={refresh}>{p => <Card title="原清单待处理事项" value={p.current.total} unit="项" note="仅本清单事项，不与办理步骤、任务或其他待办相加。" onClick={() => open({ title: '老板待处理 · 原清单', detail: 'pending' })}><div className={s.chips}>{Object.entries(p.current.counts).map(([category, count]) => <Chip key={category} onClick={() => open({ title: `老板待处理 · ${categories[category]}`, detail: 'pending', category })}>{categories[category] || '原业务分类'} {count}</Chip>)}</div></Card>}</ModuleView></div></section>
       <p className={s.footerNote}><Clock3 size={12} className="mr-1 inline" />按当前保存记录读取，历史可能随业务核对与修订变化。本页不执行审批、付款、消息发送或同步重试。</p>
       <button className={`${s.action} mt-4`} onClick={refresh}><RefreshCw size={14} />重新读取总览</button>
