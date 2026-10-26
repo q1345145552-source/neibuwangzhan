@@ -1,6 +1,6 @@
 import { bossPendingSubmissions } from '../boss-submissions';
 import { readBilling } from '../commerce-ledger';
-import { classifyOrders, failed, moduleResult, money, orderAggregation, text, unique, validAmount } from './aggregate';
+import { classifyOrders, failed, moduleResult, money, orderAggregation, text, unique, validAmount, incomeReviewState } from './aggregate';
 import { QUERIES } from './queries';
 import { utcMillis } from './time';
 import { POLICY_VERSION, type Gap, type ModuleResult, type Options, type Reader, type Row } from './types';
@@ -55,8 +55,8 @@ export function overview(reader: Reader, options: Options, now = new Date()) {
       const refunds = new Set(all('refunds').map(r => String(r.finance_id)));
       financeDetails = rows.map(r => ({ ...r, amount_valid: validAmount(r.amount), currency_known: r.currency === 'CNY' || r.currency === 'THB', kind: refunds.has(String(r.id)) ? 'commerce_refund' : r.type === 'expense' ? 'cost' : 'income', href: '/orders/' + encodeURIComponent(text(r.order_id)) }));
       const paid = rows.filter(r => r.type === 'income' && r.status === 'paid');
-      const waiting = rows.filter(r => r.type === 'income' && ['待核对', 'pending'].includes(text(r.status)));
-      const notArrived = rows.filter(r => r.type === 'income' && r.status === '未到账');
+      const waiting = rows.filter(r => incomeReviewState(r) === 'waiting');
+      const notArrived = rows.filter(r => incomeReviewState(r) === 'not_arrived');
       const missingVerification = paid.filter(r => !text(r.verify_by) || utcMillis(r.verify_at) === null);
       const invalidMoney = money(rows).unknownCount;
       const gaps = [...baseGaps, ...(raw.conflicts ? [{ code: 'CONFLICTING_FINANCE_ID', count: raw.conflicts }] : []), ...(invalidMoney ? [{ code: 'MONEY_UNKNOWN', count: invalidMoney }] : [])];

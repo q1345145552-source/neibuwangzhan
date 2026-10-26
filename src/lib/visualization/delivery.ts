@@ -33,7 +33,7 @@ export function parseDelivery(url:URL):DeliveryOptions {
  const integer=(k:string,d:number,max:number)=>{const v=p.get(k)||String(d);if(!/^[1-9]\d*$/.test(v)||Number(v)>max)throw Error('QUERY');return Number(v);};
  return {source,status,material,owner,ownerUnassigned,bottleneck:bottleneck as BottleneckFilter,search,from,to,start,end,page:integer('page',1,1000000),pageSize:integer('pageSize',20,100)};
 }
-export function delivery(reader:Reader,o:DeliveryOptions,now:Date=new Date()) {
+export function delivery(reader:Reader,o:DeliveryOptions,now:Date=new Date(),allRows=false) {
  const failed:string[]=[],gaps:{code:string;count:number}[]=[];
  const read=(key:string,sql:string):Row[]|null=>{try{const u=unique(reader.all(sql),'id');if(u.conflicts)gaps.push({code:key,count:u.conflicts});return u.rows;}catch{failed.push(key);return null;}};
  const raw=read('orders',DELIVERY_QUERIES.orders);
@@ -119,6 +119,6 @@ export function delivery(reader:Reader,o:DeliveryOptions,now:Date=new Date()) {
  }).length;
  const summary={orders:selected.length,states: {} as Record<string,number>,materials:Object.fromEntries(MATERIALS.map(k=>[k,{items:0,orders:0}])) as Record<Material,{items:number;orders:number}>,materialUnknownOrders:0,stepsUnrecordedOrders:selected.filter(r=>r.steps?.length===0).length,materialUnknownFacts:selected.reduce((n,r)=>n+(r.counts?.unknown||0),0),dateUnknownOrders:rows.filter(r=>utcMillis(r.createdAt)===null).length,sourceUnknownOrders:rows.filter(r=>r.source==='unknown').length};
  for(const r of selected){summary.states[r.status]=(summary.states[r.status]||0)+1;if(!r.counts){summary.materialUnknownOrders++;summary.materials.unknown.orders++;continue;}for(const k of MATERIALS){summary.materials[k].items+=r.counts[k];if(r.counts[k])summary.materials[k].orders++;}}
- return {...base,status:failed.length||gaps.length||scopeUnknownOrders||evaluated.some(r=>r.warnings.length||['unknown','failed'].includes(r.bottleneck.timingState))?'unknown':'success',total:selected.length,items:selected.slice((o.page-1)*o.pageSize,o.page*o.pageSize),summary,bottlenecks:bottleneckSummary(evaluated),scopeUnknownOrders,selectionUnknownOrders,owners};
+ return {...base,status:failed.length||gaps.length||scopeUnknownOrders||evaluated.some(r=>r.warnings.length||['unknown','failed'].includes(r.bottleneck.timingState))?'unknown':'success',total:selected.length,items:allRows?selected:selected.slice((o.page-1)*o.pageSize,o.page*o.pageSize),summary,bottlenecks:bottleneckSummary(evaluated),scopeUnknownOrders,selectionUnknownOrders,owners};
 }
 export type DeliverySnapshot=ReturnType<typeof delivery> & {viewerRole:'admin'|'employee'};

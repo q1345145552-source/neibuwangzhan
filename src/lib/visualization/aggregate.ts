@@ -75,3 +75,8 @@ export function classifyOrders(orders: Row[], fulfills: Row[], inbox: Row[], par
   });
   return { rows: result, gaps: broken ? [{ code: 'BROKEN_RELATION', count: broken }] : [] };
 }
+
+/** Shared F5 classification; cancellation never removes existing income review facts. */
+export function incomeReviewState(row:Row):'waiting'|'not_arrived'|null {
+  return row.type==='income' ? ['待核对','pending'].includes(text(row.status)) ? 'waiting' : row.status==='未到账' ? 'not_arrived' : null : null;
+}
