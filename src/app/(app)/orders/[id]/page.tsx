@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText, DollarSign, Paperclip, Plus, Upload, MessageSquare, CheckCircle2, Circle, Pencil, Trash2, Edit3, Save, X, Undo2, Copy, CheckCheck, Link2, Ban } from "lucide-react";
 import { StepTimer } from "@/components/step-timer";
 import { useAuth } from "@/components/auth-provider";
-import { CustomerPicker, customerExists, isKnownCustomer, type PoolCustomer } from "@/components/customer-picker";
+import { CustomerPicker, canCreateOrderCustomer, customerExists, isKnownCustomer, pickCustomerHint, type PoolCustomer } from "@/components/customer-picker";
 import { fetchWithAuth, fetchOrder, updateStep, fetchDocuments, fetchFinances, uploadDocument, addFinance, updateFinance, deleteFinance, fetchStepNotes, addStepNote, deleteStepNote, fetchStepDocuments, markStepDocumentUploaded, fetchCertificates, addCertificate, updateCertificate, deleteCertificate, fetchEmployees, fetchBusinessTypes, updateOrder, deleteOrder, deleteDocument, type Employee } from "@/lib/api";
 import { orderStatusClass, orderStatusLabel, confirmOrder, openAuthedFile } from "@/lib/api";
 import type { BusinessType } from "@/lib/api";
@@ -624,7 +624,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const customerChanged = !order.source_system && nextCustomer !== String(order.customer_name || "").trim();
     const knownCustomer = customerChanged && (isKnownCustomer(customerPool, nextCustomer) || (!editNewCustomer && await customerExists(nextCustomer)));
     if (customerChanged && !knownCustomer && !editNewCustomer) {
-      setError("客户要从下拉里选客户管理里的客户，没有的点「新建客户」");
+      setError(pickCustomerHint(canCreateOrderCustomer(user?.role)));
       return;
     }
     setSavingOrder(true);
@@ -835,7 +835,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                   ) : (
                     <div className="mt-1">
-                      <CustomerPicker value={editFields.customer_name || ""} isNew={editNewCustomer} pool={customerPool} canCreate={user?.role === "admin" || user?.role === "employee"} keep={order.customer_name}
+                      <CustomerPicker value={editFields.customer_name || ""} isNew={editNewCustomer} pool={customerPool} canCreate={canCreateOrderCustomer(user?.role)} keep={order.customer_name}
                         className="h-9" onChange={(name, isNew) => { setEditFields(prev => ({ ...prev, customer_name: name })); setEditNewCustomer(isNew); }} />
                     </div>
                   )}

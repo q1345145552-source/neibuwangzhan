@@ -13,6 +13,16 @@ export function isKnownCustomer(pool: readonly PoolCustomer[], name: string): bo
   return !!n && pool.some(c => c.company_name.trim() === n);
 }
 
+/** 订单页能当场新建客户的人：员工、管理员（2026-10-27 起）；客户账号不行，跟接口 order-customer.ts 一致 */
+export function canCreateOrderCustomer(role: string | undefined): boolean {
+  return role === "admin" || role === "employee";
+}
+
+/** 客户名没从下拉里选时的提示：能新建的叫他点「新建客户」，不能的请管理员先建 */
+export function pickCustomerHint(canCreate: boolean): string {
+  return "客户要从下拉里选客户管理里的客户" + (canCreate ? "，没有的点「新建客户」" : "；客户管理里还没有的，请管理员先新建");
+}
+
 /**
  * 下拉名单外的名字去客户管理里核对一下：员工只看得到没人认领的和自己认领的客户，同事认领的打全名也算数。
  * 只回答有没有；查不了（断网等）当作没有，交给接口最后把关。
