@@ -2,7 +2,7 @@
  * 流程设置第 4 期 + 订单客户从客户管理里选（2026-10-16 老板选 1A、2A）。
  * - 流程能改步骤名、增删、调顺序，每步填「客户看到的名字」；第一步「方案确认」和「待分类」那套结构锁住。
  * - 老单（包括客户看到的名字）一点不变，不给客户发进度通知；新单、商城、客户站同步单、待分类改派按新流程和新名字。
- * - 员工建单/改单的客户要在客户管理里；没有的当场新建眼下只给管理员，建出来算「已合作」、没人认领。
+ * - 员工建单/改单的客户要在客户管理里；没有的当场新建员工、管理员都行（10-27 起，之前只给管理员），建出来算「潜在」、没人认领。
  * 临时库，不连外部地址。
  * Run: NODE_ENV=test DB_PATH=/tmp/xt-wfphase4-<新目录>/x.db node --import <tsx loader> scripts/test-workflow-phase4.mts
  */
@@ -253,20 +253,24 @@ await check('退回到第 1 版：建单回到程序里的原样（步骤名、�
 });
 
 // ---------- 2A：客户从客户管理里选 ----------
-await check('建单：客户管理里没有的不收；员工当场新建不行（客户管理原来的规矩：只有管理员能建客户）；管理员当场新建跟订单一起存，跟客户管理里新建的一样', async () => {
+await check('建单：客户管理里没有的不收；员工、管理员都能当场新建（10-27 起），跟订单一起存，跟客户管理里新建的一样；客户管理页录入客户照旧只给管理员', async () => {
   const body = { business_type_id: TM, sub_service_type: 'tm-reg' };
   const unknown = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { ...body, customer_name: '没建档的公司' });
   assert.equal(unknown.status, 400); assert.match(unknown.json.error, /客户管理里没有/);
-  const staffNew = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { ...body, customer_name: '没建档的公司', new_customer: true });
-  assert.equal(staffNew.status, 403); assert.match(staffNew.json.error, /管理员/);
   // 订单本身不合格（缺子类型）时，客户也不会先建出来
-  assert.equal((await call(ordersRoute.POST as never, admin, 'POST', '/api/orders', { business_type_id: TM, customer_name: '没建档的公司', new_customer: true })).status, 400);
+  assert.equal((await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { business_type_id: TM, customer_name: '没建档的公司', new_customer: true })).status, 400);
   assert.equal(db.prepare("SELECT 1 FROM customers WHERE company_name='没建档的公司'").get(), undefined);
-  const ok = await call(ordersRoute.POST as never, admin, 'POST', '/api/orders', { ...body, customer_name: '  没建档的公司  ', new_customer: true });
+  const ok = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { ...body, customer_name: '  没建档的公司  ', new_customer: true });
   assert.equal(ok.status, 201, JSON.stringify(ok.json));
   assert.equal(ok.json.customer_name, '没建档的公司');
-  const c = db.prepare("SELECT status, claimed_by, source_channel FROM customers WHERE company_name='没建档的公司'").get() as { status: string; claimed_by: string; source_channel: string };
+  const c = db.prepare("SELECT id, status, claimed_by, source_channel FROM customers WHERE company_name='没建档的公司'").get() as { id: number; status: string; claimed_by: string; source_channel: string };
   assert.deepEqual([c.status, c.claimed_by, c.source_channel], ['潜在', '', ''], '跟客户管理里新建的客户一样');
+  assert.ok(db.prepare("SELECT 1 FROM audit_logs WHERE action='录入客户' AND target_type='customer' AND target_id=? AND actor=?").get(String(c.id), A.name), '操作日志记的是建单的员工');
+  const byAdmin = await call(ordersRoute.POST as never, admin, 'POST', '/api/orders', { ...body, customer_name: '管理员新建的公司', new_customer: true });
+  assert.equal(byAdmin.status, 201, JSON.stringify(byAdmin.json));
+  // 客户管理页的「录入客户」没动：员工照旧不行
+  const customersRoute = await import('../src/app/api/customers/route');
+  assert.equal((await call(customersRoute.POST as never, A, 'POST', '/api/customers', { company_name: '员工在客户管理录的' })).status, 403);
   // 再建一张同一客户的单：员工直接选（已在客户管理里）
   const again = await call(ordersRoute.POST as never, A, 'POST', '/api/orders', { ...body, customer_name: '没建档的公司' });
   assert.equal(again.status, 201, JSON.stringify(again.json));
@@ -281,7 +285,7 @@ await check('改单：员工建的单改成客户管理里没有的客户不收�
   assert.equal(bad.status, 400);
   const good = await call(orderRoute.PATCH as never, A, 'PATCH', '/api/orders/ORD-P4-LEGACY', { customer_name: '新客户乙' }, 'ORD-P4-LEGACY');
   assert.equal(good.status, 200, JSON.stringify(good.json)); assert.equal(good.json.customer_name, '新客户乙');
-  const created = await call(orderRoute.PATCH as never, admin, 'PATCH', '/api/orders/ORD-P4-LEGACY', { customer_name: '改单时新建的公司', new_customer: true }, 'ORD-P4-LEGACY');
+  const created = await call(orderRoute.PATCH as never, A, 'PATCH', '/api/orders/ORD-P4-LEGACY', { customer_name: '改单时新建的公司', new_customer: true }, 'ORD-P4-LEGACY');
   assert.equal(created.status, 200, JSON.stringify(created.json));
   assert.equal((db.prepare("SELECT status FROM customers WHERE company_name='改单时新建的公司'").get() as { status: string }).status, '潜在');
   const synced = await call(orderRoute.PATCH as never, A, 'PATCH', `/api/orders/${oldSynced}`, { customer_name: '客户站账号改的名' }, oldSynced);

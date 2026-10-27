@@ -624,7 +624,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const customerChanged = !order.source_system && nextCustomer !== String(order.customer_name || "").trim();
     const knownCustomer = customerChanged && (isKnownCustomer(customerPool, nextCustomer) || (!editNewCustomer && await customerExists(nextCustomer)));
     if (customerChanged && !knownCustomer && !editNewCustomer) {
-      setError("客户要从下拉里选客户管理里的客户" + (user?.role === "admin" ? "，没有的点「新建客户」" : "；客户管理里还没有的，请管理员先新建"));
+      setError("客户要从下拉里选客户管理里的客户，没有的点「新建客户」");
       return;
     }
     setSavingOrder(true);
@@ -835,7 +835,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <input type="text" value={editFields.customer_name || ""} onChange={(e) => setEditFields(prev => ({ ...prev, customer_name: e.target.value }))} className="mt-1 w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]" />
                   ) : (
                     <div className="mt-1">
-                      <CustomerPicker value={editFields.customer_name || ""} isNew={editNewCustomer} pool={customerPool} canCreate={user?.role === "admin"} keep={order.customer_name}
+                      <CustomerPicker value={editFields.customer_name || ""} isNew={editNewCustomer} pool={customerPool} canCreate={user?.role === "admin" || user?.role === "employee"} keep={order.customer_name}
                         className="h-9" onChange={(name, isNew) => { setEditFields(prev => ({ ...prev, customer_name: name })); setEditNewCustomer(isNew); }} />
                     </div>
                   )}

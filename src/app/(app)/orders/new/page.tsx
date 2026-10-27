@@ -86,7 +86,7 @@ export default function NewOrderPage() {
     if (!form.customer_name.trim()) { setError("请选择客户"); return; }
     // 客户要从客户管理里选，没有的点「新建客户」（2026-10-16，2A）
     const known = isKnownCustomer(customerPool, form.customer_name) || (!newCustomer && await customerExists(form.customer_name));
-    if (!known && !newCustomer) { setError("客户要从下拉里选客户管理里的客户" + (user?.role === "admin" ? "，没有的点「新建客户」" : "；客户管理里还没有的，请管理员先新建")); return; }
+    if (!known && !newCustomer) { setError("客户要从下拉里选客户管理里的客户，没有的点「新建客户」"); return; }
     if (!form.business_type_id) { setError("请选择业务线"); return; }
     // 有具体服务的业务线必须选一个：不选会套成通用流程（如 FDA 不选就是通用 5 步），建完改不了（2026-10-15）
     if (availableSubServices.length > 0 && !form.sub_service_type) { setError("请选择子类型"); return; }
@@ -163,7 +163,7 @@ export default function NewOrderPage() {
           )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="customer_name" className="text-sm font-medium">客户名称</Label>
-            <CustomerPicker id="customer_name" value={form.customer_name} isNew={newCustomer} pool={customerPool} canCreate={user?.role === "admin"}
+            <CustomerPicker id="customer_name" value={form.customer_name} isNew={newCustomer} pool={customerPool} canCreate={user?.role === "admin" || user?.role === "employee"}
               onChange={(name, isNew) => { setForm(prev => ({ ...prev, customer_name: name })); setNewCustomer(isNew); }} />
           </div>
           {form.business_type_id === "2" && (

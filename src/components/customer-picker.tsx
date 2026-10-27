@@ -31,7 +31,7 @@ export async function customerExists(name: string): Promise<boolean> {
 
 /**
  * 订单的客户名称：从「客户管理」里选（2026-10-16 老板选 2A）。打字是用来搜的；
- * 客户管理里没有的，能新建的人（眼下是管理员）可以点「新建客户」，跟订单一起保存；其他人提示先请管理员建。
+ * 客户管理里没有的，员工、管理员都可以点「新建客户」（2026-10-27 起），跟订单一起保存；其他账号提示先请管理员建。
  */
 export function CustomerPicker({ id, value, isNew, onChange, pool, canCreate, keep, className }: {
   id?: string;
