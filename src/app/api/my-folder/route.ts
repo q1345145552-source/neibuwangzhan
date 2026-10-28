@@ -2,12 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth, isStaff } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { readJson } from "@/lib/req";
+import path from "node:path";
+import os from "node:os";
+import { uploadsDir } from "@/lib/uploads";
+import { deletePersonalFile } from "@/lib/personal-file-deletion";
 import { personalWorkspace } from "@/lib/workspace-data";
 
 export async function GET(req: NextRequest) {
   const user = await verifyAuth(req);
   if (!user) return NextResponse.json({error:"未登录"}, {status:401});
   if (!isStaff(user)) return NextResponse.json({error:"仅员工可用"}, {status:403});
+  const filename = req.nextUrl.searchParams.get("filename");
+  if (filename !== null) {
+    const db = getDb();
+    if (!db.prepare("SELECT 1 FROM personal_files p JOIN file_uploads u ON u.filename=p.filename WHERE p.filename=? AND p.owner_id=? AND u.uploaded_by_id=?").get(filename,user.id,user.id)) return NextResponse.json({error:"文件不存在或无权查看"},{status:403});
+    const history = db.prepare("SELECT id,old_note,new_note,changed_by,created_at FROM personal_file_note_history WHERE filename=? ORDER BY id DESC").all(filename);
+    return NextResponse.json({history},{headers:{"Cache-Control":"private, no-store"}});
+  }
   return NextResponse.json(personalWorkspace(getDb(), user), {headers:{"Cache-Control":"private, no-store"}});
 }
 
@@ -23,6 +34,18 @@ export async function POST(req: NextRequest) {
   if (folderId !== null && (!Number.isSafeInteger(folderId) || folderId <= 0)) return fail("文件夹编号无效");
   try {
     return db.transaction(() => {
+      if (body.action === "note") {
+        const filename = typeof body.filename === "string" ? body.filename : "";
+        if (typeof body.note_name !== "string" || body.note_name.trim().length > 200) return fail("备注名最多200个字");
+        const file = db.prepare("SELECT p.note_name FROM personal_files p JOIN file_uploads u ON u.filename=p.filename WHERE p.filename=? AND p.owner_id=? AND u.uploaded_by_id=?").get(filename,user.id,user.id) as {note_name:string}|undefined;
+        if (!file) return fail("文件不存在或不是你上传的文件",403);
+        const next = body.note_name.trim();
+        if (next !== file.note_name) {
+          db.prepare("UPDATE personal_files SET note_name=? WHERE filename=? AND owner_id=?").run(next,filename,user.id);
+          db.prepare("INSERT INTO personal_file_note_history(filename,old_note,new_note,changed_by_id,changed_by) VALUES(?,?,?,?,?)").run(filename,file.note_name,next,user.id,user.name);
+        }
+        return NextResponse.json({success:true});
+      }
       if (body.action !== "create" && folderId !== null && !db.prepare("SELECT 1 FROM personal_folders WHERE id = ? AND owner_id = ?").get(folderId, user.id)) return fail("文件夹不存在或无权操作", 404);
       if (body.action === "create" || body.action === "rename") {
         const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -57,5 +80,19 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("[我的文件夹] 保存失败",error);
     return fail("保存失败，请重试",500);
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await verifyAuth(req);
+  if (!user) return NextResponse.json({error:"未登录"}, {status:401});
+  if (!isStaff(user)) return NextResponse.json({error:"仅员工可用"}, {status:403});
+  const body = await readJson(req);
+  try {
+    const {status, ...result} = deletePersonalFile(getDb(), user.id, typeof body.filename === "string" ? body.filename : "", [uploadsDir,path.join(os.tmpdir(),"xiangtai-uploads")]);
+    return NextResponse.json(result,{status});
+  } catch (error) {
+    console.error("[我的文件夹] 删除文件失败",error);
+    return NextResponse.json({error:"删除失败，请重试"},{status:500});
   }
 }

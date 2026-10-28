@@ -65,6 +65,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const personal = formData.has("personal_folder_id");
+    const rawNote = personal ? formData.get("note_name") : null;
+    if (rawNote !== null && (typeof rawNote !== "string" || rawNote.trim().length > 200)) return NextResponse.json({error:"备注名最多200个字"},{status:400});
+    const noteName = typeof rawNote === "string" ? rawNote.trim() : "";
     const rawFolder = formData.get("personal_folder_id");
     const folderId = rawFolder === "" ? null : Number(rawFolder);
     if (personal) {
@@ -101,7 +104,10 @@ export async function POST(req: NextRequest) {
       db.transaction(() => {
         db.prepare("INSERT INTO file_uploads (filename, uploaded_by_id, uploaded_by_role, mime_type, size, original_name) VALUES (?, ?, ?, ?, ?, ?)")
           .run(safeName, auth.id, auth.role, file.type, buffer.length, file.name);
-        if (personal) db.prepare("INSERT INTO personal_files(filename,owner_id,folder_id) VALUES (?,?,?)").run(safeName,auth.id,folderId);
+        if (personal) {
+          db.prepare("INSERT INTO personal_files(filename,owner_id,folder_id,note_name) VALUES (?,?,?,?)").run(safeName,auth.id,folderId,noteName);
+          if (noteName) db.prepare("INSERT INTO personal_file_note_history(filename,old_note,new_note,changed_by_id,changed_by) VALUES(?,?,?,?,?)").run(safeName,"",noteName,auth.id,auth.name);
+        }
       })();
     } catch (error) {
       // An unregistered write is not exposed as an uploaded file.

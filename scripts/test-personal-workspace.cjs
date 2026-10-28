@@ -51,6 +51,9 @@ assert.equal(data.globalSearch(db,admin,'商标').find(g=>g.type==='reports').it
 let auth=user;
 require.cache[require.resolve('../src/lib/db.ts')]={id:'test-db',filename:'test-db',loaded:true,exports:{getDb:()=>db}};
 require.cache[require.resolve('../src/lib/auth.ts')]={id:'test-auth',filename:'test-auth',loaded:true,exports:{verifyAuth:async()=>auth,verifyToken:async()=>auth,isStaff:a=>['admin','employee'].includes(a.role)}};
+const testUploads=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'workspace-upload-notes-'));
+require.cache[require.resolve('../src/lib/uploads.ts')]={id:'test-uploads',filename:'test-uploads',loaded:true,exports:{uploadsDir:testUploads}};
+const uploadRoute=require('../src/app/api/upload/route.ts');
 const route=require('../src/app/api/my-folder/route.ts');
 const searchRoute=require('../src/app/api/search/route.ts');
 const fileRoute=require('../src/app/api/files/[filename]/route.ts');
@@ -78,7 +81,31 @@ const post=body=>route.POST(new NextRequest('http://localhost/api/my-folder',{me
  auth=null;assert.equal((await route.GET(new NextRequest('http://localhost/api/my-folder'))).status,401);
  auth={...user,role:'client'};assert.equal((await route.GET(new NextRequest('http://localhost/api/my-folder'))).status,403);assert.equal((await searchRoute.GET(new NextRequest('http://localhost/api/search?q=商标'))).status,403);
  auth=user;assert.equal((await searchRoute.GET(new NextRequest('http://localhost/api/search?q='+ 'a'.repeat(101)))).status,400);
+ // Notes are owner-only; original upload names remain intact; search is scoped.
+ auth=user;
+ assert.equal((await post({action:'note',filename:'own.pdf',note_name:'张三合同'})).status,200);
+ let noted=data.personalWorkspace(db,user).files[0];assert.equal(noted.title,'张三合同');assert.equal(noted.original_name,'商标合同.pdf');
+ assert.equal(data.globalSearch(db,user,'张三').find(g=>g.type==='files').items[0].title,'张三合同');
+ assert.ok(!data.globalSearch(db,other,'张三').find(g=>g.type==='files').items.length);
+ assert.equal((await post({action:'note',filename:'own.pdf',note_name:'张三合同新版'})).status,200);
+ const historyResponse=await route.GET(new NextRequest('http://localhost/api/my-folder?filename=own.pdf'));const history=(await historyResponse.json()).history;
+ assert.equal(history.length,2);assert.equal(history[0].old_note,'张三合同');assert.equal(history[0].new_note,'张三合同新版');assert.equal(history[0].changed_by,'甲');assert.ok(history[0].created_at);
+ assert.equal((await post({action:'note',filename:'own.pdf',note_name:'张三合同新版'})).status,200);assert.equal(db.prepare('SELECT COUNT(*) n FROM personal_file_note_history').get().n,2);
+ auth=other;assert.equal((await post({action:'note',filename:'own.pdf',note_name:'偷改'})).status,403);assert.equal((await route.GET(new NextRequest('http://localhost/api/my-folder?filename=own.pdf'))).status,403);
+ auth=admin;assert.equal((await post({action:'note',filename:'own.pdf',note_name:'偷改'})).status,403);
+ auth=user;assert.equal((await post({action:'note',filename:'own.pdf',note_name:'x'.repeat(201)})).status,400);
+ assert.equal((await post({action:'note',filename:'own.pdf',note_name:'   '})).status,200);assert.equal(data.personalWorkspace(db,user).files[0].title,'商标合同.pdf');
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM personal_file_note_history').get().n,3);
  const empty=await searchRoute.GET(new NextRequest('http://localhost/api/search?q=不存在'));assert.ok((await empty.json()).every(g=>!g.items.length));
- console.log('PASS: 7 search types, partial/literal matching, personal scopes, exact participants, malformed JSON, folder CRUD, duplicate names, record copy/move, upload ownership, private file search, reassignment, delete keeps uploads, authentication/authorization.');
- db.close();
-})().catch(err=>{console.error(err);process.exitCode=1;});
+ // Exercise the actual multipart upload handler, including initial note history.
+ for (const note of ['上传时备注','']) {
+   const form=new FormData();form.append('file',new File(['%PDF-fixture'],'original.pdf',{type:'application/pdf'}));form.append('personal_folder_id',String(folder2));if(note)form.append('note_name',note);
+   const uploaded=await uploadRoute.POST(new NextRequest('http://localhost/api/upload',{method:'POST',body:form}));assert.equal(uploaded.status,200);const file=await uploaded.json();const filename=file.url.split('/').at(-1);
+   assert(fs.existsSync(path.join(testUploads,filename)));const row=db.prepare('SELECT note_name FROM personal_files WHERE filename=?').get(filename);assert.equal(row.note_name,note);
+   assert.equal(data.personalWorkspace(db,user).files.find(f=>f.id===filename).title,note||'original.pdf');
+   assert.equal(db.prepare('SELECT COUNT(*) n FROM personal_file_note_history WHERE filename=?').get(filename).n,note?1:0);
+   assert.equal((await route.DELETE(new NextRequest('http://localhost/api/my-folder',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})}))).status,200);assert(!fs.existsSync(path.join(testUploads,filename)));assert.equal(db.prepare('SELECT COUNT(*) n FROM personal_file_note_history WHERE filename=?').get(filename).n,0);
+ }
+ console.log('PASS: 7 search types, partial/literal matching, personal scopes, exact participants, malformed JSON, folder CRUD, duplicate names, record copy/move, upload ownership, private file search, reassignment, delete keeps uploads, authentication/authorization, note naming/fallback, owner-only edit/history, exact old/new actor/time, no-op edits, length limit and private note keyword search, real multipart uploads with/without note, disk deletion and history cascade.');
+ db.close();fs.rmSync(testUploads,{recursive:true,force:true});
+})().catch(err=>{console.error(err);fs.rmSync(testUploads,{recursive:true,force:true});process.exitCode=1;});

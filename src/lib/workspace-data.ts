@@ -3,7 +3,7 @@ import { normalizeCompletedItems, completedItemText } from "./work-report-items"
 import type { PersonalWorkspace, WorkspaceGroup } from "./workspace-types";
 
 type Identity = { id: number; name: string; role: string };
-type Row = { id: string; title: string; summary: string; time: string; order_id?: string | null; filename?: string; folder_id?: number | null; completed_items?: string };
+type Row = { id: string; title: string; summary: string; time: string; order_id?: string | null; filename?: string; folder_id?: number | null; completed_items?: string; note_name?: string; original_name?: string };
 // 与会议列表相同：只接受参会人数组，按完整姓名匹配，不能用子串判断权限。
 const participantScope = `EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(participants) AND json_type(participants) = 'array' THEN participants ELSE '[]' END) p WHERE p.type = 'text' AND trim(p.value) = ?)`;
 const contains = (columns: string[]) => `(${columns.map(c => `instr(lower(COALESCE(${c}, '')), lower(?)) > 0`).join(" OR ")})`;
@@ -31,8 +31,8 @@ export function personalWorkspace(db: Database.Database, user: Identity): Person
   // 重新按当前权限解析引用；已删记录、转派给他人的记录不会通过收藏再次泄露。
   const visible = new Set(groups.flatMap(g => g.items.map(r => `${r.type}:${r.id}`)));
   const memberships = (db.prepare("SELECT r.* FROM personal_folder_records r JOIN personal_folders f ON f.id = r.folder_id WHERE f.owner_id = ?").all(user.id) as PersonalWorkspace["memberships"]).filter(r => visible.has(`${r.record_type}:${r.record_id}`));
-  const files = (db.prepare(`SELECT f.filename AS id, f.folder_id, COALESCE(NULLIF(u.original_name, ''), f.filename) AS title,
-    f.created_at AS time, '' AS summary FROM personal_files f JOIN file_uploads u ON u.filename = f.filename WHERE f.owner_id = ? ORDER BY f.created_at DESC, f.filename`).all(user.id) as Row[]).map(r => ({id: r.id, folder_id: r.folder_id ?? null, type: "files" as const, title: r.title, summary: "上传的文件", time: r.time, href: `/api/files/${encodeURIComponent(r.id)}`}));
+  const files = (db.prepare(`SELECT f.filename AS id, f.folder_id, f.note_name, COALESCE(NULLIF(u.original_name, ''), f.filename) AS original_name, COALESCE(NULLIF(f.note_name, ''), NULLIF(u.original_name, ''), f.filename) AS title,
+    f.created_at AS time, '' AS summary FROM personal_files f JOIN file_uploads u ON u.filename = f.filename WHERE f.owner_id = ? ORDER BY f.created_at DESC, f.filename`).all(user.id) as Row[]).map(r => ({id: r.id, folder_id: r.folder_id ?? null, note_name: r.note_name, original_name: r.original_name, type: "files" as const, title: r.title, summary: "上传的文件", time: r.time, href: `/api/files/${encodeURIComponent(r.id)}`}));
   return {groups, folders, memberships, files};
 }
 
@@ -44,14 +44,14 @@ export function globalSearch(db: Database.Database, user: Identity, keyword: str
   groups.push({type:"customers", label:"客户", items:customers.map(r => ({...r,id:String(r.id),type:"customers",href:`/customers/${encodeURIComponent(r.id)}`}))});
   // 原始上传名 + 历史文档/员工档案名称。员工档案和个人文件继续按所有者隔离。
   const files = db.prepare(`SELECT u.filename AS id,
-      COALESCE(NULLIF(u.original_name,''), (SELECT d.name FROM documents d WHERE d.file_url = '/api/files/' || u.filename LIMIT 1), (SELECT e.original_name FROM employee_files e WHERE e.filename = u.filename LIMIT 1), substr(u.filename, instr(u.filename, '_') + 1)) AS title,
+      COALESCE((SELECT NULLIF(p.note_name,'') FROM personal_files p WHERE p.filename=u.filename AND p.owner_id=?), NULLIF(u.original_name,''), (SELECT d.name FROM documents d WHERE d.file_url = '/api/files/' || u.filename LIMIT 1), (SELECT e.original_name FROM employee_files e WHERE e.filename = u.filename LIMIT 1), substr(u.filename, instr(u.filename, '_') + 1)) AS title,
       u.created_at AS time, '上传的文件' AS summary
     FROM file_uploads u
     WHERE NOT EXISTS(SELECT 1 FROM personal_files p WHERE p.filename = u.filename AND p.owner_id <> ?)
       AND (? = 'admin' OR u.uploaded_by_id = ? OR EXISTS(SELECT 1 FROM documents d WHERE d.file_url = '/api/files/' || u.filename) OR EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND e.employee_id = ?))
       AND (? = 'admin' OR NOT EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND e.employee_id <> ?))
-      AND (${contains(["u.original_name", "u.filename"])} OR EXISTS(SELECT 1 FROM documents d WHERE d.file_url = '/api/files/' || u.filename AND ${contains(["d.name"])}) OR EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND ${contains(["e.original_name"])}))
-    ORDER BY u.created_at DESC, u.filename`).all(user.id, user.role, user.id, user.id, user.role, user.id, keyword, keyword, keyword, keyword) as Row[];
+      AND (${contains(["u.original_name", "u.filename", "(SELECT p.note_name FROM personal_files p WHERE p.filename=u.filename)"])} OR EXISTS(SELECT 1 FROM documents d WHERE d.file_url = '/api/files/' || u.filename AND ${contains(["d.name"])}) OR EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND ${contains(["e.original_name"])}))
+    ORDER BY u.created_at DESC, u.filename`).all(user.id, user.id, user.role, user.id, user.id, user.role, user.id, keyword, keyword, keyword, keyword, keyword) as Row[];
   groups.push({type:"files",label:"文件",items:files.map(r=>({...r,id:r.id,type:"files",href:`/api/files/${encodeURIComponent(r.id)}`}))});
   const order = ["orders", "documents", "meetings", "reports", "todos", "customers", "files"];
   return groups.sort((a,b)=>order.indexOf(a.type)-order.indexOf(b.type));

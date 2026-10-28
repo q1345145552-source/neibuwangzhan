@@ -24,4 +24,16 @@ export function ensureWorkspaceSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_personal_folders_owner ON personal_folders(owner_id);
     CREATE INDEX IF NOT EXISTS idx_personal_files_owner ON personal_files(owner_id);
   `);
+  const columns = db.prepare("PRAGMA table_info(personal_files)").all() as {name:string}[];
+  if (!columns.some(column=>column.name === "note_name")) db.exec("ALTER TABLE personal_files ADD COLUMN note_name TEXT NOT NULL DEFAULT ''");
+  db.exec(`CREATE TABLE IF NOT EXISTS personal_file_note_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename TEXT NOT NULL REFERENCES personal_files(filename) ON DELETE CASCADE,
+    old_note TEXT NOT NULL,
+    new_note TEXT NOT NULL,
+    changed_by_id INTEGER NOT NULL,
+    changed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_personal_file_note_history ON personal_file_note_history(filename, id DESC);`);
 }

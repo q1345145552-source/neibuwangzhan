@@ -15,7 +15,8 @@ export interface WorkspaceGroup {
 }
 export interface PersonalFolder { id: number; name: string }
 export interface FolderMembership { folder_id: number; record_type: PersonalRecordType; record_id: string }
-export interface PersonalFile extends WorkspaceRecord { folder_id: number | null }
+export interface PersonalFile extends WorkspaceRecord { folder_id: number | null; note_name?: string; original_name?: string }
+export interface PersonalFileNoteHistory { id: number; old_note: string; new_note: string; changed_by: string; created_at: string }
 export interface PersonalWorkspace {
   groups: WorkspaceGroup[];
   folders: PersonalFolder[];
