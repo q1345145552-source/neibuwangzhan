@@ -4,10 +4,10 @@ import { getDb } from "@/lib/db";
 import { readJson } from "@/lib/req";
 import { sourceOrderNoOf } from "@/lib/order-confirm";
 import { requestProgressFlush } from "@/lib/progress-sync";
-import { customerOrderLink, defaultServiceTitle, pushBlocker, pushOrderToStorefront, StorefrontPushError } from "@/lib/storefront-push";
+import { customerOrderLink, defaultServiceTitle, ownerAccount, pushBlocker, pushOrderToStorefront, StorefrontPushError } from "@/lib/storefront-push";
 
 // GET /api/orders/:id/storefront-push — 这张单在业务系统里没有、客户链接（2026-10-22 老板选 B）
-// 员工都能看、复制客户链接；推单只给管理员
+// 员工都能看、复制客户链接、推单（2026-10-28 起推单不再只给管理员；新单在建单时就直接挂到客户账号下）
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -28,8 +28,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { order, reason } = pushBlocker(db, id);
   if (!order) return NextResponse.json({ error: "订单不存在" }, { status: 404 });
   const names = reason && !order.business_type_name ? null : defaultServiceTitle(order);
+  // 客户名称就是某个账号的客户群名：推单框直接选上这个账号，不让换
+  const owner = ownerAccount(db, order.customer_name);
   return NextResponse.json({
-    linked: false, can_push: auth.role === "admin" && !reason, reason,
+    linked: false, can_push: !reason, reason,
+    account: owner ? { id: owner.account_id, name: "", phone: "", email: owner.login, group_name: owner.group_name } : null,
     prefill: { title: names?.title || "", amount: order.currency === "CNY" && order.total_amount > 0 ? order.total_amount : null },
     original: { amount: order.total_amount, currency: order.currency },
   });
@@ -39,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  if (auth.role !== "admin") return NextResponse.json({ error: "只有管理员能推单" }, { status: 403 });
+  if (!isStaff(auth)) return NextResponse.json({ error: "仅员工可操作" }, { status: 403 });
   const { id } = await params;
   try {
     const result = await pushOrderToStorefront(getDb(), id, await readJson(req), auth.name);

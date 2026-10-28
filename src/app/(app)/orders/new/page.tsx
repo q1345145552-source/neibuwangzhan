@@ -6,11 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save } from "lucide-react";
-import { fetchBusinessTypes, fetchEmployees, createOrder, fetchWithAuth } from "@/lib/api";
-import { useAuth } from "@/components/auth-provider";
-import { CustomerPicker, canCreateOrderCustomer, customerExists, isKnownCustomer, pickCustomerHint, type PoolCustomer } from "@/components/customer-picker";
+import { fetchBusinessTypes, fetchEmployees, createOrder } from "@/lib/api";
+import { StorefrontAccountPicker, accountLoginOf } from "@/components/storefront-account-picker";
 import { subServices } from "@/lib/constants";
-import type { BusinessType, Employee } from "@/lib/api";
+import type { BusinessType, Employee, StorefrontAccount } from "@/lib/api";
 
 export default function NewOrderPage() {
   const router = useRouter();
@@ -22,17 +21,15 @@ export default function NewOrderPage() {
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [appliedBizName, setAppliedBizName] = useState<string | null>(null);
-  const { user } = useAuth();
-  const [customerPool, setCustomerPool] = useState<PoolCustomer[]>([]);
-  // 客户管理里没有、在下拉里点了「新建客户」（2A）
-  const [newCustomer, setNewCustomer] = useState(false);
+  // 客户 = 客户在业务系统的账号（2026-10-28 老板：订单直接挂到客户账号下，提交就推过去，客户登录就看得到）
+  const [account, setAccount] = useState<StorefrontAccount | null>(null);
+  // 选的老账号还没有客户群名时补的群名
+  const [groupName, setGroupName] = useState("");
   const [form, setForm] = useState({
     business_type_id: "",
-    customer_name: "",
     responsible_person: "",
     description: "",
     total_amount: "",
-    currency: "CNY",
     sub_service_type: "",
     trademark_name: "",
     address_type: "client",
@@ -46,7 +43,6 @@ export default function NewOrderPage() {
   useEffect(() => {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => setError("加载业务线失败"));
     fetchEmployees().then(setEmployees).catch(() => {});
-    fetchWithAuth("/api/customers").then(r => r.json()).then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // 业务线加载完成后，根据 URL 上的 biz 参数预选一次（渲染期间派生状态，而非在 effect 里 setState）
@@ -83,33 +79,39 @@ export default function NewOrderPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!form.customer_name.trim()) { setError("请选择客户"); return; }
-    // 客户要从客户管理里选，没有的点「新建客户」（2026-10-16，2A）
-    const known = isKnownCustomer(customerPool, form.customer_name) || (!newCustomer && await customerExists(form.customer_name));
-    if (!known && !newCustomer) { setError(pickCustomerHint(canCreateOrderCustomer(user?.role))); return; }
+    if (!account) { setError("请选客户：搜客户群名或登录名，新客户点「开新客户账号」"); return; }
+    if (!account.group_name && !groupName.trim()) { setError("这个客户账号还没有客户群名，请补一个"); return; }
     if (!form.business_type_id) { setError("请选择业务线"); return; }
     // 有具体服务的业务线必须选一个：不选会套成通用流程（如 FDA 不选就是通用 5 步），建完改不了（2026-10-15）
     if (availableSubServices.length > 0 && !form.sub_service_type) { setError("请选择子类型"); return; }
+    const amount = Number(form.total_amount);
+    if (!form.total_amount.trim() || !Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) {
+      setError("请填金额（人民币，大于 0，最多两位小数）：客户登录就能看到这张单的账单"); return;
+    }
     setLoading(true);
     try {
       const created = await createOrder({
-        customer_name: form.customer_name.trim(),
-        new_customer: newCustomer && !known,
+        customer_name: account.group_name || groupName.trim(),
+        storefront_account_id: account.id,
+        group_name: account.group_name ? undefined : groupName.trim(),
+        account_login: accountLoginOf(account),
         business_type_id: Number(form.business_type_id),
         responsible_person: form.responsible_person,
         description: form.description,
-        total_amount: Number(form.total_amount) || 0,
-        currency: form.currency,
+        total_amount: amount,
+        currency: "CNY",
         sub_service_type: form.sub_service_type,
         trademark_name: form.business_type_id === "2" ? form.trademark_name : "",
         address_type: isAddressBiz ? form.address_type : "client",
         monthly_rent: isAddressBiz && form.address_type === "xiangtai" ? Number(form.monthly_rent) || 0 : 0,
       });
-      // 建完直接进这张单（接着派人、传资料）；用 replace，详情页点返回回到原来的列表而不是空表单
-      router.replace(created?.id ? `/orders/${created.id}` : "/orders");
+      // 订单建好了但没挂到客户账号（业务系统连不上等）：说清楚，到订单页「业务系统」里再推
+      if (created?.storefront_error) window.alert(`订单建好了，但还没挂到客户账号：${created.storefront_error}\n到订单页右边「业务系统」点「推到业务系统」再试一次。`);
+      // 建完直接进这张单（接着派人、传资料、复制客户链接）；用 replace，详情页点返回回到原来的列表而不是空表单
+      // 跳转期间按钮保持「提交中」，别让人再点一次又建一张（这张单客户马上看得到）
+      router.replace(created?.id ? `/orders/${encodeURIComponent(created.id)}` : "/orders");
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建订单失败，稍后再试");
-    } finally {
       setLoading(false);
     }
   };
@@ -162,9 +164,9 @@ export default function NewOrderPage() {
           </div>
           )}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="customer_name" className="text-sm font-medium">客户名称</Label>
-            <CustomerPicker id="customer_name" value={form.customer_name} isNew={newCustomer} pool={customerPool} canCreate={canCreateOrderCustomer(user?.role)}
-              onChange={(name, isNew) => { setForm(prev => ({ ...prev, customer_name: name })); setNewCustomer(isNew); }} />
+            <Label className="text-sm font-medium">客户</Label>
+            <StorefrontAccountPicker account={account} onAccount={setAccount} groupName={groupName} onGroupName={setGroupName} />
+            <p className="text-[0.7rem] text-[var(--muted-foreground)]">提交后这张单就挂到客户账号下，客户登录业务系统就能看到进度和账单</p>
           </div>
           {form.business_type_id === "2" && (
           <div className="flex flex-col gap-2">
@@ -180,14 +182,9 @@ export default function NewOrderPage() {
             </select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="total_amount" className="text-sm font-medium">预估金额</Label>
-            <div className="flex gap-2">
-              <Input id="total_amount" name="total_amount" type="number" value={form.total_amount} onChange={handleChange} className="h-10 flex-1" placeholder="0" />
-              <select name="currency" value={form.currency} onChange={handleChange} className="h-10 w-20 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)]">
-                <option value="CNY">¥ 人民币</option>
-                <option value="THB">฿ 泰铢</option>
-              </select>
-            </div>
+            <Label htmlFor="total_amount" className="text-sm font-medium">金额（人民币）</Label>
+            <Input id="total_amount" name="total_amount" type="number" min="0" step="0.01" value={form.total_amount} onChange={handleChange} className="h-10" placeholder="客户账单上的金额" />
+            <p className="text-[0.7rem] text-[var(--muted-foreground)]">客户登录就能看到这个金额的账单；泰铢的请换算成人民币填</p>
           </div>
         </div>
 

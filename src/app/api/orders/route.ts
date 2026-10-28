@@ -8,7 +8,10 @@ import { getDb, getOrderStepsWithDocs, logOperation } from "@/lib/db";
 import { subServices } from "@/lib/constants";
 import { isStepClosed, currentOpenSteps } from "@/lib/step-status";
 import { currentStepTimings } from "@/lib/step-overdue";
-import { checkOrderCustomer, createOrderCustomer } from "@/lib/order-customer";
+import { checkOrderCustomer, createOrderCustomer, customerForGroupName } from "@/lib/order-customer";
+import { checkGroupName, groupNameTaken, GroupNameError, linkedAccount, rememberGroupName } from "@/lib/storefront-accounts";
+import { pushOrderToStorefront, StorefrontPushError } from "@/lib/storefront-push";
+import { requestProgressFlush } from "@/lib/progress-sync";
 import { awaitingConfirmationSql } from "@/lib/order-confirm";
 import { orderNumberInfo } from "@/lib/order-display-no";
 
@@ -136,8 +139,8 @@ export async function POST(req: NextRequest) {
 
   const _e = validateEnums({ "orders.currency": currency });
   if (_e) return NextResponse.json({ error: _e }, { status: 400 });
-  if (!customer_name || !business_type_id) {
-    return NextResponse.json({ error: "请填写客户名和业务线" }, { status: 400 });
+  if ((!customer_name && !body.storefront_account_id) || !business_type_id) {
+    return NextResponse.json({ error: "请选客户和业务线" }, { status: 400 });
   }
 
   const id = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -157,13 +160,33 @@ export async function POST(req: NextRequest) {
   if (options.length && !options.some((o) => o.key === ssType)) {
     return NextResponse.json({ error: "请选择子类型" }, { status: 400 });
   }
-  // 客户要从「客户管理」里选，没有的当场新建（2026-10-16，2A，见 order-customer.ts）
-  const customer = checkOrderCustomer(db, customer_name, body.new_customer, auth.role);
+  // 2026-10-28 老板：建单直接挂到客户在业务系统的账号下（账号在内部开：登录名、密码、客户群名），提交就推过去，不用再另外推。
+  // 订单上的客户名称就是客户群名，客户管理里没有就跟订单一起录进去（customerForGroupName）。
+  const accountId = String(body.storefront_account_id ?? "").trim();
+  let account: { account_id: string; group_name: string; login: string; known: boolean } | null = null;
+  if (accountId) {
+    if (accountId.length > 64) return NextResponse.json({ error: "客户账号不对" }, { status: 400 });
+    const known = linkedAccount(db, accountId);
+    let groupName: string;
+    try { groupName = known ? known.group_name : checkGroupName(body.group_name); }
+    catch (e) { return NextResponse.json({ error: e instanceof GroupNameError ? e.message : "请填客户群名" }, { status: 400 }); }
+    const taken = known ? null : groupNameTaken(db, groupName, accountId);
+    if (taken) return NextResponse.json({ error: `客户群名「${taken.group_name}」已经给了账号 ${taken.login || taken.account_id}，换一个名字，或者直接选那个账号` }, { status: 409 });
+    // 业务系统只收人民币，客户看得到账单：金额要填准
+    const amount = Number(total_amount);
+    if ((currency || "CNY") !== "CNY") return NextResponse.json({ error: "客户看到的账单只收人民币，金额请填人民币" }, { status: 400 });
+    if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6)
+      return NextResponse.json({ error: "请填金额（人民币，大于 0，最多两位小数）：客户登录就能看到这张单的账单" }, { status: 400 });
+    account = { account_id: accountId, group_name: groupName, login: known?.login || String(body.account_login ?? "").trim().slice(0, 254), known: !!known };
+  }
+  // 没选账号的（老接口）：客户要从「客户管理」里选，没有的当场新建（2026-10-16，2A，见 order-customer.ts）
+  const customer = account ? customerForGroupName(db, account.group_name) : checkOrderCustomer(db, customer_name, body.new_customer, auth.role);
   if (!customer.ok) return NextResponse.json({ error: customer.error }, { status: customer.status });
 
   try {
     const insertAll = db.transaction(() => {
       if (customer.create) createOrderCustomer(db, customer.name, auth.name || "", id);
+      if (account && !account.known) rememberGroupName(db, account, auth.name || "");
       const insParams = [id, customer.name, business_type_id, ssType, address_type || "client", monthly_rent || 0, responsible_person || "", description || "", total_amount || 0, currency || "CNY", trademark_name || "", now, now];
       db.prepare(
         "INSERT INTO orders (id, customer_name, business_type_id, sub_service_type, address_type, monthly_rent, status, responsible_person, description, total_amount, currency, trademark_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '待处理', ?, ?, ?, ?, ?, ?, ?)"
@@ -204,6 +227,21 @@ export async function POST(req: NextRequest) {
     if (poolCustomer && poolCustomer.claimed_by) {
       const reason = `成交订单 ORD-关联客户「${customer.name}」`;
       db.prepare("INSERT INTO points_records (employee_name, points, reason, rule_key, ref_type, ref_id, created_by) VALUES (?, 10, ?, 'customer_deal', 'customer', ?, 'system')").run(poolCustomer.claimed_by, reason, String(poolCustomer.id));
+    }
+
+    // 挂到客户账号：建好就推过去（编号换成业务系统单号）。推不过去订单照样建好，员工在订单页「业务系统」里再推
+    if (account) {
+      try {
+        const pushed = await pushOrderToStorefront(db, id, { customer_id: account.account_id, amount: Number(total_amount) }, auth.name || "");
+        requestProgressFlush();
+        const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(pushed.id);
+        return NextResponse.json({ ...(order as object), storefront: { source_order_no: pushed.source_order_no, link: pushed.link, pending: pushed.pending } }, { status: 201 });
+      } catch (error) {
+        if (!(error instanceof StorefrontPushError)) console.error("[POST /api/orders] 建单后推到业务系统失败:", error);
+        // 账号在业务系统里没了 / 停用了：pushOrderToStorefront 已经把它的客户群名放开
+        const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+        return NextResponse.json({ ...(order as object), storefront_error: error instanceof StorefrontPushError ? error.message : "推到业务系统失败" }, { status: 201 });
+      }
     }
 
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);

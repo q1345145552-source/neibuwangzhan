@@ -33,6 +33,16 @@ export function checkOrderCustomer(db: Database.Database, rawName: unknown, want
 }
 
 /**
+ * 建单挂到客户的业务系统账号时（2026-10-28），订单上的客户名称就是客户群名：
+ * 客户管理里有（前后空格、大小写不算）就用那条的原名，没有就跟订单一起录进去，不用员工另外去客户管理登记。
+ */
+export function customerForGroupName(db: Database.Database, groupName: string): { ok: true; name: string; create: boolean } {
+  const stored = db.prepare(`SELECT company_name FROM customers WHERE lower(trim(company_name)) = lower(?)
+    ORDER BY company_name = ? DESC, trim(company_name) = ? DESC LIMIT 1`).get(groupName, groupName, groupName) as { company_name: string } | undefined;
+  return stored ? { ok: true, name: stored.company_name, create: false } : { ok: true, name: groupName, create: true };
+}
+
+/**
  * 当场新建客户：放在建单/改单的事务里调。跟客户管理里管理员点「新建客户」写的一样（只填公司名，状态默认「潜在」），
  * 记同样的「录入客户」操作日志。别人刚好同时建了同名的，就直接用那条。
  */

@@ -16,16 +16,17 @@ function randomPassword(): string {
   return String(Math.floor(10_000_000 + Math.random() * 90_000_000));
 }
 
-function accountLine(a: Pick<StorefrontAccount, "name" | "phone" | "email">): string {
-  return [a.name, a.phone, a.email].filter(Boolean).join(" · ");
+function accountLine(a: Pick<StorefrontAccount, "name" | "phone" | "email" | "group_name">): string {
+  return a.group_name ? `${a.group_name}（${a.phone || a.email}）` : [a.name, a.phone, a.email].filter(Boolean).join(" · ");
 }
 
 /**
- * 业务系统（2026-10-22 老板选 B）：员工在内部录的线下单，管理员推到客户在业务系统的账号下；
+ * 业务系统（2026-10-22 老板选 B）：员工在内部录的线下单，推到客户在业务系统的账号下；
  * 推过去后显示客户链接，复制发给客户，客户点开、登录后直接看到这张单的进度和账单。
+ * 2026-10-28 起新建订单时选了客户账号就自动推过去；这里只剩老单（或建单时没推过去的）要手动推，员工都能推。
  * 客户网上下的单本来就在业务系统里，也能复制链接。
  */
-export function StorefrontPushCard({ orderId, isAdmin, onPushed }: { orderId: string; isAdmin: boolean; onPushed: (newId: string) => void }) {
+export function StorefrontPushCard({ orderId, canPush, onPushed }: { orderId: string; canPush: boolean; onPushed: (newId: string) => void }) {
   const [state, setState] = useState<StorefrontPushState | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -69,7 +70,7 @@ export function StorefrontPushCard({ orderId, isAdmin, onPushed }: { orderId: st
     );
   }
 
-  if (!isAdmin || (!state.can_push && !state.reason)) return null;
+  if (!canPush || (!state.can_push && !state.reason)) return null;
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
       <div className="mb-2 flex items-center gap-2">
@@ -97,9 +98,12 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<StorefrontAccount[]>([]);
   const [searching, setSearching] = useState(false);
-  const [account, setAccount] = useState<StorefrontAccount | null>(null);
-  const [newAccount, setNewAccount] = useState({ name: "", phone: "", email: "", password: randomPassword() });
+  // 这张单的客户名称就是某个账号的客户群名：直接选上那个账号，不能换（2026-10-28）
+  const fixedAccount = state.account ?? null;
+  const [account, setAccount] = useState<StorefrontAccount | null>(fixedAccount);
+  const [newAccount, setNewAccount] = useState({ login: "", group_name: "", password: randomPassword() });
   const [createdPassword, setCreatedPassword] = useState("");
+  const [groupWarning, setGroupWarning] = useState("");
   const [title, setTitle] = useState(state.prefill.title);
   const [amount, setAmount] = useState(state.prefill.amount != null ? String(state.prefill.amount) : "");
   const [busy, setBusy] = useState(false);
@@ -125,9 +129,10 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
   const createAccount = async () => {
     setBusy(true); setMessage("");
     try {
-      const created = await createStorefrontCustomer(newAccount);
+      const created = await createStorefrontCustomer({ login: newAccount.login.trim(), group_name: newAccount.group_name.trim(), password: newAccount.password });
       setAccount(created);
       setCreatedPassword(newAccount.password);
+      setGroupWarning(created.group_warning || "");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "建客户账号失败");
     } finally { setBusy(false); }
@@ -186,22 +191,22 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">客户在业务系统的账号</span>
-                {!account && (
+                {!account && !fixedAccount && (
                   <button className="text-xs text-[var(--primary)] hover:underline" onClick={() => { setMode(mode === "search" ? "create" : "search"); setMessage(""); }}>
-                    {mode === "search" ? "客户还没有账号，新建一个" : "已有账号，去搜"}
+                    {mode === "search" ? "客户还没有账号，开一个" : "已有账号，去搜"}
                   </button>
                 )}
               </div>
               {account ? (
                 <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-xs">
                   <span className="flex-1">{accountLine(account)}{createdPassword && <span className="ml-1 text-[var(--muted-foreground)]">（刚建，初始密码 {createdPassword}）</span>}</span>
-                  {!createdPassword && <button className="text-[var(--primary)] hover:underline" onClick={() => setAccount(null)}>换一个</button>}
+                  {!createdPassword && !fixedAccount && <button className="text-[var(--primary)] hover:underline" onClick={() => setAccount(null)}>换一个</button>}
                 </div>
               ) : mode === "search" ? (
                 <>
                   <div className="relative">
                     <Search className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-                    <Input value={q} onChange={e => setQ(e.target.value)} placeholder="搜客户名字、手机号或邮箱" className="pl-7" autoFocus />
+                    <Input value={q} onChange={e => setQ(e.target.value)} placeholder="搜客户群名、登录名或手机号" className="pl-7" autoFocus />
                   </div>
                   <div className="max-h-48 overflow-y-auto rounded-md border border-[var(--border)]">
                     {searching && results.length === 0 ? <p className="p-3 text-xs text-[var(--muted-foreground)]"><Loader2 className="mr-1 inline size-3 animate-spin" />查找中…</p>
@@ -213,11 +218,10 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
                 </>
               ) : (
                 <div className="space-y-2 rounded-md border border-[var(--border)] p-3">
-                  <Input value={newAccount.name} onChange={e => setNewAccount({ ...newAccount, name: e.target.value })} placeholder="客户名字（必填）" />
-                  <Input value={newAccount.phone} onChange={e => setNewAccount({ ...newAccount, phone: e.target.value })} placeholder="手机号（客户用它登录，手机号和邮箱填一个）" />
-                  <Input value={newAccount.email} onChange={e => setNewAccount({ ...newAccount, email: e.target.value })} placeholder="邮箱（选填）" />
+                  <Input value={newAccount.login} onChange={e => setNewAccount({ ...newAccount, login: e.target.value })} placeholder="登录名：手机号、邮箱，或字母开头的字母数字（客户用它登录）" />
+                  <Input value={newAccount.group_name} onChange={e => setNewAccount({ ...newAccount, group_name: e.target.value })} placeholder="客户群名（只有内部看得到）" />
                   <Input value={newAccount.password} onChange={e => setNewAccount({ ...newAccount, password: e.target.value })} placeholder="初始密码（至少 6 位）" />
-                  <Button size="sm" variant="outline" className="gap-1" disabled={busy || !newAccount.name.trim() || (!newAccount.phone.trim() && !newAccount.email.trim()) || newAccount.password.length < 6} onClick={createAccount}>
+                  <Button size="sm" variant="outline" className="gap-1" disabled={busy || !newAccount.login.trim() || !newAccount.group_name.trim() || newAccount.password.length < 6} onClick={createAccount}>
                     <UserPlus className="size-3.5" />建账号
                   </Button>
                 </div>
@@ -237,6 +241,7 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
               )}
             </section>
 
+            {groupWarning && <p className="text-xs text-[oklch(0.40_0.14_85)]">{groupWarning}</p>}
             <p className="text-[0.7rem] text-[var(--muted-foreground)]">推过去以后，客户在业务系统能看到这张单的进度和账单，能传付款水单；收到钱后在「客户付款」里点确认收款。这张单的编号会换成业务系统的单号。</p>
             {message && <p className="text-xs text-[var(--destructive)]">{message}</p>}
             <div className="flex justify-end gap-2">

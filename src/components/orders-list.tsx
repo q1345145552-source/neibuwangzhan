@@ -157,7 +157,7 @@ export function OrdersList({ unclassifiedOnly = false }: { unclassifiedOnly?: bo
             <Download className="size-3.5" />导出
           </button>
           {/* 没有订单也能给客户开业务系统账号（2026-10-26 老板选 A），只给管理员 */}
-          {user?.role === "admin" && !unclassifiedOnly && <OpenCustomerAccountButton />}
+          {(user?.role === "admin" || user?.role === "employee") && !unclassifiedOnly && <OpenCustomerAccountButton />}
           <Link href="/orders/new" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] transition-all hover:bg-[color-mix(in_oklch,var(--primary),var(--foreground)_15%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
             <Plus className="size-3.5" aria-hidden="true" />新建订单
           </Link>

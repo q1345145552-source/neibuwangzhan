@@ -447,6 +447,11 @@ export async function createOrder(data: {
   trademark_name?: string;
   /** 客户管理里没有、当场新建（2A） */
   new_customer?: boolean;
+  /** 挂到客户在业务系统的账号下（2026-10-28）：提交就推过去 */
+  storefront_account_id?: string;
+  /** 这个账号还没有客户群名时填 */
+  group_name?: string;
+  account_login?: string;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -455,7 +460,7 @@ export async function createOrder(data: {
   });
   const resData = await res.json();
   if (!res.ok) throw new Error(resData.error || "创建订单失败");
-  return resData as Order;
+  return resData as Order & { storefront?: { source_order_no: string; link: string | null; pending: boolean }; storefront_error?: string };
 }
 
 export async function updateOrder(id: string, data: Partial<{ customer_name: string; business_type_id: number; description: string; responsible_person: string; total_amount: number; sub_service_type: string; address_type: string; monthly_rent: number; currency?: string; trademark_name?: string; cancel?: boolean; restore?: boolean; cancel_reason?: string; new_customer?: boolean }>) {
@@ -503,10 +508,12 @@ export async function confirmOrderPayment(id: string): Promise<OrderPayment & { 
 }
 
 // 线下单推到业务系统（2026-10-22 老板选 B）
-export type StorefrontAccount = { id: string; name: string; phone: string; email: string; created_at?: string };
+export type StorefrontAccount = { id: string; name: string; phone: string; email: string; created_at?: string; /** 客户群名：只在内部，客户看不到 */ group_name?: string };
 export type StorefrontPushState =
   | { linked: true; source_order_no: string; link: string | null; customer: { name: string; login: string } | null }
-  | { linked: false; can_push: boolean; reason: string | null; prefill: { title: string; amount: number | null }; original: { amount: number; currency: string } };
+  | { linked: false; can_push: boolean; reason: string | null; prefill: { title: string; amount: number | null }; original: { amount: number; currency: string };
+      /** 客户名称就是这个账号的客户群名：只能推给它（2026-10-28） */
+      account?: StorefrontAccount | null };
 
 async function jsonOrThrow<T>(res: Response, fallback: string): Promise<T> {
   const data = await res.json().catch(() => null) as (T & { error?: string }) | null;
@@ -518,12 +525,17 @@ export async function fetchStorefrontPush(id: string): Promise<StorefrontPushSta
   return jsonOrThrow(await fetch(`/api/orders/${id}/storefront-push`, { headers: authHeaders(), cache: "no-store" }), "取业务系统信息失败");
 }
 
+/** 找客户账号；业务系统连不上时 warning 说明只列了内部记过群名的账号 */
+export async function searchStorefrontAccounts(q: string): Promise<{ customers: StorefrontAccount[]; warning?: string }> {
+  return jsonOrThrow(await fetch(`/api/storefront/customers?q=${encodeURIComponent(q)}`, { headers: authHeaders(), cache: "no-store" }), "查客户账号失败");
+}
+
 export async function searchStorefrontCustomers(q: string): Promise<StorefrontAccount[]> {
   const data = await jsonOrThrow<{ customers: StorefrontAccount[] }>(await fetch(`/api/storefront/customers?q=${encodeURIComponent(q)}`, { headers: authHeaders(), cache: "no-store" }), "查客户账号失败");
   return data.customers;
 }
 
-export async function createStorefrontCustomer(body: { name: string; phone: string; email: string; password: string }): Promise<StorefrontAccount & { login_url?: string | null }> {
+export async function createStorefrontCustomer(body: { login: string; password: string; group_name: string }): Promise<StorefrontAccount & { login: string; group_name: string; group_warning?: string; login_url?: string | null }> {
   return jsonOrThrow(await fetch("/api/storefront/customers", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "建客户账号失败");
 }
 

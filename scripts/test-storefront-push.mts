@@ -100,28 +100,41 @@ const stepsBefore = (db.prepare('SELECT count(*) AS n FROM order_steps WHERE ord
 let account: { id: string; name: string; phone: string; email: string };
 let pushedA = '';
 
-await test('an internal order can be pushed only by an admin; staff see nothing to push', async () => {
+await test('an internal order can be pushed by any staff member (2026-10-28); a THB order is not prefilled', async () => {
   const s = await pushState(orderA);
   assert.equal(s.status, 200);
   assert.equal(s.body.linked, false); assert.equal(s.body.can_push, true);
   assert.equal(s.body.prefill.amount, null, 'a THB order is not prefilled: staff must convert to CNY');
   assert.deepEqual(s.body.original, { amount: 9300, currency: 'THB' });
   assert.ok(String(s.body.prefill.title).startsWith('公司注册 · '));
-  assert.equal((await pushState(orderA, empToken)).body.can_push, false);
-  assert.equal((await push(orderA, { customer_id: 'x', amount: 1 }, empToken)).status, 403);
-  assert.equal((await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { name: 'x', phone: '0811111111', password: '123456' } }))).status, 403);
+  assert.equal((await pushState(orderA, empToken)).body.can_push, true, 'employees can push too since 2026-10-28');
+  const noGroup = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: '0811111111', password: '123456' } })));
+  assert.equal(noGroup.status, 400, 'a customer group name is required');
+  const noLogin = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { group_name: '没登录名', password: '123456' } })));
+  assert.equal(noLogin.status, 400); assert.match(noLogin.body.error, /请填登录名/);
+  assert.equal((clientDb.prepare("SELECT count(*) AS n FROM users WHERE phone='0811111111'").get() as { n: number }).n, 0, 'nothing created on the customer site');
 });
 
-await test('admin creates the customer account from the internal system (phone only), duplicates are refused, search finds it', async () => {
-  const created = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { name: '线下客户甲', phone: '0812345678', email: '', password: '24681357' } })));
+await test('staff open the customer account with login name + group name + password; duplicates are refused; search finds it by number or group name', async () => {
+  const created = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: '081-234 5678', group_name: '  甲公司  LINE群 ', password: '24681357' } })));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.email, '', 'placeholder email is not shown to staff');
+  assert.equal(created.body.login, '0812345678', 'phone typed with dashes is stored as digits');
+  assert.equal(created.body.group_name, '甲公司 LINE群');
   assert.equal(created.body.login_url, `${CLIENT}/login`, 'the login address to hand to the customer (opening an account without an order)');
   account = created.body;
-  const dup = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { name: '别人', phone: '0812345678', password: '24681357' } })));
+  assert.equal((clientDb.prepare('SELECT name FROM users WHERE id=?').get(account.id) as { name: string }).name, '0812345678', 'the account name is the login; the group name never goes to the customer site');
+  const dup = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { login: '0812345678', group_name: '别的群', password: '24681357' } })));
   assert.equal(dup.status, 409);
-  const found = await call(await customersRoute.GET(req('/api/storefront/customers?q=2345', adminToken)));
-  assert.deepEqual(found.body.customers.map((c: { id: string }) => c.id), [account.id]);
+  const dupGroup = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { login: '0822222222', group_name: '甲公司 line群', password: '24681357' } })));
+  assert.equal(dupGroup.status, 409, 'group name taken (ignoring case)');
+  assert.equal((clientDb.prepare("SELECT count(*) AS n FROM users WHERE phone='0822222222'").get() as { n: number }).n, 0, 'refused before anything is created on the customer site');
+  const bad = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { login: '12ab', group_name: '乙', password: '24681357' } })));
+  assert.equal(bad.status, 400, JSON.stringify(bad.body));
+  const found = await call(await customersRoute.GET(req('/api/storefront/customers?q=2345', empToken)));
+  assert.deepEqual(found.body.customers.map((c: { id: string; group_name: string }) => [c.id, c.group_name]), [[account.id, '甲公司 LINE群']]);
+  const byGroup = await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('甲公司')}`, empToken)));
+  assert.deepEqual(byGroup.body.customers.map((c: { id: string; email: string }) => [c.id, c.email]), [[account.id, '0812345678']], 'the group name lives only internally and is searchable');
   const dashed = await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('081-234 5678')}`, adminToken)));
   assert.deepEqual(dashed.body.customers.map((c: { id: string }) => c.id), [account.id], 'a number typed with dashes and spaces still finds the account');
   assert.equal((await client('GET', '/api/sync/customers?q=')).status, 401, 'the customer site endpoint needs the shared secret');
@@ -149,7 +162,7 @@ await test('push: the internal order is renumbered to the customer-site number e
   assert.deepEqual(db.prepare('SELECT internal_order_id, allocated_cents FROM sync_inbox WHERE source_order_no=?').all(pushedA), [{ internal_order_id: pushedA, allocated_cents: 200000 }]);
   assert.ok(db.prepare("SELECT 1 FROM audit_logs WHERE action='推到业务系统' AND target_id=? AND detail LIKE ?").get(pushedA, `%原内部编号 ${orderA}%`));
   const s = await pushState(pushedA, empToken);
-  assert.deepEqual(s.body, { linked: true, source_order_no: pushedA, link: `${CLIENT}/o/${pushedA}`, customer: { name: '线下客户甲', login: '0812345678' } });
+  assert.deepEqual(s.body, { linked: true, source_order_no: pushedA, link: `${CLIENT}/o/${pushedA}`, customer: { name: '0812345678', login: '0812345678' } });
   assert.equal(r.body.pending, false, 'the customer site created the real order right away');
   assert.equal((await push(pushedA, { customer_id: account.id, amount: 2000 })).status, 409, 'cannot push twice');
 });
@@ -300,6 +313,131 @@ await test('cancelled, unclassified or customer-site orders cannot be pushed', a
   db.prepare("UPDATE orders SET status='客户取消' WHERE id=?").run(c);
   assert.equal((await pushState(c)).body.can_push, false);
   assert.equal((await push(c, { customer_id: account.id, amount: 100 })).status, 409);
+});
+
+const createOrder = async (token: string, body: Record<string, unknown>) => call(await ordersRoute.POST(req('/api/orders', token, { method: 'POST', body })));
+
+await test('new order picks the customer account: it is created and attached right away (renumbered, CNY, customer sees it); the group name becomes the customer name', async () => {
+  const before = (await client('GET', '/api/orders', customerToken)).body.length;
+  const r = await createOrder(empToken, { storefront_account_id: account.id, business_type_id: 6, sub_service_type: '', total_amount: 1888, currency: 'CNY', description: '建单直接挂账号' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.match(r.body.id, /^ORD\d{20}$/, 'renumbered to the customer-site number');
+  assert.equal(r.body.storefront.source_order_no, r.body.id);
+  assert.equal(r.body.storefront.link, `${CLIENT}/o/${r.body.id}`);
+  assert.equal(r.body.storefront_error, undefined);
+  const o = db.prepare('SELECT customer_name, source_system, source_customer_id, total_amount, currency FROM orders WHERE id=?').get(r.body.id) as Record<string, unknown>;
+  assert.deepEqual(o, { customer_name: '甲公司 LINE群', source_system: 'storefront', source_customer_id: account.id, total_amount: 1888, currency: 'CNY' });
+  assert.ok(db.prepare('SELECT 1 FROM customers WHERE company_name=?').get('甲公司 LINE群'), 'customer list gets the group name automatically');
+  assert.ok(db.prepare('SELECT 1 FROM sync_order_confirmations WHERE source_order_no=?').get(r.body.id));
+  const list = (await client('GET', '/api/orders', customerToken)).body;
+  assert.equal(list.length, before + 1);
+  assert.ok(list.some((x: { order_no: string }) => x.order_no === r.body.id), 'the customer sees it at once');
+  const again = await createOrder(empToken, { storefront_account_id: account.id, business_type_id: 6, sub_service_type: '', total_amount: 10, currency: 'CNY' });
+  assert.equal(again.status, 201);
+  assert.equal((db.prepare('SELECT count(*) AS n FROM customers WHERE lower(trim(company_name))=lower(?)').get('甲公司 LINE群') as { n: number }).n, 1, 'no duplicate customer entry');
+});
+
+await test('new order with an account: amount must be CNY > 0; an old account without a group name needs one and keeps it', async () => {
+  assert.equal((await createOrder(empToken, { storefront_account_id: account.id, business_type_id: 6, total_amount: 500, currency: 'THB' })).status, 400);
+  for (const total_amount of [0, -1, 1.234, '']) assert.equal((await createOrder(empToken, { storefront_account_id: account.id, business_type_id: 6, total_amount, currency: 'CNY' })).status, 400);
+  const self = await client('POST', '/api/auth/register', undefined, { name: '自己注册的', phone: '0855555555', password: '13572468' });
+  const selfId = self.body.user.id as string;
+  const missing = await createOrder(empToken, { storefront_account_id: selfId, business_type_id: 6, total_amount: 100, currency: 'CNY' });
+  assert.equal(missing.status, 400, 'needs a group name');
+  const taken = await createOrder(empToken, { storefront_account_id: selfId, group_name: '甲公司 LINE群', business_type_id: 6, total_amount: 100, currency: 'CNY' });
+  assert.equal(taken.status, 409, 'the group name belongs to another account');
+  const ok = await createOrder(empToken, { storefront_account_id: selfId, group_name: '丙群', account_login: '0855555555', business_type_id: 6, total_amount: 100, currency: 'CNY' });
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  assert.equal(ok.body.customer_name, '丙群');
+  const found = await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('丙')}`, empToken)));
+  assert.deepEqual(found.body.customers.map((c: { id: string; group_name: string }) => [c.id, c.group_name]), [[selfId, '丙群']]);
+  const keep = await createOrder(empToken, { storefront_account_id: selfId, group_name: '想改名', business_type_id: 6, total_amount: 100, currency: 'CNY' });
+  assert.equal(keep.body.customer_name, '丙群', 'an existing group name is not changed by an order');
+});
+
+await test('a login name that is not a phone or email works: the customer logs in with it (any case)', async () => {
+  const created = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: 'Shop_Ding1', group_name: '丁群', password: '11223344' } })));
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.login, 'Shop_Ding1');
+  const login = await client('POST', '/api/auth/login', undefined, { email: 'shop_ding1', password: '11223344' });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  const order = await createOrder(empToken, { storefront_account_id: created.body.id, business_type_id: 6, total_amount: 66, currency: 'CNY' });
+  assert.equal(order.status, 201);
+  const mine = await client('GET', '/api/orders', login.body.token);
+  assert.deepEqual(mine.body.map((x: { order_no: string }) => x.order_no), [order.body.id]);
+  assert.equal((await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: 'SHOP_DING1', group_name: '戊群', password: '11223344' } })))).status, 409, 'login names are unique ignoring case');
+});
+
+await test('if attaching fails because the account is gone, the order is still created and the group name is released for a new account', async () => {
+  db.prepare("INSERT INTO storefront_accounts (account_id, group_name, login) VALUES ('no-such-account', '没了的群', 'x')").run();
+  const r = await createOrder(empToken, { storefront_account_id: 'no-such-account', business_type_id: 6, total_amount: 50, currency: 'CNY' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.match(r.body.storefront_error, /客户账号不存在/);
+  assert.match(r.body.storefront_error, /已放开/);
+  assert.match(r.body.id, /^ORD-/, 'still the internal number');
+  assert.equal(db.prepare("SELECT 1 FROM storefront_accounts WHERE account_id='no-such-account'").get(), undefined, 'the dead account no longer holds the group name');
+  assert.ok(db.prepare("SELECT 1 FROM audit_logs WHERE action='放开客户群名' AND target_id='no-such-account'").get());
+  const fresh = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: 'newlogin1', group_name: '没了的群', password: '11223344' } })));
+  assert.equal(fresh.status, 201, 'the group name can go on a new account: ' + JSON.stringify(fresh.body));
+  const st = await pushState(r.body.id, empToken);
+  assert.equal(st.body.account.id, fresh.body.id, 'the order now goes to the new account');
+  assert.equal((await push(r.body.id, { customer_id: fresh.body.id, amount: 50 }, empToken)).status, 200);
+});
+
+await test('an account disabled on the customer site: pushing to it fails, releases its group name, and the order can then go to a new account', async () => {
+  const created = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: '0866666666', group_name: '庚群', password: '11223344' } })));
+  assert.equal(created.status, 201);
+  const writable = new Database(path.join(dir, 'client.db'));
+  writable.prepare("UPDATE users SET status='disabled' WHERE id=?").run(created.body.id); writable.close();
+  const r = await createOrder(empToken, { storefront_account_id: created.body.id, business_type_id: 6, total_amount: 40, currency: 'CNY' });
+  assert.equal(r.status, 201);
+  assert.match(r.body.storefront_error, /已被禁用/);
+  assert.equal(db.prepare('SELECT 1 FROM storefront_accounts WHERE account_id=?').get(created.body.id), undefined);
+  assert.equal((await pushState(r.body.id, empToken)).body.account, null, 'no longer locked to the disabled account');
+  const fresh = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: '0877777777', group_name: '庚群', password: '11223344' } })));
+  assert.equal(fresh.status, 201);
+  assert.equal((await push(r.body.id, { customer_id: fresh.body.id, amount: 40 }, empToken)).status, 200);
+});
+
+await test('an order whose customer is a group name can only be pushed to that account; the push box gets that account preselected', async () => {
+  const r = await createOrder(empToken, { customer_name: '甲公司 LINE群', business_type_id: 6, sub_service_type: '', total_amount: 70, currency: 'CNY' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const s = await pushState(r.body.id, empToken);
+  assert.equal(s.body.account.id, account.id);
+  assert.equal(s.body.account.group_name, '甲公司 LINE群');
+  const other = (await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('丙')}`, empToken)))).body.customers[0];
+  const wrong = await push(r.body.id, { customer_id: other.id, amount: 70 }, empToken);
+  assert.equal(wrong.status, 409, JSON.stringify(wrong.body));
+  assert.match(wrong.body.error, /只能推给/);
+  assert.equal(reserved(r.body.id), undefined, 'refused before asking the customer site');
+  assert.equal((await push(r.body.id, { customer_id: account.id, amount: 70 }, empToken)).status, 200);
+});
+
+await test('a group name saved while creating an order is dropped again when the account turns out to be gone', async () => {
+  const r = await createOrder(empToken, { storefront_account_id: 'gone-account', group_name: '己群', business_type_id: 6, total_amount: 30, currency: 'CNY' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.match(r.body.storefront_error, /客户账号不存在/);
+  assert.equal(db.prepare("SELECT 1 FROM storefront_accounts WHERE account_id='gone-account'").get(), undefined, 'the group name is free again');
+});
+
+await test('if the customer site is unreachable, the account search still lists the accounts with a group name (with a warning), so orders can still be created', async () => {
+  const saved = process.env.CUSTOMER_SYNC_URL;
+  process.env.CUSTOMER_SYNC_URL = `http://127.0.0.1:${await freePort()}`;
+  try {
+    const all = await call(await customersRoute.GET(req('/api/storefront/customers?q=', empToken)));
+    assert.equal(all.status, 200, JSON.stringify(all.body));
+    assert.match(all.body.warning, /连不上/);
+    assert.ok(all.body.customers.some((c: { id: string }) => c.id === account.id), 'linked accounts are still listed');
+    const byGroup = await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('甲公司')}`, empToken)));
+    assert.deepEqual(byGroup.body.customers.map((c: { id: string }) => c.id), [account.id]);
+    const order = await createOrder(empToken, { storefront_account_id: account.id, business_type_id: 6, total_amount: 20, currency: 'CNY' });
+    assert.equal(order.status, 201);
+    assert.match(order.body.storefront_error, /连不上|没有回话/);
+    assert.match(order.body.id, /^ORD-/);
+    process.env.CUSTOMER_SYNC_URL = saved;
+    const retry = await push(order.body.id, { customer_id: account.id, amount: 20 }, empToken);
+    assert.equal(retry.status, 200, 'once the customer site is back, the order page push works: ' + JSON.stringify(retry.body));
+  } finally { process.env.CUSTOMER_SYNC_URL = saved; }
 });
 
 for (const result of results) console.log(JSON.stringify(result));

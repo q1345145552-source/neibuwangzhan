@@ -9,7 +9,9 @@ import { renumberOrder, SAFE_ORDER_ID, uploadNamesContaining } from "./order-ren
 
 /**
  * 线下单推到业务系统（2026-10-22 老板选 B：线下单照旧在内部录，推到客户在业务系统的账号下；
- * 金额和账单客户看得到、能传付款水单）。推单、替客户建账号只给管理员。
+ * 金额和账单客户看得到、能传付款水单）。
+ * 2026-10-28 老板改：员工在内部直接开客户的业务系统账号（登录名、密码、客户群名），新建订单时选这个账号，
+ * 提交就自动推过去（见 /api/orders），不用再另外点推送；开账号、推单员工都能做。
  *
  * 推过去以后，这张单就跟客户网上下的单一样：编号换成业务系统的单号（两边一模一样），
  * 记成客户站同步单、已确认；办理进度自动回传，账单、水单、确认收款、取消申请、打分都走原来那套。
@@ -19,7 +21,7 @@ export class StorefrontPushError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export type StorefrontAccount = { id: string; name: string; phone: string; email: string; created_at?: string };
+export type StorefrontAccount = { id: string; name: string; phone: string; email: string; created_at?: string; group_name?: string };
 
 const TIMEOUT_MS = 15_000;
 
@@ -67,16 +69,22 @@ export async function searchStorefrontCustomers(q: string): Promise<StorefrontAc
   return body.customers;
 }
 
-export async function createStorefrontCustomer(input: { name?: unknown; phone?: unknown; email?: unknown; password?: unknown }): Promise<StorefrontAccount> {
-  return json<StorefrontAccount>(await call("/api/sync/customers", { method: "POST",
-    body: JSON.stringify({ name: input.name, phone: input.phone, email: input.email, password: input.password }) }));
+/** 客户登录用的账号：手机号建的号邮箱是系统占位的 phone_手机号@user.xiangtai，显示手机号 */
+export function accountLogin(a: Pick<StorefrontAccount, "phone" | "email">): string {
+  return a.phone || (/^phone_.*@user\.xiangtai$/.test(a.email) ? "" : a.email);
 }
 
-type PushableOrder = { id: string; status: string; total_amount: number; currency: string; business_type_id: number; sub_service_type: string | null; business_type_name: string };
+/** 替客户开账号：只给登录名（手机号、邮箱或字母开头的登录名）+ 初始密码；账号上的名字业务系统用登录名 */
+export async function createStorefrontCustomer(input: { login?: unknown; password?: unknown }): Promise<StorefrontAccount> {
+  return json<StorefrontAccount>(await call("/api/sync/customers", { method: "POST",
+    body: JSON.stringify({ login: input.login, password: input.password }) }));
+}
+
+type PushableOrder = { id: string; status: string; total_amount: number; currency: string; business_type_id: number; sub_service_type: string | null; business_type_name: string; customer_name: string };
 
 /** 能不能推：员工在内部自己建的、没取消、已分好业务线、还没在业务系统里的单 */
 export function pushBlocker(db: Database.Database, orderId: string): { order: PushableOrder | null; reason: string | null } {
-  const order = db.prepare(`SELECT o.id, o.status, o.total_amount, o.currency, o.business_type_id, o.sub_service_type, COALESCE(o.source_system, '') AS source_system,
+  const order = db.prepare(`SELECT o.id, o.status, o.total_amount, o.currency, o.business_type_id, o.sub_service_type, o.customer_name, COALESCE(o.source_system, '') AS source_system,
       bt.name AS business_type_name FROM orders o LEFT JOIN business_types bt ON bt.id = o.business_type_id WHERE o.id = ?`).get(orderId) as (PushableOrder & { source_system: string }) | undefined;
   if (!order) return { order: null, reason: "订单不存在" };
   if (sourceOrderNoOf(db, orderId)) return { order, reason: "这张单已经在业务系统里了" };
@@ -85,6 +93,15 @@ export function pushBlocker(db: Database.Database, orderId: string): { order: Pu
   if (!order.business_type_name || order.business_type_name === "待分类") return { order, reason: "先分好业务线再推" };
   if (!SAFE_ORDER_ID.test(orderId)) return { order, reason: "这张单的编号里有特殊字符，推不了，请联系管理员" };
   return { order, reason: null };
+}
+
+/**
+ * 这张单的客户名称是某个账号的客户群名（2026-10-28 起建单挂账号时就是这样）：只能推给那个账号，别推给别的客户
+ * （建单时没推过去、之后在订单页再推的情况）。没对上群名的老单照旧随便选账号。
+ */
+export function ownerAccount(db: Database.Database, customerName: string): { account_id: string; group_name: string; login: string } | null {
+  return (db.prepare("SELECT account_id, group_name, login FROM storefront_accounts WHERE lower(group_name) = lower(trim(?))").get(customerName || "") as
+    { account_id: string; group_name: string; login: string } | undefined) ?? null;
 }
 
 /** 客户在业务系统里看到的服务名，默认「业务线 · 子类型」 */
@@ -115,6 +132,8 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
   if (reason || !order) throw new StorefrontPushError(reason || "订单不存在", order ? 409 : 404);
   const customerId = String(input.customer_id ?? "").trim();
   if (!customerId) throw new StorefrontPushError("请选客户在业务系统的账号");
+  const owner = ownerAccount(db, order.customer_name);
+  if (owner && owner.account_id !== customerId) throw new StorefrontPushError(`这张单的客户是「${owner.group_name}」，只能推给这个客户群名的账号（登录名 ${owner.login || "-"}）`, 409);
   const amount = Number(input.amount);
   if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) throw new StorefrontPushError("金额要填大于 0 的人民币金额，最多两位小数");
   const names = defaultServiceTitle(order);
@@ -132,6 +151,15 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
       internal_order_id: orderId, customer_id: customerId, service_name: names.serviceName, sub_category: names.subCategory, sku_name: title, amount,
     }) })))().catch((error: unknown) => {
       if (error instanceof StorefrontPushError && error.status === 502) throw new StorefrontPushError("业务系统没有回话，这张单还没推出去（客户看不到）。请稍后再点一次「推到业务系统」", 502);
+      // 业务系统说这个账号没了 / 停用了：把它的客户群名放开，不然群名一直卡在这个用不了的账号上，
+      // 这个客户的单推不出去、也给不了新账号（2026-10-28）。放开后可以用这个群名开新账号，或把单推给别的账号。
+      if (error instanceof StorefrontPushError && /客户账号不存在|已被禁用/.test(error.message)) {
+        const released = db.prepare("DELETE FROM storefront_accounts WHERE account_id = ? RETURNING group_name").get(customerId) as { group_name: string } | undefined;
+        if (released) {
+          logOperation(actor, "放开客户群名", "storefront_account", customerId, `业务系统说账号${error.message.includes("禁用") ? "已停用" : "不存在"}，客户群名「${released.group_name}」放开`);
+          throw new StorefrontPushError(`${error.message}。这个账号的客户群名「${released.group_name}」已放开：可以用这个群名开新账号，再到订单页「业务系统」里推`, error.status);
+        }
+      }
       throw error;
     });
 

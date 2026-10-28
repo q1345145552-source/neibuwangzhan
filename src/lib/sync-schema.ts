@@ -128,6 +128,15 @@ export function initializeSyncSchema(database: Database.Database): void {
       );
       CREATE INDEX IF NOT EXISTS idx_sync_document_outbox_submission_id ON sync_document_outbox(submission_id);
       CREATE INDEX IF NOT EXISTS idx_sync_document_outbox_status ON sync_document_outbox(status);
+      -- 客户在业务系统的账号 → 客户群名（只有内部看得到；2026-10-28 老板：内部开账号填登录名、密码、客户群名，建单直接挂到账号下）
+      CREATE TABLE IF NOT EXISTS storefront_accounts (
+        account_id TEXT PRIMARY KEY,
+        group_name TEXT NOT NULL,
+        login TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_storefront_accounts_group ON storefront_accounts(lower(group_name));
     `);
     const orderColumns = new Set((database.prepare('PRAGMA table_info(orders)').all() as {name:string}[]).map(c => c.name));
     if(!orderColumns.has('source_system')) database.exec("ALTER TABLE orders ADD COLUMN source_system TEXT NOT NULL DEFAULT ''");
