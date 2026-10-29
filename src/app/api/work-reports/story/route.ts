@@ -1,3 +1,4 @@
+import { withWorkReportSeen } from "@/lib/work-report-seen";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -34,5 +35,5 @@ export async function GET(req: NextRequest) {
     : db.prepare("SELECT * FROM work_reports WHERE employee_name = ? ORDER BY report_date ASC, id ASC").all(auth.name)) as any[];
 
   const timeline = rows.filter((r) => parseRelated(r.related_objects).some((o) => o.type === type && o.id === id));
-  return NextResponse.json(timeline);
+  return NextResponse.json(withWorkReportSeen(db,timeline), {headers:{"Cache-Control":"private, no-store"}});
 }

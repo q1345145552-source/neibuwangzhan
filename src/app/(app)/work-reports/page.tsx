@@ -13,6 +13,9 @@ import { Plus, X, ClipboardList, ChevronDown } from "lucide-react";
 import { WORK_REPORT_REQUIRED_FROM } from "@/lib/work-report-policy";
 
 interface WorkReport {
+  boss_seen?: boolean;
+  boss_seen_by?: string;
+  boss_seen_at?: string;
   id: number;
   employee_name: string;
   report_date: string;
@@ -114,6 +117,28 @@ function ReportTranslation({ report, field, onTranslated, children }: {
       )}
     </div>
   );
+}
+
+function BossSeen({report, employee = false}: {report:WorkReport; employee?:boolean}) {
+  if (!report.boss_seen && !employee) return null;
+  return <span className={cn("inline-flex flex-wrap items-center gap-1 text-xs",report.boss_seen ? "text-green-700 dark:text-green-300" : "text-[var(--muted-foreground)]")}>
+    {report.boss_seen ? "✓ 老板已看" : "老板还没看"}
+    {report.boss_seen && report.boss_seen_by && <span>· {report.boss_seen_by} {toThaiTime(report.boss_seen_at || "")}</span>}
+  </span>;
+}
+
+function BoardReportContent({report, spacious}: {report:WorkReport; spacious:boolean}) {
+  const items = parseItems(report.completed_items);
+  return <div onClick={event=>event.stopPropagation()} className={cn("min-w-0 space-y-4 [overflow-wrap:anywhere]",spacious ? "text-base" : "text-sm")}>
+    <section><h3 className="text-xs font-medium text-[var(--muted-foreground)]">完成事项</h3>
+      {items.length ? <ol className="mt-2 space-y-2">{items.map((item,index)=><li key={index} className="flex min-w-0 gap-2"><span className="shrink-0 text-[var(--muted-foreground)]">{index+1}.</span>{item.href ? <a href={item.href} target="_blank" rel="noopener noreferrer" className="min-w-0 whitespace-pre-wrap text-[var(--primary)] hover:underline">{item.text}</a> : <span className="min-w-0 whitespace-pre-wrap">{item.text}</span>}</li>)}</ol> : <p className="mt-1 text-[var(--muted-foreground)]">未填写完成事项</p>}
+    </section>
+    <div className={cn("grid min-w-0 gap-4",!spacious && "lg:grid-cols-3")}>
+      {([["工作总结",report.summary],["遇到的问题",report.problems],["明日计划",report.tomorrow_plan]] as const).map(([label,text])=><section key={label} className="min-w-0"><h3 className="text-xs font-medium text-[var(--muted-foreground)]">{label}</h3><p className="mt-1 whitespace-pre-wrap">{text?.trim() || "未填写"}</p></section>)}
+    </div>
+    {(report.ai_label || report.ai_comment) && <section className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3"><div className="flex flex-wrap items-center gap-2"><h3 className="text-xs font-medium text-[var(--muted-foreground)]">AI 质量评估</h3>{report.ai_label && <span className={cn("rounded-full px-2 py-0.5 text-xs",aiLabelClass(report.ai_label))}>{report.ai_label}</span>}</div>{report.ai_comment && <p className="mt-2 whitespace-pre-wrap">{report.ai_comment}</p>}</section>}
+    {(report.risk_flag === 1 || report.risk_desc) && <section className="rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/30"><h3 className="text-xs font-medium text-red-700 dark:text-red-300">风险说明</h3><p className="mt-1 whitespace-pre-wrap">{report.risk_desc || "存在风险或卡点"}</p></section>}
+  </div>;
 }
 
 function parseItems(s: string): ParsedItem[] {
@@ -246,6 +271,10 @@ export default function WorkReportsPage() {
   const [boardLoadedDate, setBoardLoadedDate] = useState("");
   const [boardError, setBoardError] = useState("");
   const boardRequest = useRef(0);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [seeingIds, setSeeingIds] = useState<number[]>([]);
+  const seeing = useRef(new Set<number>());
+  const [seenError, setSeenError] = useState("");
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [reviews, setReviews] = useState<ReportReview[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
@@ -381,9 +410,6 @@ export default function WorkReportsPage() {
 
   const openDetail = (r: WorkReport) => {
     setDetail(r);
-    if (isAdmin && r.status === "已提交") {
-      void fetchWithAuth("/api/boss-supervision/pending/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: "report", items: [{ id: r.id, revision: r.submitted_at || r.created_at || "" }] }) }).catch(() => {});
-    }
     setReviewRating(r.boss_rating || 0);
     setReviewComment(r.boss_comment || "");
     setReviewErr("");
@@ -406,7 +432,7 @@ export default function WorkReportsPage() {
     setLinkedReport(null);
     setHighlightReportId(null);
     setJumpError(""); setRejectTarget(null);
-    setStoryOpen(false);
+    setBatchOpen(false); setStoryOpen(false);
     setReviewsOpen(false);
     setDetail(null); setFormOpen(false);
     if (reportIdParam === null || !user) return;
@@ -439,7 +465,7 @@ export default function WorkReportsPage() {
       if (boardDate !== notificationReport.report_date || boardLoading || boardLoadedDate !== boardDate) return;
       if (boardError) { setJumpError(boardError); return; }
     } else if (loading) return;
-    setStoryOpen(false);
+    setBatchOpen(false); setStoryOpen(false);
     setReviewsOpen(false);
     setDetail(null);
     jumpedReport.current = reportIdParam;
@@ -677,6 +703,25 @@ export default function WorkReportsPage() {
     }
   };
 
+  const applyReviewedReport = (saved: WorkReport) => {
+    const update = (report: WorkReport) => report.id === saved.id && reportSubmissionRevision(report) === reportSubmissionRevision(saved) ? saved : report;
+    setBoard(rows=>rows.map(row=>({...row,report:row.report ? update(row.report) : null})));
+    setReports(rows=>rows.map(update)); setTimeline(rows=>rows.map(update));
+    setDetail(report=>report ? update(report) : report);
+    setLinkedReport(target=>target ? {...target,report:update(target.report)} : target);
+  };
+  const markSeen = async (report: WorkReport) => {
+    if (seeing.current.has(report.id)) return;
+    seeing.current.add(report.id); setSeeingIds([...seeing.current]); setSeenError("");
+    try {
+      const response = await fetchWithAuth(`/api/work-reports/${report.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"seen",submission_revision:reportSubmissionRevision(report)})});
+      const saved = await response.json();
+      if (!response.ok) throw new Error(saved.error || "标记失败，请重试");
+      applyReviewedReport(saved);
+    } catch(error) { setSeenError(error instanceof Error ? error.message : "标记失败，请重试"); }
+    finally { seeing.current.delete(report.id); setSeeingIds([...seeing.current]); }
+  };
+
   const submitReview = async () => {
     if (!detail) return;
     if (reviewRating < 1 || reviewRating > 5) { setReviewErr("请先打 1-5 星"); return; }
@@ -684,19 +729,15 @@ export default function WorkReportsPage() {
     const rating = reviewRating;
     const comment = reviewComment.trim();
     setReviewing(true);
-    const ok = await apiCall(`/api/work-reports/${reportId}`, { method: "PATCH", body: { action: "review", rating, comment }, onError: (m) => setReviewErr(m) });
-    setReviewing(false);
-    if (ok) {
-      const update = (report: WorkReport) => report.id === reportId ? { ...report, boss_rating: rating, boss_comment: comment } : report;
-      setLinkedReport(target => target ? { ...target, report: update(target.report) } : target);
-      setDetail((report) => report ? update(report) : report);
-      setBoard((rows) => rows.map((row) => ({ ...row, report: row.report ? update(row.report) : null })));
-      setReports((rows) => rows.map(update));
-      setTimeline((rows) => rows.map(update));
-      setReviewErr("");
-      setReviewSaved(true);
-      setTimeout(() => setReviewSaved(false), 2500);
-    }
+    try {
+      const response = await fetchWithAuth(`/api/work-reports/${reportId}`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"review",rating,comment,submission_revision:reportSubmissionRevision(detail)})});
+      const saved = await response.json();
+      if (!response.ok) throw new Error(saved.error || "点评失败，请重试");
+      applyReviewedReport(saved);
+      setReviewErr(""); setReviewSaved(true);
+      setTimeout(()=>setReviewSaved(false),2500);
+    } catch(error) { setReviewErr(error instanceof Error ? error.message : "点评失败，请重试"); }
+    finally { setReviewing(false); }
   };
 
   // ── 故事线（按业务对象看）──
@@ -736,7 +777,7 @@ export default function WorkReportsPage() {
 
   const openStory = () => {
     setReviewsOpen(false);
-    setStoryOpen(true);
+    setBatchOpen(false); setStoryOpen(true);
     setStorySummary("");
     setStoryErr("");
     loadStoryObjects("order");
@@ -793,8 +834,9 @@ export default function WorkReportsPage() {
 
       {/* 视图切换 */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant={storyOpen || reviewsOpen ? "ghost" : "default"} onClick={() => { setStoryOpen(false); setReviewsOpen(false); }}>{isAdmin ? "看板" : "我的日报"}</Button>
-        {isAdmin && <Button size="sm" variant={reviewsOpen ? "default" : "ghost"} onClick={() => { setStoryOpen(false); setReviewsOpen(true); void loadReviews(); }}>点评汇总</Button>}
+        <Button size="sm" variant={storyOpen || reviewsOpen || batchOpen ? "ghost" : "default"} onClick={() => { setBatchOpen(false); setStoryOpen(false); setReviewsOpen(false); }}>{isAdmin ? "看板" : "我的日报"}</Button>
+        {isAdmin && <Button size="sm" variant={reviewsOpen ? "default" : "ghost"} onClick={() => { setBatchOpen(false); setStoryOpen(false); setReviewsOpen(true); void loadReviews(); }}>点评汇总</Button>}
+        {isAdmin && <Button size="sm" variant={batchOpen ? "default" : "ghost"} onClick={()=>{setStoryOpen(false);setReviewsOpen(false);setBatchOpen(true);}}>批量批阅</Button>}
         <Button size="sm" variant={storyOpen ? "default" : "ghost"} onClick={openStory}>按业务对象看</Button>
       </div>
 
@@ -806,6 +848,7 @@ export default function WorkReportsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="date"
+              aria-label="看板日期"
               value={boardDate}
               onChange={(e) => setBoardDate(e.target.value)}
               className="h-9 rounded border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--ring)]"
@@ -813,6 +856,8 @@ export default function WorkReportsPage() {
             <span className="text-xs text-[var(--muted-foreground)]">共 {board.length} 名在职员工</span>
           </div>
 
+          <h2 className="text-sm font-medium">{batchOpen ? "批量批阅 · 当日工作记录" : "当日工作记录"}</h2>
+          {seenError && <p role="alert" className="text-sm text-[var(--destructive)]">{seenError}</p>}
           {boardLoading || boardLoadedDate !== boardDate ? (
             <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
           ) : visibleBoard.length === 0 ? (
@@ -828,7 +873,7 @@ export default function WorkReportsPage() {
                     data-report-id={row.report?.id}
                     onClick={() => row.report && openDetail(row.report)}
                     className={cn(
-                      "flex flex-col gap-2 rounded-xl border p-3",
+                      "flex min-w-0 flex-col rounded-xl border", batchOpen ? "gap-6 p-5 sm:p-6" : "gap-3 p-3",
                       risky ? "border-red-400 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30" : "border-[var(--border)] bg-[var(--background)]",
                       row.report && "cursor-pointer transition-colors hover:border-[var(--primary)]",
                       row.report?.id === highlightReportId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30"
@@ -840,9 +885,19 @@ export default function WorkReportsPage() {
                       {row.report && <ReviewStatus report={row.report} />}
                       {risky && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">风险</span>}
                     </div>
-                    <StatusBadge st={st} />
+                    {row.report ? <StatusBadge st={st} /> : <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">没交</span>}
                     </div>
-                    {row.report && <ReportReturnFeedback report={row.report} />}
+                    {row.report && <>
+                      <ReportReturnFeedback report={row.report} />
+                      <BoardReportContent report={row.report} spacious={batchOpen} />
+                      <div className="flex flex-wrap items-center justify-between gap-3" onClick={event=>event.stopPropagation()}>
+                        <BossSeen report={row.report} />
+                        <div className="flex flex-wrap gap-2">
+                          {!row.report.boss_seen && <Button size="sm" variant="outline" disabled={seeingIds.includes(row.report.id)} onClick={()=>void markSeen(row.report!)}>{seeingIds.includes(row.report.id) ? "标记中…" : "已看"}</Button>}
+                          <Button size="sm" variant="outline" onClick={()=>openDetail(row.report!)} aria-label={`查看 ${row.name} 的日报详情`}>详情 / 点评 / 退回</Button>
+                        </div>
+                      </div>
+                    </>}
                   </div>
                 );
               })}
@@ -939,6 +994,7 @@ export default function WorkReportsPage() {
                       <StatusBadge st={st} />
                     </div>
                     </div>
+                    {r && <BossSeen report={r} employee />}
                     {r && <ReportReturnFeedback report={r} onResubmit={() => openResubmit(r)} />}
                   </div>
                 );
@@ -1212,6 +1268,7 @@ export default function WorkReportsPage() {
               <button aria-label="关闭日报详情" onClick={() => setDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="size-5" /></button>
             </div>
 
+            <div className="mt-3"><BossSeen report={detail} employee={!isAdmin} /></div>
             <div className="mt-3"><ReportReturnFeedback report={detail} onResubmit={!isAdmin && detail.employee_name === user?.name ? () => openResubmit(detail) : undefined} /></div>
             <div className="mt-4 space-y-3 text-sm">
               <ReportTranslation key={`${detail.id}-completed_items`} report={detail} field="completed_items" onTranslated={onTranslated}>

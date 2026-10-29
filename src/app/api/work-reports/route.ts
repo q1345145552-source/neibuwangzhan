@@ -1,3 +1,4 @@
+import { withWorkReportSeen } from "@/lib/work-report-seen";
 import { publishBossSubmission } from "@/lib/boss-submissions";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
   const rows = isAdmin
     ? db.prepare("SELECT * FROM work_reports ORDER BY report_date DESC, id DESC").all()
     : db.prepare("SELECT * FROM work_reports WHERE employee_name = ? ORDER BY report_date DESC, id DESC").all(auth.name);
-  return NextResponse.json(rows);
+  return NextResponse.json(withWorkReportSeen(db, rows as any[]), {headers:{"Cache-Control":"private, no-store"}});
 }
 
 // POST /api/work-reports — 今日、昨日，或系统已派补交待办对应的历史日期

@@ -1,3 +1,4 @@
+import { withWorkReportSeen } from "@/lib/work-report-seen";
 import { publishBossSubmission, acknowledgeBossSubmission } from "@/lib/boss-submissions";
 import { reportSubmissionRevision } from "@/lib/boss-submission-types";
 import { completeWorkReportTodos } from "@/lib/work-report-sync";
@@ -40,7 +41,7 @@ function notifyRisk(db: ReturnType<typeof getDb>, reportId: number, employeeName
   }
 }
 
-// 通知定位只读查询；不记录已阅，已阅仍由用户打开详情时的原有流程处理。
+// 查询只读；已看由老板明确标记或打分。
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await verifyAuth(req);
   if (!auth) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id)
     : db.prepare("SELECT * FROM work_reports WHERE id = ? AND employee_name = ?").get(id, auth.name);
   if (!report) return NextResponse.json({ error: "日报不存在或你无权查看" }, { status: 404 });
-  return NextResponse.json(report, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json(withWorkReportSeen(db, [report as any])[0], { headers: { "Cache-Control": "private, no-store" } });
 }
 
 // PATCH /api/work-reports/[id] — 老板退回 / 员工退回后重新提交
@@ -72,6 +73,18 @@ export async function PATCH(
   const { action } = body;
   if (action === "reject" && auth.role !== "admin") return NextResponse.json({ error: "仅管理员可退回" }, { status: 403 });
   const db = getDb();
+
+  if (action === "seen") {
+    if (auth.role !== "admin") return NextResponse.json({error:"仅管理员可标记已看"},{status:403});
+    return db.transaction(() => {
+      const current = db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
+      if (!current) return NextResponse.json({error:"记录不存在"},{status:404});
+      if (typeof body.submission_revision !== "string" || body.submission_revision !== reportSubmissionRevision(current)) return NextResponse.json({error:"日报已重新提交，请刷新后再标记"},{status:409});
+      const previous = withWorkReportSeen(db,[current])[0];
+      if (!previous.boss_seen) acknowledgeBossSubmission(db,"report",Number(id),auth.name,reportSubmissionRevision(current));
+      return NextResponse.json(withWorkReportSeen(db,[current])[0]);
+    }).immediate();
+  }
 
   if (action === "reject") {
     const reason = typeof body.rejection_reason === "string" ? body.rejection_reason.trim() : "";
@@ -102,8 +115,15 @@ export async function PATCH(
     const rating = Number(body.rating);
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return NextResponse.json({ error: "请打 1-5 星" }, { status: 400 });
     const comment = String(body.comment || "").trim();
-    db.prepare("UPDATE work_reports SET boss_rating = ?, boss_comment = ?, updated_at = datetime('now') WHERE id = ?").run(rating, comment, id);
-    if (report.status === "已提交") acknowledgeBossSubmission(db, "report", Number(id), auth.name, reportSubmissionRevision(report));
+    const reviewed = db.transaction(() => {
+      const current = db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
+      if (!current) return null;
+      if (body.submission_revision !== undefined && body.submission_revision !== reportSubmissionRevision(current)) return null;
+      db.prepare("UPDATE work_reports SET boss_rating = ?, boss_comment = ?, updated_at = datetime('now') WHERE id = ?").run(rating, comment, id);
+      acknowledgeBossSubmission(db, "report", Number(id), auth.name, reportSubmissionRevision(current));
+      return db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
+    }).immediate();
+    if (!reviewed) return NextResponse.json({error:"日报已变化，请重新打开后点评"},{status:409});
     logOperation(auth.name, "点评工作记录", "work_report", String(id), `${rating}星 ${comment}`);
 
     // 通知被点评的员工（每次点评都通知，改了也通知）
@@ -115,7 +135,7 @@ export async function PATCH(
       ).run(`老板点评了你的 ${monthDay} 工作记录，评了 ${rating} 星`, report.employee_name, String(id));
     } catch {}
 
-    return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
+    return NextResponse.json(withWorkReportSeen(db,[db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any])[0]);
   }
 
   // 员工重新提交（退回后编辑再提交）
@@ -159,5 +179,5 @@ export async function PATCH(
     console.error("[日报AI评估] 失败:", e);
   }
 
-  return NextResponse.json(db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id));
+  return NextResponse.json(withWorkReportSeen(db,[db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any])[0]);
 }

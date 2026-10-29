@@ -21,6 +21,7 @@ function createReportFeedbackHarness(){
    return fallback.get(...a);
   },
   all(...a){
+   if(sql==="SELECT source_id,generation,viewed_revision,viewed_by,viewed_at FROM boss_submission_state WHERE category='report'")return [];
    if(sql==="SELECT name FROM employees WHERE role = 'employee' AND status = '在职' ORDER BY name")return[{name:'员工甲'},{name:'员工乙'}];
    if(sql.startsWith('SELECT * FROM work_reports')){let rows=[...reports.values()];if(sql.includes('employee_name = ?'))rows=rows.filter(r=>r.employee_name===a[0]);if(sql.includes('report_date = ?'))rows=rows.filter(r=>r.report_date===a[0]);return copy(rows.sort((a,b)=>b.report_date.localeCompare(a.report_date)||b.id-a.id));}
    if(sql.startsWith('SELECT id, employee_name, report_date, boss_rating, boss_comment'))return[...reports.values()].filter(r=>r.boss_rating>0||r.boss_comment.trim()).sort((a,b)=>b.report_date.localeCompare(a.report_date)||b.id-a.id).map(r=>({id:r.id,employee_name:r.employee_name,report_date:r.report_date,boss_rating:r.boss_rating,boss_comment:r.boss_comment}));
@@ -38,6 +39,7 @@ function createReportFeedbackHarness(){
  };};
  const boss={publishBossSubmission(...a){assert(locks>0);h.submissions.push(a.slice(1));},acknowledgeBossSubmission(...a){h.seen.push(a.slice(1));}};
  const deps={'next/server':{NextResponse:{json:(body,init)=>Response.json(body,init)}},'@/lib/auth':{verifyAuth:async()=>h.actor,isStaff:a=>['admin','employee'].includes(a.role)},'@/lib/db':{getDb:()=>{h.reportReads=(h.reportReads||0)+1;return db;},logOperation:(...args)=>h.logs.push({args})},'@/lib/req':load('src/lib/req.ts'),'@/lib/notification-types':types,'@/lib/boss-submissions':boss,'@/lib/boss-submission-types':load('src/lib/boss-submission-types.ts'),'@/lib/work-report-sync':{completeWorkReportTodos(...a){assert(locks>0);h.completed.push(a.slice(1));},pendingWorkReportDates(){return[];}},'@/lib/time':{bangkokToday:()=>TODAY},'@/lib/deepseek':{async analyzeWorkReport(input){h.reportAiCalls.push(input);return{label:'正常',comment:'模拟评估',risk:false,riskDesc:''};}},'@/lib/work-report-items':load('src/lib/work-report-items.ts')};
+ deps['@/lib/work-report-seen']=load('src/lib/work-report-seen.ts',{'./boss-submission-types':load('src/lib/boss-submission-types.ts')});
  const routes=Object.fromEntries(Object.entries({item:'work-reports/[id]',list:'work-reports',board:'work-reports/board',reviews:'work-reports/reviews',seen:'boss-supervision/pending/seen'}).map(([k,v])=>[k,load('src/app/api/'+v+'/route.ts',deps)]));
  h.callReport=async(key='item',method='GET',body,id=1501,query='')=>{const r=await routes[key][method](new Request('http://mock/api/'+key+query,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}),{params:Promise.resolve({id:String(id)})});return{status:r.status,body:await r.json(),response:r};};h.setActor({id:1,name:'审批老板',role:'admin'});return h;
 }

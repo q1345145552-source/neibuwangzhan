@@ -1,3 +1,4 @@
+import { withWorkReportSeen } from "@/lib/work-report-seen";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   ).all() as { name: string }[];
 
   const reports = db.prepare("SELECT * FROM work_reports WHERE report_date = ?").all(date) as any[];
-  const byName = new Map(reports.map((r) => [r.employee_name, r]));
+  const byName = new Map(withWorkReportSeen(db, reports).map((r) => [r.employee_name, r]));
 
   const rows = employees
     .map((e) => ({ name: e.name, report: byName.get(e.name) || null }))
@@ -31,5 +32,5 @@ export async function GET(req: NextRequest) {
       if (ra !== rb) return ra - rb;
       return a.name.localeCompare(b.name, "zh");
     });
-  return NextResponse.json({ date, today: bangkokToday(), employees: rows });
+  return NextResponse.json({ date, today: bangkokToday(), employees: rows }, {headers:{"Cache-Control":"private, no-store"}});
 }
