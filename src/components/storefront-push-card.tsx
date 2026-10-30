@@ -218,7 +218,7 @@ function PushDialog({ orderId, state, onClose, onPushed }: {
                 </>
               ) : (
                 <div className="space-y-2 rounded-md border border-[var(--border)] p-3">
-                  <Input value={newAccount.login} onChange={e => setNewAccount({ ...newAccount, login: e.target.value })} placeholder="登录名：手机号、邮箱，或字母开头的字母数字（客户用它登录）" />
+                  <Input value={newAccount.login} onChange={e => setNewAccount({ ...newAccount, login: e.target.value })} placeholder="登录名：手机号、邮箱或名字都行（客户用它登录）" />
                   <Input value={newAccount.group_name} onChange={e => setNewAccount({ ...newAccount, group_name: e.target.value })} placeholder="客户群名（只有内部看得到）" />
                   <Input value={newAccount.password} onChange={e => setNewAccount({ ...newAccount, password: e.target.value })} placeholder="初始密码（至少 6 位）" />
                   <Button size="sm" variant="outline" className="gap-1" disabled={busy || !newAccount.login.trim() || !newAccount.group_name.trim() || newAccount.password.length < 6} onClick={createAccount}>

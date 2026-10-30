@@ -74,7 +74,7 @@ export function accountLogin(a: Pick<StorefrontAccount, "phone" | "email">): str
   return a.phone || (/^phone_.*@user\.xiangtai$/.test(a.email) ? "" : a.email);
 }
 
-/** 替客户开账号：只给登录名（手机号、邮箱或字母开头的登录名）+ 初始密码；账号上的名字业务系统用登录名 */
+/** 替客户开账号：只给登录名（手机号、邮箱或随便起的名字，中文也行）+ 初始密码；账号上的名字业务系统用登录名 */
 export async function createStorefrontCustomer(input: { login?: unknown; password?: unknown }): Promise<StorefrontAccount> {
   return json<StorefrontAccount>(await call("/api/sync/customers", { method: "POST",
     body: JSON.stringify({ login: input.login, password: input.password }) }));

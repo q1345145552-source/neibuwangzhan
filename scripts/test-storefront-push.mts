@@ -129,8 +129,9 @@ await test('staff open the customer account with login name + group name + passw
   const dupGroup = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { login: '0822222222', group_name: '甲公司 line群', password: '24681357' } })));
   assert.equal(dupGroup.status, 409, 'group name taken (ignoring case)');
   assert.equal((clientDb.prepare("SELECT count(*) AS n FROM users WHERE phone='0822222222'").get() as { n: number }).n, 0, 'refused before anything is created on the customer site');
-  const bad = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { login: '12ab', group_name: '乙', password: '24681357' } })));
+  const bad = await call(await customersRoute.POST(req('/api/storefront/customers', adminToken, { method: 'POST', body: { login: 'abc@', group_name: '乙', password: '24681357' } })));
   assert.equal(bad.status, 400, JSON.stringify(bad.body));
+  assert.match(bad.body.error, /邮箱格式/, 'a login with @ is checked as an email');
   const found = await call(await customersRoute.GET(req('/api/storefront/customers?q=2345', empToken)));
   assert.deepEqual(found.body.customers.map((c: { id: string; group_name: string }) => [c.id, c.group_name]), [[account.id, '甲公司 LINE群']]);
   const byGroup = await call(await customersRoute.GET(req(`/api/storefront/customers?q=${encodeURIComponent('甲公司')}`, empToken)));
@@ -366,6 +367,19 @@ await test('a login name that is not a phone or email works: the customer logs i
   const mine = await client('GET', '/api/orders', login.body.token);
   assert.deepEqual(mine.body.map((x: { order_no: string }) => x.order_no), [order.body.id]);
   assert.equal((await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: 'SHOP_DING1', group_name: '戊群', password: '11223344' } })))).status, 409, 'login names are unique ignoring case');
+});
+
+await test('any login name works, Chinese names and digits too (2026-10-30: no format limit)', async () => {
+  for (const [name, group] of [['林金金', '林家群1'], ['12ab', '林家群2'], ['林金金 30.10', '林家群3']]) {
+    const created = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: name, group_name: group, password: '0845214963' } })));
+    assert.equal(created.status, 201, `${name}: ${JSON.stringify(created.body)}`);
+    assert.equal(created.body.login, name);
+    const login = await client('POST', '/api/auth/login', undefined, { email: ` ${name} `, password: '0845214963' });
+    assert.equal(login.status, 200, `${name} logs in: ${JSON.stringify(login.body)}`);
+  }
+  const dup = await call(await customersRoute.POST(req('/api/storefront/customers', empToken, { method: 'POST', body: { login: '林金金', group_name: '林家群4', password: '11223344' } })));
+  assert.equal(dup.status, 409);
+  assert.match(dup.body.error, /登录名已经有人用了/);
 });
 
 await test('if attaching fails because the account is gone, the order is still created and the group name is released for a new account', async () => {

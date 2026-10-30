@@ -92,7 +92,7 @@ export function OpenCustomerAccountDialog({ onClose, onCreated, initialGroupName
           <div className="space-y-3 p-5 text-sm">
             <div className="space-y-1">
               <span className="text-xs font-medium">登录名</span>
-              <Input value={form.login} onChange={e => setForm({ ...form, login: e.target.value })} placeholder="手机号、邮箱，或字母开头的字母数字" autoFocus />
+              <Input value={form.login} onChange={e => setForm({ ...form, login: e.target.value })} placeholder="手机号、邮箱或名字都行" autoFocus />
               <p className="text-[0.7rem] text-[var(--muted-foreground)]">客户用它登录业务系统</p>
             </div>
             <div className="space-y-1">
