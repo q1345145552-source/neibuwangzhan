@@ -49,6 +49,15 @@ export function notifyNewSyncedOrder(
   notifyAllStaff(db, "客户站新订单", detail, internalOrderId);
 }
 
+/** 客户在业务网站取消了还没确认的单（2026-10-30）：新单提醒发给了全体在职员工，取消也告诉全体，免得有人还去确认、联系客户。 */
+export function notifyUnconfirmedOrderCancelled(
+  db: Database.Database,
+  internalOrderId: string,
+  detail: string,
+): void {
+  notifyAllStaff(db, "客户取消了订单", detail, internalOrderId);
+}
+
 /** 内部商城新单提醒（2026-10-15）：对上业务线的商城单原来一条提醒都不发，照客户站新单的规矩提醒全体在职员工。related_id 用办理单号。 */
 export function notifyNewMallOrder(
   db: Database.Database,

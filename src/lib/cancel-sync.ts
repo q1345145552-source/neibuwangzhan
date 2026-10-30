@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { queueProgressEventsForOrder } from "@/lib/progress-sync";
-import { notifyCancelRequest } from "@/lib/order-alerts";
+import { notifyCancelRequest, notifyUnconfirmedOrderCancelled } from "@/lib/order-alerts";
+import { isAwaitingConfirmation, siblingOrderIds } from "@/lib/order-confirm";
 
 /**
  * 客户站内申请取消（2026-10-03，规则 19/20）。
@@ -14,7 +15,7 @@ export type CancelRequestRow = {
   reason: string; status: "pending" | "approved" | "rejected"; decision_note: string; decided_by: string | null; decided_at: string | null; created_at: string;
 };
 export class CancelRequestError extends Error {
-  constructor(message: string, public status = 400) { super(message); }
+  constructor(message: string, public status = 400, public code = "") { super(message); }
 }
 
 const REQUEST_ID = /^[A-Za-z0-9-]{8,80}$/;
@@ -93,4 +94,50 @@ export function approvePending(db: Database.Database, orderId: string, by: strin
 
 export function listCancelRequests(db: Database.Database, orderId: string): CancelRequestRow[] {
   return db.prepare("SELECT * FROM sync_cancel_requests WHERE internal_order_id = ? ORDER BY created_at DESC, rowid DESC").all(orderId) as CancelRequestRow[];
+}
+
+/**
+ * 还没确认的单客户直接取消（2026-10-30 老板：「没确认的单直接取消」）。
+ * 客户在业务网站点「取消订单」时当场来问：这笔客户订单还没人点「确认订单」、拆出的办理单一步都没办，就一起改成客户取消，
+ * 不用等管理员；已确认或已开始办的不动，客户那边照旧在办理进度里按服务申请取消。
+ * 回执带上每一份最新的进度事件（跟推回客户站的是同一份、同一个版本号），客户站当场照着改；随后推过去的同一份按版本号自动跳过。
+ * 上次回执丢了客户再点：都已经是客户取消就照样回成功和最新进度。
+ */
+export function cancelUnconfirmedOrder(db: Database.Database, body: unknown, customerName = ""): { source_order_no: string; order_ids: string[]; already: boolean; events: unknown[]; queued: number } {
+  const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+  const sourceOrderNo = b.source_order_no;
+  if (typeof sourceOrderNo !== "string" || !sourceOrderNo || sourceOrderNo.length > 64) throw new CancelRequestError("取消请求字段非法");
+  return db.transaction(() => {
+    const synced = db.prepare("SELECT source, financial_json FROM sync_orders WHERE source_order_no = ?").get(sourceOrderNo) as { source: string; financial_json: string } | undefined;
+    if (!synced) throw new CancelRequestError("办理系统还没收到这张单", 409, "NOT_RECEIVED");
+    // 月费单没有「确认订单」这一说，不归这里取消
+    if (synced.source === "recurring") throw new CancelRequestError("月费账单不能直接取消", 409, "NOT_CANCELLABLE");
+    // 收过钱（已付款或记了定金）的要人工处理，客户站先拦，这里按收到的账单再兜一次；账单读不出来也不让直接取消
+    let money: { depositCents?: unknown; billingStatus?: unknown } | null = null;
+    try { money = JSON.parse(synced.financial_json); } catch { /* 当作收过钱 */ }
+    if (!money || money.billingStatus === "paid" || Number(money.depositCents || 0) > 0) throw new CancelRequestError("这张单已经收过钱", 409, "PAID");
+    const orderIds = siblingOrderIds(db, sourceOrderNo);
+    if (!orderIds.length) throw new CancelRequestError("这张单没有对应的办理单", 409, "NOT_CANCELLABLE");
+    const statusOf = db.prepare("SELECT status FROM orders WHERE id = ?");
+    const open = orderIds.filter(id => (statusOf.get(id) as { status: string } | undefined)?.status !== "客户取消");
+    if (open.length) {
+      if (db.prepare("SELECT 1 FROM sync_order_confirmations WHERE source_order_no = ?").get(sourceOrderNo)) throw new CancelRequestError("这张单已经确认了", 409, "ORDER_CONFIRMED");
+      if (open.some(id => !isAwaitingConfirmation(db, id))) throw new CancelRequestError("这张单已经开始办理了", 409, "ORDER_STARTED");
+    }
+    let queued = 0;
+    const now = new Date().toISOString();
+    for (const id of open) {
+      db.prepare("UPDATE orders SET status = '客户取消', cancel_reason = ?, updated_at = ? WHERE id = ?").run("客户在业务网站取消（订单还没确认）", now, id);
+      queued += queueProgressEventsForOrder(id, db);
+      // 客户之前点过「申请取消」还没人处理的，一并记同意（结果放在进度入队之后，带的才是这次取消的版本）
+      queued += approvePending(db, id, "客户自己取消");
+    }
+    if (open.length) notifyUnconfirmedOrderCancelled(db, open[0],
+      `客户站订单 ${sourceOrderNo}（${customerName || "客户"}）还没确认，客户在业务网站自己取消了，办理单 ${open.join("、")} 已改为「客户取消」，不用再确认。`);
+    const latest = db.prepare("SELECT payload FROM sync_progress_outbox WHERE inbox_id = ? ORDER BY rowid DESC LIMIT 1");
+    const inbox = db.prepare(`SELECT id FROM sync_inbox WHERE source_order_no = ? AND internal_order_id IS NOT NULL AND internal_order_id <> ''
+      ORDER BY line_no, copy_no`).all(sourceOrderNo) as { id: string }[];
+    const events = inbox.map(row => latest.get(row.id) as { payload: string } | undefined).filter(Boolean).map(row => JSON.parse(row!.payload) as unknown);
+    return { source_order_no: sourceOrderNo, order_ids: orderIds, already: open.length === 0, events, queued };
+  }).immediate();
 }
