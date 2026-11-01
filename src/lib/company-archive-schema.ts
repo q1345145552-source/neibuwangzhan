@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-/** First-round additive schema: never rebuild or change registration orders/customers. */
+/** Additive migrations only: preserve company records and linked orders/customers. */
 export function ensureCompanyArchiveSchema(db:Database.Database) {
   db.exec(`CREATE TABLE IF NOT EXISTS company_archives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,4 +18,8 @@ export function ensureCompanyArchiveSchema(db:Database.Database) {
   CREATE INDEX IF NOT EXISTS idx_company_archives_status ON company_archives(status,id DESC);
   CREATE INDEX IF NOT EXISTS idx_company_archives_order ON company_archives(order_id);
   CREATE INDEX IF NOT EXISTS idx_company_archives_customer ON company_archives(customer_id);`);
+  const columns=db.prepare("PRAGMA table_info(company_archives)").all() as {name:string}[];
+  for(const [name,defaultValue] of [["legal_passport_number","''"],["legal_dbd_phone","''"],["shareholders","'[]'"]]) {
+    if(!columns.some(column=>column.name===name)) db.exec(`ALTER TABLE company_archives ADD COLUMN ${name} TEXT NOT NULL DEFAULT ${defaultValue}`);
+  }
 }
