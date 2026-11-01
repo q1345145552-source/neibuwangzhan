@@ -1,6 +1,9 @@
 FROM node:22-alpine
 WORKDIR /app
 
+# Company archive Word/Excel previews; isolated headless processes, no GUI service.
+RUN apk add --no-cache libreoffice-writer libreoffice-calc font-noto font-noto-cjk font-noto-extra
+
 # Install dependencies
 COPY package.json package-lock.json* ./
 RUN npm install

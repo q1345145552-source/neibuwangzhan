@@ -32,4 +32,8 @@ export function ensureCompanyArchiveSchema(db:Database.Database) {
   );
   CREATE INDEX IF NOT EXISTS idx_company_archive_files_archive ON company_archive_files(archive_id,deleted_at,id);`);
 
+  db.exec(`CREATE TABLE IF NOT EXISTS deleted_company_archive_files (
+    filename TEXT PRIMARY KEY,deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+
 }

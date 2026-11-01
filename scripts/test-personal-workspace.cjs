@@ -32,6 +32,7 @@ db.exec(`
  INSERT INTO customers VALUES(1,'商标公海','潜在','2026-10-26',''),(2,'商标我的客户','跟进中','2026-10-26','甲'),(3,'商标别人的客户','跟进中','2026-10-26','乙');
  CREATE TABLE file_uploads(filename TEXT PRIMARY KEY,uploaded_by_id INTEGER,uploaded_by_role TEXT,mime_type TEXT,size INTEGER,created_at TEXT,original_name TEXT DEFAULT '');
  INSERT INTO file_uploads VALUES('own.pdf',1,'employee','application/pdf',10,'2026-10-26','商标合同.pdf'),('other.pdf',2,'employee','application/pdf',10,'2026-10-26','商标乙文件.pdf'),('history.pdf',3,'admin','application/pdf',10,'2026-10-26',''),('personnel.pdf',3,'admin','application/pdf',10,'2026-10-26','商标员工合同.pdf');
+ CREATE TABLE deleted_company_archive_files(filename TEXT PRIMARY KEY);
  CREATE TABLE company_archive_files(id INTEGER,archive_id INTEGER,filename TEXT,deleted_at TEXT DEFAULT '');
  CREATE TABLE employee_files(filename TEXT,original_name TEXT,employee_id INTEGER);
  INSERT INTO employee_files VALUES('personnel.pdf','商标员工合同.pdf',2);

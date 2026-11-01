@@ -1,0 +1,44 @@
+公司档案：整档删除与资料预览验收
+日期：2026-11-02
+范围：公司档案整档删除 + 资料存档页内预览。未部署、未连接生产数据库、未删除真实资料。
+
+一、资料预览
+点击文件名，在当前页面弹窗预览；保留各文件的下载入口与弹窗内“下载原文件”。
+图片直接展示；PDF 使用浏览器原生查看器；DOC/DOCX/XLS/XLSX 在服务端经 LibreOffice 转为 PDF。
+真实 LibreOffice 验证了四种 Office 格式，非模拟 PDF。测试版本为本机 LibreOfficeDev 26.8 alpha0。
+每次转换使用独立工作目录和配置目录，关闭宏信任；不传递应用密钥等环境变量。
+最多同时转换 2 个、60 秒超时，取消/成功/失败后清理输入、输出 PDF 与配置目录。
+转换完成后再次检查员工权限及文件是否仍存在；接口响应 private,no-store。
+预览关闭/切换时中止请求、释放浏览器临时地址；损坏文件及转换组件缺失有明确提示。
+
+二、整档删除
+列表和详情仅 admin 显示删除档案按钮，后端同样拒绝非 admin。
+必须输入完整公司名；同时检查档案版本，避免对已更新的旧数据误删。
+首次删除文件前先备份档案、所有资料记录及磁盘文件，再执行事务删除和磁盘清理。
+成功后清理本次备份；失败时回滚数据库并恢复已删除文件；恢复失败时保留备份供恢复。
+活跃资料及此前已删除的资料记录均清理；保留文件名删除标记阻止旧链接绕过权限。
+关联订单、客户、其他公司档案和普通文件保持不变。
+负责员工仍可上传、删除单个档案资料，不能删除整份档案。
+
+三、自动验证（全部通过）
+scripts/test-company-archive-delete.cjs：权限、完整公司名/版本、先备份后删除、备份失败/部分文件删除失败/提交失败恢复、成功清理、订单客户保留。
+scripts/test-company-office-preview.cjs：真实 DOC/DOCX/XLS/XLSX 转换、图片与原始 PDF、权限/负责人变更/资料删除、转换后再次授权、损坏文件、组件缺失、超时、取消、并发限制、临时目录清理。
+scripts/test-company-archives.cjs：现有增改查、筛选、权限、旧表迁移、事务与关联数据回归。
+scripts/test-company-shareholders.cjs：法人/股东字段与权限回归。
+scripts/test-company-archive-security.cjs：上传分类、负责员工权限、单个资料删除恢复、文件链接隔离。
+scripts/test-personal-workspace.cjs：我的文件夹、备注、搜索及既有文件权限回归。
+独立 TypeScript 检查、Next.js 生产编译、git diff --check 通过。
+
+四、页面验证
+在隔离生产构建页面中，用内存测试数据库与临时资料接入实际接口处理器。
+Chrome 1440 和 390 宽度分别实点通过：图片/PDF/四种 Office 弹窗预览、原始 DOCX 下载字节一致、弹窗错误、临时资源释放、员工无整档删除按钮、管理员列表/详情删除、取消/错误公司名拦截、失败后重试、列表即时更新。
+截图确认 PDF 原生查看器实际展示了转换后的文档正文，390 宽度无横向溢出。
+这是手机尺寸与触控模拟验证，未做 iPhone 真机测试。
+测试未读取实际系统数据库/上传目录，未连接生产服务器。
+
+五、部署要求与验证边界
+Dockerfile 已加入 libreoffice-writer、libreoffice-calc 与 Noto 字体安装；上线必须重建镜像，不能只替换代码。
+本机无 Docker，未实际构建/运行该 Linux 镜像，未在生产安装 LibreOffice。
+已有可用 LibreOffice 的非容器环境可通过 LIBREOFFICE_BIN 指定路径。
+OFFICE_PREVIEW_TMP_DIR 可指定临时工作根目录，默认系统临时目录。
+官方转换参数参考：https://help.libreoffice.org/latest/en-US/text/shared/guide/pdf_params.html

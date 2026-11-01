@@ -63,3 +63,7 @@ deploy_ssh.py
 # codex 调度产物
 dispatch.log
 .dispatch.lock
+
+# Company archive deletion recovery and conversion working directories
+company-archive-deletion-backups/
+company-preview-*/

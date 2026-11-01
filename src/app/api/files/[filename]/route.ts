@@ -51,6 +51,7 @@ export async function GET(
 
   const { filename } = await params;
   const safeName = path.basename(filename);
+  if(getDb().prepare("SELECT 1 FROM deleted_company_archive_files WHERE filename=?").get(safeName))return NextResponse.json({error:"文件已删除"},{status:404});
   const archiveFile=getDb().prepare("SELECT f.archive_id,f.deleted_at,u.original_name FROM company_archive_files f JOIN file_uploads u ON u.filename=f.filename WHERE f.filename=?").get(safeName) as {archive_id:number;deleted_at:string;original_name:string}|undefined;
   if(archiveFile&&(archiveFile.deleted_at||!canAccessCompanyArchive(getDb(),auth,archiveFile.archive_id)))return NextResponse.json({error:"文件不存在或无权查看"},{status:404});
   if (auth.role === "client" && !isClientFileVisible(auth.id, auth.name, safeName)) {

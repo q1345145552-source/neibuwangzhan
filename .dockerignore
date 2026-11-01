@@ -34,3 +34,7 @@ npm-debug.log*
 yarn-debug.log*
 .vercel
 coverage
+
+# Company archive deletion recovery and conversion working directories
+**/company-archive-deletion-backups
+**/company-preview-*
