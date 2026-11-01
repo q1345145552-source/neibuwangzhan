@@ -12,6 +12,7 @@
 export const ENUMS = {
   "attendance.type": ["正常", "补签", "请假"],
   "attendance_requests.status": ["待审批", "已通过", "已驳回"],
+  "company_archive_files.category": ["公司证书", "股东护照", "章程", "PP20 及税务文件", "其他"],
   "company_archives.status": ["注册中", "已注册", "注销"],
   "certificates.status": ["valid", "expiring", "expired"],
   "client_feedback.feedback_type": ["client", "internal"],

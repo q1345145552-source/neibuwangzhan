@@ -32,6 +32,7 @@ db.exec(`
  INSERT INTO customers VALUES(1,'商标公海','潜在','2026-10-26',''),(2,'商标我的客户','跟进中','2026-10-26','甲'),(3,'商标别人的客户','跟进中','2026-10-26','乙');
  CREATE TABLE file_uploads(filename TEXT PRIMARY KEY,uploaded_by_id INTEGER,uploaded_by_role TEXT,mime_type TEXT,size INTEGER,created_at TEXT,original_name TEXT DEFAULT '');
  INSERT INTO file_uploads VALUES('own.pdf',1,'employee','application/pdf',10,'2026-10-26','商标合同.pdf'),('other.pdf',2,'employee','application/pdf',10,'2026-10-26','商标乙文件.pdf'),('history.pdf',3,'admin','application/pdf',10,'2026-10-26',''),('personnel.pdf',3,'admin','application/pdf',10,'2026-10-26','商标员工合同.pdf');
+ CREATE TABLE company_archive_files(id INTEGER,archive_id INTEGER,filename TEXT,deleted_at TEXT DEFAULT '');
  CREATE TABLE employee_files(filename TEXT,original_name TEXT,employee_id INTEGER);
  INSERT INTO employee_files VALUES('personnel.pdf','商标员工合同.pdf',2);
 `);
@@ -96,6 +97,11 @@ const post=body=>route.POST(new NextRequest('http://localhost/api/my-folder',{me
  auth=user;assert.equal((await post({action:'note',filename:'own.pdf',note_name:'x'.repeat(201)})).status,400);
  assert.equal((await post({action:'note',filename:'own.pdf',note_name:'   '})).status,200);assert.equal(data.personalWorkspace(db,user).files[0].title,'商标合同.pdf');
  assert.equal(db.prepare('SELECT COUNT(*) n FROM personal_file_note_history').get().n,3);
+ db.prepare("INSERT INTO file_uploads(filename,uploaded_by_id,uploaded_by_role,mime_type,size,original_name) VALUES('archive-only.pdf',1,'employee','application/pdf',10,'商标私密档案')").run();
+ db.prepare("INSERT INTO company_archive_files(id,archive_id,filename) VALUES(1,99,'archive-only.pdf')").run();
+ assert.equal((await post({action:'file',filename:'archive-only.pdf'})).status,403);
+ assert.ok(!data.globalSearch(db,user,'商标').find(g=>g.type==='files').items.some(f=>f.id==='archive-only.pdf'));
+ assert.ok(!data.globalSearch(db,admin,'商标').find(g=>g.type==='files').items.some(f=>f.id==='archive-only.pdf'));
  const empty=await searchRoute.GET(new NextRequest('http://localhost/api/search?q=不存在'));assert.ok((await empty.json()).every(g=>!g.items.length));
  // Exercise the actual multipart upload handler, including initial note history.
  for (const note of ['上传时备注','']) {

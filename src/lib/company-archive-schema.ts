@@ -22,4 +22,14 @@ export function ensureCompanyArchiveSchema(db:Database.Database) {
   for(const [name,defaultValue] of [["legal_passport_number","''"],["legal_dbd_phone","''"],["shareholders","'[]'"]]) {
     if(!columns.some(column=>column.name===name)) db.exec(`ALTER TABLE company_archives ADD COLUMN ${name} TEXT NOT NULL DEFAULT ${defaultValue}`);
   }
+  db.exec(`CREATE TABLE IF NOT EXISTS company_archive_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    archive_id INTEGER NOT NULL REFERENCES company_archives(id),
+    filename TEXT NOT NULL UNIQUE REFERENCES file_uploads(filename),
+    category TEXT NOT NULL DEFAULT '其他' CHECK(category IN ('公司证书','股东护照','章程','PP20 及税务文件','其他')),
+    created_by TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS idx_company_archive_files_archive ON company_archive_files(archive_id,deleted_at,id);`);
+
 }

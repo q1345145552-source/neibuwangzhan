@@ -1,3 +1,5 @@
+import { canManageCompanyArchiveFiles } from "@/lib/company-archive-access";
+import { COMPANY_FILE_CATEGORIES } from "@/lib/company-archives";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -64,6 +66,15 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const archive = formData.has("company_archive_id");
+    const archiveId=Number(formData.get("company_archive_id"));
+    const archiveCategory=formData.get("category")||"其他";
+    if(archive){
+      if(formData.has("personal_folder_id"))return NextResponse.json({error:"不能同时上传到公司档案和个人文件夹"},{status:400});
+      if(!Number.isSafeInteger(archiveId)||archiveId<=0)return NextResponse.json({error:"档案编号无效"},{status:400});
+      if(!canManageCompanyArchiveFiles(getDb(),auth,archiveId))return NextResponse.json({error:"无权上传公司档案资料"},{status:403});
+      if(typeof archiveCategory!=="string"||!COMPANY_FILE_CATEGORIES.includes(archiveCategory as typeof COMPANY_FILE_CATEGORIES[number]))return NextResponse.json({error:"资料分类无效"},{status:400});
+    }
     const personal = formData.has("personal_folder_id");
     const rawNote = personal ? formData.get("note_name") : null;
     if (rawNote !== null && (typeof rawNote !== "string" || rawNote.trim().length > 200)) return NextResponse.json({error:"备注名最多200个字"},{status:400});
@@ -102,13 +113,15 @@ export async function POST(req: NextRequest) {
     try {
       const db = getDb();
       db.transaction(() => {
+        if(archive&&!canManageCompanyArchiveFiles(db,auth,archiveId))throw Error("档案权限已变化");
         db.prepare("INSERT INTO file_uploads (filename, uploaded_by_id, uploaded_by_role, mime_type, size, original_name) VALUES (?, ?, ?, ?, ?, ?)")
           .run(safeName, auth.id, auth.role, file.type, buffer.length, file.name);
+        if(archive)db.prepare("INSERT INTO company_archive_files(archive_id,filename,category,created_by) VALUES(?,?,?,?)").run(archiveId,safeName,archiveCategory,auth.name);
         if (personal) {
           db.prepare("INSERT INTO personal_files(filename,owner_id,folder_id,note_name) VALUES (?,?,?,?)").run(safeName,auth.id,folderId,noteName);
           if (noteName) db.prepare("INSERT INTO personal_file_note_history(filename,old_note,new_note,changed_by_id,changed_by) VALUES(?,?,?,?,?)").run(safeName,"",noteName,auth.id,auth.name);
         }
-      })();
+      }).immediate();
     } catch (error) {
       // An unregistered write is not exposed as an uploaded file.
       await unlink(filePath);

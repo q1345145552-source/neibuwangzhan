@@ -1,9 +1,9 @@
 // Real company archive APIs and migration on memory-only SQLite; no real credentials or data.
 const assert=require('node:assert/strict');const{createCompanyArchiveHarness}=require('./test-company-archives.cjs');
-async function run(){const old=createCompanyArchiveHarness({legacy:true});try{
+async function run(){const old=createCompanyArchiveHarness({legacy:true});try{old.setActor({id:4,name:'老板',role:'admin'});
  let row=old.native.prepare('SELECT * FROM company_archives WHERE id=77').get();for(const[key,value]of Object.entries(old.legacyBefore))assert.equal(row[key],value,key);assert.equal(row.legal_passport_number,'');assert.equal(row.legal_dbd_phone,'');assert.equal(row.shareholders,'[]');old.ensure();assert.equal(old.native.prepare('PRAGMA table_info(company_archives)').all().filter(c=>c.name==='shareholders').length,1);assert.equal((await old.call('item','GET',undefined,77)).body.shareholders.length,0);
  }finally{old.native.close();}
- const h=createCompanyArchiveHarness();try{
+ const h=createCompanyArchiveHarness();try{h.setActor({id:4,name:'老板',role:'admin'});
  const shareholders=[{name:'股东甲',passport_number:'EA000123',percentage:'50',dbd_phone:'+66 0812345678'},{name:'ผู้ถือหุ้น',passport_number:'000789',percentage:'30.125',dbd_phone:'0012345'},{name:'股东丙',passport_number:'P300',percentage:'0',dbd_phone:'0800000000'}];
  const full={name_zh:'法人股东测试',status:'注册中',legal_representative:'张三',legal_passport_number:'E00012345',legal_dbd_phone:'+66 0012345',shareholders};
  let response=await h.call('list','POST',full);assert.equal(response.status,201);let row=response.body;assert.equal(row.legal_passport_number,full.legal_passport_number);assert.equal(row.legal_dbd_phone,full.legal_dbd_phone);assert.deepEqual(row.shareholders,shareholders);const id=row.id;assert.deepEqual((await h.call('item','GET',undefined,id)).body.shareholders,shareholders);assert.deepEqual((await h.call('list')).body[0].shareholders,shareholders);assert.deepEqual(JSON.parse(h.native.prepare('SELECT shareholders FROM company_archives WHERE id=?').get(id).shareholders),shareholders);

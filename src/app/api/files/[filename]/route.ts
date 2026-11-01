@@ -1,3 +1,4 @@
+import { canAccessCompanyArchive } from "@/lib/company-archive-access";
 import { getDb } from "@/lib/db";
 import { isClientFileVisible } from "@/lib/client-scope";
 import { NextRequest, NextResponse } from "next/server";
@@ -50,6 +51,8 @@ export async function GET(
 
   const { filename } = await params;
   const safeName = path.basename(filename);
+  const archiveFile=getDb().prepare("SELECT f.archive_id,f.deleted_at,u.original_name FROM company_archive_files f JOIN file_uploads u ON u.filename=f.filename WHERE f.filename=?").get(safeName) as {archive_id:number;deleted_at:string;original_name:string}|undefined;
+  if(archiveFile&&(archiveFile.deleted_at||!canAccessCompanyArchive(getDb(),auth,archiveFile.archive_id)))return NextResponse.json({error:"文件不存在或无权查看"},{status:404});
   if (auth.role === "client" && !isClientFileVisible(auth.id, auth.name, safeName)) {
     return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
@@ -70,6 +73,8 @@ export async function GET(
         "Content-Type": contentType,
         "Cache-Control": "private, no-store",
         "Vary": "Authorization",
+        ...(archiveFile&&req.nextUrl.searchParams.get("download")==="1"?{"Content-Disposition":`attachment; filename="company-file${path.extname(safeName)}"; filename*=UTF-8''${encodeURIComponent(archiveFile.original_name||safeName)}`}:{})
+
       },
     });
   } catch {

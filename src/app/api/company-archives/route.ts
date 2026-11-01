@@ -1,3 +1,4 @@
+import { canAssignArchiveOrder } from "@/lib/company-archive-access";
 import { NextRequest,NextResponse } from "next/server";
 import { verifyAuth,isStaff } from "@/lib/auth";
 import { getDb,logOperation } from "@/lib/db";
@@ -9,7 +10,7 @@ export async function GET(req:NextRequest){
   const params=new URL(req.url).searchParams,status=params.get('status')||'',q=(params.get('q')||'').trim();
   if(status&&!COMPANY_ARCHIVE_STATUSES.includes(status as typeof COMPANY_ARCHIVE_STATUSES[number]))return NextResponse.json({error:"公司状态无效"},{status:400});
   if(q.length>200)return NextResponse.json({error:"搜索词最多200字"},{status:400});
-  const conditions:string[]=[],args:string[]=[];if(status){conditions.push('a.status=?');args.push(status);}if(q){conditions.push('(instr(lower(a.name_zh),lower(?))>0 OR instr(lower(a.name_foreign),lower(?))>0)');args.push(q,q);}
+  const conditions:string[]=[],args:string[]=[];if(user.role!=='admin'){conditions.push('o.responsible_person=?');args.push(user.name);}const orderId=params.get('order_id');if(orderId){conditions.push('a.order_id=?');args.push(orderId);}if(status){conditions.push('a.status=?');args.push(status);}if(q){conditions.push('(instr(lower(a.name_zh),lower(?))>0 OR instr(lower(a.name_foreign),lower(?))>0)');args.push(q,q);}
   const rows=getDb().prepare(companyArchiveSelect+(conditions.length?' WHERE '+conditions.join(' AND '):'')+' ORDER BY a.id DESC').all(...args);
   return NextResponse.json(rows.map(row=>hydrateCompanyArchive(row as Parameters<typeof hydrateCompanyArchive>[0])),{headers:{'Cache-Control':'private, no-store'}});
 }
@@ -18,6 +19,7 @@ export async function POST(req:NextRequest){
   const body=await readJson(req),db=getDb();
   return db.transaction(()=>{
     let data;try{data=validateCompanyArchive(db,body,user);}catch(error){return NextResponse.json({error:error instanceof Error?error.message:'资料无效'},{status:400});}
+    if(!canAssignArchiveOrder(db,user,data.order_id))return NextResponse.json({error:"只能为自己负责的订单新建公司档案"},{status:403});
     const stored=companyArchiveStorage(data);
     const keys=Object.keys(stored),result=db.prepare(`INSERT INTO company_archives(${keys.join(',')},created_by,updated_by) VALUES(${keys.map(()=>'?').join(',')},?,?)`).run(...Object.values(stored),user.name,user.name);
     const id=Number(result.lastInsertRowid);logOperation(user.name,'新建公司档案','company_archive',String(id),data.name_zh||data.name_foreign);

@@ -11,3 +11,6 @@ export interface CompanyArchive {
 export type CompanyArchiveForm = Pick<CompanyArchive,"name_zh"|"name_foreign"|"registered_address"|"legal_representative"|"legal_passport_number"|"legal_dbd_phone"|"shareholders"|"email"|"business_scope"|"registered_capital"|"registration_date"|"status"|"order_id"|"customer_id"|"notes">;
 export interface CompanyArchiveOptions { orders:{id:string;customer_name:string;created_at:string}[]; customers:{id:number;company_name:string}[] }
 export const emptyCompanyArchive:CompanyArchiveForm = {name_zh:"",name_foreign:"",registered_address:"",legal_representative:"",legal_passport_number:"",legal_dbd_phone:"",shareholders:[],email:"",business_scope:"",registered_capital:"",registration_date:"",status:"注册中",order_id:null,customer_id:null,notes:""};
+
+export const COMPANY_FILE_CATEGORIES = ["公司证书","股东护照","章程","PP20 及税务文件","其他"] as const;
+export interface CompanyArchiveFile {id:number;archive_id:number;filename:string;category:string;original_name:string;mime_type:string;size:number;created_by:string;created_at:string}

@@ -47,7 +47,8 @@ export function globalSearch(db: Database.Database, user: Identity, keyword: str
       COALESCE((SELECT NULLIF(p.note_name,'') FROM personal_files p WHERE p.filename=u.filename AND p.owner_id=?), NULLIF(u.original_name,''), (SELECT d.name FROM documents d WHERE d.file_url = '/api/files/' || u.filename LIMIT 1), (SELECT e.original_name FROM employee_files e WHERE e.filename = u.filename LIMIT 1), substr(u.filename, instr(u.filename, '_') + 1)) AS title,
       u.created_at AS time, '上传的文件' AS summary
     FROM file_uploads u
-    WHERE NOT EXISTS(SELECT 1 FROM personal_files p WHERE p.filename = u.filename AND p.owner_id <> ?)
+    WHERE NOT EXISTS(SELECT 1 FROM company_archive_files a WHERE a.filename=u.filename)
+      AND NOT EXISTS(SELECT 1 FROM personal_files p WHERE p.filename = u.filename AND p.owner_id <> ?)
       AND (? = 'admin' OR u.uploaded_by_id = ? OR EXISTS(SELECT 1 FROM documents d WHERE d.file_url = '/api/files/' || u.filename) OR EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND e.employee_id = ?))
       AND (? = 'admin' OR NOT EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND e.employee_id <> ?))
       AND (${contains(["u.original_name", "u.filename", "(SELECT p.note_name FROM personal_files p WHERE p.filename=u.filename)"])} OR EXISTS(SELECT 1 FROM documents d WHERE d.file_url = '/api/files/' || u.filename AND ${contains(["d.name"])}) OR EXISTS(SELECT 1 FROM employee_files e WHERE e.filename = u.filename AND ${contains(["e.original_name"])}))

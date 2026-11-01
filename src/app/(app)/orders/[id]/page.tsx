@@ -1,5 +1,6 @@
 "use client";
 
+import OrderCompanyArchive from "@/components/order-company-archive";
 import { CommerceTermsSummary } from "@/components/commerce-terms";
 
 import React, { useState, useEffect, use, useCallback, useRef } from "react";
@@ -726,11 +727,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         {isCommerceCancelled && <p className="mt-2 font-medium">本份服务已批准取消，办理状态已锁定；保留历史进度，仍可补充资料、备注及已发生的成本。</p>}
         <div className="mt-3"><CommerceTermsSummary terms={order.commerce_purchase?.terms}/></div>
       </div>}
+      {user?.role!=="client"&&(user?.role==="admin"||order.responsible_person===user?.name)&&businessTypes.some(b=>b.id===order.business_type_id&&b.name==="公司注册")&&["","company-reg"].includes(order.sub_service_type||"")&&<OrderCompanyArchive orderId={order.id}/>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="返回订单列表"><ArrowLeft className="size-4" aria-hidden="true" /></Button>
           <div className="flex-1">
-            {/* 业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），旁边小字是内部编号（2026-10-22） */}
+      {/* 业务系统来的单显示业务系统单号（拆成几张的加 -1、-2），旁边小字是内部编号（2026-10-22） */}
             <h1 className="font-display text-2xl font-light tracking-tight text-[var(--foreground)]" style={{ textWrap: "balance" }}>{order.display_no || order.id}</h1>
             {order.display_no && order.display_no !== order.id && <p className="font-mono text-[0.65rem] text-[var(--muted-foreground)]" title="内部编号">{order.id}</p>}
             <div className="mt-1 flex items-center gap-2">

@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         db.prepare("DELETE FROM personal_folders WHERE id = ? AND owner_id = ?").run(folderId,user.id);
       } else if (body.action === "file") {
         const filename = typeof body.filename === "string" ? body.filename : "";
+        if(db.prepare("SELECT 1 FROM company_archive_files WHERE filename=?").get(filename))return fail("公司档案资料请在对应档案中管理",403);
         const upload = db.prepare("SELECT 1 FROM file_uploads WHERE filename = ? AND uploaded_by_id = ? AND uploaded_by_role = ?").get(filename,user.id,user.role);
         if (!upload) return fail("文件不存在或不是你上传的文件",403);
         const existing = db.prepare("SELECT owner_id FROM personal_files WHERE filename = ?").get(filename) as {owner_id:number}|undefined;
