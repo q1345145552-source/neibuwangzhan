@@ -62,6 +62,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 const navigation = [
   { name: "全局搜索", href: "/search", icon: Search },
+  { name: "公司档案", href: "/company-archives", icon: Building2 },
   { name: "我的文件夹", href: "/my-folder", icon: FolderOpen },
   { name: "仪表盘", href: "/", icon: LayoutDashboard },
   { name: "数据总览", href: "/visualization", icon: BarChart3 },
@@ -323,7 +324,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => !(user?.role === "client" && ["全局搜索", "我的文件夹"].includes(n.name)) && n.name !== "数据总览" && n.name !== "监督看板" && n.name !== "员工动态" && n.name !== "我的项目" && !(user?.role === "client" && n.name === "通知/规则"))} pathname={pathname} onClose={close} badgeMap={{ "监督看板": bossPending?.total ?? 0, "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
+        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => !(user?.role === "client" && ["全局搜索", "我的文件夹", "公司档案"].includes(n.name)) && n.name !== "数据总览" && n.name !== "监督看板" && n.name !== "员工动态" && n.name !== "我的项目" && !(user?.role === "client" && n.name === "通知/规则"))} pathname={pathname} onClose={close} badgeMap={{ "监督看板": bossPending?.total ?? 0, "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
 
         <div className="mt-4 mb-2 px-3">
           <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>

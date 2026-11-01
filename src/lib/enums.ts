@@ -12,6 +12,7 @@
 export const ENUMS = {
   "attendance.type": ["正常", "补签", "请假"],
   "attendance_requests.status": ["待审批", "已通过", "已驳回"],
+  "company_archives.status": ["注册中", "已注册", "注销"],
   "certificates.status": ["valid", "expiring", "expired"],
   "client_feedback.feedback_type": ["client", "internal"],
   "contracts.payment_status": ["未付", "部分付", "已付"],
