@@ -598,8 +598,9 @@ export async function createEmployee(data: { name: string; email: string; role?:
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("创建员工失败");
-  return res.json();
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || "创建员工失败");
+  return result;
 }
 
 export async function updateStep(orderId: string, stepId: number, data: { status?: string; notes?: string; assignee?: string; approval_status?: string; submission_count?: number; reason?: string }) {

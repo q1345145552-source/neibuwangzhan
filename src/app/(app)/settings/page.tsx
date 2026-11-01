@@ -31,6 +31,41 @@ export default function SettingsPage() {
   const [editHireDate, setEditHireDate] = useState("");
   // 员工列表是否显示离职员工（默认只显示在职）
   const [showLeft, setShowLeft] = useState(false);
+  const [resignTarget, setResignTarget] = useState<{id:number;name:string}|null>(null);
+  const [resignDate, setResignDate] = useState("");
+  const [resignReason, setResignReason] = useState("");
+  const [resignError, setResignError] = useState("");
+  const [resignSaving, setResignSaving] = useState(false);
+  const resignInFlight = useRef(false);
+  const resignDialog = useRef<HTMLDivElement>(null);
+  const resignDateInput = useRef<HTMLInputElement>(null);
+  const resignReasonInput = useRef<HTMLTextAreaElement>(null);
+  const [empMessage, setEmpMessage] = useState("");
+  const [resignViewport,setResignViewport]=useState<{left:number;top:number;width:number;height:number}|null>(null);
+  useEffect(()=>{
+    const viewport=window.visualViewport;
+    if(!resignTarget||!viewport){setResignViewport(null);return;}
+    const update=()=>setResignViewport({left:viewport.offsetLeft,top:viewport.offsetTop,width:viewport.width,height:viewport.height});
+    update();viewport.addEventListener("resize",update);viewport.addEventListener("scroll",update);
+    return()=>{viewport.removeEventListener("resize",update);viewport.removeEventListener("scroll",update);};
+  },[resignTarget]);
+
+  useEffect(() => {
+    if (!resignTarget) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    resignDateInput.current?.focus();
+    const key = (event:KeyboardEvent) => {
+      if (event.key === "Escape" && !resignInFlight.current) setResignTarget(null);
+      if (event.key !== "Tab") return;
+      const controls = [...(resignDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled)') || [])].filter(el=>el.getClientRects().length);
+      if (!controls.length) return;
+      if (event.shiftKey && document.activeElement === controls[0]) {event.preventDefault();controls.at(-1)?.focus();}
+      else if (!event.shiftKey && document.activeElement === controls.at(-1)) {event.preventDefault();controls[0].focus();}
+    };
+    document.addEventListener("keydown",key);
+    return () => {document.removeEventListener("keydown",key);previous?.focus();};
+  },[resignTarget]);
+
 
   // 客户账号可见范围：该账号在外部客户端口能看到哪些公司的订单
   const [scopeTarget, setScopeTarget] = useState<Employee | null>(null);
@@ -261,7 +296,7 @@ export default function SettingsPage() {
 
   const handleAdd = async () => {
     if (!newName.trim() || !newEmail.trim()) return;
-    setEmpError("");
+    setEmpError("");setEmpMessage("");
     try {
       const emp = await createEmployee({ name: newName, email: newEmail, role: newRole, password: newPassword || "123456", hire_date: newHireDate });
       setEmployees(prev => [...prev, emp]);
@@ -269,7 +304,7 @@ export default function SettingsPage() {
       setShowAddForm(false);
     } catch (err) {
       console.error("Add employee failed:", err);
-      setEmpError("添加失败，仅管理员可操作");
+      setEmpError(err instanceof Error ? err.message : "添加失败，请重试");
     }
   };
 
@@ -284,37 +319,44 @@ export default function SettingsPage() {
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
-    setEmpError("");
+    setEmpError("");setEmpMessage("");
     try {
       const emp = await updateEmployee(editingId, { name: editName, email: editEmail, role: editRole, hire_date: editHireDate, ...(editPassword.trim() ? { password: editPassword.trim() } : {}) });
       setEmployees(prev => prev.map(e => e.id === editingId ? emp : e));
       setEditingId(null);
     } catch (err) {
       console.error("Update employee failed:", err);
-      setEmpError("保存失败，仅管理员可操作");
+      setEmpError(err instanceof Error ? err.message : "保存失败，请重试");
     }
   };
 
-  const handleMarkLeft = async (id: number, name: string) => {
-    if (!confirm(`确认将「${name}」标记为离职？标记后该员工将无法登录，历史数据保留。`)) return;
-    setEmpError("");
+  const handleMarkLeft = (id: number, name: string) => {
+    if (resignInFlight.current) return;
+    setEmpError("");setEmpMessage("");setResignDate("");setResignReason("");setResignError("");setResignTarget({id,name});
+  };
+  const submitMarkLeft = async (event:React.FormEvent) => {
+    event.preventDefault();
+    if (!resignTarget || resignInFlight.current) return;
+    if (!resignDate.trim()) {setResignError("请填写离职日期");resignDateInput.current?.focus();return;}
+    if (!resignReason.trim()) {setResignError("请填写离职原因");resignReasonInput.current?.focus();return;}
+    const target=resignTarget;
+    resignInFlight.current=true;setResignSaving(true);setResignError("");
     try {
-      const emp = await updateEmployee(id, { status: "离职" });
-      setEmployees(prev => prev.map(e => e.id === id ? emp : e));
-    } catch (err) {
-      console.error("Mark left failed:", err);
-      setEmpError("操作失败，仅管理员可操作");
-    }
+      const emp = await updateEmployee(target.id, {status:"离职",resignation_date:resignDate.trim(),resignation_reason:resignReason.trim()});
+      setEmployees(prev=>prev.map(employee=>Number(employee.id)===target.id?emp:employee));
+      setEmpMessage(`已将「${target.name}」标记为离职，历史数据保留。`);setResignTarget(null);
+    } catch (err) {setResignError(err instanceof Error?err.message:"标记离职失败，请重试");}
+    finally {resignInFlight.current=false;setResignSaving(false);}
   };
 
   const handleRestore = async (id: number) => {
-    setEmpError("");
+    setEmpError("");setEmpMessage("");
     try {
       const emp = await updateEmployee(id, { status: "在职" });
       setEmployees(prev => prev.map(e => e.id === id ? emp : e));
     } catch (err) {
       console.error("Restore failed:", err);
-      setEmpError("操作失败，仅管理员可操作");
+      setEmpError(err instanceof Error ? err.message : "操作失败，请重试");
     }
   };
 
@@ -348,7 +390,8 @@ export default function SettingsPage() {
             </label>
           )}
           {!isAdmin && <p className="text-xs text-[var(--muted-foreground)]">仅管理员可以添加、编辑或删除员工</p>}
-          {empError && <p className="text-xs text-[var(--destructive)]">{empError}</p>}
+          {empError && <p role="alert" className="break-words text-xs text-[var(--destructive)]">{empError}</p>}
+          {empMessage && <p role="status" className="text-xs text-green-700">{empMessage}</p>}
 
           {/* Add form */}
           {isAdmin && showAddForm && (
@@ -547,6 +590,18 @@ export default function SettingsPage() {
         </div>
 
         {/* 客户账号可见范围配置 */}
+        {resignTarget && isAdmin && <div style={resignViewport?{left:resignViewport.left,top:resignViewport.top,width:resignViewport.width,height:resignViewport.height,right:"auto",bottom:"auto"}:undefined} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4" onClick={()=>{if(!resignInFlight.current)setResignTarget(null);}}>
+          <div ref={resignDialog} style={resignViewport?{maxHeight:Math.max(0,resignViewport.height-24)}:undefined} role="dialog" aria-modal="true" aria-labelledby="settings-resign-title" className="max-h-[85dvh] w-full min-w-0 max-w-sm overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-xl" onClick={event=>event.stopPropagation()}>
+            <h2 id="settings-resign-title" className="break-words text-base font-semibold">标记「{resignTarget.name}」离职</h2>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">标记后该员工将无法登录，历史数据保留。</p>
+            <form noValidate onSubmit={submitMarkLeft} className="mt-4 space-y-4">
+              <label className="block text-sm">离职日期（必填）<Input ref={resignDateInput} aria-label="离职日期" required type="date" value={resignDate} disabled={resignSaving} onChange={event=>setResignDate(event.target.value)} className="mt-2 min-h-11 w-full min-w-0" /></label>
+              <label className="block text-sm">离职原因（必填）<textarea ref={resignReasonInput} aria-label="离职原因" required rows={3} value={resignReason} disabled={resignSaving} onChange={event=>setResignReason(event.target.value)} className="mt-2 block w-full min-w-0 rounded-md border border-[var(--border)] bg-[var(--background)] p-2 text-sm outline-none focus:border-[var(--ring)]" /></label>
+              {resignError && <p role="alert" className="break-words text-sm text-red-600">{resignError}</p>}
+              <div className="flex justify-end gap-2"><Button type="button" variant="outline" className="min-h-11" disabled={resignSaving} onClick={()=>setResignTarget(null)}>取消</Button><Button type="submit" variant="destructive" className="min-h-11" disabled={resignSaving}>{resignSaving?"提交中…":"确认离职"}</Button></div>
+            </form>
+          </div>
+        </div>}
         {scopeTarget && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="配置可见公司">
             <div className="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-lg">
