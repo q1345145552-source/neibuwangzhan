@@ -32,7 +32,7 @@ function check(name, fn) {
     const legacy = require('better-sqlite3')(':memory:');
     legacy.exec("CREATE TABLE todos(id INTEGER PRIMARY KEY,content TEXT,assignee TEXT,status TEXT,priority TEXT); INSERT INTO todos VALUES (42,'原待办','原员工','未完成','普通')");
     ensureTodoSourceSchema(legacy); ensureTodoSourceSchema(legacy);
-    assert.deepEqual(legacy.prepare('SELECT * FROM todos').get(), { id: 42, content: '原待办', assignee: '原员工', status: '未完成', priority: '普通', source_type: '', source_id: '' }); legacy.close();
+    assert.deepEqual(legacy.prepare('SELECT * FROM todos').get(), { id: 42, content: '原待办', assignee: '原员工', status: '未完成', priority: '普通', source_type: '', source_id: '', source_revision: '' }); legacy.close();
   });
   check('No pre-Oct19 dates or pre-17:00 Bangkok tasks, exact 17:00 creates one urgent linked todo + staff notification', () => {
     for (const time of ['2026-10-17T18:00:00', '2026-10-18T18:00:00', '2026-10-19T16:59:59']) assert.equal(run(db, at(time)).todos, 0);
@@ -75,7 +75,7 @@ function check(name, fn) {
     assert.equal(sourceTasks().find(t => t.assignee === workerName && t.source_id === '2026-10-19').status, '已完成');
     assert.equal(db.prepare('SELECT status FROM todos WHERE id=?').get(manual).status, '未完成'); assert.equal(db.prepare('SELECT status FROM todos WHERE id=?').get(other).status, '未完成');
     assert.equal(sourceTasks().find(t => t.source_id === '2026-10-20').status, '未完成');
-    const pending = require('../src/lib/boss-submissions.ts').bossPendingSubmissions(db); assert(!pending.items.some(i => i.category === 'todo'));
+    const pending = require('../src/lib/boss-submissions.ts').bossPendingSubmissions(db); const completedId = sourceTasks().find(t => t.assignee === workerName && t.source_id === '2026-10-19').id; assert(!pending.items.some(i => i.category === 'todo' && i.source_id === completedId)); assert(pending.items.some(i => i.category === 'todo' && i.source_id === Number(manual)));
   });
   check('Failed notification rolls back todo and source claim; retry succeeds', () => {
     db.exec("CREATE TEMP TRIGGER fail_daily_notice BEFORE INSERT ON notifications WHEN NEW.type='待办指派' BEGIN SELECT RAISE(ABORT,'fixture send failed'); END");

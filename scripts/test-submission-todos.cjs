@@ -59,7 +59,7 @@ async function check(label, fn) {
     const legacy = require('better-sqlite3')(':memory:');
     legacy.exec("CREATE TABLE todos(id INTEGER PRIMARY KEY,content TEXT,assignee TEXT,status TEXT); INSERT INTO todos VALUES(42,'旧手工待办','甲','未完成')");
     ensureTodoSourceSchema(legacy); ensureTodoSourceSchema(legacy);
-    assert.deepEqual(legacy.prepare('SELECT * FROM todos').get(), { id: 42, content: '旧手工待办', assignee: '甲', status: '未完成', source_type: '', source_id: '' });
+    assert.deepEqual(legacy.prepare('SELECT * FROM todos').get(), { id: 42, content: '旧手工待办', assignee: '甲', status: '未完成', source_type: '', source_id: '', source_revision: '' });
     for (const type of ['work_report', 'meeting', 'notice', 'problem']) legacy.prepare('INSERT INTO todos(content,assignee,source_type,source_id) VALUES (?,?,?,?)').run(type, '甲', type, '1');
     for (const type of ['notice', 'problem']) assert.throws(() => legacy.prepare('INSERT INTO todos(assignee,source_type,source_id) VALUES (?,?,?)').run('乙', type, '1'), /UNIQUE/);
     assert.equal(legacy.prepare('SELECT COUNT(*) n FROM todos').get().n, 5); legacy.close();

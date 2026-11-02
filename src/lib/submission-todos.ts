@@ -1,7 +1,8 @@
 import type Database from "better-sqlite3";
 import { acknowledgeBossSubmission } from "./boss-submissions";
+import { reportSubmissionRevision } from "./boss-submission-types";
 
-type Source = "notice" | "problem";
+type Source = "notice" | "problem" | "work_report_review";
 type Todo = { id: number; content: string; assignee: string; status: string };
 
 function assignmentNotice(db: Database.Database, todo: Todo, stamp: string) {
@@ -35,6 +36,36 @@ function reopenTodo(db: Database.Database, todo: Todo, stamp: string) {
   db.prepare("UPDATE boss_submission_state SET confirmed_at='',confirmed_by='' WHERE category='todo' AND source_id=?").run(todo.id);
   db.prepare("INSERT INTO audit_logs(actor,action,target_type,target_id,detail,created_at) VALUES ('系统','业务重新处理恢复待办','todo',?,?,?)")
     .run(String(todo.id), todo.content, stamp);
+}
+
+/** 点评与补交来源分开；一份日报复用一条待办，只有员工重交后的新一轮点评才重新打开。调用方须在点评事务内执行。 */
+export function assignWorkReportReviewTodo(db: Database.Database, report: {
+  id: number; employee_name: string; report_date: string; submitted_at?: string; created_at?: string;
+}, rating: number, comment: string, stamp = new Date().toISOString()) {
+  const revision = reportSubmissionRevision(report);
+  const parts = report.report_date.split("-").map(Number);
+  const date = parts.length === 3 && parts.every(Number.isFinite) ? `${parts[1]}月${parts[2]}日` : report.report_date;
+  const content = `老板点评了你的 ${date} 工作记录，评了 ${rating} 星，请查看并改进${comment ? `\n点评：${comment}` : ""}`;
+  const todo = db.prepare("SELECT id,content,assignee,status,source_revision FROM todos WHERE source_type='work_report_review' AND source_id=? AND assignee=?")
+    .get(String(report.id), report.employee_name) as (Todo & { source_revision: string }) | undefined;
+  if (!todo) {
+    createTodo(db, "work_report_review", report.id, report.employee_name, content, stamp);
+    db.prepare("UPDATE todos SET source_revision=? WHERE source_type='work_report_review' AND source_id=? AND assignee=?")
+      .run(revision, String(report.id), report.employee_name);
+    return;
+  }
+  const newSubmission = todo.source_revision !== revision;
+  if (!newSubmission && todo.status === "已完成") return;
+  if (newSubmission || todo.content !== content) {
+    db.prepare("UPDATE todos SET content=?,content_zh='',content_zh_key='',source_revision=?,seen_at='',updated_at=? WHERE id=?")
+      .run(content, revision, stamp, todo.id);
+    db.prepare("INSERT INTO audit_logs(actor,action,target_type,target_id,detail,created_at) VALUES ('系统','更新点评待办','todo',?,?,?)")
+      .run(String(todo.id), content, stamp);
+  }
+  if (newSubmission) {
+    reopenTodo(db, todo, stamp);
+    assignmentNotice(db, { ...todo, content }, stamp);
+  }
 }
 
 /** 以下函数均在对应业务写入事务内调用；通知来源编号使用个人落实记录，而非通知编号。 */

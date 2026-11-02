@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 export function ensureTodoSourceSchema(db: Database.Database) {
   db.transaction(() => {
     const columns = db.prepare("PRAGMA table_info(todos)").all() as { name: string }[];
-    for (const column of ["source_type", "source_id"]) {
+    for (const column of ["source_type", "source_id", "source_revision"]) {
       if (!columns.some(existing => existing.name === column)) db.exec(`ALTER TABLE todos ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_todos_source ON todos(source_type,source_id,assignee);
@@ -15,6 +15,8 @@ export function ensureTodoSourceSchema(db: Database.Database) {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_notice_source ON todos(source_id)
       WHERE source_type='notice' AND source_id<>'';
       CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_problem_source ON todos(source_id)
-      WHERE source_type='problem' AND source_id<>''`);
+      WHERE source_type='problem' AND source_id<>'';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_work_report_review_source ON todos(source_id,assignee)
+      WHERE source_type='work_report_review' AND source_id<>''`);
   })();
 }

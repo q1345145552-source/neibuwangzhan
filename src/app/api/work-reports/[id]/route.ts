@@ -2,6 +2,7 @@ import { withWorkReportSeen } from "@/lib/work-report-seen";
 import { publishBossSubmission, acknowledgeBossSubmission } from "@/lib/boss-submissions";
 import { reportSubmissionRevision } from "@/lib/boss-submission-types";
 import { completeWorkReportTodos } from "@/lib/work-report-sync";
+import { assignWorkReportReviewTodo } from "@/lib/submission-todos";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, logOperation } from "@/lib/db";
 import { verifyAuth, isStaff } from "@/lib/auth";
@@ -121,6 +122,7 @@ export async function PATCH(
       if (body.submission_revision !== undefined && body.submission_revision !== reportSubmissionRevision(current)) return null;
       db.prepare("UPDATE work_reports SET boss_rating = ?, boss_comment = ?, updated_at = datetime('now') WHERE id = ?").run(rating, comment, id);
       acknowledgeBossSubmission(db, "report", Number(id), auth.name, reportSubmissionRevision(current));
+      assignWorkReportReviewTodo(db, current, rating, comment);
       return db.prepare("SELECT * FROM work_reports WHERE id = ?").get(id) as any;
     }).immediate();
     if (!reviewed) return NextResponse.json({error:"日报已变化，请重新打开后点评"},{status:409});
