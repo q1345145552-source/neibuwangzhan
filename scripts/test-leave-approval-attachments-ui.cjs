@@ -1,0 +1,44 @@
+// Local isolated production UI only. API fixtures exercise existing components; no business DB or real uploads.
+const{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+const origin=process.env.TEST_APP_ORIGIN||'http://127.0.0.1:3197';assert(['127.0.0.1','localhost'].includes(new URL(origin).hostname));
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
+const pdf=Buffer.from('%PDF-1.4\nattachment download fixture\n');
+(async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{for(const width of[1440,390]){
+ const user={id:4,name:'老板',role:'admin'};
+ const base={start_date:'2026-11-02',end_date:'2026-11-02',start_time:'09:00',end_time:'17:00',created_at:'2026-11-01T03:00:00Z',status:'待审批',reason:'附件与凭证验证'};
+ const filename='请假 附件.png';const records=[{...base,id:101,employee_name:'Bam',leave_type:'病假',images:JSON.stringify([filename,'document.pdf',null,42,''])},{...base,id:102,employee_name:'Ing',leave_type:'事假',images:'[]'},{...base,id:103,employee_name:'BadJSON',leave_type:'年假',images:'bad-json'}];
+ let proof={leave_id:101,institution:'测试医院',doctor:'测试医生 12345',cert_number:'CERT-101',issue_date:'2026-11-02',sick_days:1,photo1_url:'/api/files/proof1.png',photo2_url:'/api/files/proof2.png',photo3_url:'/api/files/proof3.png',photo4_url:'/api/files/proof4.png',review_status:'核查中',review_reason:''};
+ const errors=[],fileRequests=[],detailRequests=[],reviewWrites=[];let dashboardReads=0,listReads=0;
+ const context=await browser.newContext({viewport:{width,height:900},isMobile:width===390,hasTouch:width===390,serviceWorkers:'block',acceptDownloads:true});context.setDefaultTimeout(15000);await context.addInitScript(()=>localStorage.setItem('authToken','fixture'));
+ await context.route('**/*',async route=>{
+  const request=route.request(),url=new URL(request.url());assert.equal(url.origin,origin);if(!url.pathname.startsWith('/api/'))return route.continue();const send=(body,status=200)=>route.fulfill({status,json:body});const p=url.pathname;
+  if(p==='/api/auth/me')return send(user);
+  if(p.startsWith('/api/files/')){assert.equal(url.searchParams.get('token'),'fixture');fileRequests.push(url.href);const name=decodeURIComponent(p.slice('/api/files/'.length));const isPdf=name==='document.pdf';return route.fulfill({status:200,headers:{'Content-Type':isPdf?'application/pdf':'image/png','Content-Disposition':url.searchParams.get('download')==='1'?`attachment; filename="${isPdf?'document.pdf':'image.png'}"`:'inline'},body:isPdf?pdf:png});}
+  if(p==='/api/leave/dashboard'){dashboardReads++;return send({pendingCount:records.length,pendingList:records,todayOnLeave:[],monthStats:[],sickLeaders:[],bridgeSuspects:[]});}
+  if(p==='/api/leave'){listReads++;if(url.searchParams.has('employee')||url.searchParams.has('month')){detailRequests.push(url.href);assert(url.searchParams.get('employee'));assert(url.searchParams.get('month'));}return send(records);}
+  if(p==='/api/leave/medical-proof'){
+   assert.equal(request.headers().authorization,'Bearer fixture');
+   if(request.method()==='GET'){assert.equal(url.searchParams.get('leave_id'),'101');return send(proof);}
+   assert.equal(request.method(),'PATCH');const body=request.postDataJSON();assert.equal(body.leave_id,101);reviewWrites.push(body);proof={...proof,review_status:body.review_status,review_reason:body.review_reason||''};return send(proof);
+  }
+  if(p==='/api/boss-supervision/pending')return send({total:0,counts:{},items:[]});if(p==='/api/todos/unseen')return send({count:0,items:[]});if(p.includes('count'))return send({count:0});if(request.method()!=='GET')throw Error('Unexpected write '+p);return send({});
+ });
+ try{
+  const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto(origin+'/internal/leave');await page.getByRole('button',{name:'看板',exact:true}).click();await page.locator('#section-pending').getByText('Bam',{exact:true}).click();let approval=page.getByRole('dialog',{name:'请假审批',exact:true});
+  const attachments=approval.getByRole('region',{name:'请假附件'});assert.equal(await attachments.locator('li').count(),2);assert.equal(await attachments.locator('img').count(),1);await page.waitForFunction(()=>document.querySelector('[aria-label="请假附件"] img')?.naturalWidth===1);
+  for(const anchor of await attachments.locator('a').all()){const url=new URL(await anchor.getAttribute('href'),origin);assert.equal(url.searchParams.get('token'),'fixture');assert(url.pathname.startsWith('/api/files/'));assert.equal(await anchor.getAttribute('target'),'_blank');}
+  const popupPromise=context.waitForEvent('page');await attachments.getByRole('link',{name:'预览附件 '+filename,exact:true}).click();const popup=await popupPromise;await popup.waitForLoadState();assert.equal(new URL(popup.url()).searchParams.get('token'),'fixture');await popup.waitForFunction(()=>document.querySelector('img')?.naturalWidth===1);await popup.close();assert(approval);
+  const downloadPromise=page.waitForEvent('download');await attachments.getByRole('link',{name:'下载附件 document.pdf',exact:true}).click();const download=await downloadPromise;assert.equal(download.suggestedFilename(),'document.pdf');const fs=require('node:fs');assert.deepEqual(fs.readFileSync(await download.path()),pdf);await download.delete();
+  const imageDownload=page.waitForEvent('download');await attachments.getByRole('link',{name:'下载附件 '+filename,exact:true}).click();const image=await imageDownload;assert.deepEqual(fs.readFileSync(await image.path()),png);await image.delete();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:`leave-approval-${width}.png`});
+  await approval.getByRole('button',{name:'查看病假证明',exact:true}).click();const medical=page.getByText('补交医疗证明（四合一）',{exact:true}).locator('../..');
+  await medical.getByPlaceholder('如 曼谷医院').waitFor();assert.equal(await medical.getByPlaceholder('如 曼谷医院').inputValue(),'测试医院');assert.equal(await medical.getByPlaceholder('如 张三 医执字第123号').inputValue(),'测试医生 12345');assert.equal(await medical.getByPlaceholder('证明编号',{exact:true}).inputValue(),'CERT-101');assert.equal(await medical.getByRole('link',{name:'查看已上传',exact:true}).count(),4);
+  for(const link of await medical.getByRole('link',{name:'查看已上传',exact:true}).all())assert.equal(new URL(await link.getAttribute('href'),origin).searchParams.get('token'),'fixture');
+  const beforeDashboard=dashboardReads,beforeList=listReads;
+  for(const status of['核查中','已通过','不通过']){await medical.locator('select').first().selectOption(status);if(status==='不通过')await medical.locator('select').nth(1).selectOption('证明信息对不上');const response=page.waitForResponse(r=>r.url().includes('/api/leave/medical-proof')&&r.request().method()==='PATCH');await medical.getByRole('button',{name:'保存核查',exact:true}).click();await response;await page.waitForTimeout(100);assert.equal(proof.review_status,status);}
+  assert.equal(reviewWrites.length,3);assert.equal(reviewWrites[2].review_reason,'证明信息对不上');assert(dashboardReads>beforeDashboard);assert(listReads>beforeList);assert.equal(detailRequests.length,0);await medical.getByText('核查已保存',{exact:true}).waitFor();await page.screenshot({path:`leave-medical-${width}.png`});await medical.getByRole('button',{name:'关闭',exact:true}).click();await approval.waitFor();await approval.getByRole('button',{name:'✅ 通过',exact:true}).scrollIntoViewIfNeeded();await approval.getByRole('button',{name:'查看病假证明',exact:true}).waitFor();assert.equal(await page.getByText('请假明细',{exact:false}).count(),0);
+  await approval.locator('button').first().click();await page.locator('#section-pending').getByText('Ing',{exact:true}).click();approval=page.getByRole('dialog',{name:'请假审批',exact:true});assert.equal(await approval.getByRole('button',{name:'查看病假证明',exact:true}).count(),0);assert.equal(await approval.getByRole('region',{name:'请假附件'}).count(),0);await approval.locator('button').first().click();await page.locator('#section-pending').getByText('BadJSON',{exact:true}).click();approval=page.getByRole('dialog',{name:'请假审批',exact:true});assert.equal(await approval.getByRole('region',{name:'请假附件'}).count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);assert(fileRequests.length>=4);
+  console.log(`PASS ${width}: filename+token image thumbnails/new-tab originals/image+PDF downloads; malformed/empty attachments safe; sick-only existing four-photo medical modal and doctor/institution/certificate; all review states save; dashboard/list refresh with no empty detail request; approval remains; no overflow/errors.`);
+ }finally{await context.close();}
+}}finally{await browser.close();}})().catch(error=>{console.error(error);process.exitCode=1});

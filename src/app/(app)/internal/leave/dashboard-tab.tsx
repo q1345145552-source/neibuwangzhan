@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { fetchWithAuth } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, fileUrl } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { MedicalProofModal } from "./medical-proof-modal";
 
@@ -11,6 +11,29 @@ const AI_BADGE: Record<string, string> = {
   谨慎: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   建议不批准: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
+
+function PendingLeaveAttachments({ images }: { images: string }) {
+  let files: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(images);
+    if (Array.isArray(parsed)) files = parsed.filter((file): file is string => typeof file === "string" && !!file.trim());
+  } catch { /* 历史空值或损坏 JSON 不影响审批。 */ }
+  if (!files.length) return null;
+  return <section aria-label="请假附件" className="min-w-0 space-y-2">
+    <p className="text-xs text-[var(--muted-foreground)]">附件（{files.length}）</p>
+    <ul className="grid min-w-0 gap-3 sm:grid-cols-2">{files.map((filename, index) => {
+      const url = `/api/files/${encodeURIComponent(filename)}`;
+      const image = /\.(jpe?g|png|webp|gif|avif|bmp|heic|heif)$/i.test(filename);
+      return <li key={`${filename}-${index}`} className="min-w-0 rounded-lg border border-[var(--border)] p-2">
+        <a href={fileUrl(url)} target="_blank" rel="noopener noreferrer" className="block min-w-0 text-blue-600 hover:underline" aria-label={`预览附件 ${filename}`}>
+          {image && <img src={fileUrl(url)} alt={`附件 ${index + 1}：${filename}`} className="mb-2 h-28 w-full rounded object-contain"/>}
+          <span className="block break-all text-xs">{filename}</span>
+        </a>
+        <a href={fileUrl(`${url}?download=1`)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-10 items-center rounded-md border border-[var(--border)] px-3 text-xs" aria-label={`下载附件 ${filename}`}>下载</a>
+      </li>;
+    })}</ul>
+  </section>;
+}
 
 export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: string | null }) {
   const { user } = useAuth();
@@ -572,7 +595,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
       {/* ── 待审批详情弹窗 ── */}
       {pendingDetail && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => !approving && setPendingDetail(null)}>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label="请假审批" inert={proofLeaveId != null ? true : undefined} className="min-w-0 max-h-[85dvh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-2xl max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold">请假审批</h3>
               <button onClick={() => !approving && setPendingDetail(null)} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]" disabled={approving}>
@@ -592,10 +615,8 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                 </div>
               )}
               {pendingDetail.destination && <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">目的地</span><span>{pendingDetail.destination}</span></div>}
-              {pendingDetail.images && (() => {
-                try { const imgs = JSON.parse(pendingDetail.images); if (Array.isArray(imgs) && imgs.length > 0) return <div className="flex justify-between"><span className="text-[var(--muted-foreground)]">附件</span><span className="text-blue-600">{imgs.length} 个文件</span></div>; } catch {}
-                return null;
-              })()}
+              {pendingDetail.images && <PendingLeaveAttachments images={pendingDetail.images}/>}
+              {pendingDetail.leave_type === "病假" && <button type="button" disabled={approving} onClick={() => setProofLeaveId(pendingDetail.id)} className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-3 text-sm text-blue-600 disabled:opacity-50">查看病假证明</button>}
             </div>
 
             {/* AI 分析（手动触发，三档建议 + 理由 + 详细分析） */}
@@ -777,7 +798,13 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
       )}
 
       {proofLeaveId != null && (
-        <MedicalProofModal leaveId={proofLeaveId} onClose={() => setProofLeaveId(null)} onSaved={() => loadDetail(detailModal?.employee || "", detailModal?.month || "")} />
+        <div className="relative z-[70]">
+          <MedicalProofModal leaveId={proofLeaveId} onClose={() => setProofLeaveId(null)} onSaved={() => {
+            loadDashboard();
+            loadRecords();
+            if (detailModal) void loadDetail(detailModal.employee, detailModal.month);
+          }} />
+        </div>
       )}
     </div>
   );
