@@ -11,6 +11,7 @@ import { cn, toThaiTime, bangkokDateStr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Plus, X, ClipboardList, ChevronDown } from "lucide-react";
 import { WORK_REPORT_REQUIRED_FROM } from "@/lib/work-report-policy";
+import WorkReportTodoDialog from "@/components/work-report-todo-dialog";
 
 interface WorkReport {
   boss_seen?: boolean;
@@ -323,6 +324,10 @@ export default function WorkReportsPage() {
     update(); viewport.addEventListener("resize", update); viewport.addEventListener("scroll", update);
     return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
   }, [rejectTarget]);
+
+  const [todoTarget, setTodoTarget] = useState<WorkReport | null>(null);
+  const [todoMessage, setTodoMessage] = useState("");
+  const openTodo = (report: WorkReport) => { if (isAdmin) { setTodoMessage(""); setTodoTarget(report); } };
 
   // 老板点评（星级 + 一句点评）
   const [reviewRating, setReviewRating] = useState(0);
@@ -857,6 +862,7 @@ export default function WorkReportsPage() {
           </div>
 
           <h2 className="text-sm font-medium">{batchOpen ? "批量批阅 · 当日工作记录" : "当日工作记录"}</h2>
+          {todoMessage && <p role="status" className="text-sm text-green-700">{todoMessage}</p>}
           {seenError && <p role="alert" className="text-sm text-[var(--destructive)]">{seenError}</p>}
           {boardLoading || boardLoadedDate !== boardDate ? (
             <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</p>
@@ -895,6 +901,7 @@ export default function WorkReportsPage() {
                         <div className="flex flex-wrap gap-2">
                           {!row.report.boss_seen && <Button size="sm" variant="outline" disabled={seeingIds.includes(row.report.id)} onClick={()=>void markSeen(row.report!)}>{seeingIds.includes(row.report.id) ? "标记中…" : "已看"}</Button>}
                           <Button size="sm" variant="outline" onClick={()=>openDetail(row.report!)} aria-label={`查看 ${row.name} 的日报详情`}>详情 / 点评 / 退回</Button>
+                          {batchOpen && <Button size="sm" variant="outline" onClick={()=>openTodo(row.report!)} aria-label={`将 ${row.name} 的工作记录转待办`}>转待办</Button>}
                         </div>
                       </div>
                     </>}
@@ -1253,7 +1260,7 @@ export default function WorkReportsPage() {
       {/* 详情弹窗 */}
       {detail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetail(null)}>
-          <div role="dialog" aria-modal="true" aria-label={`日报详情：${detail.employee_name} ${detail.report_date}`} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-label={`日报详情：${detail.employee_name} ${detail.report_date}`} inert={todoTarget ? true : undefined} className="max-h-[88dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-[var(--foreground)]">
@@ -1345,8 +1352,10 @@ export default function WorkReportsPage() {
                   </div>
                   <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={2} placeholder="写一句点评" className="w-full rounded border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--ring)]" />
                   {reviewErr && <p className="text-xs text-[var(--destructive)]">{reviewErr}</p>}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" onClick={submitReview} disabled={reviewing}>{reviewing ? "提交中…" : "保存点评"}</Button>
+                    <Button size="sm" variant="outline" onClick={()=>openTodo(detail)}>转待办</Button>
+                    {todoMessage && <span role="status" className="text-xs text-green-700">{todoMessage}</span>}
                     {reviewSaved && <span className="inline-flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">✓ 已保存</span>}
                   </div>
                 </div>
@@ -1374,6 +1383,7 @@ export default function WorkReportsPage() {
           </div>
         </div>
       )}
+      {isAdmin && todoTarget && <WorkReportTodoDialog key={todoTarget.id} report={todoTarget} onClose={created => { setTodoTarget(null); if (created) setTodoMessage("待办已创建并派给所选负责人"); }}/>}
     </div>
   );
 }
