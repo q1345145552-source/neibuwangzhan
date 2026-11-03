@@ -696,7 +696,7 @@ function InternalPageContent() {
 
       {/* ── 工资设置（管理员） ── */}
       {isAdmin && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
+        <div className="w-full max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden md:max-w-none">
           <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
             <h2 className="text-sm font-medium flex items-center gap-2"><Wallet className="size-4" />工资设置</h2>
           </div>

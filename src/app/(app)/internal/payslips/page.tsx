@@ -413,7 +413,7 @@ export default function PayslipsPage() {
               {genMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{genMsg}</span>}
               {err && <span className="text-xs text-red-500">{err}</span>}
             </div>
-            <p className="text-xs text-[var(--muted-foreground)]">改完「工资设置」后，请重新点「生成工资单」：底薪 / 勤奋奖 / 技能津贴会按最新档案刷新（奖金、佣金等手动项不变）。</p>
+            <p className="text-xs text-[var(--muted-foreground)]">保存「工资设置」后，该员工所有月份的草稿 / 打回工资单会自动刷新自动项，无需重新生成。奖金、佣金、加班费、预扣税不变；待确认 / 已确认 / 已发放的工资单不变。</p>
 
             {loading ? (
               <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>

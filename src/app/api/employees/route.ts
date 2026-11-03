@@ -5,7 +5,6 @@ import { validateEnums } from "@/lib/enums";
 import { readJson } from "@/lib/req";
 import { getDb, logOperation, RESIGNATION_HANDOVER_ITEMS } from "@/lib/db";
 import { refreshPayslipAutoFields } from "@/lib/payslips";
-import { bangkokMonthKey } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAuth(req);
@@ -183,8 +182,7 @@ export async function PATCH(req: NextRequest) {
   const updatingScope = Array.isArray(customer_names);
   if (sets.length === 0 && !updatingScope) return NextResponse.json({ error: "无更新字段" }, { status: 400 });
 
-  const refreshMonth = bangkokMonthKey();
-  let refreshedDraft = false;
+  const refreshedMonths: string[] = [];
   db.transaction(() => {
     // A newly converted customer is not a legacy customer account. Keep explicit existing mappings,
     // but do not manufacture new access by falling back to their old employee display name.
@@ -214,15 +212,19 @@ export async function PATCH(req: NextRequest) {
         if (cn) ins.run(id, cn);
       }
     }
-    // 工资档案变了 → 自动重算当月「草稿/打回」状态的工资单自动项（底薪/勤奋奖/技能津贴 + 社保/迟到/请假）。
+    // 工资档案变了 → 按各自月份重算该员工所有「草稿/打回」工资单的自动项。
     // 待确认/已确认/已发放的工资单一律不动。
     if (salaryChanged) {
-      refreshedDraft = refreshPayslipAutoFields(db, Number(id), refreshMonth);
+      const drafts = db.prepare("SELECT DISTINCT month FROM payslips WHERE employee_id = ? AND status IN ('草稿','打回') ORDER BY month")
+        .all(Number(id)) as { month: string }[];
+      for (const draft of drafts) {
+        if (refreshPayslipAutoFields(db, Number(id), draft.month)) refreshedMonths.push(draft.month);
+      }
     }
   })();
 
-  if (refreshedDraft) {
-    logOperation(auth.name, "自动刷新草稿工资单", "payslip", `${id}/${refreshMonth}`, "工资档案变更，自动重算自动项");
+  for (const month of refreshedMonths) {
+    logOperation(auth.name, "自动刷新草稿工资单", "payslip", `${id}/${month}`, "工资档案变更，自动重算自动项");
   }
 
   if (updatingScope) {
