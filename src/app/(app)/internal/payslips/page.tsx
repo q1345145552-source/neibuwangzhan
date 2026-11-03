@@ -34,7 +34,7 @@ interface Payslip {
 }
 
 interface LateDetail { date: string; minutes: number; }
-interface LeaveDetail { type: string; days: number; hours: number; has_certificate: boolean; images: string[]; }
+interface LeaveDetail { type: string; days: number; hours: number; has_certificate: boolean; pay_status?: string; images: string[]; }
 interface AttendanceSummary {
   id: number;
   employee_id: number;
@@ -414,6 +414,7 @@ export default function PayslipsPage() {
               {err && <span className="text-xs text-red-500">{err}</span>}
             </div>
             <p className="text-xs text-[var(--muted-foreground)]">保存「工资设置」后，该员工所有月份的草稿 / 打回工资单会自动刷新自动项，无需重新生成。奖金、佣金、加班费、预扣税不变；待确认 / 已确认 / 已发放的工资单不变。</p>
+            <p className="text-xs text-[var(--muted-foreground)]">日薪＝总工资÷30，时薪＝日薪÷8；每月迟到前30分钟豁免，超出部分每分钟扣10铢。请假是否扣款以审批的带薪标记为准，病假证明仅作核查留档。</p>
 
             {loading ? (
               <div className="py-12 text-center text-sm text-[var(--muted-foreground)]">加载中…</div>
@@ -438,7 +439,7 @@ export default function PayslipsPage() {
                         <th className="py-3 px-3 text-right text-xs font-medium">收入合计</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">社保</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">迟到</th>
-                        <th className="py-3 px-3 text-right text-xs font-medium">事假</th>
+                        <th className="py-3 px-3 text-right text-xs font-medium">事假及其他请假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">病假</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">缺勤</th>
                         <th className="py-3 px-3 text-right text-xs font-medium">功过扣款</th>
@@ -514,7 +515,7 @@ export default function PayslipsPage() {
             {detail && (() => {
               const s = (() => { try { return JSON.parse(detail.summary || "{}"); } catch { return {}; } })();
               const lates: { date: string; minutes: number }[] = Array.isArray(s.late_details) ? s.late_details : [];
-              const leaves: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = Array.isArray(s.leave_details) ? s.leave_details : [];
+              const leaves: LeaveDetail[] = Array.isArray(s.leave_details) ? s.leave_details : [];
               return (
                 <div style={detailViewport ? { left: detailViewport.left, top: detailViewport.top, width: detailViewport.width, height: detailViewport.height, right: "auto", bottom: "auto" } : undefined} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetail(null)}>
                   <div role="dialog" aria-modal="true" aria-label={`工资单详情：${detail.employee_name} ${detail.month}`} data-payslip-detail={detail.id} style={detailViewport ? { maxHeight: Math.max(0, detailViewport.height - 32) } : undefined} className="max-h-[85dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl [overflow-wrap:anywhere]" onClick={(e) => e.stopPropagation()}>
@@ -543,7 +544,7 @@ export default function PayslipsPage() {
                       </div>
 
                       <div className="mt-3 space-y-1">
-                        {[["社保", detail.social_security], ["迟到扣款", detail.late_deduction], ["事假扣款", detail.personal_leave_deduction], ["病假扣款", detail.sick_leave_deduction], ["缺勤扣款", detail.absence_deduction], ["功过扣款", detail.demerit_deduction], ["预扣税", detail.withholding_tax]].map(([label, val]) => (
+                        {[["社保", detail.social_security], ["迟到扣款", detail.late_deduction], ["事假及其他请假扣款", detail.personal_leave_deduction], ["病假扣款", detail.sick_leave_deduction], ["缺勤扣款", detail.absence_deduction], ["功过扣款", detail.demerit_deduction], ["预扣税", detail.withholding_tax]].map(([label, val]) => (
                           <div key={String(label)} className="flex justify-between text-sm">
                             <span className="text-[var(--muted-foreground)]">{label}</span>
                             <span className="tabular-nums text-[var(--foreground)]">{n(val).toFixed(2)}</span>
@@ -586,7 +587,8 @@ export default function PayslipsPage() {
                               <p className="text-xs text-[var(--foreground)]">
                                 {l.type} {l.days} 天
                                 {l.type === "事假" && l.days === 1 ? `（${l.hours} 小时）` : ""}
-                                {l.type === "病假" && (l.has_certificate ? "（有医院证明）" : "（无医院证明）")}
+                                {` · ${l.pay_status === undefined ? "历史未记录薪资标记" : l.pay_status === "带薪" ? "带薪" : "不带薪"}`}
+                                {l.type === "病假" && (l.has_certificate ? "（证明核查通过）" : "（证明未核查通过）")}
                               </p>
                               {l.images?.length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-2">
@@ -760,7 +762,8 @@ export default function PayslipsPage() {
                           <p className="text-sm text-[var(--foreground)]">
                             {l.type} {l.days} 天
                             {l.type === "事假" && l.days === 1 ? `（${l.hours} 小时）` : ""}
-                            {l.type === "病假" && (l.has_certificate ? "（有医院证明）" : "（无医院证明）")}
+                            {` · ${l.pay_status === undefined ? "历史未记录薪资标记" : l.pay_status === "带薪" ? "带薪" : "不带薪"}`}
+                            {l.type === "病假" && (l.has_certificate ? "（有医院证明）" : "（证明状态仅作留档）")}
                           </p>
                           {l.images.length > 0 && (
                             <div className="mt-1.5 flex flex-wrap gap-2">

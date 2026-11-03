@@ -48,6 +48,7 @@ function createLeaveHarness() {
         assert(locks > 0); assert(sql.endsWith('WHERE id = ? AND status = ?')); h.writes.push({ sql, args: a });
         const row = leaves.get(Number(a.at(-2))); if (zero) { zero = false; return { changes: 0 }; } if (!row || row.status !== a.at(-1)) return { changes: 0 };
         Object.assign(row, { status: a[0], rejection_reason: a[1] }); let i = 2;
+        if (sql.includes('pay_status = ?')) row.pay_status = a[i++];
         if (sql.includes('images = ?')) row.images = a[i++];
         if (sql.includes('approved_by = ?')) Object.assign(row, { approved_by: a[i], approved_at: '2026-10-23 08:00:00' });
         return { changes: 1 };

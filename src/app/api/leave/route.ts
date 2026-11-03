@@ -177,12 +177,17 @@ export async function PATCH(req: NextRequest) {
 
   const rejectionReason = typeof rejection_reason === "string" ? rejection_reason.trim() : "";
   if (status === "已驳回" && !rejectionReason) return NextResponse.json({ error: "请填写驳回原因" }, { status: 400 });
+  const payStatus = body.pay_status === undefined ? "不带薪" : body.pay_status;
+  if (status === "已通过" && payStatus !== "带薪" && payStatus !== "不带薪") return NextResponse.json({ error: "请选择带薪或不带薪" }, { status: 400 });
 
   // 审批、原考勤回写、申请人提醒和日志同一事务；任何一步失败全部回滚。
   return db.transaction(() => {
     const target = db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id) as any;
     if (!target) return NextResponse.json({ error: "请假记录不存在" }, { status: 404 });
     if (target.status === status) {
+      if (status === "已通过" && body.pay_status !== undefined && payStatus !== (target.pay_status || "不带薪")) {
+        return NextResponse.json({ error: "该请假已审批，不能通过重复审批修改带薪标记" }, { status: 409 });
+      }
       // 保留旧调用附带替换附件的能力，但不重复审批、回写考勤或发结果提醒。
       if (images !== undefined) {
         const nextImages = Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]";
@@ -193,6 +198,7 @@ export async function PATCH(req: NextRequest) {
 
     const sets = ["status = ?", "rejection_reason = ?"];
     const vals: any[] = [status, status === "已驳回" ? rejectionReason : ""];
+    if (status === "已通过") { sets.push("pay_status = ?"); vals.push(payStatus); }
     if (images !== undefined) { sets.push("images = ?"); vals.push(Array.isArray(images) ? JSON.stringify(images.filter((s: string) => s && s.trim())) : "[]"); }
     if (status === "已通过" || status === "已驳回") { sets.push("approved_at = datetime('now')"); sets.push("approved_by = ?"); vals.push(auth.name); }
     vals.push(id, target.status);
@@ -221,10 +227,10 @@ export async function PATCH(req: NextRequest) {
       const title = LEAVE_REVIEW_TITLES[status === "已通过" ? 0 : 1];
       const range = `${target.start_date} ${target.start_time || "09:00"} 至 ${target.end_date} ${target.end_time || "17:00"}`;
       db.prepare("INSERT INTO notifications (type, title, body, recipient, related_id, related_type) VALUES (?, ?, ?, ?, ?, ?)").run(
-        "", title, `${auth.name}${status === "已通过" ? "已通过" : "已驳回"}你的${target.leave_type}申请（${range}）。${status === "已驳回" ? `\n驳回原因：${rejectionReason}` : ""}`,
+        "", title, `${auth.name}${status === "已通过" ? "已通过" : "已驳回"}你的${target.leave_type}申请（${range}）。${status === "已通过" ? `\n薪资标记：${payStatus}` : `\n驳回原因：${rejectionReason}`}`,
         target.employee_name, String(target.id), "leave_review"
       );
-      logOperation(auth.name, title, "leave", String(target.id), target.employee_name);
+      logOperation(auth.name, title, "leave", String(target.id), status === "已通过" ? `${target.employee_name}：${payStatus}` : target.employee_name);
     }
     return NextResponse.json(db.prepare("SELECT * FROM leave_requests WHERE id = ?").get(id));
   }).immediate();

@@ -82,7 +82,7 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
   // 社保 = 底薪 * 5%
   const social = round2(base * 0.05);
 
-  // 迟到：该月考勤里曼谷 08:00 后打卡的迟到分钟数 × 5 铢
+  // 迟到：08:00 后的分钟数按月累计，前 30 分钟豁免，只扣超出部分。
   let lateMinutes = 0;
   const lateDetails: { date: string; minutes: number }[] = [];
   const attRows = db.prepare(
@@ -95,21 +95,27 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
       lateDetails.push({ date: a.date, minutes: Math.round(minutes * 10) / 10 });
     }
   }
-  const late = round2(lateMinutes * 5);
+  const late = round2(Math.max(0, lateMinutes - 30) * 10);
   const attendanceDays = attRows.length;
+  const dailyRate = totalSalary / 30;
+  const hourlyRate = dailyRate / 8;
 
-  // 事假 / 病假（已通过、开始日期在该月）
+  // 所有已通过请假按本月交集计天；带薪同样记入请假天数，避免再被算成缺勤。
   let personalLeave = 0;
   let sickLeave = 0;
-  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; review_status: string; images: string[] }[] = [];
+  const monthFrom = `${month}-01`;
+  const monthTo = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
+  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; review_status: string; pay_status: string; images: string[] }[] = [];
   const leaveRows = db.prepare(
-    "SELECT id, leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND leave_type IN ('事假','病假') AND start_date LIKE ? ORDER BY start_date"
-  ).all(name, `${month}%`) as { id: number; leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string }[];
+    "SELECT id, leave_type, start_date, end_date, start_time, end_time, images, COALESCE(pay_status,'不带薪') pay_status FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND start_date <= ? AND end_date >= ? ORDER BY start_date"
+  ).all(name, monthTo, monthFrom) as { id: number; leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string; pay_status: string }[];
   for (const l of leaveRows) {
-    const days = daysBetween(l.start_date, l.end_date);
-    const hours = days === 1 ? hoursBetween(l.start_time, l.end_time) : days * 8;
+    const first = l.start_date < monthFrom ? monthFrom : l.start_date;
+    const days = daysBetween(first, l.end_date > monthTo ? monthTo : l.end_date);
+    const singleDay = l.start_date === l.end_date;
+    const hours = singleDay ? hoursBetween(l.start_time, l.end_time) : days * 8;
     const images = parseImages(l.images);
-    // 病假核查状态：已通过 → 带薪；其余（不通过/拒绝授权/待核查/核查中/未提交）→ 无薪
+    // 病假证明只用于留档展示，核查结果不再参与扣款判断。
     const proof = l.leave_type === "病假"
       ? (db.prepare("SELECT review_status FROM leave_medical_proofs WHERE leave_id = ?").get(l.id) as { review_status: string } | undefined)
       : undefined;
@@ -120,29 +126,30 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
       hours: Math.round(hours * 10) / 10,
       has_certificate: l.leave_type === "病假" && reviewStatus === "已通过",
       review_status: reviewStatus,
+      pay_status: l.pay_status === "带薪" ? "带薪" : "不带薪",
       images,
     });
-    if (l.leave_type === "事假") {
-      if (days === 1) {
-        // 5 小时内按小时扣（60 铢/时），超过 5 小时按整天扣
-        personalLeave += hours <= 5 ? hours * 60 : totalSalary / 25;
+    if (l.pay_status === "带薪") continue;
+    if (l.leave_type !== "病假") {
+      if (l.leave_type === "事假" && singleDay) {
+        // 单日不超过 5 小时按个人时薪扣；超过 5 小时或跨天按日薪扣。
+        personalLeave += hours <= 5 ? hours * hourlyRate : dailyRate;
       } else {
-        personalLeave += days * (totalSalary / 25);
+        personalLeave += days * dailyRate;
       }
     } else {
-      // 病假：核查通过带薪不扣；否则无薪按天扣
-      if (reviewStatus !== "已通过") sickLeave += days * (totalSalary / 25);
+      sickLeave += days * dailyRate;
     }
   }
   personalLeave = round2(personalLeave);
   sickLeave = round2(sickLeave);
 
   // 缺勤 = 应出勤 - 实际出勤 - 请假天数；负数按 0
-  // 缺勤扣款 = 缺勤天数 × (总工资 / 应出勤天数)
+  // 缺勤扣款与请假日薪统一使用总工资 / 30。
   const expectedDays = expectedAttendanceDays(month);
   const leaveDays = leaveDetails.reduce((s, l) => s + l.days, 0);
   const absenceDays = Math.max(0, expectedDays - attendanceDays - leaveDays);
-  const absenceDeduction = expectedDays > 0 ? round2(absenceDays * (totalSalary / expectedDays)) : 0;
+  const absenceDeduction = round2(absenceDays * dailyRate);
 
   return { social, late, personalLeave, sickLeave, absenceDeduction, expectedDays, absenceDays, attendanceDays, lateDetails, leaveDetails };
 }

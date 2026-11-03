@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
       ["扣除"],
       ["社保", round2(social)],
       ["迟到扣款", round2(late)],
-      ["事假扣款", round2(personal)],
+      ["事假及其他请假扣款", round2(personal)],
       ["病假扣款", round2(sick)],
       ["缺勤扣款", round2(absence)],
       ["功过扣款", round2(demerit)],

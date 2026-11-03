@@ -8,7 +8,7 @@ import { toThaiTime } from "@/lib/utils";
 interface LeaveRequest {
   id: number; employee_name: string; leave_type: string; start_date: string; end_date: string;
   start_time: string; end_time: string; destination: string; reason: string; status: string; created_at: string;
-  rejection_reason?: string; approved_by?: string; approved_at?: string;
+  rejection_reason?: string; approved_by?: string; approved_at?: string; pay_status?: string;
 }
 
 export function LeaveRequestView({ targetLeaveId }: { targetLeaveId: string }) {
@@ -44,6 +44,7 @@ export function LeaveRequestView({ targetLeaveId }: { targetLeaveId: string }) {
     </div>
     {["已通过", "已驳回"].includes(row.status) && <div aria-label="审批结果" className="space-y-2 rounded-lg border border-[var(--border)] p-3 text-sm [overflow-wrap:anywhere]">
       <p className="font-medium">审批结果：{row.status}</p>
+      {row.status === "已通过" && <p>薪资标记：{row.pay_status === "带薪" ? "带薪" : "不带薪"}</p>}
       {row.status === "已驳回" && <p className="whitespace-pre-wrap text-red-600">驳回原因：{row.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
       <p>审批人：{row.approved_by || "未记录"}</p>
       <p>审批时间：{row.approved_at ? toThaiTime(row.approved_at) : "未记录"}</p>

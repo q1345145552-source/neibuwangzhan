@@ -60,6 +60,9 @@ export async function POST(req: NextRequest) {
   let created = 0;
   db.transaction(() => {
     for (const e of employees) {
+      const existing = db.prepare("SELECT id,status FROM payslips WHERE employee_id = ? AND month = ?").get(e.id, month) as { id: number; status: string } | undefined;
+      // 新规则也只重算可编辑工资单，不能用重新生成覆盖已进入确认/发放流程的历史金额。
+      if (existing && existing.status !== "草稿" && existing.status !== "打回") continue;
       const base = e.base_salary ?? 0;
       const diligence = e.diligence_bonus ?? 0;
       const skill = e.skill_allowance ?? 0;
@@ -73,7 +76,6 @@ export async function POST(req: NextRequest) {
       const meritIncome = meritPoints * 10;
       const demeritDeduction = demeritPoints * 10;
 
-      const existing = db.prepare("SELECT id FROM payslips WHERE employee_id = ? AND month = ?").get(e.id, month);
       if (existing) {
         // 已存在：刷新自动字段（收入自动项 + 扣除自动项 + 功过 + 考勤汇总），保留手动填写的奖金/佣金/加班费/预扣税
         db.prepare(

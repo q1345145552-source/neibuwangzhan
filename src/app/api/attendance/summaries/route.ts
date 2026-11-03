@@ -133,21 +133,24 @@ export async function POST(req: NextRequest) {
       }
       workHours = Math.round(workHours * 10) / 10;
 
-      // 请假明细（已通过、开始日期在该月）
+      // 与工资计算保持同一月份边界，跨月请假只计入本月部分。
+      const monthFrom = `${month}-01`;
+      const monthTo = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
       const leaveRows = db.prepare(
-        "SELECT leave_type, start_date, end_date, start_time, end_time, images FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND start_date LIKE ? ORDER BY start_date"
-      ).all(e.name, `${month}%`) as { leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string }[];
-      const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; images: string[] }[] = [];
+        "SELECT leave_type, start_date, end_date, start_time, end_time, images, COALESCE(pay_status,'不带薪') pay_status FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND start_date <= ? AND end_date >= ? ORDER BY start_date"
+      ).all(e.name, monthTo, monthFrom) as { leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string; pay_status: string }[];
+      const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; pay_status: string; images: string[] }[] = [];
       let leaveDays = 0;
       for (const l of leaveRows) {
-        const days = daysBetween(l.start_date, l.end_date);
-        const hours = days === 1 ? hoursBetween(l.start_time, l.end_time) : days * 8;
+        const days = daysBetween(l.start_date < monthFrom ? monthFrom : l.start_date, l.end_date > monthTo ? monthTo : l.end_date);
+        const hours = l.start_date === l.end_date ? hoursBetween(l.start_time, l.end_time) : days * 8;
         const images = (() => { try { const a = JSON.parse(l.images || "[]"); return Array.isArray(a) ? a.filter((x: unknown) => x && String(x).trim()) : []; } catch { return []; } })();
         leaveDetails.push({
           type: l.leave_type,
           days,
           hours: Math.round(hours * 10) / 10,
           has_certificate: l.leave_type === "病假" && images.length > 0,
+          pay_status: l.pay_status === "带薪" ? "带薪" : "不带薪",
           images,
         });
         leaveDays += days;

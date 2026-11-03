@@ -39,6 +39,7 @@ export const ENUMS = {
   "issue_tickets.priority": ["low", "medium", "high", "urgent"],
   "issue_tickets.status": ["待处理", "处理中", "已解决"],
   "leave_requests.leave_type": ["事假", "病假", "年假", "调休", "法定假日", "其他"],
+  "leave_requests.pay_status": ["带薪", "不带薪"],
   "leave_requests.status": ["待审批", "已通过", "已驳回"],
   "notifications.type": ["", "issue_assigned", "leave_requested", "contract_overdue", "eval_done", "mention", "leave_overdue", "problem_assigned", "problem_followup", "problem_accepted", "problem_rejected", "payslip", "demerit_resign", "info_change_request", "工单指派", "工单完成", "待办指派", "待办完成", "规则更新", "老板通知", "日报提醒", "日报风险", "会议提醒", "资产到期提醒", "日报点评"],
   // 员工档案（刘雄 10-03/04 新增表）

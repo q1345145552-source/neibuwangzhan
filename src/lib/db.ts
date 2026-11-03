@@ -10,6 +10,7 @@ import { ensureAgentSchema } from "./agent-schema";
 import { ensureShopeeAftercareSchema } from "./shopee-aftercare-schema";
 import { ensureBossSubmissionSchema } from "./boss-submissions";
 import { ensureTodoSourceSchema } from "./todo-source-schema";
+import { ensureLeavePaySchema } from "./leave-pay-schema";
 import { expandLegacyCheck } from "./legacy-check-schema";
 import { commercePilotEnabled, ensureCommerceSchema } from "./commerce-schema";
 import { companyRegistrationSteps, tisiSteps, type StepTemplate } from "./business-steps";
@@ -1738,6 +1739,7 @@ function initTables(database: Database.Database) {
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN start_time TEXT DEFAULT '09:00'"); } catch {}
   try { database.exec("ALTER TABLE leave_requests ADD COLUMN end_time TEXT DEFAULT '17:00'"); } catch {}
   expandLegacyCheck(database, "leave_requests", "leave_type", ["调休", "法定假日"]);
+  ensureLeavePaySchema(database);
 
 
   // 泰国法定假日表（每年13天固定假日）

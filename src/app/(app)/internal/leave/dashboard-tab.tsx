@@ -44,6 +44,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
   const [detailRecords, setDetailRecords] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [pendingDetail, setPendingDetail] = useState<any>(null);
+  const [approvalPayStatus, setApprovalPayStatus] = useState("不带薪");
   const [approving, setApproving] = useState(false);
   const [proofLeaveId, setProofLeaveId] = useState<number | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: number } | null>(null);
@@ -209,7 +210,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
       const res = await fetchWithAuth("/api/leave", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, ...(status === "已通过" ? { pay_status: approvalPayStatus } : {}) }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -365,7 +366,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
           {dashboard.pendingList?.length > 0 && (
             <div className="mt-1 space-y-1">
               {dashboard.pendingList.map((l: any, i: number) => (
-                <div key={i} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => { setPendingDetail(l); setAiResult(null); }}>
+                <div key={i} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded px-2 py-1 -mx-2 transition-colors" onClick={() => { setPendingDetail(l); setApprovalPayStatus("不带薪"); setAiResult(null); }}>
                   <span className="font-medium text-blue-600 hover:underline">{l.employee_name}</span>
                   <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700">{l.leave_type}</span>
                   <span>{l.start_date} ~ {l.end_date}</span>
@@ -562,7 +563,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                       <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[100px] truncate">{r.destination || "—"}</td>
                       <td className="py-2.5 px-4 text-xs text-[var(--muted-foreground)] max-w-[150px] truncate">{r.reason || "—"}</td>
                       <td className="py-2.5 px-4">
-                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}{r.status === "已通过" ? ` · ${r.pay_status === "带薪" ? "带薪" : "不带薪"}` : ""}</span>
                         {r.status === "已驳回" && <p className="mt-1 whitespace-pre-wrap text-xs text-red-600 [overflow-wrap:anywhere]">驳回原因：{r.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
                       </td>
                     </tr>
@@ -575,7 +576,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                   <div key={r.id} id={`leave-record-${r.id}-mobile`} data-leave-id={r.id} className={cn("rounded-lg border border-[var(--border)] bg-[var(--card)] p-4", r.id === highlightLeaveId && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-900/30")}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">{r.employee_name}</span>
-                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}{r.status === "已通过" ? ` · ${r.pay_status === "带薪" ? "带薪" : "不带薪"}` : ""}</span>
 
                     </div>
                     {r.status === "已驳回" && <p className="mt-1 whitespace-pre-wrap text-xs text-red-600 [overflow-wrap:anywhere]">驳回原因：{r.rejection_reason?.trim() || "历史记录未保存驳回原因"}</p>}
@@ -642,6 +643,11 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
               )}
             </div>
 
+            {isAdmin && <label className="mt-4 block text-sm">薪资标记
+              <select aria-label="带薪状态" value={approvalPayStatus} disabled={approving} onChange={event => setApprovalPayStatus(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3">
+                <option value="不带薪">不带薪</option><option value="带薪">带薪</option>
+              </select>
+            </label>}
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => handleApprove(pendingDetail.id, "已通过")}
@@ -751,7 +757,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                           )}
                         </td>
                         <td className="py-2 px-3 text-center">
-                          <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                          <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}{r.status === "已通过" ? ` · ${r.pay_status === "带薪" ? "带薪" : "不带薪"}` : ""}</span>
                         </td>
                       </tr>
                     );
@@ -773,7 +779,7 @@ export function LeaveDashboardTab({ targetLeaveId = null }: { targetLeaveId?: st
                             <button onClick={() => setProofLeaveId(r.id)} className="ml-2 text-xs text-blue-600 hover:underline">核查</button>
                           )}
                         </span>
-                        <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}</span>
+                        <span className={"inline-flex rounded-full px-2 py-0.5 text-xs font-medium " + (r.status === "已通过" ? "bg-green-100 text-green-700" : r.status === "已驳回" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{r.status}{r.status === "已通过" ? ` · ${r.pay_status === "带薪" ? "带薪" : "不带薪"}` : ""}</span>
                       </div>
                       <div className="mt-1.5 flex items-center justify-between gap-2 text-sm">
                         <span className="text-xs text-[var(--muted-foreground)]">{r.start_date} ~ {r.end_date}</span>
