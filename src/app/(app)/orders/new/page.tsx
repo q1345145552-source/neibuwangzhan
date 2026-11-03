@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save } from "lucide-react";
-import { fetchBusinessTypes, fetchEmployees, createOrder } from "@/lib/api";
+import { fetchAgentOptions, fetchBusinessTypes, fetchEmployees, createOrder } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
 import { StorefrontAccountPicker, accountLoginOf } from "@/components/storefront-account-picker";
 import { subServices } from "@/lib/constants";
 import type { BusinessType, Employee, StorefrontAccount } from "@/lib/api";
@@ -25,6 +26,13 @@ export default function NewOrderPage() {
   const [account, setAccount] = useState<StorefrontAccount | null>(null);
   // 选的老账号还没有客户群名时补的群名
   const [groupName, setGroupName] = useState("");
+  // 代理（2026-11-03）：员工和管理员都能选代理，返点只有管理员填
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canPickAgent = isAdmin || user?.role === "employee";
+  const [agents, setAgents] = useState<{ account_id: string; name: string }[]>([]);
+  const [agentId, setAgentId] = useState("");
+  const [agentRebate, setAgentRebate] = useState("");
   const [form, setForm] = useState({
     business_type_id: "",
     responsible_person: "",
@@ -44,6 +52,11 @@ export default function NewOrderPage() {
     fetchBusinessTypes().then(setBusinessTypes).catch(() => setError("加载业务线失败"));
     fetchEmployees().then(setEmployees).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!canPickAgent) return;
+    fetchAgentOptions().then(d => setAgents(d.agents)).catch(() => setError("加载代理列表失败"));
+  }, [canPickAgent]);
 
   // 业务线加载完成后，根据 URL 上的 biz 参数预选一次（渲染期间派生状态，而非在 effect 里 setState）
   if (bizName && bizName !== appliedBizName && businessTypes.length > 0) {
@@ -88,6 +101,7 @@ export default function NewOrderPage() {
     if (!form.total_amount.trim() || !Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) {
       setError("请填金额（人民币，大于 0，最多两位小数）：客户登录就能看到这张单的账单"); return;
     }
+    if (isAdmin && !agentId !== !agentRebate.trim()) { setError("代理和返点要一起填，或者都不填"); return; }
     setLoading(true);
     try {
       const created = await createOrder({
@@ -104,6 +118,7 @@ export default function NewOrderPage() {
         trademark_name: form.business_type_id === "2" ? form.trademark_name : "",
         address_type: isAddressBiz ? form.address_type : "client",
         monthly_rent: isAddressBiz && form.address_type === "xiangtai" ? Number(form.monthly_rent) || 0 : 0,
+        ...(agentId ? { agent_account_id: agentId, ...(isAdmin ? { agent_rebate: agentRebate.trim() } : {}) } : {}),
       });
       // 订单建好了但没挂到客户账号（业务系统连不上等）：说清楚，到订单页「业务系统」里再推
       if (created?.storefront_error) window.alert(`订单建好了，但还没挂到客户账号：${created.storefront_error}\n到订单页右边「业务系统」点「推到业务系统」再试一次。`);
@@ -111,6 +126,8 @@ export default function NewOrderPage() {
       // 跳转期间按钮保持「提交中」，别让人再点一次又建一张（这张单客户马上看得到）
       router.replace(created?.id ? `/orders/${encodeURIComponent(created.id)}` : "/orders");
     } catch (err) {
+      // 选中的代理可能刚被停用，重取一次，别让它还留在下拉里
+      if (canPickAgent) fetchAgentOptions().then(d => { setAgents(d.agents); setAgentId(id => (d.agents.some(a => a.account_id === id) ? id : "")); }).catch(() => {});
       setError(err instanceof Error ? err.message : "创建订单失败，稍后再试");
       setLoading(false);
     }
@@ -168,6 +185,21 @@ export default function NewOrderPage() {
             <StorefrontAccountPicker account={account} onAccount={setAccount} groupName={groupName} onGroupName={setGroupName} />
             <p className="text-[0.7rem] text-[var(--muted-foreground)]">提交后这张单就挂到客户账号下，客户登录业务系统就能看到进度和账单</p>
           </div>
+          {canPickAgent && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="agent_account_id" className="text-sm font-medium">代理（可不填）</Label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select id="agent_account_id" value={agentId} onChange={(e) => setAgentId(e.target.value)} className="h-10 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20">
+                <option value="">不挂代理</option>
+                {agents.map((a) => <option key={a.account_id} value={a.account_id}>{a.name}</option>)}
+              </select>
+              {isAdmin && agents.length > 0 && <Input aria-label="返点（人民币）" inputMode="decimal" value={agentRebate} onChange={(e) => setAgentRebate(e.target.value)} className="h-10" placeholder="返点（人民币）" />}
+            </div>
+            {agents.length === 0
+              ? <p className="text-[0.7rem] text-[var(--muted-foreground)]">{isAdmin ? "还没有能选的代理，先到「代理记账」开账号" : "还没有能选的代理，请管理员开账号"}</p>
+              : !isAdmin && <p className="text-[0.7rem] text-[var(--muted-foreground)]">返点由管理员填。挂上后要换代理，请找管理员</p>}
+          </div>
+          )}
           {form.business_type_id === "2" && (
           <div className="flex flex-col gap-2">
             <Label htmlFor="trademark_name" className="text-sm font-medium">商标名称</Label>

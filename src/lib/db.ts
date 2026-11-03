@@ -6,6 +6,7 @@ import { initializeSyncSchema } from "./sync-schema";
 import { ensureAccessSchema } from "./access-schema";
 import { ensureWorkflowSchema } from "./workflow-schema";
 import { ensureCustomerKitSchema } from "./customer-kit-schema";
+import { ensureAgentSchema } from "./agent-schema";
 import { ensureShopeeAftercareSchema } from "./shopee-aftercare-schema";
 import { ensureBossSubmissionSchema } from "./boss-submissions";
 import { ensureTodoSourceSchema } from "./todo-source-schema";
@@ -38,6 +39,7 @@ export function getDb(): Database.Database {
       ensureCompanyArchiveSchema(database);
       ensureWorkflowSchema(database);
       ensureCustomerKitSchema(database);
+      ensureAgentSchema(database);
       if (commercePilotEnabled()) ensureCommerceSchema(database);
     } catch (error) {
       database.close();

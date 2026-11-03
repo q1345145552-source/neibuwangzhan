@@ -14,6 +14,7 @@ import { pushOrderToStorefront, StorefrontPushError } from "@/lib/storefront-pus
 import { requestProgressFlush } from "@/lib/progress-sync";
 import { awaitingConfirmationSql } from "@/lib/order-confirm";
 import { orderNumberInfo } from "@/lib/order-display-no";
+import { insertOrderRebate, readOrderAgentFields } from "@/lib/agents";
 
 // GET /api/orders?business_type_id=&status=
 export async function GET(req: NextRequest) {
@@ -135,6 +136,9 @@ export async function POST(req: NextRequest) {
   const db = getDb();
 
   const body = await readJson(req);
+  // 建单时挂代理（2026-11-03）：管理员代理和返点一起带；员工只能带代理，带返点直接 403
+  const agentFields = readOrderAgentFields(db, body, auth.role);
+  if ("error" in agentFields) return NextResponse.json({ error: agentFields.error }, { status: agentFields.status });
   const { customer_name, business_type_id, description, responsible_person, total_amount, sub_service_type, address_type, monthly_rent, currency, trademark_name } = body;
 
   const _e = validateEnums({ "orders.currency": currency });
@@ -206,6 +210,7 @@ export async function POST(req: NextRequest) {
           insertStepDoc.run(res.lastInsertRowid, id, docName);
         }
       });
+      if (agentFields.input) insertOrderRebate(db, id, agentFields.input, auth.name || "");
     });
 
     insertAll();

@@ -80,6 +80,17 @@ export async function createStorefrontCustomer(input: { login?: unknown; passwor
     body: JSON.stringify({ login: input.login, password: input.password }) }));
 }
 
+export type StorefrontAgent = { id: string; name: string; login: string; status: string };
+
+/** 代理账号（2026-11-03）：账号和密码在业务系统，内部只记名字、登录名、状态 */
+export async function createStorefrontAgent(input: { login: string; name: string; password: string }): Promise<StorefrontAgent> {
+  return json<StorefrontAgent>(await call("/api/sync/agents", { method: "POST", body: JSON.stringify(input) }));
+}
+
+export async function updateStorefrontAgent(id: string, patch: { status?: string; password?: string; name?: string }): Promise<StorefrontAgent> {
+  return json<StorefrontAgent>(await call(`/api/sync/agents/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }));
+}
+
 type PushableOrder = { id: string; status: string; total_amount: number; currency: string; business_type_id: number; sub_service_type: string | null; business_type_name: string; customer_name: string };
 
 /** 能不能推：员工在内部自己建的、没取消、已分好业务线、还没在业务系统里的单 */
@@ -127,7 +138,7 @@ function pushLocks(): Map<string, number> {
  * 3. 通知业务系统正式建单。没通知到也不要紧：第 2 步排进去的进度回传（自带重试）到了业务系统会自动补建。
  */
 export async function pushOrderToStorefront(db: Database.Database, orderId: string, input: { customer_id?: unknown; amount?: unknown; title?: unknown }, actor: string):
-  Promise<{ id: string; source_order_no: string; link: string | null; pending: boolean; renumbered: Record<string, number> }> {
+  Promise<{ id: string; source_order_no: string; link: string | null; pending: boolean }> {
   const { order, reason } = pushBlocker(db, orderId);
   if (reason || !order) throw new StorefrontPushError(reason || "订单不存在", order ? 409 : 404);
   const customerId = String(input.customer_id ?? "").trim();
@@ -173,14 +184,13 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
       || parsed.lines.length !== 1 || line.quantity !== 1 || parsed.netCents !== Math.round(amount * 100) || line.raw.sku_name !== title)
       throw new StorefrontPushError("业务系统回的订单内容跟这次填的对不上，这张单没推出去", 502);
 
-    let renumbered: Record<string, number>;
     try {
-      renumbered = db.transaction(() => {
+      db.transaction(() => {
         const again = pushBlocker(db, orderId);
         if (again.reason) throw new StorefrontPushError(again.reason, 409);
         // 等业务系统回话那几秒里可能有人传了文件：改编号前（事务里，别的请求插不进来）再查一遍
         if (uploadNamesContaining(orderId)) throw new StorefrontPushError("这张单有文件名里带着单号，推了会找不到文件，请联系管理员", 409);
-        const changed = renumberOrder(db, orderId, sourceOrderNo);
+        renumberOrder(db, orderId, sourceOrderNo);
         db.prepare(`INSERT INTO sync_orders(source_order_no,source_customer_id,source,currency,billing_revision,total_cents,discount_cents,net_cents,identity_json,financial_json,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
           .run(sourceOrderNo, parsed.customerId, parsed.source, parsed.currency, parsed.revision, parsed.totalCents, parsed.discountCents, parsed.netCents, parsed.identityJson, parsed.financialJson, parsed.payload);
         db.prepare(`INSERT INTO sync_inbox(id,source_order_no,line_no,copy_no,sku_code,internal_order_id,note,payload,allocated_cents,allocated_amount,billing_revision) VALUES (?,?,?,1,?,?,?,?,?,?,?)`)
@@ -192,7 +202,6 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
         queueProgressEventsForOrder(sourceOrderNo, db);
         logOperation(actor, "推到业务系统", "order", sourceOrderNo,
           `原内部编号 ${orderId} → 业务系统单号 ${sourceOrderNo}；客户账号 ${parsed.customerName || parsed.customerEmail || parsed.customerId}；金额 ${parsed.netCents / 100} CNY（原 ${order.total_amount} ${order.currency}）`);
-        return changed;
       })();
     } catch (error) {
       if (error instanceof StorefrontPushError) throw error;
@@ -203,7 +212,7 @@ export async function pushOrderToStorefront(db: Database.Database, orderId: stri
     const committed = await call("/api/sync/offline-orders/commit", { method: "POST", body: JSON.stringify({ order_no: sourceOrderNo }) })
       .then(r => r.ok).catch(() => false);
     if (!committed) console.error(`[storefront-push] ${sourceOrderNo} 正式建单没通知到业务系统，等进度回传补建`);
-    return { id: sourceOrderNo, source_order_no: sourceOrderNo, link: customerOrderLink(sourceOrderNo), pending: !committed, renumbered };
+    return { id: sourceOrderNo, source_order_no: sourceOrderNo, link: customerOrderLink(sourceOrderNo), pending: !committed };
   } finally {
     locks.delete(orderId);
   }

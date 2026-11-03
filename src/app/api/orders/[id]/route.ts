@@ -15,6 +15,7 @@ import { AWAITING_CONFIRMATION_ERROR, confirmationOf, isAwaitingConfirmation } f
 import { resolveStepCopies } from "@/lib/step-public-copy";
 import { kitForOrder } from "@/lib/order-kit";
 import { orderDisplayNumber } from "@/lib/order-display-no";
+import { hasPaidRebate } from "@/lib/agents";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
 const UNCLASSIFIED_SUB = "storefront-unclassified";
@@ -305,6 +306,8 @@ export async function DELETE(
   if (synchronized) {
     return NextResponse.json({ error: "同步订单请使用取消操作，保留来源台账与账单关联" }, { status: 409 });
   }
+  // 返点已付的单要先撤销已付（2026-11-03）；没付的返点跟着单一起删
+  if (hasPaidRebate(db, id)) return NextResponse.json({ error: "请先撤销已付" }, { status: 409 });
   // 删单时记下带走的收入（2026-10-15）
   const incomeNote = (db.prepare("SELECT type, amount, currency, status FROM finances WHERE order_id = ? AND type = 'income'").all(id) as { amount: number; currency: string | null; status: string }[])
     .map(f => `${f.amount} ${(f.currency || "CNY") === "THB" ? "泰铢" : "人民币"}（${f.status}）`).join("、");
@@ -317,6 +320,7 @@ export async function DELETE(
     db.prepare("DELETE FROM finances WHERE order_id = ?").run(id);
     db.prepare("DELETE FROM certificates WHERE order_id = ?").run(id);
     db.prepare("DELETE FROM tasks WHERE order_id = ?").run(id);
+    db.prepare("DELETE FROM agent_rebates WHERE order_id = ?").run(id);
     db.prepare("DELETE FROM orders WHERE id = ?").run(id);
   })();
 

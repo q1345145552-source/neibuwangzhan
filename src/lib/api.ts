@@ -452,6 +452,9 @@ export async function createOrder(data: {
   /** 这个账号还没有客户群名时填 */
   group_name?: string;
   account_login?: string;
+  /** 建单时挂代理（2026-11-03）：管理员两个都给或都不给；员工只给代理 */
+  agent_account_id?: string;
+  agent_rebate?: string;
 }) {
   const res = await fetch("/api/orders", {
     method: "POST",
@@ -541,6 +544,62 @@ export async function createStorefrontCustomer(body: { login: string; password: 
 
 export async function pushOrderToStorefront(id: string, body: { customer_id: string; amount: number; title: string }): Promise<{ id: string; source_order_no: string; link: string | null; pending: boolean }> {
   return jsonOrThrow(await fetch(`/api/orders/${id}/storefront-push`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "推单失败");
+}
+
+// ── 代理记账（2026-11-03）：员工只能选代理挂单，其余只有管理员 ──
+export type RebateState = "waiting" | "earned" | "paid" | "void";
+export const REBATE_STATE_LABEL: Record<RebateState, string> = { waiting: "等办完", earned: "可拿未付", paid: "已付", void: "不算" };
+export interface AgentAccount { account_id: string; name: string; login: string; status: string; order_count: number; unfilled_count: number; waiting_cents: number; earned_cents: number; paid_cents: number; anomaly_cents: number; created_at: string }
+export interface AgentRebateRow { order_id: string; order_no: string; part: number | null; parts: number | null; business_name: string; customer_name: string; status_label: string; rebate_cents: number | null; rebate_state: RebateState; paid_at: string | null; paid_anomaly: boolean }
+export interface OrderAgentRebate { agent_account_id: string; agent_name: string; rebate_cents: number | null; rebate_state: RebateState; paid_at: string | null; paid_anomaly: boolean }
+
+/** 分 → 「1,234.50 元」，跟金额有关的都用整数分算 */
+export function formatRebate(cents: number): string {
+  return `${(cents / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元`;
+}
+
+export async function fetchAgents(): Promise<{ agents: AgentAccount[] }> {
+  return jsonOrThrow(await fetch("/api/agents", { headers: authHeaders(), cache: "no-store" }), "取代理列表失败");
+}
+
+export async function createAgent(body: { name: string; login: string; password: string }): Promise<{ agent: { account_id: string; name: string; login: string; status: string } }> {
+  return jsonOrThrow(await fetch("/api/agents", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "开代理账号失败");
+}
+
+export async function updateAgent(id: string, body: { status?: string; password?: string; name?: string }): Promise<{ agent: { account_id: string; name: string; login: string; status: string } }> {
+  return jsonOrThrow(await fetch(`/api/agents/${encodeURIComponent(id)}`, { method: "PATCH", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "没成功，再点一次");
+}
+
+export async function fetchAgentRebates(agentId: string): Promise<{ rows: AgentRebateRow[] }> {
+  return jsonOrThrow(await fetch(`/api/agent-rebates?agent_id=${encodeURIComponent(agentId)}`, { headers: authHeaders(), cache: "no-store" }), "取返点列表失败");
+}
+
+export async function fetchAgentOptions(): Promise<{ agents: { account_id: string; name: string }[] }> {
+  return jsonOrThrow(await fetch("/api/agents/options", { headers: authHeaders(), cache: "no-store" }), "取代理列表失败");
+}
+
+export async function fetchOrderAgentForStaff(orderId: string): Promise<{ attached: { agent_name: string } | null; agents: { account_id: string; name: string }[] }> {
+  return jsonOrThrow(await fetch(`/api/orders/${encodeURIComponent(orderId)}/agent-rebate`, { headers: authHeaders(), cache: "no-store" }), "取代理失败");
+}
+
+export async function attachOrderAgent(orderId: string, agentAccountId: string): Promise<{ attached: { agent_name: string } | null }> {
+  return jsonOrThrow(await fetch(`/api/orders/${encodeURIComponent(orderId)}/agent-rebate`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ agent_account_id: agentAccountId }) }), "挂代理失败");
+}
+
+export async function fetchOrderAgentRebate(orderId: string): Promise<{ rebate: OrderAgentRebate | null; agents: { account_id: string; name: string }[] }> {
+  return jsonOrThrow(await fetch(`/api/orders/${encodeURIComponent(orderId)}/agent-rebate`, { headers: authHeaders(), cache: "no-store" }), "取代理返点失败");
+}
+
+export async function saveOrderAgentRebate(orderId: string, body: { agent_account_id: string; rebate: string }): Promise<{ rebate: OrderAgentRebate | null }> {
+  return jsonOrThrow(await fetch(`/api/orders/${encodeURIComponent(orderId)}/agent-rebate`, { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) }), "保存返点失败");
+}
+
+export async function removeOrderAgentRebate(orderId: string): Promise<{ rebate: OrderAgentRebate | null }> {
+  return jsonOrThrow(await fetch(`/api/orders/${encodeURIComponent(orderId)}/agent-rebate`, { method: "DELETE", headers: authHeaders() }), "解除失败");
+}
+
+export async function setOrderAgentRebatePaid(orderId: string, paid: boolean): Promise<{ rebate: OrderAgentRebate | null }> {
+  return jsonOrThrow(await fetch(`/api/orders/${encodeURIComponent(orderId)}/agent-rebate/paid`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ paid }) }), "操作失败");
 }
 
 /**

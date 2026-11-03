@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
   const params: any[] = [];
   // 审计日志是"谁在什么时候改了什么"的全量记录（含金额、负责人变更等），
   // 普通员工只应看到自己的操作，全量视图限管理员
-  if (auth.role !== "admin") { sql += " AND actor = ?"; params.push(auth.name); }
+  // 代理记账的记录只给管理员：这里按名字过滤，员工和管理员同名时会串（2026-11-03）
+  if (auth.role !== "admin") { sql += " AND actor = ? AND target_type NOT IN ('agent_rebate', 'agent')"; params.push(auth.name); }
   if (targetType) { sql += " AND target_type = ?"; params.push(targetType); }
   if (targetId) { sql += " AND target_id = ?"; params.push(targetId); }
   sql += " ORDER BY created_at DESC LIMIT ?";

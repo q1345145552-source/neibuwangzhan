@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   const logs = db.prepare(
     `SELECT action, target_type, target_id, detail FROM audit_logs
      WHERE actor = ? AND created_at >= ? AND created_at < ?
-       AND target_type NOT IN ('attendance', 'attendance_request', 'leave', 'work_report')
+       AND target_type NOT IN ('attendance', 'attendance_request', 'leave', 'work_report', 'agent_rebate', 'agent')
        AND action != '系统' AND action != ''
      ORDER BY created_at ASC, id ASC`
   ).all(auth.name, start, end) as { action: string; target_type: string; target_id: string; detail: string }[];

@@ -148,6 +148,7 @@ await test('pushing with a bad amount is refused before anything is created on t
 
 await test('push: the internal order is renumbered to the customer-site number everywhere and becomes a confirmed synced order in CNY', async () => {
   const r = await push(orderA, { customer_id: account.id, amount: 2000, title: '公司注册（线下）' });
+  assert.equal(/renumbered/.test(JSON.stringify(r)), false, '推单响应不带改号明细（2026-11-03：员工不能从里面看出这张单有没有返点）');
   assert.equal(r.status, 200, JSON.stringify(r.body));
   pushedA = r.body.id;
   assert.match(pushedA, /^ORD\d{20}$/);

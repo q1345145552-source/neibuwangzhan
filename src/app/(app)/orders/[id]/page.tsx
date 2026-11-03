@@ -21,6 +21,7 @@ const UNCLASSIFIED_SUB = "storefront-unclassified";
 import { cn, toThaiTime, formatCurrency, fileUrl } from "@/lib/utils";
 import { OrderPaymentCard } from "@/components/order-payment-card";
 import { StorefrontPushCard } from "@/components/storefront-push-card";
+import { OrderAgentAttachCard, OrderAgentCard } from "@/components/order-agent-card";
 import { calcWorkSeconds, formatWorkSeconds } from "@/lib/work-hours";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { isStepClosed, isParallelFlow } from "@/lib/step-status";
@@ -1375,6 +1376,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="flex flex-col gap-4">
           {/* 业务系统：线下单推给客户、复制客户链接（2026-10-22 老板选 B）；推了编号会换成业务系统单号，跳到新编号的页面 */}
           {!isClient && <StorefrontPushCard key={`storefront-${order.id}`} orderId={order.id} canPush={user?.role === "admin" || user?.role === "employee"} onPushed={(newId) => router.replace(`/orders/${encodeURIComponent(newId)}`)} />}
+          {user?.role === "admin" && <OrderAgentCard key={`agent-${order.id}`} orderId={order.id} orderStatus={order.status} />}
+          {user?.role === "employee" && <OrderAgentAttachCard key={`agent-${order.id}`} orderId={order.id} orderStatus={order.status} />}
           <div className="flex rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5">
             {!isClient && <button onClick={() => setSidebarTab("finances")} className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors", sidebarTab === "finances" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}><DollarSign className="mr-1 inline size-3" />费用</button>}
             <button onClick={() => setSidebarTab("docs")} className={cn("flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors", sidebarTab === "docs" ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)]")}><Paperclip className="mr-1 inline size-3" />文档</button>
