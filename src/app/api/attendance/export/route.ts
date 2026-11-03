@@ -28,17 +28,23 @@ export async function GET(req: NextRequest) {
   ).all() as { name: string }[];
 
   const isSummary = type === "summary";
-  const header = isSummary
-    ? ["员工", "总出勤天数", "迟到次数", "请假天数", "病假天数", "事假天数"]
-    : ["员工", "日期", "签到时间", "签退时间", "工作小时数", "请假类型"];
-
-  const rows = isSummary
-    ? buildSummaryRows(db, employees, month, y, m, from, to, lastDay)
-    : buildDetailRows(db, employees, month, from, to, lastDay);
-
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, isSummary ? "月度汇总" : "明细");
+  if (isSummary) {
+    const header = ["员工", "总出勤天数", "迟到次数", "请假天数", "病假天数", "事假天数"];
+    const rows = buildSummaryRows(db, employees, month, y, m, from, to, lastDay);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), "月度汇总");
+  } else {
+    const header = ["日期", "签到时间", "签退时间", "工作小时数", "请假类型"];
+    // 原明细仍按员工顺序、每人 lastDay 行生成；仅拆分工作表并去掉重复的员工列。
+    const rows = buildDetailRows(db, employees, month, from, to, lastDay);
+    const usedNames = new Set<string>();
+    employees.forEach((employee, index) => {
+      const employeeRows = rows.slice(index * lastDay, (index + 1) * lastDay).map(row => row.slice(1));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...employeeRows]), employeeSheetName(employee.name, usedNames));
+    });
+    // 空员工范围也返回可打开的文件，保留原来空导出的表头行为。
+    if (!employees.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header]), "明细");
+  }
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
   const body = new Uint8Array(buf);
 
@@ -52,6 +58,21 @@ export async function GET(req: NextRequest) {
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
+}
+
+function employeeSheetName(name: string, used: Set<string>): string {
+  let base = name.replace(/[\\/:?*\[\]\x00-\x1f]/g, "_").replace(/^'|'$/g, "_");
+  if (!base.trim()) base = "员工";
+  if (base.toLowerCase() === "history") base += "_";
+  // Excel 最多 31 个 UTF-16 单元；截断时避免将 emoji 的代理对截成一半。
+  const shorten = (value: string, limit: number) => value.slice(0, limit).replace(/[\uD800-\uDBFF]$/, "");
+  let candidate = shorten(base, 31).replace(/'$/, "_");
+  for (let index = 2; used.has(candidate.toLowerCase()); index++) {
+    const suffix = ` (${index})`;
+    candidate = shorten(base, 31 - suffix.length) + suffix;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
 }
 
 /** 明细导出：每个员工每一天一行（签到/签退/工时/请假类型） */

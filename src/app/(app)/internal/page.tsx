@@ -846,10 +846,10 @@ function InternalPageContent() {
       )}
 
       {/* ── 今日考勤打卡 ── */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden">
-        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+      <div className="w-full max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border)] bg-[var(--background)] overflow-hidden md:max-w-none">
+        <div className="px-5 py-4 border-b border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-medium flex items-center gap-2"><Calendar className="size-4" />今日考勤打卡</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             {isAdmin && (
               <>
                 <input
