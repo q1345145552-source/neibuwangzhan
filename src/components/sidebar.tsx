@@ -1,165 +1,44 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { useBossPending } from "@/lib/use-boss-pending";
-import {
-  Search,
-  FolderOpen,
-  BarChart3,
-  Layers,
-  LayoutDashboard,
-  Building2,
-  Tag,
-  ShieldCheck,
-  FileCheck,
-  Car,
-  Ship,
-  MapPin,
-  Store,
-  Radio,
-  UsersRound,
-  Sparkles,
-  CheckSquare,
-  FileText,
-  DollarSign,
-  Settings,
-  Menu,
-  X,
-  LogOut,
-  Monitor,
-  Star,
-  Shield,
-  Briefcase,
-  Calculator,
-  Package,
-  Inbox,
-  Truck,
-  AlertCircle,
-  ListTodo,
-  Activity,
-  FolderKanban,
-  MessageSquare,
-  MessageSquareText,
-  IdCard,
-  Ticket,
-  Bell,
-  BellRing,
-  BookOpen,
-  ClipboardList,
-  CalendarClock,
-  Vault,
-  Lightbulb,
-  Timer,
-  Workflow,
-} from "lucide-react";
+import { ChevronRight, LogOut, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BOTTOM_NAV, TOP_NAV, groupKeyOf, groupsForRole, isActiveRoute, navForRole, type NavGroup, type NavItem } from "@/components/sidebar-nav";
 
-const navigation = [
-  { name: "全局搜索", href: "/search", icon: Search },
-  { name: "公司档案", href: "/company-archives", icon: Building2 },
-  { name: "我的文件夹", href: "/my-folder", icon: FolderOpen },
-  { name: "仪表盘", href: "/", icon: LayoutDashboard },
-  { name: "数据总览", href: "/visualization", icon: BarChart3 },
-  { name: "监督看板", href: "/boss-supervision", icon: ShieldCheck },
-  { name: "我的待办", href: "/todos", icon: ListTodo },
-  { name: "工单", href: "/issues", icon: Ticket },
-  { name: "我的项目", href: "/projects", icon: FolderKanban },
-  { name: "员工动态", href: "/activity", icon: Activity },
-  { name: "消息", href: "/messages", icon: MessageSquare },
-  { name: "消息中心", href: "/notifications", icon: BellRing },
-  { name: "老板通知", href: "/announcements", icon: Bell },
-  { name: "通知/规则", href: "/notice-rules", icon: FileCheck },
-  { name: "规则库", href: "/rules", icon: BookOpen },
-  { name: "工作记录", href: "/work-reports", icon: ClipboardList },
-  { name: "会议记录", href: "/meetings", icon: CalendarClock },
-  { name: "资产台账", href: "/assets", icon: Vault },
-  { name: "想法记录", href: "/ideas", icon: Lightbulb },
-];
-
-const businessLines = [
-  // 2026-10-15：订单总表和待分类领取队列原来只能从首页「总订单」卡片进
-  { name: "订单管理", href: "/orders", icon: Package },
-  { name: "待分类（待领取）", href: "/orders/unclassified", icon: Inbox },
-  { name: "公司注册", href: "/company-registration", icon: Building2 },
-  { name: "工作签证", href: "/work-visa", icon: Briefcase },
-  { name: "社保开户", href: "/social-security", icon: Shield },
-  { name: "商标", href: "/trademark", icon: Tag },
-  { name: "FDA认证", href: "/fda-certification", icon: ShieldCheck },
-  { name: "TISI", href: "/tisi", icon: FileCheck },
-  { name: "DLD", href: "/dld", icon: Car },
-  { name: "清关", href: "/customs-clearance", icon: Ship },
-  { name: "地址认证", href: "/address-certification", icon: MapPin },
-  { name: "Mall开店", href: "/mall-store", icon: Store },
-  { name: "店铺管理", href: "/internal/shopee", icon: Store },
-  { name: "NBTC", href: "/nbtc", icon: Radio },
-];
-
-const customerNav = [
-  { name: "客户管理", href: "/customers", icon: Building2 },
-  { name: "问题跟踪", href: "/problems", icon: AlertCircle },
-  // 客户在业务系统给每一步打的分、送特产（2026-10-20）
-  { name: "客户评价", href: "/customer-ratings", icon: Star },
-];
-
-
-const vatNav = [
-  { name: "VAT申报", href: "/vat", icon: Calculator },
-  { name: "预扣税申报", href: "/wht", icon: FileText },
-];
-
-const agencyNav = [
-  { name: "机构管理", href: "/agency", icon: LayoutDashboard },
-  { name: "达人发现", href: "/agency/influencers", icon: UsersRound },
-  { name: "签约跟进", href: "/agency/contracts", icon: FileCheck },
-  { name: "品牌孵化", href: "/agency/incubation", icon: Sparkles },
-];
-
-const logisticsNav = [
-  { name: "轨迹更新", href: "/logistics", icon: Truck },
-  { name: "话术模板", href: "/logistics/scripts", icon: MessageSquareText },
-];
-
-const internalNav = [
-  { name: "内部管理", href: "/internal", icon: Monitor },
-  { name: "员工档案", href: "/internal/employees", icon: IdCard },
-  { name: "请假", href: "/internal/leave", icon: Monitor },
-  { name: "奖惩制度", href: "/internal/rewards", icon: Star },
-  { name: "周报", href: "/internal/weekly-report", icon: BarChart3 },
-  { name: "模板库", href: "/internal/templates", icon: Layers },
-  // 只有管理员能看（2026-10-15，第 1 期只读）
-  { name: "办理月报", href: "/internal/handling-report", icon: Timer },
-];
-
-const utilityNav = [
-  { name: "任务看板", href: "/tasks", icon: CheckSquare },
-  { name: "文档管理", href: "/documents", icon: FileText },
-  { name: "费用管理", href: "/finance", icon: DollarSign },
-  { name: "流程设置", href: "/workflows", icon: Workflow },
-  { name: "设置", href: "/settings", icon: Settings },
-];
-
-/** 只有管理员能看到的菜单项 */
-const ADMIN_ONLY_NAV = new Set(["办理月报", "流程设置"]);
-const forRole = (items: typeof internalNav, role?: string) => role === "admin" ? items : items.filter((n) => !ADMIN_ONLY_NAV.has(n.name));
-
-function isActiveRoute(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  if (href === "/orders") return pathname.startsWith("/orders") && !pathname.startsWith("/orders/unclassified");
-  if (href === "/agency") return pathname === "/agency";
-  if (href === "/logistics") return pathname.startsWith("/logistics") && !pathname.startsWith("/logistics/scripts");
-  if (href === "/internal") return pathname === "/internal";
-  if (href === "/vat") return pathname.startsWith("/vat");
-  if (href === "/customers") return pathname.startsWith("/customers");
-  return pathname.startsWith(href);
+// 哪些分组展开着：记在这台电脑的浏览器里（存不了就只在这次打开时有效）
+const OPEN_GROUPS_KEY = "sidebar-open-groups-v1";
+let openGroupsMemory: string | null = null;
+const openGroupListeners = new Set<() => void>();
+function readOpenGroups(): string {
+  if (openGroupsMemory !== null) return openGroupsMemory;
+  try { return localStorage.getItem(OPEN_GROUPS_KEY) ?? ""; } catch { return ""; }
+}
+function subscribeOpenGroups(listener: () => void) {
+  openGroupListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => { openGroupListeners.delete(listener); window.removeEventListener("storage", listener); };
+}
+function parseOpenGroups(raw: string): Record<string, boolean> {
+  try {
+    const value: unknown = JSON.parse(raw || "{}");
+    return value && typeof value === "object" ? value as Record<string, boolean> : {};
+  } catch { return {}; }
+}
+function saveOpenGroup(key: string, open: boolean) {
+  const next = JSON.stringify({ ...parseOpenGroups(readOpenGroups()), [key]: open });
+  try { localStorage.setItem(OPEN_GROUPS_KEY, next); openGroupsMemory = null; }
+  catch { openGroupsMemory = next; /* 存不了（写满、被禁用）：这次打开时还能用，只影响下次打开 */ }
+  openGroupListeners.forEach((listener) => listener());
 }
 
-function NavSection({ items, pathname, onClose, badgeMap }: { items: typeof navigation; pathname: string; onClose: () => void; badgeMap?: Record<string, number> }) {
+function NavSection({ items, pathname, onClose, badgeMap }: { items: NavItem[]; pathname: string; onClose: () => void; badgeMap?: Record<string, number> }) {
   return (
     <ul className="flex flex-col gap-1">
       {items.map((item) => {
@@ -170,23 +49,52 @@ function NavSection({ items, pathname, onClose, badgeMap }: { items: typeof navi
             <Link
               href={item.href}
               onClick={onClose}
+              title={item.name}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150",
+                // 窄侧栏（md）放不下文字：只显示图标，鼠标放上去显示名字，红点贴在图标右上角
+                "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150 md:justify-center md:px-0 lg:justify-start lg:px-3",
                 active
                   ? "bg-[var(--sidebar-primary)] text-[var(--sidebar-primary-foreground)]"
                   : "text-[var(--sidebar-foreground)]/70 hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-foreground)]"
               )}
             >
               <item.icon className="size-4 shrink-0" />
-              <span className="flex-1">{item.name}</span>
+              <span className="flex-1 md:hidden lg:inline">{item.name}</span>
               {badge != null && badge > 0 && (
-                <span aria-label={item.href === "/boss-supervision" ? `${badge} 条待处理` : undefined} className={cn("flex h-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold text-white", item.href === "/boss-supervision" ? "min-w-5 px-1" : "w-5")}>{item.href === "/boss-supervision" ? badge : badge > 99 ? "99+" : badge}</span>
+                <span aria-label={item.href === "/boss-supervision" ? `${badge} 条待处理` : undefined} className={cn("flex h-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-semibold text-white md:absolute md:-right-1 md:-top-1 lg:static", item.href === "/boss-supervision" ? "min-w-5 px-1" : "w-5")}>{item.href === "/boss-supervision" ? badge : badge > 99 ? "99+" : badge}</span>
               )}
             </Link>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+function NavGroupSection({ group, open, onToggle, pathname, onClose, badgeMap }: { group: NavGroup; open: boolean; onToggle: () => void; pathname: string; onClose: () => void; badgeMap: Record<string, number> }) {
+  const badgeTotal = group.items.reduce((sum, item) => sum + (badgeMap[item.name] ?? 0), 0);
+  const listId = `sidebar-group-${group.key}`;
+  return (
+    <div className="mt-3">
+      {/* 平板那种窄侧栏（md）放不下标题：不显示标题，组里的项全部显示，组之间用横线隔开 */}
+      <div className="mx-3 mb-3 hidden border-t border-[var(--sidebar-border)] md:block lg:hidden" />
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--sidebar-foreground)]/55 transition-colors hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-foreground)] md:hidden lg:flex"
+      >
+        <ChevronRight className={cn("size-3.5 shrink-0 transition-transform duration-150", open && "rotate-90")} aria-hidden="true" />
+        <span className="flex-1 text-left">{group.label}</span>
+        {!open && badgeTotal > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">{badgeTotal > 99 ? "99+" : badgeTotal}</span>
+        )}
+      </button>
+      <div id={listId} className={cn("mt-1", !open && "hidden md:block lg:hidden")}>
+        <NavSection items={group.items} pathname={pathname} onClose={onClose} badgeMap={badgeMap} />
+      </div>
+    </div>
   );
 }
 
@@ -203,6 +111,10 @@ export function Sidebar() {
   const [finPendingVerifyCount, setFinPendingVerifyCount] = useState(0);
   const [unclassifiedCount, setUnclassifiedCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
+  const openGroupsRaw = useSyncExternalStore(subscribeOpenGroups, readOpenGroups, () => "");
+  // 当前页面所在的分组：打开页面时自动展开，手动收起后不再强行展开
+  const [focusGroup, setFocusGroup] = useState(() => groupKeyOf(pathname));
+  const [pageGroup, setPageGroup] = useState(() => groupKeyOf(pathname));
 
   // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
   useEffect(() => {
@@ -309,69 +221,61 @@ export function Sidebar() {
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
     setOpen(false);
+    const nextGroup = groupKeyOf(pathname);
+    if (nextGroup !== pageGroup) {
+      setPageGroup(nextGroup);
+      setFocusGroup(nextGroup);
+    }
   }
+
+  const groups = useMemo(() => groupsForRole(user?.role, agencyEnabled), [user?.role, agencyEnabled]);
+  const savedOpen = parseOpenGroups(openGroupsRaw);
+  const isGroupOpen = (group: NavGroup) => group.key === focusGroup || (savedOpen[group.key] ?? !!group.defaultOpen);
+  const toggleGroup = (group: NavGroup) => {
+    saveOpenGroup(group.key, !isGroupOpen(group));
+    if (group.key === focusGroup) setFocusGroup(null);
+  };
+  const badgeMap: Record<string, number> = {
+    "监督看板": bossPending?.total ?? 0,
+    "我的待办": todoCount,
+    "消息": msgUnreadCount,
+    "消息中心": notifUnreadCount,
+    "待分类（待领取）": unclassifiedCount,
+    "费用管理": finPendingVerifyCount,
+  };
 
   const sidebarContent = (
     <>
-      <div className="flex h-14 items-center gap-3 border-b border-[var(--sidebar-border)] px-5">
+      <div className="flex h-14 items-center gap-3 border-b border-[var(--sidebar-border)] px-5 md:justify-center md:px-0 lg:justify-start lg:px-5">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-primary)]">
           <span className="font-display text-sm font-medium tracking-tight text-[var(--sidebar-primary-foreground)]">X</span>
         </div>
-        <div className="flex flex-col leading-tight">
+        <div className="flex flex-col leading-tight md:hidden lg:flex">
           <span className="text-sm font-medium tracking-tight">湘泰</span>
           <span className="text-xs uppercase tracking-widest text-[var(--sidebar-foreground)]/50">Internal Portal</span>
         </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <NavSection items={user?.role === "admin" ? navigation : navigation.filter((n) => !(user?.role === "client" && ["全局搜索", "我的文件夹", "公司档案"].includes(n.name)) && n.name !== "数据总览" && n.name !== "监督看板" && n.name !== "员工动态" && n.name !== "我的项目" && !(user?.role === "client" && n.name === "通知/规则"))} pathname={pathname} onClose={close} badgeMap={{ "监督看板": bossPending?.total ?? 0, "我的待办": todoCount, "消息": msgUnreadCount, "消息中心": notifUnreadCount }} />
+        <NavSection items={navForRole(TOP_NAV, user?.role)} pathname={pathname} onClose={close} badgeMap={badgeMap} />
 
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">税务</span>
+        {groups.map((group) => (
+          <NavGroupSection key={group.key} group={group} open={isGroupOpen(group)} onToggle={() => toggleGroup(group)} pathname={pathname} onClose={close} badgeMap={badgeMap} />
+        ))}
+
+        <div className="mt-3">
+          <NavSection items={navForRole(BOTTOM_NAV, user?.role)} pathname={pathname} onClose={close} />
         </div>
-        <NavSection items={vatNav} pathname={pathname} onClose={close} />
-
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">客户</span>
-          <NavSection items={user?.role === "client" ? customerNav.filter((n) => n.name !== "客户评价") : customerNav} pathname={pathname} onClose={close} />
-
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">业务线</span>
-        </div>
-        <NavSection items={businessLines} pathname={pathname} onClose={close} badgeMap={{ "待分类（待领取）": unclassifiedCount }} />
-
-        {agencyEnabled && (
-          <>
-            <div className="mt-4 mb-2 px-3">
-              <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">机构</span>
-            </div>
-            <NavSection items={agencyNav} pathname={pathname} onClose={close} />
-          </>
-        )}
-
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">物流</span>
-        </div>
-        <NavSection items={logisticsNav} pathname={pathname} onClose={close} />
-
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">内部管理</span>
-        </div>
-        <NavSection items={forRole(internalNav, user?.role)} pathname={pathname} onClose={close} />
-
-        <div className="mt-4 mb-2 px-3">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wider text-[var(--sidebar-foreground)]/40">工具</span>
-        </div>
-        <NavSection items={forRole(utilityNav, user?.role)} pathname={pathname} onClose={close} badgeMap={{ "费用管理": finPendingVerifyCount }} />
       </nav>
 
-      <div className="border-t border-[var(--sidebar-border)] px-5 py-3">
-        <div className="flex items-center gap-3">
+      <div className="border-t border-[var(--sidebar-border)] px-5 py-3 md:px-0 lg:px-5">
+        <div className="flex items-center gap-3 md:flex-col lg:flex-row">
 {(() => {
             const initial = user?.name?.charAt(0) || "?";
             const roleLabel = user?.role === "admin" ? "管理员" : user?.role === "client" ? "客户" : "员工";
             return (<>
           <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--sidebar-accent)] text-xs font-medium text-[var(--sidebar-accent-foreground)]">{initial}</div>
-          <div className="flex min-w-0 flex-col leading-tight">
+          <div className="flex min-w-0 flex-col leading-tight md:hidden lg:flex">
             <span className="truncate text-sm font-medium">{user?.name || "—"}</span>
             <span className="truncate text-xs text-[var(--sidebar-foreground)]/50">{roleLabel}</span>
           </div>
