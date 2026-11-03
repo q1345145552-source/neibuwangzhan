@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth";
+import { buildPayslipBreakdown } from "@/lib/payslip-breakdown";
 import * as XLSX from "xlsx";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+// Split explanations into physical rows so even readers without wrapped-cell support show all text.
+function textLines(text: string, width = 30): string[] {
+  const lines: string[] = [];
+  let line = "", size = 0;
+  for (const char of text) {
+    const next = char.codePointAt(0)! > 255 ? 2 : 1;
+    if (size + next > width) { lines.push(line); line = ""; size = 0; }
+    line += char; size += next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 // GET /api/payslips/export?month=YYYY-MM — 导出某月全部工资单（工资条模板，一人一个 Sheet）
 export async function GET(req: NextRequest) {
@@ -16,20 +29,16 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
   const rows = db.prepare(
-    "SELECT id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, merit_income, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, demerit_deduction, withholding_tax FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC"
+    "SELECT id, employee_id, employee_name, month, base_salary, diligence_bonus, skill_allowance, bonus, commission, overtime, merit_income, social_security, late_deduction, personal_leave_deduction, sick_leave_deduction, absence_deduction, demerit_deduction, withholding_tax, summary FROM payslips WHERE month = ? ORDER BY employee_name ASC, id ASC"
   ).all(month) as any[];
-
-  // 底薪/勤奋奖/技能津贴从员工档案读；员工被删时回退到工资单快照
-  const empStmt = db.prepare("SELECT base_salary, diligence_bonus, skill_allowance FROM employees WHERE id = ?");
 
   const wb = XLSX.utils.book_new();
   const usedNames = new Set<string>();
 
   for (const p of rows) {
-    const emp = empStmt.get(p.employee_id) as { base_salary: number | null; diligence_bonus: number | null; skill_allowance: number | null } | undefined;
-    const base = emp ? (emp.base_salary ?? 0) : (p.base_salary ?? 0);
-    const diligence = emp ? (emp.diligence_bonus ?? 0) : (p.diligence_bonus ?? 0);
-    const skill = emp ? (emp.skill_allowance ?? 0) : (p.skill_allowance ?? 0);
+    const base = p.base_salary ?? 0;
+    const diligence = p.diligence_bonus ?? 0;
+    const skill = p.skill_allowance ?? 0;
     const bonus = p.bonus ?? 0;
     const commission = p.commission ?? 0;
     const overtime = p.overtime ?? 0;
@@ -74,8 +83,26 @@ export async function GET(req: NextRequest) {
       ["净收入", round2(net)],
     ];
 
+    const breakdown = buildPayslipBreakdown(p);
+    aoa.push([], ["计算明细"]);
+    for (const line of textLines(breakdown.note)) aoa.push(["说明", line]);
+    for (const section of breakdown.sections) {
+      aoa.push([section.title], ["项目", "计算依据 / 公式", "金额 (THB)"]);
+      for (const line of section.lines) {
+        textLines(line.formula).forEach((text, index) => aoa.push([index === 0 ? line.label : "", text, index === 0 ? line.amount ?? "" : ""]));
+      }
+      aoa.push([]);
+    }
+
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [{ wch: 14 }, { wch: 14 }];
+    ws["!cols"] = [{ wch: 24 }, { wch: 34 }, { wch: 14 }];
+    ws["!margins"] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
+    ws["!rows"] = aoa.map(() => ({ hpt: 22 }));
+    for (const address of Object.keys(ws)) {
+      if (address.startsWith("!")) continue;
+      if (ws[address].t === "n") ws[address].z = "#,##0.00";
+      ws[address].s = { alignment: { vertical: "top", wrapText: true } };
+    }
     // 标题/员工/月份 三行跨两列合并
     ws["!merges"] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },

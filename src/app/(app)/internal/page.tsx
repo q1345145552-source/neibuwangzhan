@@ -1,5 +1,6 @@
 "use client";
 
+import { PayslipBreakdown } from "@/components/payslip-breakdown";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLatestRequest } from "@/lib/use-latest";
@@ -563,6 +564,7 @@ function InternalPageContent() {
 
   // ── 我的工资单（员工）──
   const payslipParam = useSearchParams().get("payslip");
+  const [calculationPayslipId, setCalculationPayslipId] = useState<number | null>(null);
   const [myPayslips, setMyPayslips] = useState<any[]>([]);
   const [myPayslipsLoading, setMyPayslipsLoading] = useState(false);
   const [myPayslipsLoaded, setMyPayslipsLoaded] = useState(false);
@@ -830,6 +832,7 @@ function InternalPageContent() {
                       {p.status === "打回" && p.reject_reason && (
                         <p className="mt-2 text-xs text-red-500">修改意见：{p.reject_reason}</p>
                       )}
+                      <Button size="sm" variant="outline" className="mt-3 min-h-11" onClick={() => setCalculationPayslipId(p.id)}>详情 / 计算明细</Button>
                       {p.status === "待确认" && (
                         <div className="mt-3 flex gap-2">
                           <Button size="sm" disabled={payslipSaving} className="min-h-11 text-xs" onClick={() => confirmPayslip(p.id)}>确认</Button>
@@ -841,6 +844,16 @@ function InternalPageContent() {
                 })}
               </div>
             )}
+            {calculationPayslipId !== null && (() => {
+              const selected = myPayslips.find(p => p.id === calculationPayslipId);
+              if (!selected) return null;
+              return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCalculationPayslipId(null)}>
+                <div role="dialog" aria-modal="true" aria-label={`${selected.month} 工资单计算明细`} onKeyDown={e => { if (e.key === "Escape") setCalculationPayslipId(null); }} onClick={e => e.stopPropagation()} className="max-h-[85dvh] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 shadow-2xl">
+                  <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">{selected.employee_name} · {selected.month} 工资单</h3><Button autoFocus variant="ghost" className="min-h-11" aria-label="关闭计算明细" onClick={() => setCalculationPayslipId(null)}><X className="size-5" /></Button></div>
+                  <PayslipBreakdown payslip={selected} />
+                </div>
+              </div>;
+            })()}
           </div>
         </div>
       )}

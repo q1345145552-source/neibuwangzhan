@@ -1,5 +1,6 @@
 "use client";
 
+import { PayslipBreakdown } from "@/components/payslip-breakdown";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -561,6 +562,8 @@ export default function PayslipsPage() {
                         <span className="text-xl font-bold tabular-nums text-emerald-600">{(totalOf(detail) - deductionOf(detail)).toFixed(2)}</span>
                       </div>
                     </div>
+
+                    <PayslipBreakdown payslip={detail} />
 
                     <p className="mb-1 text-xs font-medium text-[var(--muted-foreground)]">考勤汇总</p>
                     <div className="rounded-md border border-[var(--border)] p-3">

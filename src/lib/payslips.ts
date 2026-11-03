@@ -105,7 +105,7 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
   let sickLeave = 0;
   const monthFrom = `${month}-01`;
   const monthTo = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
-  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; review_status: string; pay_status: string; images: string[] }[] = [];
+  const leaveDetails: { type: string; days: number; hours: number; has_certificate: boolean; review_status: string; pay_status: string; images: string[]; start_date: string; end_date: string; quantity: number; unit: string; rate: number; amount: number }[] = [];
   const leaveRows = db.prepare(
     "SELECT id, leave_type, start_date, end_date, start_time, end_time, images, COALESCE(pay_status,'不带薪') pay_status FROM leave_requests WHERE employee_name = ? AND status = '已通过' AND start_date <= ? AND end_date >= ? ORDER BY start_date"
   ).all(name, monthTo, monthFrom) as { id: number; leave_type: string; start_date: string; end_date: string; start_time: string; end_time: string; images: string; pay_status: string }[];
@@ -120,6 +120,9 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
       ? (db.prepare("SELECT review_status FROM leave_medical_proofs WHERE leave_id = ?").get(l.id) as { review_status: string } | undefined)
       : undefined;
     const reviewStatus = proof?.review_status || "";
+    const hourly = l.leave_type === "事假" && singleDay && hours <= 5;
+    const quantity = hourly ? hours : days;
+    const rate = hourly ? hourlyRate : dailyRate;
     leaveDetails.push({
       type: l.leave_type,
       days,
@@ -128,6 +131,12 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
       review_status: reviewStatus,
       pay_status: l.pay_status === "带薪" ? "带薪" : "不带薪",
       images,
+      start_date: first,
+      end_date: l.end_date > monthTo ? monthTo : l.end_date,
+      quantity,
+      unit: hourly ? "小时" : "天",
+      rate,
+      amount: l.pay_status === "带薪" ? 0 : round2(quantity * rate),
     });
     if (l.pay_status === "带薪") continue;
     if (l.leave_type !== "病假") {
@@ -151,7 +160,11 @@ export function computeDeductions(db: Db, name: string, month: string, totalSala
   const absenceDays = Math.max(0, expectedDays - attendanceDays - leaveDays);
   const absenceDeduction = round2(absenceDays * dailyRate);
 
-  return { social, late, personalLeave, sickLeave, absenceDeduction, expectedDays, absenceDays, attendanceDays, lateDetails, leaveDetails };
+  // 保存当次计算依据；查看/导出不重新读取后来变动的考勤或工资设置。
+  const calculation = { version: 1, total_salary: totalSalary, daily_rate: dailyRate, hourly_rate: hourlyRate,
+    late_minutes: lateMinutes, expected_days: expectedDays, absence_days: absenceDays, leave_days: leaveDays,
+    social, late, personal_leave: personalLeave, sick_leave: sickLeave, absence: absenceDeduction };
+  return { social, late, personalLeave, sickLeave, absenceDeduction, expectedDays, absenceDays, attendanceDays, lateDetails, leaveDetails, calculation };
 }
 
 /**
@@ -175,7 +188,7 @@ export function refreshPayslipAutoFields(db: Db, employeeId: number, month: stri
   const skill = e.skill_allowance ?? 0;
   const totalSalary = base + diligence + skill;
   const ded = computeDeductions(db, e.name, month, totalSalary);
-  const summary = JSON.stringify({ attendance_days: ded.attendanceDays, late_details: ded.lateDetails, leave_details: ded.leaveDetails });
+  const summary = JSON.stringify({ attendance_days: ded.attendanceDays, late_details: ded.lateDetails, leave_details: ded.leaveDetails, calculation: ded.calculation });
 
   db.prepare(
     `UPDATE payslips SET employee_name = ?, base_salary = ?, diligence_bonus = ?, skill_allowance = ?, social_security = ?, late_deduction = ?, personal_leave_deduction = ?, sick_leave_deduction = ?, absence_deduction = ?, summary = ? WHERE employee_id = ? AND month = ?`

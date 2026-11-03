@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       const skill = e.skill_allowance ?? 0;
       const totalSalary = base + diligence + skill; // 用于事假/病假按天扣
       const ded = computeDeductions(db, e.name, month, totalSalary);
-      const summary = JSON.stringify({ attendance_days: ded.attendanceDays, late_details: ded.lateDetails, leave_details: ded.leaveDetails });
+      const summary = JSON.stringify({ attendance_days: ded.attendanceDays, late_details: ded.lateDetails, leave_details: ded.leaveDetails, calculation: ded.calculation });
 
       // 功过联动：当月记优点总分×10 = 功过收入；当月记过总分×10 = 功过扣款
       const meritPoints = (db.prepare("SELECT COALESCE(SUM(points), 0) AS total FROM employee_records WHERE employee_id = ? AND type = 'merit' AND substr(created_at, 1, 7) = ?").get(e.id, month) as { total: number }).total;
