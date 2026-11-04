@@ -1,42 +1,16 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { getStoredAuthToken } from "@/lib/auth-storage";
 import { useBossPending } from "@/lib/use-boss-pending";
-import { ChevronRight, LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { BOTTOM_NAV, TOP_NAV, groupKeyOf, groupsForRole, isActiveRoute, navForRole, type NavGroup, type NavItem } from "@/components/sidebar-nav";
-
-// 哪些分组展开着：记在这台电脑的浏览器里（存不了就只在这次打开时有效）
-const OPEN_GROUPS_KEY = "sidebar-open-groups-v1";
-let openGroupsMemory: string | null = null;
-const openGroupListeners = new Set<() => void>();
-function readOpenGroups(): string {
-  if (openGroupsMemory !== null) return openGroupsMemory;
-  try { return localStorage.getItem(OPEN_GROUPS_KEY) ?? ""; } catch { return ""; }
-}
-function subscribeOpenGroups(listener: () => void) {
-  openGroupListeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => { openGroupListeners.delete(listener); window.removeEventListener("storage", listener); };
-}
-function parseOpenGroups(raw: string): Record<string, boolean> {
-  try {
-    const value: unknown = JSON.parse(raw || "{}");
-    return value && typeof value === "object" ? value as Record<string, boolean> : {};
-  } catch { return {}; }
-}
-function saveOpenGroup(key: string, open: boolean) {
-  const next = JSON.stringify({ ...parseOpenGroups(readOpenGroups()), [key]: open });
-  try { localStorage.setItem(OPEN_GROUPS_KEY, next); openGroupsMemory = null; }
-  catch { openGroupsMemory = next; /* 存不了（写满、被禁用）：这次打开时还能用，只影响下次打开 */ }
-  openGroupListeners.forEach((listener) => listener());
-}
+import { BOTTOM_NAV, TOP_NAV, groupsForRole, isActiveRoute, navForRole, type NavGroup, type NavItem } from "@/components/sidebar-nav";
 
 function NavSection({ items, pathname, onClose, badgeMap }: { items: NavItem[]; pathname: string; onClose: () => void; badgeMap?: Record<string, number> }) {
   return (
@@ -71,27 +45,14 @@ function NavSection({ items, pathname, onClose, badgeMap }: { items: NavItem[]; 
   );
 }
 
-function NavGroupSection({ group, open, onToggle, pathname, onClose, badgeMap }: { group: NavGroup; open: boolean; onToggle: () => void; pathname: string; onClose: () => void; badgeMap: Record<string, number> }) {
-  const badgeTotal = group.items.reduce((sum, item) => sum + (badgeMap[item.name] ?? 0), 0);
-  const listId = `sidebar-group-${group.key}`;
+function NavGroupSection({ group, pathname, onClose, badgeMap }: { group: NavGroup; pathname: string; onClose: () => void; badgeMap: Record<string, number> }) {
   return (
     <div className="mt-3">
-      {/* 平板那种窄侧栏（md）放不下标题：不显示标题，组里的项全部显示，组之间用横线隔开 */}
-      <div className="mx-3 mb-3 hidden border-t border-[var(--sidebar-border)] md:block lg:hidden" />
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={listId}
-        className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--sidebar-foreground)]/55 transition-colors hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-foreground)] md:hidden lg:flex"
-      >
-        <ChevronRight className={cn("size-3.5 shrink-0 transition-transform duration-150", open && "rotate-90")} aria-hidden="true" />
-        <span className="flex-1 text-left">{group.label}</span>
-        {!open && badgeTotal > 0 && (
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">{badgeTotal > 99 ? "99+" : badgeTotal}</span>
-        )}
-      </button>
-      <div id={listId} className={cn("mt-1", !open && "hidden md:block lg:hidden")}>
+      {/* 灰色小标题：固定文字标签，不可点、无箭头、不折叠（窄侧栏 md 放不下，隐藏标题只显示菜单项） */}
+      <div className="px-3 py-1.5 text-xs font-medium text-[var(--sidebar-foreground)]/55 md:hidden lg:block">
+        {group.label}
+      </div>
+      <div className="mt-1">
         <NavSection items={group.items} pathname={pathname} onClose={onClose} badgeMap={badgeMap} />
       </div>
     </div>
@@ -111,10 +72,6 @@ export function Sidebar() {
   const [finPendingVerifyCount, setFinPendingVerifyCount] = useState(0);
   const [unclassifiedCount, setUnclassifiedCount] = useState(0);
   const [agencyEnabled, setAgencyEnabled] = useState(true);
-  const openGroupsRaw = useSyncExternalStore(subscribeOpenGroups, readOpenGroups, () => "");
-  // 当前页面所在的分组：打开页面时自动展开，手动收起后不再强行展开
-  const [focusGroup, setFocusGroup] = useState(() => groupKeyOf(pathname));
-  const [pageGroup, setPageGroup] = useState(() => groupKeyOf(pathname));
 
   // 我的待办角标：未看过的新增/新跟进待办数量（客户账号没有待办，不轮询）
   useEffect(() => {
@@ -221,20 +178,9 @@ export function Sidebar() {
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
     setOpen(false);
-    const nextGroup = groupKeyOf(pathname);
-    if (nextGroup !== pageGroup) {
-      setPageGroup(nextGroup);
-      setFocusGroup(nextGroup);
-    }
   }
 
   const groups = useMemo(() => groupsForRole(user?.role, agencyEnabled), [user?.role, agencyEnabled]);
-  const savedOpen = parseOpenGroups(openGroupsRaw);
-  const isGroupOpen = (group: NavGroup) => group.key === focusGroup || (savedOpen[group.key] ?? !!group.defaultOpen);
-  const toggleGroup = (group: NavGroup) => {
-    saveOpenGroup(group.key, !isGroupOpen(group));
-    if (group.key === focusGroup) setFocusGroup(null);
-  };
   const badgeMap: Record<string, number> = {
     "监督看板": bossPending?.total ?? 0,
     "我的待办": todoCount,
@@ -260,7 +206,7 @@ export function Sidebar() {
         <NavSection items={navForRole(TOP_NAV, user?.role)} pathname={pathname} onClose={close} badgeMap={badgeMap} />
 
         {groups.map((group) => (
-          <NavGroupSection key={group.key} group={group} open={isGroupOpen(group)} onToggle={() => toggleGroup(group)} pathname={pathname} onClose={close} badgeMap={badgeMap} />
+          <NavGroupSection key={group.key} group={group} pathname={pathname} onClose={close} badgeMap={badgeMap} />
         ))}
 
         <div className="mt-3">
