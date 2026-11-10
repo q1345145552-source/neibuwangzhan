@@ -6,6 +6,7 @@ import { Plus, FileText, ClipboardList, Search, ArrowLeft } from "lucide-react";
 import { fetchOrders, fetchBusinessTypes, orderStatusLabel, orderStatusClass } from "@/lib/api";
 import type { Order, BusinessType } from "@/lib/api";
 import { cn, toThaiTime, formatCurrency } from "@/lib/utils";
+import { productDescription } from "@/lib/order-product";
 
 interface BusinessLinePageProps {
   businessKey: string;
@@ -74,6 +75,9 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
     : orders).filter((o) => statusFilter === "all" || o.status === statusFilter);
 
   const a = accentStyles(accentHue);
+  // 「产品描述」（2026-11-10）：屏幕 ≥1280 单独一列；更窄时这一列收起，改在客户名下面小字显示。
+  // 列宽按实测给：商标页多一列商标名称，给窄一点（页面内容最宽 1280，屏幕再宽表格也不变宽）。类名要写全（Tailwind 只认写死的类名）。
+  const descWidth = businessKey === "商标" ? "max-w-[7rem] 2xl:max-w-[9rem]" : "max-w-[7rem] min-[1440px]:max-w-[12rem] 2xl:max-w-[16rem]";
 
   if (loading) {
     return (
@@ -157,6 +161,8 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide">订单号</th>
                 {businessKey === "商标" && <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">商标名称</th>}
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">客户</th>
+                {/* 产品描述（2026-11-10 老板要）：就是订单的「描述」，同一个客户多个产品时不用点进去看 */}
+                <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide whitespace-nowrap hidden xl:table-cell">产品描述</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-md:hidden">负责人</th>
                 <th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)] tracking-wide">金额</th>
                 <th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] tracking-wide max-sm:hidden">日期</th>
@@ -170,7 +176,14 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
                     <Link href={`/orders/${order.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline tabular-nums">{order.display_no || order.id}</Link>
                   </td>
                   {businessKey === "商标" && <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.trademark_name || "—"}</td>}
-                  <td className="py-3 px-4 max-md:hidden"><div className="font-medium text-[var(--foreground)]">{order.customer_name}</div></td>
+                  <td className="py-3 px-4 max-md:hidden">
+                    <div className="font-medium text-[var(--foreground)]">{order.customer_name}</div>
+                    {/* 屏幕不够宽时「产品描述」那一列收起，改在客户名下面小字显示，免得挤得别的列竖着排 */}
+                    {/* w-0 + min-w-full：只占客户名那么宽，不把这一列撑宽 */}
+                    {productDescription(order) && <div className="xl:hidden mt-0.5 w-0 min-w-full truncate text-xs text-[var(--muted-foreground)]" title={productDescription(order)}>{productDescription(order)}</div>}
+                  </td>
+                  {/* 宽度跟着屏幕放：长的显示「…」、鼠标放上去看全文，不挤其他列 */}
+                  <td className="py-3 px-4 hidden xl:table-cell text-[var(--foreground)]"><div className={cn("truncate", descWidth)} title={productDescription(order) || undefined}>{productDescription(order) || "—"}</div></td>
                   <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{order.responsible_person}</td>
                   <td className="py-3 px-4 text-right font-mono text-xs tabular-nums text-[var(--foreground)]">{formatCurrency(order.total_amount, order.currency)}</td>
                   <td className="py-3 px-4 font-mono text-xs tabular-nums text-[var(--muted-foreground)] max-sm:hidden">{toThaiTime(order.created_at)}</td>
@@ -190,6 +203,8 @@ export function BusinessLinePage({ businessKey, label, accentHue, description, s
                 <div className="mt-2 space-y-1.5 text-sm">
                   {businessKey === "商标" && <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">商标名称</span><span>{order.trademark_name || "—"}</span></div>}
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">客户</span><span>{order.customer_name || "—"}</span></div>
+                  {/* 手机上长描述折成最多两行（不能单行截断：会把卡片和整页撑宽） */}
+                  <div className="flex justify-between gap-3"><span className="shrink-0 text-[var(--muted-foreground)]">产品描述</span><span className="min-w-0 text-right line-clamp-2 [overflow-wrap:anywhere]" title={productDescription(order) || undefined}>{productDescription(order) || "—"}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">负责人</span><span>{order.responsible_person || "—"}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">金额</span><span className="font-mono text-xs">{formatCurrency(order.total_amount, order.currency)}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-[var(--muted-foreground)]">日期</span><span className="text-xs">{toThaiTime(order.created_at)}</span></div>

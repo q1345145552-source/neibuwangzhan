@@ -7,6 +7,7 @@ import { Plus, ArrowLeft } from "lucide-react";
 import { fetchOrders, orderStatusLabel, orderStatusClass } from "@/lib/api";
 import type { Order } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
+import { productDescription } from "@/lib/order-product";
 
 export default function DldSitePage() {
   const router = useRouter();
@@ -44,12 +45,12 @@ export default function DldSitePage() {
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)]">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
+          <thead><tr className="border-b border-[var(--border)]"><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">订单号</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] max-md:hidden">客户</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)] whitespace-nowrap hidden xl:table-cell">产品描述</th><th className="py-3 px-4 text-right text-xs font-medium text-[var(--muted-foreground)]">金额</th><th className="py-3 px-4 text-left text-xs font-medium text-[var(--muted-foreground)]">状态</th></tr></thead>
           <tbody>
             {orders.map(o => (
               <tr key={o.id} className="border-b border-[var(--border)] hover:bg-[var(--secondary)]">
-                <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.display_no || o.id}</Link></td>
-                <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}</td>
+                <td className="py-3 px-4"><Link href={`/orders/${o.id}`} className="font-mono text-xs font-medium text-[var(--accent-foreground)] hover:underline">{o.display_no || o.id}</Link>{productDescription(o) && <div className="md:hidden mt-0.5 w-0 min-w-full line-clamp-2 [overflow-wrap:anywhere] text-xs text-[var(--muted-foreground)]" title={productDescription(o)}>{productDescription(o)}</div>}</td>
+                <td className="py-3 px-4 max-md:hidden text-[var(--foreground)]">{o.customer_name}{productDescription(o) && <div className="xl:hidden mt-0.5 w-0 min-w-full truncate text-xs text-[var(--muted-foreground)]" title={productDescription(o)}>{productDescription(o)}</div>}</td><td className="py-3 px-4 hidden xl:table-cell text-[var(--foreground)]"><div className="max-w-[12rem] min-[1440px]:max-w-[16rem] truncate" title={productDescription(o) || undefined}>{productDescription(o) || "—"}</div></td>
                 <td className="py-3 px-4 text-right font-mono text-xs text-[var(--foreground)]">{formatCurrency(o.total_amount, o.currency)}</td>
                 <td className="py-3 px-4"><span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", orderStatusClass(o))}>{orderStatusLabel(o)}</span></td>
               </tr>
