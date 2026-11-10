@@ -229,6 +229,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // 编辑模式
   const [editingOrder, setEditingOrder] = useState(false);
   const [editFields, setEditFields] = useState<Partial<Order>>({});
+  // 点「编辑」那一刻的金额：编辑中页面刷新了也不变，保存时拿它判断金额动没动（2026-11-10）
+  const [editOriginalAmount, setEditOriginalAmount] = useState(0);
   // 改客户（员工建的单）：从客户管理里选，没有的当场新建（2026-10-16，2A）
   const [customerPool, setCustomerPool] = useState<PoolCustomer[]>([]);
   const [editNewCustomer, setEditNewCustomer] = useState(false);
@@ -601,6 +603,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         currency: order.currency || "CNY",
         trademark_name: order.trademark_name || "",
       });
+      setEditOriginalAmount(Number(order.total_amount));
       setEditNewCustomer(false);
       if (!order.source_system && customerPool.length === 0) {
         fetchWithAuth("/api/customers").then(r => r.json()).then(d => setCustomerPool(Array.isArray(d) ? d : [])).catch(e => console.error("[编辑] 加载客户管理名单失败", e));
@@ -622,6 +625,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       return;
     }
     if (reassignTo && !window.confirm(`确定把这张单改派到「${reassignTo.name}」？\n会换成该业务线的整套办理流程，已做的「方案确认」和写过的备注都保留。改派只能做一次。`)) return;
+    // 客户站来的人民币单改金额：客户在业务系统看到的账单会一起改（2026-11-09）
+    const newCents = Math.round(Number(editFields.total_amount) * 100);
+    if (order.source_order_no && (order.currency || "CNY") === "CNY" && newCents !== Math.round(editOriginalAmount * 100)
+      && !window.confirm(`客户在业务系统看到的账单会一起改成 ${newCents / 100} 元，确定改？`)) return;
     const nextCustomer = String(editFields.customer_name ?? "").trim();
     const customerChanged = !order.source_system && nextCustomer !== String(order.customer_name || "").trim();
     const knownCustomer = customerChanged && (isKnownCustomer(customerPool, nextCustomer) || (!editNewCustomer && await customerExists(nextCustomer)));
@@ -632,7 +639,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     setSavingOrder(true);
     setError("");
     try {
-      await updateOrder(id, { ...editFields, ...(customerChanged ? { customer_name: nextCustomer, new_customer: editNewCustomer && !knownCustomer } : order.source_system ? {} : { customer_name: order.customer_name }) });
+      // 带上打开页面时看到的金额：别人刚改过金额时，客户站来的单不会被这张旧页面改回去（2026-11-10）
+      await updateOrder(id, { ...editFields, expected_total_amount: editOriginalAmount, ...(customerChanged ? { customer_name: nextCustomer, new_customer: editNewCustomer && !knownCustomer } : order.source_system ? {} : { customer_name: order.customer_name }) });
       setEditingOrder(false);
       reload();
     } catch (err) {
@@ -915,6 +923,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       <option value="THB">฿ 泰铢</option>
                     </select>
                   </div>
+                  {order.source_order_no && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{(order.currency || "CNY") === "CNY" ? "改金额会同时改客户在业务系统看到的账单" : "这张单不是人民币，金额请到业务系统「订单管理」改成交价"}</p>}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-xs text-[var(--muted-foreground)]">描述</label>

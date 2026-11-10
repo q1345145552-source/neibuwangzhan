@@ -455,6 +455,242 @@ await test('if the customer site is unreachable, the account search still lists 
   } finally { process.env.CUSTOMER_SYNC_URL = saved; }
 });
 
+// 内部直接改同步单金额（2026-11-09 老板：「要内部系统可以直接去改」；11-10 按审查补：旧页面、并发、回话说不准、0 元、泰铢、怪输入）
+const orderRoute = await import('../src/app/api/orders/[id]/route');
+const patchOrder = async (id: string, body: unknown, token = empToken) => call(await orderRoute.PATCH(req(`/api/orders/${id}`, token, { method: 'PATCH', body }), ctx(id)));
+const revisionOf = (no: string) => (db.prepare('SELECT billing_revision FROM sync_orders WHERE source_order_no=?').get(no) as { billing_revision: number }).billing_revision;
+async function waitRevision(no: string, rev: number) { for (let i = 0; i < 100 && revisionOf(no) < rev; i++) await new Promise(res => setTimeout(res, 200)); return revisionOf(no); }
+const internalOrder = (id: string) => db.prepare('SELECT total_amount, description FROM orders WHERE id=?').get(id) as { total_amount: number; description: string };
+const clientBill = (no: string) => clientDb.prepare('SELECT o.deal_price, i.amount, i.status FROM orders o JOIN invoices i ON i.order_id=o.id WHERE o.order_no=?').get(no) as { deal_price: number | null; amount: number; status: string };
+const clientWrite = (sql: string, ...args: unknown[]) => { const w = new Database(path.join(dir, 'client.db')); try { w.prepare(sql).run(...args); } finally { w.close(); } };
+const attached = async (amount: number) => { const r = await createOrder(empToken, { storefront_account_id: account.id, business_type_id: 6, sub_service_type: '', total_amount: amount, currency: 'CNY' }); assert.equal(r.status, 201, JSON.stringify(r.body)); return r.body.id as string; };
+let amountOrder = '';
+
+await test('an employee changes the amount of an order that is in the customer site: the customer\'s bill changes too and the next billing revision agrees', async () => {
+  amountOrder = await attached(1);
+  const rev = revisionOf(amountOrder);
+  const r = await patchOrder(amountOrder, { total_amount: 38060, expected_total_amount: 1, currency: 'CNY', description: '改金额', monthly_rent: 0 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.total_amount, 38060);
+  assert.equal(r.body.description, '改金额', 'the rest of the form is saved in the same go');
+  assert.deepEqual(clientBill(amountOrder), { deal_price: 38060, amount: 38060, status: 'unpaid' });
+  assert.ok(clientDb.prepare("SELECT 1 FROM order_status_history h JOIN orders o ON o.id=h.order_id WHERE o.order_no=? AND h.remark='管理员调整成交价：1 → 38060' AND h.operator_id IS NULL").get(amountOrder), 'customer-visible record, no staff name');
+  assert.equal(await waitRevision(amountOrder, rev + 1), rev + 1, 'the new billing revision reached the internal ledger');
+  assert.equal(internalOrder(amountOrder).total_amount, 38060);
+  assert.deepEqual(db.prepare('SELECT allocated_cents FROM sync_inbox WHERE source_order_no=?').all(amountOrder), [{ allocated_cents: 3806000 }]);
+  const view = await client('GET', `/api/orders/${(await client('GET', `/api/orders/by-no/${amountOrder}`, customerToken)).body.id}`, customerToken);
+  assert.equal(view.body.invoice.amount, 38060, 'the customer sees the new amount');
+  assert.ok(db.prepare("SELECT 1 FROM audit_logs WHERE action='改同步单金额' AND target_id=? AND detail LIKE '1 → 38060%'").get(amountOrder));
+  const same = await patchOrder(amountOrder, { total_amount: 38060, expected_total_amount: 38060, currency: 'CNY', description: '只改描述' }, adminToken);
+  assert.equal(same.status, 200);
+  assert.equal(revisionOf(amountOrder), rev + 1, 'saving the same amount does not touch the customer bill');
+});
+
+await test('a page opened before someone else changed the amount: saving only the description keeps the new amount on both sides; changing the amount from it is refused', async () => {
+  const o = await attached(100);
+  const rev0 = revisionOf(o);
+  assert.equal((await patchOrder(o, { total_amount: 200, expected_total_amount: 100 }, adminToken)).status, 200, 'B changes it to 200');
+  const rev = await waitRevision(o, rev0 + 1);
+  const r = await patchOrder(o, { total_amount: 100, expected_total_amount: 100, currency: 'CNY', description: 'A 只改描述' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(internalOrder(o), { total_amount: 200, description: 'A 只改描述' });
+  assert.equal(clientBill(o).amount, 200, 'the customer bill is not changed back');
+  assert.equal(revisionOf(o), rev, 'no new billing revision');
+  const r2 = await patchOrder(o, { total_amount: 300, expected_total_amount: 100, description: '不该存上' });
+  assert.equal(r2.status, 409); assert.match(r2.body.error, /金额刚被改过（现在是 200 元），请刷新页面再改/);
+  const old = await patchOrder(o, { total_amount: 300, description: '不该存上' });
+  assert.equal(old.status, 409, 'a page from before this release (no original amount) must refresh first'); assert.match(old.body.error, /页面是旧的/);
+  assert.equal((await patchOrder(o, { total_amount: 200, description: '旧页面金额没动照存' })).status, 200);
+  assert.deepEqual(internalOrder(o), { total_amount: 200, description: '旧页面金额没动照存' });
+  assert.equal(clientBill(o).amount, 200);
+});
+
+await test('customer-site replies: only a clear refusal says "not changed"; timeouts, gateway errors and broken replies say "may have changed"; nothing is saved internally', async () => {
+  let mode = 'html';
+  let raceOrder = '';
+  const fake = http.createServer((q, s) => {
+    q.resume();
+    const send = (status: number, type: string, text: string) => { s.writeHead(status, { 'content-type': type }); s.end(text); };
+    if (mode === 'html') send(200, 'text/html', '<html>not the api</html>');
+    else if (mode === 'gateway') send(504, 'text/html', '<html>504 Gateway Time-out</html>');
+    else if (mode === 'rolledback') send(500, 'application/json', JSON.stringify({ error: '业务系统保存金额失败，请重试' }));
+    else if (mode === 'oldsite') send(404, 'text/html', 'Cannot POST /api/sync/order-amount');
+    else if (mode === 'brokenjson') send(200, 'application/json', '{"ok":tr');
+    else if (mode === 'race') {
+      // 业务系统管理员紧接着又改成 999（版本 r+2），先到了内部
+      const r = revisionOf(raceOrder);
+      db.prepare('UPDATE orders SET total_amount=999 WHERE id=?').run(raceOrder);
+      db.prepare('UPDATE sync_orders SET billing_revision=? WHERE source_order_no=?').run(r + 2, raceOrder);
+      send(200, 'application/json', JSON.stringify({ ok: true, billing_revision: r + 1 }));
+    }
+    else if (mode === 'paid-after') {
+      // 这次的版本 r+1 和之后的确认收款 r+2 都先到了内部，金额已是目标值 500
+      const r = revisionOf(raceOrder);
+      db.prepare('UPDATE orders SET total_amount=500 WHERE id=?').run(raceOrder);
+      db.prepare('UPDATE sync_orders SET billing_revision=? WHERE source_order_no=?').run(r + 2, raceOrder);
+      send(200, 'application/json', JSON.stringify({ ok: true, billing_revision: r + 1 }));
+    }
+    else if (mode === 'norev') send(200, 'application/json', '{"ok":true}');
+    else if (mode === 'aba') {
+      // 业务系统先改成了目标值（版本 r+1），管理员马上又改回原值（版本 r+2），r+2 先到了内部；金额看着还是原值
+      const r = revisionOf(raceOrder);
+      db.prepare('UPDATE sync_orders SET billing_revision=? WHERE source_order_no=?').run(r + 2, raceOrder);
+      send(200, 'application/json', JSON.stringify({ ok: true, billing_revision: r + 1 }));
+    }
+    else if (mode === 'race-fields') { db.prepare("UPDATE orders SET description='乙刚改的', business_type_id=1 WHERE id=?").run(raceOrder); send(200, 'application/json', JSON.stringify({ ok: true, billing_revision: revisionOf(raceOrder) + 1 })); }
+  });
+  const fakePort = await freePort();
+  await new Promise<void>(r => fake.listen(fakePort, '127.0.0.1', () => r()));
+  const sockets: net.Socket[] = [];
+  const silent = net.createServer(s => { sockets.push(s); });
+  const silentPort = await freePort();
+  await new Promise<void>(r => silent.listen(silentPort, '127.0.0.1', () => r()));
+  const saved = process.env.CUSTOMER_SYNC_URL;
+  const tryWith = async (base: string) => { process.env.CUSTOMER_SYNC_URL = base; return patchOrder(amountOrder, { total_amount: 500, expected_total_amount: 38060, description: '不该存上' }, adminToken); };
+  try {
+    const refused = await tryWith(`http://127.0.0.1:${await freePort()}`);
+    assert.equal(refused.status, 502); assert.match(refused.body.error, /^金额没改成：业务系统暂时连不上.*（内部这次的修改都没保存）$/);
+    const fakeBase = `http://127.0.0.1:${fakePort}`;
+    for (const [m, sure] of [['html', /^金额没改成：业务系统版本不对/], ['rolledback', /^金额没改成：业务系统保存金额失败/], ['oldsite', /^金额没改成：业务系统返回错误（404）/]] as const) {
+      mode = m;
+      const r = await tryWith(fakeBase);
+      assert.ok(r.status >= 400, m); assert.match(r.body.error, sure, m);
+    }
+    for (const m of ['gateway', 'brokenjson', 'norev']) {
+      mode = m;
+      const r = await tryWith(fakeBase);
+      assert.equal(r.status, 502, m); assert.match(r.body.error, /没有给出明确回话，客户的账单可能已经改了/, m); assert.doesNotMatch(r.body.error, /没改成/, m);
+    }
+    const slow = await tryWith(`http://127.0.0.1:${silentPort}`);
+    assert.equal(slow.status, 502); assert.match(slow.body.error, /客户的账单可能已经改了/); assert.doesNotMatch(slow.body.error, /没改成/);
+    assert.deepEqual(internalOrder(amountOrder), { total_amount: 38060, description: '只改描述' });
+    // 等业务系统回话那会儿，业务系统管理员又改了价、新账单先到了内部：不拿这次的数盖掉
+    process.env.CUSTOMER_SYNC_URL = saved;
+    raceOrder = await attached(100);
+    process.env.CUSTOMER_SYNC_URL = fakeBase; mode = 'race';
+    const race = await patchOrder(raceOrder, { total_amount: 500, expected_total_amount: 100, description: '不该存上' });
+    assert.equal(race.status, 409, JSON.stringify(race.body)); assert.match(race.body.error, /业务系统那边刚又改了金额（现在是 999 元）/);
+    assert.equal(internalOrder(raceOrder).total_amount, 999, 'the newer amount stays');
+    assert.notEqual(internalOrder(raceOrder).description, '不该存上');
+    // 这次的版本和之后的确认收款都先到了（金额已是目标值）：不算冲突，别的照存
+    process.env.CUSTOMER_SYNC_URL = saved;
+    raceOrder = await attached(100);
+    process.env.CUSTOMER_SYNC_URL = fakeBase; mode = 'paid-after';
+    const paidAfter = await patchOrder(raceOrder, { total_amount: 500, expected_total_amount: 100, description: '照存' });
+    assert.equal(paidAfter.status, 200, JSON.stringify(paidAfter.body));
+    assert.deepEqual(internalOrder(raceOrder), { total_amount: 500, description: '照存' });
+    // 改走又改回（金额看着没变，版本号已经更新）：不能把这次的目标值写进去
+    process.env.CUSTOMER_SYNC_URL = saved;
+    raceOrder = await attached(100);
+    process.env.CUSTOMER_SYNC_URL = fakeBase; mode = 'aba';
+    const aba = await patchOrder(raceOrder, { total_amount: 500, expected_total_amount: 100, description: '不该存上' });
+    assert.equal(aba.status, 409, JSON.stringify(aba.body)); assert.match(aba.body.error, /业务系统那边刚又改了金额（现在是 100 元）/);
+    assert.equal(internalOrder(raceOrder).total_amount, 100, 'the newer version (back to 100) stays');
+    // 等回话那几秒别人改了描述、业务线：这次的旧表单不能把它们盖回去
+    process.env.CUSTOMER_SYNC_URL = saved;
+    raceOrder = await attached(100);
+    const bt = (db.prepare('SELECT business_type_id FROM orders WHERE id=?').get(raceOrder) as { business_type_id: number }).business_type_id;
+    process.env.CUSTOMER_SYNC_URL = fakeBase; mode = 'race-fields';
+    const raceFields = await patchOrder(raceOrder, { total_amount: 500, expected_total_amount: 100, description: 'A 的旧表单', business_type_id: bt });
+    assert.equal(raceFields.status, 409, JSON.stringify(raceFields.body)); assert.match(raceFields.body.error, /这张单刚被别人改过，内部这次的修改都没保存；客户的账单已经改成 500 元/);
+    assert.deepEqual(db.prepare('SELECT description, business_type_id, total_amount FROM orders WHERE id=?').get(raceOrder), { description: '乙刚改的', business_type_id: 1, total_amount: 100 }, "the other person's changes stay");
+  } finally {
+    process.env.CUSTOMER_SYNC_URL = saved;
+    fake.close(); sockets.forEach(s => s.destroy()); silent.close();
+  }
+  assert.equal(clientBill(amountOrder).amount, 38060);
+  clientWrite("UPDATE invoices SET amount=777 WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", amountOrder);
+  const stale = await patchOrder(amountOrder, { total_amount: 100, expected_total_amount: 38060, description: '也不该存上' });
+  clientWrite("UPDATE invoices SET amount=38060 WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", amountOrder);
+  assert.equal(stale.status, 409, JSON.stringify(stale.body));
+  assert.match(stale.body.error, /现在是 777 元，跟这里的 38060 元对不上/);
+  assert.deepEqual(internalOrder(amountOrder), { total_amount: 38060, description: '只改描述' });
+});
+
+await test('bad amounts (0, negatives, 3 decimals, non-numbers) and THB orders are refused on both sides; currency still cannot be changed', async () => {
+  for (const total_amount of [0, -1, 1.234, '', 'abc', ' ', '38061', [], false, null]) {
+    const r = await patchOrder(amountOrder, { total_amount, expected_total_amount: 38060 });
+    assert.equal(r.status, 400, `${JSON.stringify(total_amount)}: ${JSON.stringify(r.body)}`);
+  }
+  assert.equal((await patchOrder(amountOrder, { total_amount: 1, expected_total_amount: 'x' })).status, 400);
+  const revBefore = revisionOf(amountOrder);
+  const tail = await patchOrder(amountOrder, { total_amount: 38060.000000001, expected_total_amount: 38060, description: '尾差' });
+  assert.equal(tail.status, 200, JSON.stringify(tail.body));
+  assert.equal(internalOrder(amountOrder).total_amount, 38060, 'a sub-cent tail is the same amount: not written');
+  assert.equal(revisionOf(amountOrder), revBefore, 'and the customer site is not asked');
+  const sameText = await patchOrder(amountOrder, { total_amount: '38060', expected_total_amount: 38060, description: '同值文字' });
+  assert.equal(sameText.status, 200, 'the same amount written as text changes nothing and is not written back');
+  assert.equal(typeof (db.prepare('SELECT total_amount FROM orders WHERE id=?').get(amountOrder) as { total_amount: unknown }).total_amount, 'number');
+  assert.equal((await patchOrder(amountOrder, { total_amount: 38060, expected_total_amount: 38060, currency: 'THB' })).status, 403);
+  assert.equal((await client('POST', '/api/sync/order-amount', undefined, { source_order_no: amountOrder, amount: 1, expected_amount: 38060 })).status, 401, 'the customer site endpoint needs the shared secret');
+  for (const [amount, error] of [['5', /金额要填数字/], [0, /金额要大于 0/], [[], /金额要填数字/]] as const) {
+    const r = await sync('POST', '/api/sync/order-amount', { source_order_no: amountOrder, amount, expected_amount: 38060 });
+    assert.equal(r.status, 400, JSON.stringify(r.body)); assert.match(r.body.error, error);
+  }
+  assert.equal(clientBill(amountOrder).amount, 38060);
+  const thb = await attached(100);
+  db.prepare("UPDATE orders SET currency='THB' WHERE id=?").run(thb);
+  const r = await patchOrder(thb, { total_amount: 200, expected_total_amount: 100, currency: 'THB' });
+  assert.equal(r.status, 409); assert.match(r.body.error, /不是人民币/);
+  db.prepare("UPDATE orders SET currency='CNY' WHERE id=?").run(thb);
+  clientWrite("UPDATE invoices SET currency='THB' WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", thb);
+  const direct = await sync('POST', '/api/sync/order-amount', { source_order_no: thb, amount: 200, expected_amount: 100 });
+  assert.equal(direct.status, 409); assert.match(direct.body.error, /不是人民币/);
+  assert.equal(clientBill(thb).amount, 100);
+});
+
+await test('a bill with a fixed reduction keeps it: the internal amount is what the customer pays; a deposit sets the floor; a percentage discount is changed on the customer site', async () => {
+  const fixed = await attached(300);
+  clientWrite("UPDATE invoices SET discount=100, discount_type='fixed' WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", fixed);
+  db.prepare('UPDATE orders SET total_amount=200 WHERE id=?').run(fixed);
+  const rev = revisionOf(fixed);
+  const r = await patchOrder(fixed, { total_amount: 500, expected_total_amount: 200 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(clientBill(fixed), { deal_price: 600, amount: 600, status: 'unpaid' }, 'deal price = new amount + the reduction');
+  assert.equal(await waitRevision(fixed, rev + 1), rev + 1);
+  assert.equal(internalOrder(fixed).total_amount, 500);
+  assert.equal(JSON.parse((db.prepare('SELECT financial_json FROM sync_orders WHERE source_order_no=?').get(fixed) as { financial_json: string }).financial_json).discountCents, 10000);
+  clientWrite("UPDATE invoices SET deposit=300 WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", fixed);
+  const low = await patchOrder(fixed, { total_amount: 200, expected_total_amount: 500 });
+  assert.equal(low.status, 400); assert.match(low.body.error, /定金 300 元/);
+  const pct = await attached(1000);
+  clientWrite("UPDATE invoices SET discount=10, discount_type='percent' WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", pct);
+  db.prepare('UPDATE orders SET total_amount=900 WHERE id=?').run(pct);
+  const p = await patchOrder(pct, { total_amount: 800, expected_total_amount: 900 });
+  assert.equal(p.status, 409); assert.match(p.body.error, /百分比折扣/);
+  assert.equal(clientBill(pct).amount, 1000);
+});
+
+await test('one customer order split into several internal orders: refused on both sides, change the whole order on the customer site', async () => {
+  const a = await attached(50);
+  db.prepare("INSERT INTO sync_inbox(id,source_order_no,line_no,copy_no,sku_code,internal_order_id,note,payload,allocated_cents,allocated_amount,billing_revision) VALUES ('extra-copy',?,1,2,NULL,NULL,'','{}',0,0,1)").run(a);
+  const r = await patchOrder(a, { total_amount: 60, expected_total_amount: 50 });
+  db.prepare("DELETE FROM sync_inbox WHERE id='extra-copy'").run();
+  assert.equal(r.status, 409); assert.match(r.body.error, /拆成几张/);
+  assert.equal(clientBill(a).amount, 50);
+  const b = await attached(70);
+  clientWrite("UPDATE sync_outbox SET payload=json_set(payload,'$.lines[0].quantity',2) WHERE order_id=(SELECT id FROM orders WHERE order_no=?)", b);
+  const direct = await sync('POST', '/api/sync/order-amount', { source_order_no: b, amount: 80, expected_amount: 70 });
+  assert.equal(direct.status, 409); assert.match(direct.body.error, /拆成几张/);
+  assert.equal(clientBill(b).amount, 70);
+  // 改成了要回这次账单新版本的版本号（内部拿它判断期间有没有更新的版本先到）
+  const c = await attached(90);
+  const ok = await sync('POST', '/api/sync/order-amount', { source_order_no: c, amount: 95, expected_amount: 90 });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const outboxRev = JSON.parse((clientDb.prepare('SELECT s.payload FROM sync_outbox s JOIN orders o ON o.id=s.order_id WHERE o.order_no=?').get(c) as { payload: string }).payload).billing_revision;
+  assert.ok(Number.isInteger(ok.body.billing_revision) && ok.body.billing_revision === outboxRev, JSON.stringify(ok.body));
+});
+
+await test('orders that are not in the customer site edit their amount exactly as before', async () => {
+  const plain = await newInternalOrder(6, '', 300, 'CNY');
+  const r = await patchOrder(plain, { total_amount: 0, description: '普通单' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(internalOrder(plain), { total_amount: 0, description: '普通单' });
+  const r2 = await patchOrder(plain, { total_amount: 450, expected_total_amount: 999 });
+  assert.equal(r2.status, 200, 'the original amount a page sends is ignored for ordinary orders');
+  assert.equal(internalOrder(plain).total_amount, 450);
+});
+
 for (const result of results) console.log(JSON.stringify(result));
 const failed = results.filter(r => r.result === 'FAIL').length;
 console.log(`SUMMARY ${results.length - failed}/${results.length} passed`);

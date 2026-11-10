@@ -16,11 +16,14 @@ import { resolveStepCopies } from "@/lib/step-public-copy";
 import { kitForOrder } from "@/lib/order-kit";
 import { orderDisplayNumber } from "@/lib/order-display-no";
 import { hasPaidRebate } from "@/lib/agents";
+import { sourceOrderOf } from "@/lib/delivery-sync";
+import { CustomerPaymentError, setCustomerOrderAmount } from "@/lib/customer-payment";
 
 // 待分类改派（2026-10-03 老板选 A）：客户站同步的待分类单改到正式业务线时，换成那条线的整套流程。
 const UNCLASSIFIED_SUB = "storefront-unclassified";
 const DELIVER_STEP = "办理并交付";
 class ReassignConflict extends Error {}
+class AmountConflict extends Error {}
 
 // GET /api/orders/:id
 export async function GET(
@@ -107,13 +110,57 @@ export async function PATCH(
     return NextResponse.json({ error: '同步订单取消和恢复仅管理员可操作' }, { status: 403 });
   }
   if (body.cancel === true && body.restore === true) return NextResponse.json({error:'取消和恢复不能同时提交'}, {status:400});
-  // 过渡期客户账单是金额唯一写方；同值字段随编辑表单提交仍可保存备注/流程。
-  const financialChange =
-    (body.total_amount !== undefined && Number(body.total_amount) !== Number(current.total_amount)) ||
+  // 同步单的币种、月租以客户站账单为准；同值字段随编辑表单提交仍可保存备注/流程。
+  const otherFinancialChange =
     (body.currency !== undefined && String(body.currency || "CNY") !== String(current.currency || "CNY")) ||
     (body.monthly_rent !== undefined && Number(body.monthly_rent) !== Number(current.monthly_rent));
-  if (synchronized && financialChange) {
+  if (synchronized && otherFinancialChange) {
     return NextResponse.json({ error: "同步订单金额由客户站账单维护，请在客户站调整" }, { status: 403 });
+  }
+  // 金额（2026-11-09 老板：「要内部系统可以直接去改」）：同步单改金额，保存时先让业务系统把客户的账单改成同样的数，
+  // 改成了内部再存（见下面事务前）。只认一笔客户订单对应这一张内部单、账单台账齐全的人民币单；拆成几张的到业务系统改整笔。
+  // 页面带上打开时看到的金额（expected_total_amount）：页面打开后别人改过金额的，只改描述不会把金额改回旧的，要改金额先刷新。
+  // 同步单的金额只在真改（先改了业务系统账单）时才写；没改的不写回，免得旧页面、怪格式的同值把库里的数换掉。
+  // 金额一律按「分」比（100.000000001 跟 100 算同一个数）
+  const cents = (v: unknown) => Math.round(Number(v) * 100);
+  let storefrontAmount: { sourceOrderNo: string; amount: number } | null = null;
+  let writeAmount = !synchronized && body.total_amount !== undefined;
+  let amountTouched = false;
+  if (synchronized && body.total_amount !== undefined) {
+    const now = Number(current.total_amount);
+    const seen = body.expected_total_amount;
+    if (seen !== undefined && (typeof seen !== "number" || !Number.isFinite(seen))) {
+      return NextResponse.json({ error: "页面带来的原金额不对，请刷新页面再改" }, { status: 400 });
+    }
+    if (seen === undefined) {
+      // 没带原金额（上线前打开、还没刷新的旧页面）：金额没变照旧，要改金额先刷新
+      if (cents(body.total_amount) !== cents(now)) return NextResponse.json({ error: "页面是旧的，请刷新页面再改金额" }, { status: 409 });
+    } else if (cents(seen) !== cents(now)) {
+      // 页面打开后金额被改过：没动金额的，别的照存；动了金额的拦下
+      if (cents(body.total_amount) !== cents(seen)) return NextResponse.json({ error: `金额刚被改过（现在是 ${now} 元），请刷新页面再改` }, { status: 409 });
+    } else {
+      amountTouched = cents(body.total_amount) !== cents(now);
+    }
+  }
+  if (amountTouched) {
+    const raw = body.total_amount;
+    if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0 || raw > 10_000_000_000 || Math.abs(raw * 100 - Math.round(raw * 100)) > 1e-6) {
+      return NextResponse.json({ error: "金额要填大于 0 的数，最多两位小数" }, { status: 400 });
+    }
+    const amount = Math.round(raw * 100) / 100;
+    if (String(current.currency || "CNY") !== "CNY") {
+      return NextResponse.json({ error: "这张单不是人民币，金额请到业务系统「订单管理」改成交价" }, { status: 409 });
+    }
+    const sourceOrderNo = sourceOrderOf(db, id);
+    if (!sourceOrderNo || current.source_system !== "storefront" || !db.prepare("SELECT 1 FROM sync_orders WHERE source_order_no = ?").get(sourceOrderNo)) {
+      return NextResponse.json({ error: "同步订单金额由客户站账单维护，请在客户站调整" }, { status: 403 });
+    }
+    const pieces = (db.prepare("SELECT COUNT(*) AS n FROM sync_inbox WHERE source_order_no = ?").get(sourceOrderNo) as { n: number }).n;
+    if (pieces !== 1) {
+      return NextResponse.json({ error: "这张单是客户一笔订单拆成几张办理的，金额请到业务系统「订单管理」改整笔订单的成交价" }, { status: 409 });
+    }
+    storefrontAmount = { sourceOrderNo, amount };
+    writeAmount = true;
   }
   // 待分类改派：只认子服务还是 storefront-unclassified 的单，换到别的业务线（或给旧单补选具体服务）时触发；
   // 有具体服务可选的业务线必须选一个，地址认证可选湘泰地址。换完子服务就不再是待分类，所以只会换一次。
@@ -194,7 +241,7 @@ export async function PATCH(
     fields.push("responsible_person = ?"); values.push(body.responsible_person);
   }
   if (body.description !== undefined) { fields.push("description = ?"); values.push(body.description); }
-  if (body.total_amount !== undefined) { fields.push("total_amount = ?"); values.push(Number(body.total_amount)); }
+  if (writeAmount) { fields.push("total_amount = ?"); values.push(storefrontAmount ? storefrontAmount.amount : Number(body.total_amount)); }
   if (!reassign && body.sub_service_type !== undefined) { fields.push("sub_service_type = ?"); values.push(body.sub_service_type); }
   if (!reassign && body.address_type !== undefined) { fields.push("address_type = ?"); values.push(body.address_type); }
   if (body.monthly_rent !== undefined) { fields.push("monthly_rent = ?"); values.push(Number(body.monthly_rent)); }
@@ -218,6 +265,19 @@ export async function PATCH(
 
   if (fields.length === 0) return NextResponse.json({ error: "没有要更新的字段" }, { status: 400 });
 
+  // 同步单改金额：先改业务系统的账单，没改成这次什么都不存
+  let remoteRevision = 0;
+  if (storefrontAmount) {
+    try {
+      remoteRevision = await setCustomerOrderAmount(storefrontAmount.sourceOrderNo, storefrontAmount.amount, Number(current.total_amount));
+    } catch (error) {
+      if (error instanceof CustomerPaymentError) return NextResponse.json({ error: `${error.message}（内部这次的修改都没保存）` }, { status: error.status });
+      throw error;
+    }
+  }
+  // 业务系统那边已经改了、内部这边没存上：说清楚账单已经变了（随后到的账单新版本也会把内部金额改过来）
+  const amountNote = storefrontAmount ? `（客户的账单已经改成 ${storefrontAmount.amount} 元，其他改动没保存，请刷新页面再保存一次）` : "";
+
   fields.push("updated_at = ?");
   values.push(new Date().toISOString());
   values.push(id);
@@ -226,6 +286,26 @@ export async function PATCH(
   let result: { queued: number; order: unknown };
   try {
     result = db.transaction(() => {
+      // 等业务系统回话那几秒，这张单可能被别人改了：
+      // 业务系统管理员又改了价、新账单先到内部 → 别拿这次的数盖掉更新的；
+      // 别人改了这次也要写的字段（负责人、描述、改派等）→ 别拿打开页面时的旧值盖掉
+      if (storefrontAmount) {
+        const fresh = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as Record<string, unknown>;
+        const before = existing as Record<string, unknown>;
+        const freshAmount = Number(fresh.total_amount);
+        // 按账单版本号判断（光比金额分不出「改走又改回」）：
+        // 内部已收到这次或更新的版本 → 金额必须已是目标值（之后只是确认收款等没动金额的，照存；动了金额的不写）；
+        // 还没收到这次的版本 → 金额必须还是原值。
+        const localRevision = (db.prepare("SELECT billing_revision FROM sync_orders WHERE source_order_no = ?").get(storefrontAmount.sourceOrderNo) as { billing_revision: number } | undefined)?.billing_revision ?? 0;
+        const overtaken = cents(freshAmount) !== cents(localRevision >= remoteRevision ? storefrontAmount.amount : current.total_amount);
+        if (overtaken) {
+          throw new AmountConflict(`业务系统那边刚又改了金额（现在是 ${freshAmount} 元），内部这次的修改都没保存，请刷新页面看看`);
+        }
+        const cols = fields.map(f => f.split(" = ")[0]).filter(c => c !== "total_amount" && c !== "updated_at");
+        if (cols.some(c => String(fresh[c] ?? "") !== String(before[c] ?? ""))) {
+          throw new AmountConflict(`这张单刚被别人改过，内部这次的修改都没保存；客户的账单已经改成 ${storefrontAmount.amount} 元，请刷新页面看看`);
+        }
+      }
       if (newCustomer) createOrderCustomer(db, newCustomer, auth.name || "", id);
       if (reassign) {
         const fresh = db.prepare("SELECT sub_service_type, status FROM orders WHERE id = ?").get(id) as { sub_service_type: string; status: string };
@@ -262,9 +342,10 @@ export async function PATCH(
       return { queued, order: db.prepare("SELECT * FROM orders WHERE id = ?").get(id) };
     }).immediate();
   } catch (error) {
-    if (error instanceof ReassignConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof AmountConflict) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof ReassignConflict) return NextResponse.json({ error: error.message + amountNote }, { status: 409 });
     console.error("[orders] 保存订单/进度事务失败:", error);
-    return NextResponse.json({ error: "保存失败，订单与进度均未提交，请重试" }, { status: 500 });
+    return NextResponse.json({ error: amountNote ? `保存失败${amountNote}` : "保存失败，订单与进度均未提交，请重试" }, { status: 500 });
   }
 
   // HTTP 发送与事务分离；离线只影响传输，入队失败则整笔保存回滚。
@@ -278,6 +359,7 @@ export async function PATCH(
     } catch (error) { console.error("[orders] 改派后下一步提醒失败:", error); }
   }
   logOperation(auth.name, reassign ? "待分类改派" : "修改订单", "order", id, reassign ? JSON.stringify(reassign) : `${fields.join(",")}`);
+  if (storefrontAmount) logOperation(auth.name, "改同步单金额", "order", id, `${Number(current.total_amount)} → ${storefrontAmount.amount} ${current.currency || "CNY"}（业务系统账单一起改）`);
   return NextResponse.json(result.order);
 }
 
