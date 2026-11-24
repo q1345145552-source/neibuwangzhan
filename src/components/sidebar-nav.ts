@@ -44,6 +44,7 @@ import {
   Lightbulb,
   Timer,
   Workflow,
+  Sunrise,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,8 +56,9 @@ import {
 export type NavItem = { name: string; href: string; icon: LucideIcon };
 export type NavGroup = { key: string; label: string; items: NavItem[]; defaultOpen?: boolean };
 
-/** 顶部：不分组、没有标题，共 19 个 */
+/** 顶部：不分组、没有标题，共 20 个（「老板今日」只给管理员，放第一个） */
 export const TOP_NAV: NavItem[] = [
+  { name: "老板今日", href: "/boss-today", icon: Sunrise },
   { name: "全局搜索", href: "/search", icon: Search },
   { name: "公司档案", href: "/company-archives", icon: Building2 },
   { name: "我的文件夹", href: "/my-folder", icon: FolderOpen },
@@ -151,7 +153,7 @@ export const NAV_GROUPS: NavGroup[] = [
 export const BOTTOM_NAV: NavItem[] = [];
 
 /** 只有管理员能看到的菜单项 */
-const ADMIN_ONLY_NAV = new Set(["数据总览", "监督看板", "我的项目", "员工动态", "办理月报", "流程设置", "代理记账"]);
+const ADMIN_ONLY_NAV = new Set(["老板今日", "数据总览", "监督看板", "我的项目", "员工动态", "办理月报", "流程设置", "代理记账"]);
 /** 客户账号（内部系统的 client 角色）看不到的菜单项 */
 const NOT_FOR_CLIENT_NAV = new Set(["全局搜索", "我的文件夹", "公司档案", "通知/规则", "客户评价"]);
 

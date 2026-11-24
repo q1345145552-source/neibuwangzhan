@@ -26,7 +26,7 @@ async function run(){const h=createReviewHarness();const{callRoute:call,todoRout
  assert.equal((await review(5,'最新点评')).status,200);assert.equal(tasks().length,1);assert.match(tasks()[0].content,/5 星.*\n点评：最新点评/);assert.equal(tasks()[0].content_zh,'');assert.equal(tasks()[0].content_zh_key,'');assert.equal(tasks()[0].seen_at,'');assert.equal(notices().length,1);
  assert.equal((await review(5,'最新点评')).status,200);assert.equal(tasks().length,1);assert.equal(notices().length,1);
  h.setActor({id:1,name:'Bam',role:'employee'});assert((await call(listRoute)).body.some(t=>t.id===todo.id));assert.equal((await call(todoRoute,'PATCH',{status:'已完成'},todo.id)).status,200);assert.equal(tasks()[0].status,'已完成');assert(tasks()[0].completed_at);
- assert(h.native.prepare("SELECT 1 FROM notifications WHERE related_type='boss_submission' AND related_id=?").get('todo:'+todo.id));
+ assert(!h.native.prepare("SELECT 1 FROM notifications WHERE related_type='boss_submission' AND related_id=?").get('todo:'+todo.id),'todo completion no longer notifies boss (老板今日)');assert(h.native.prepare("SELECT 1 FROM boss_submission_state WHERE category='todo' AND source_id=?").get(todo.id),'still recorded for the pending list');
  h.setActor({id:4,name:'老板',role:'admin'});assert(!(await call(pendingRoute)).body.items.some(t=>t.id==='todo:'+todo.id));assert.equal((await call(listRoute)).body.find(t=>t.id===todo.id).status,'已完成');
  const finished=JSON.stringify(tasks()[0]);assert.equal((await review(2,'同轮改点评不重开')).status,200);assert.equal(JSON.stringify(tasks()[0]),finished);assert.equal(notices().length,1);
  assert.equal((await call(todoRoute,'PATCH',{action:'confirm'},todo.id)).status,200);

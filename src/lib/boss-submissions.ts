@@ -11,6 +11,9 @@ export function ensureBossSubmissionSchema(db: Database.Database) {
   )`);
 }
 
+/** 这些提交只进待处理清单和老板今日，不给老板发通知（老板 30 天收到 500+ 条这类通知、已读 0）。 */
+export const QUIET_BOSS_CATEGORIES: ReadonlySet<BossSubmissionCategory> = new Set(["report", "todo", "meeting", "notice"]);
+
 /** 在业务提交事务内调用；每次真实提交一轮，退回重提会重置已阅/确认并重新通知。 */
 export function publishBossSubmission(db: Database.Database, category: BossSubmissionCategory, sourceId: number, employee: string, summary: string) {
   if (!db.prepare("SELECT 1 FROM employees WHERE name=? AND role='employee'").get(employee)) return;
@@ -18,6 +21,8 @@ export function publishBossSubmission(db: Database.Database, category: BossSubmi
   db.prepare(`INSERT INTO boss_submission_state(category,source_id,generation,submitted_at) VALUES (?,?,1,?)
     ON CONFLICT(category,source_id) DO UPDATE SET generation=generation+1,submitted_at=excluded.submitted_at,
     viewed_revision='',viewed_at='',viewed_by='',confirmed_at='',confirmed_by=''`).run(category, sourceId, stamp);
+  // 2026-11 老板今日：日常汇报类不再逐条发通知，集中在 /boss-today 一屏处理；只有要及时拍板的才推通知。
+  if (QUIET_BOSS_CATEGORIES.has(category)) return;
   const bosses = db.prepare("SELECT DISTINCT name FROM employees WHERE role='admin' AND status IN ('在职','试用期','待离职') AND name<>''").all() as { name: string }[];
   const insert = db.prepare("INSERT INTO notifications(type,title,body,recipient,related_type,related_id,created_at) VALUES ('',?,?,?,'boss_submission',?,?)");
   for (const boss of bosses) insert.run(BOSS_SUBMISSION_TYPES[category].title, `${employee}：${summary.slice(0, 600)}`, boss.name, `${category}:${sourceId}`, stamp);

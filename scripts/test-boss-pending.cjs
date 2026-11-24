@@ -10,7 +10,7 @@ const db = require('../src/lib/db.ts').getDb();
 require('../src/lib/deepseek.ts').analyzeWorkReport = async () => ({ label: '测试', comment: '', risk: false, riskDesc: '' });
 const { signToken } = require('../src/lib/auth.ts'), { NextRequest } = require('next/server');
 const { reportSubmissionRevision, reflectionSubmissionRevision, BOSS_SUBMISSION_TYPES, BOSS_PENDING_TYPES } = require('../src/lib/boss-submission-types.ts');
-const { ensureBossSubmissionSchema } = require('../src/lib/boss-submissions.ts');
+const { ensureBossSubmissionSchema, QUIET_BOSS_CATEGORIES } = require('../src/lib/boss-submissions.ts');
 const load = name => require('../src/app/api/' + name + '/route.ts');
 const routes = { pending: load('boss-supervision/pending'), seen: load('boss-supervision/pending/seen'), leave: load('leave'), attendance: load('attendance/request'),
   notice: load('notice-rules/[id]/implementation'), noticeReview: load('notice-rules/[id]/implementations/[recordId]/review'), report: load('work-reports'), reportEdit: load('work-reports/[id]'),
@@ -47,7 +47,7 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
   db.prepare("INSERT INTO points_records(employee_name,points,reason,rule_key) VALUES (?,100,'测试积分','customer_claim')").run(employee);
   const issueId = Number(db.prepare("INSERT INTO issue_tickets(ticket_number,description,assignee,status) VALUES ('TK-TEST','测试工单',?,'待处理')").run(employee).lastInsertRowid);
   const ids = { notice: noticeRecord, todo: todoId, problem: problemId, issue: issueId };
-  await check('All eight real employee submission routes create one notification per active admin', async () => {
+  await check('All eight real employee submission routes record pending; only approval-type ones notify each active admin (日报/待办/心得/落实 quiet since 老板今日)', async () => {
     let r = await call('leave', 'POST', 'employee', { leave_type: '事假', start_date: current, end_date: current, reason: '测试申请' }); assert.equal(r.status, 201); ids.leave = r.body.id;
     r = await call('attendance', 'POST', 'employee', { date: current, time: '09:00', reason: '测试补签' }); assert.equal(r.status, 201); ids.attendance = r.body.id;
     r = await call('notice', 'POST', 'employee', { photo: '/api/files/pending.png', statement: '已打印放置桌面' }, { id: String(noticeId) }); assert.equal(r.status, 200);
@@ -56,9 +56,9 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
     r = await call('todo', 'PATCH', 'employee', { status: '已完成' }, { id: String(todoId) }); assert.equal(r.status, 200);
     r = await call('problem', 'PATCH', 'employee', { status: '老板验收', resolve_note: '已解决请验收' }, { id: String(problemId) }); assert.equal(r.status, 200);
     r = await call('customers', 'POST', 'employee', { action: 'withdraw_request', amount: 30 }); assert.equal(r.status, 200); ids.withdrawal = db.prepare('SELECT MAX(id) id FROM point_withdrawals').get().id;
-    assert.equal(messages().length, 16);
+    assert.equal(messages().length, 8);
     for (const category of Object.keys(BOSS_SUBMISSION_TYPES)) {
-      const rows = messages().filter(n => n.related_id === `${category}:${ids[category]}`); assert.equal(rows.length, 2, category);
+      const rows = messages().filter(n => n.related_id === `${category}:${ids[category]}`); assert.equal(rows.length, QUIET_BOSS_CATEGORIES.has(category) ? 0 : 2, category);
       assert(rows.every(n => [users.admin.name, users.admin2.name].includes(n.recipient) && n.body.includes(employee)));
     }
     assert.equal(db.prepare("SELECT count(*) n FROM notifications WHERE type='待办完成'").get().n, 0, 'No duplicate legacy admin todo message');
@@ -72,12 +72,12 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
     assert.equal(r.body.items.find(i => i.category === 'todo').category_label, '未完成待办');
     for (const item of r.body.items) { assert.equal(item.employee_name, employee); assert.equal(item.employee_id, item.category === 'issue' ? null : users.employee.id); assert(item.summary && item.category_label && item.href.startsWith('/') && !isNaN(Date.parse(item.submitted_at))); }
     assert.deepEqual(r.body.items.map(i => i.submitted_at), r.body.items.map(i => i.submitted_at).sort().reverse());
-    assert.equal(messages().length, 16, 'Reading pending does not send reminders');
+    assert.equal(messages().length, 8, 'Reading pending does not send reminders');
   });
   await check('Admin message center list/unread/mark-read contain submissions; staff/client cannot access pending or receipts', async () => {
-    const list = await call('messages', 'GET', 'admin'); assert.equal(list.body.filter(n => n.related_type === 'boss_submission').length, 8);
-    assert.equal((await call('badge', 'GET', 'admin')).body.count, 8);
-    const id = list.body[0].id; await call('messages', 'PATCH', 'admin', { id }); assert.equal((await call('badge', 'GET', 'admin')).body.count, 7);
+    const list = await call('messages', 'GET', 'admin'); assert.equal(list.body.filter(n => n.related_type === 'boss_submission').length, 4);
+    assert.equal((await call('badge', 'GET', 'admin')).body.count, 4);
+    const id = list.body[0].id; await call('messages', 'PATCH', 'admin', { id }); assert.equal((await call('badge', 'GET', 'admin')).body.count, 3);
     assert.equal((await pending()).total, 9, 'Message read does not mean business handled');
     for (const role of [null, 'employee', 'client']) {
       assert.equal((await call('pending', 'GET', role)).status, role ? 403 : 401);
@@ -97,16 +97,16 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
     assert.equal((await call('seen', 'POST', 'admin', { category: 'meeting', items: [{ id: reflection.id, revision: reflectionSubmissionRevision(reflection) }] })).body.marked, 1);
     assert(!(await pending()).items.some(i => i.id === `report:${report.id}` || i.id === `meeting:${reflection.id}`));
     await call('reportEdit', 'PATCH', 'admin', { action: 'review', rating: 5, comment: '已点评' }, { id: String(report.id) });
-    await call('reportEdit', 'PATCH', 'admin', { action: 'reject' }, { id: String(report.id) });
+    await call('reportEdit', 'PATCH', 'admin', { action: 'reject', rejection_reason: '测试退回' }, { id: String(report.id) });
     let r = await call('reportEdit', 'PATCH', 'employee', { completed_items: ['日报重新提交'] }, { id: String(report.id) }); assert.equal(r.status, 200);
-    await call('reflection', 'PATCH', 'admin', { action: 'reject' }, { id: String(meetingId), rid: String(reflection.id) });
+    await call('reflection', 'PATCH', 'admin', { action: 'reject', rejection_reason: '测试退回' }, { id: String(meetingId), rid: String(reflection.id) });
     r = await call('reflection', 'PATCH', 'employee', { content: '心得重新提交' }, { id: String(meetingId), rid: String(reflection.id) }); assert.equal(r.status, 200);
     assert.equal((await call('seen', 'POST', 'admin', { category: 'report', items: [{ id: report.id, revision: reportSubmissionRevision(report) }] })).body.marked, 0);
     assert.equal((await call('seen', 'POST', 'admin', { category: 'meeting', items: [{ id: reflection.id, revision: reflectionSubmissionRevision(reflection) }] })).body.marked, 0);
     assert((await pending()).items.some(i => i.id === `report:${report.id}`)); assert((await pending()).items.some(i => i.id === `meeting:${reflection.id}`));
     assert.equal(db.prepare("SELECT generation FROM boss_submission_state WHERE category='report' AND source_id=?").get(report.id).generation, 2);
   });
-  await check('Todo completion notification remains unchanged; reopening enters unfinished list and completion removes it', async () => {
+  await check('Todo completion sends no boss notification; reopening enters unfinished list and completion removes it', async () => {
     const before = messages().length;
     await call('todo', 'PATCH', 'employee', { status: '已完成' }, { id: String(todoId) }); assert.equal(messages().length, before);
     assert.equal((await call('todo', 'PATCH', 'employee', { action: 'confirm' }, { id: String(todoId) })).status, 403);
@@ -114,13 +114,13 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
     assert(!(await pending()).items.some(i => i.category === 'todo' && i.source_id === todoId));
     await call('todo', 'PATCH', 'employee', { status: '未完成' }, { id: String(todoId) });
     assert((await pending()).items.some(i => i.category === 'todo' && i.source_id === todoId));
-    await call('todo', 'PATCH', 'employee', { status: '已完成' }, { id: String(todoId) }); assert.equal(messages().length, before + 2);
+    await call('todo', 'PATCH', 'employee', { status: '已完成' }, { id: String(todoId) }); assert.equal(messages().length, before, 'todo completion is quiet');
     assert(!(await pending()).items.some(i => i.category === 'todo' && i.source_id === todoId));
     assert((await pending()).items.some(i => i.category === 'todo' && i.source_id === unfinishedTodoId));
   });
   await check('Approvals/returns/acceptance remove pending entries; returned notice and problem submissions notify again', async () => {
-    await call('leave', 'PATCH', 'admin', { id: ids.leave, status: '已驳回' });
-    await call('attendance', 'PATCH', 'admin', { id: ids.attendance, status: '已驳回' });
+    await call('leave', 'PATCH', 'admin', { id: ids.leave, status: '已驳回', rejection_reason: '测试驳回' });
+    await call('attendance', 'PATCH', 'admin', { id: ids.attendance, status: '已驳回', rejection_reason: '测试驳回' });
     const { submissionToken } = require('../src/lib/notice-rule-review.ts');
     let r = await call('noticeReview', 'POST', 'admin', { decision: '打回', comment: '重拍', submission_token: submissionToken(row('notice_rule_implementations', noticeRecord)) }, { id: String(noticeId), recordId: String(noticeRecord) }); assert.equal(r.status, 200);
     await call('problem', 'PATCH', 'admin', { status: '跟进中' }, { id: String(problemId) });
@@ -130,7 +130,7 @@ async function check(name, fn) { await fn(); groups++; console.log('PASS ' + nam
     assert.equal((await call('notice', 'POST', 'employee', { photo: '/api/files/pending.png', statement: '重新拍照落实' }, { id: String(noticeId) })).status, 200);
     assert.equal((await call('notice', 'POST', 'employee', { photo: '/api/files/pending.png', statement: '重复提交' }, { id: String(noticeId) })).status, 409);
     await call('problem', 'PATCH', 'employee', { status: '老板验收', resolve_note: '问题重新解决' }, { id: String(problemId) });
-    assert.equal(messages().length, before + 4);
+    assert.equal(messages().length, before + 2, 'resubmitted problem notifies; notice implementation is quiet');
     assert((await pending()).items.some(i => i.category === 'notice')); assert((await pending()).items.some(i => i.category === 'problem'));
   });
   await check('Submission + notification are atomic if notification insert fails; migration preserves existing business rows', async () => {
